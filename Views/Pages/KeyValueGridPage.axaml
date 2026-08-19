@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:pages="using:Fubar.Controls.Gallery.Views.Pages"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="500"
+             x:Class="Fubar.Controls.Gallery.Views.Pages.KeyValueGridPage"
+             x:DataType="pages:KeyValueGridPageViewModel">
+
+    <fc:Card>
+        <fc:Card.Header>
+            <fc:SectionHeader Title="KEY VALUE GRID" />
+        </fc:Card.Header>
+        <fc:KeyValueGrid ItemsSource="{Binding Rows}"
+                         AddCommand="{Binding AddRowCommand}"
+                         RemoveCommand="{Binding RemoveRowCommand}"
+                         Height="360" />
+    </fc:Card>
+
+</UserControl>
