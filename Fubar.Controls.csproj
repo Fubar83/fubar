@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Reusable, app-agnostic Avalonia component library. Depends only on Avalonia (+ AvaloniaEdit for
+       the code editor) - deliberately no reference to Fubar.Studio.Core / Fubar.Studio.UI / any view models, so the
+       components can be dropped into any Avalonia app. Consumers add one line to Application.Styles:
+       <StyleInclude Source="avares://Fubar.Controls/Themes/Fubar.Controls.axaml" /> -->
+  <PropertyGroup>
+    <RootNamespace>Fubar.Controls</RootNamespace>
+    <AssemblyName>Fubar.Controls</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" />
+    <PackageReference Include="AvaloniaEdit.TextMate" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The JSON schema completion engine is internal; expose it to the test project. -->
+    <InternalsVisibleTo Include="Fubar.Controls.Tests" />
+  </ItemGroup>
+
+</Project>

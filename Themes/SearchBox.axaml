@@ -1,0 +1,49 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:conv="using:Avalonia.Data.Converters"
+                    xmlns:fc="using:Fubar.Controls">
+
+    <!-- SearchBox: bordered filter input with a leading search glyph and a trailing clear IconButton
+         (shown only while Text is non-empty). Composes fc:IconButton; the clear behaviour is wired in
+         SearchBox.OnApplyTemplate via the PART_ClearButton part. -->
+    <ControlTheme x:Key="{x:Type fc:SearchBox}" TargetType="fc:SearchBox">
+        <Setter Property="Background" Value="{DynamicResource BgEditorCanvas}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderEditor}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Text="&#x1F50D;"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Margin="2,0,6,0"
+                                   Foreground="{DynamicResource TextSecondary}" />
+                        <TextBox Grid.Column="1"
+                                 Name="PART_TextBox"
+                                 Text="{Binding Text, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                 PlaceholderText="{TemplateBinding Watermark}"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Padding="0"
+                                 VerticalAlignment="Center" />
+                        <fc:IconButton Grid.Column="2"
+                                       Name="PART_ClearButton"
+                                       Content="&#x2715;"
+                                       FontSize="9"
+                                       Padding="3"
+                                       IsVisible="{TemplateBinding Text, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+</ResourceDictionary>
