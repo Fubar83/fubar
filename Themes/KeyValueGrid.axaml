@@ -68,7 +68,7 @@
                                                 </TextBox>
                                                 <AutoCompleteBox Text="{Binding Key, Mode=TwoWay}"
                                                                  ItemsSource="{Binding $parent[ItemsControl].Tag.KeySuggestions}"
-                                                                 Watermark="Key"
+                                                                 PlaceholderText="Key"
                                                                  BorderThickness="0"
                                                                  Background="Transparent"
                                                                  FilterMode="ContainsOrdinal"
