@@ -1,5 +1,5 @@
-using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 
@@ -13,8 +13,7 @@ public sealed class FilePickerService : IFilePickerService
 {
     public async Task<string?> PickFileAsync(string title)
     {
-        if (Avalonia.Application.Current?.ApplicationLifetime
-            is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
+        if (MainWindow is not { } window)
         {
             return null;
         }
@@ -27,4 +26,25 @@ public sealed class FilePickerService : IFilePickerService
 
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
+
+    public async Task<string?> PickSaveFileAsync(string title)
+    {
+        if (MainWindow is not { } window)
+        {
+            return null;
+        }
+
+        var file = await window.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = title,
+            ShowOverwritePrompt = true,
+        }).ConfigureAwait(true);
+
+        return file?.TryGetLocalPath();
+    }
+
+    private static Window? MainWindow =>
+        Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow
+            : null;
 }

@@ -9,8 +9,10 @@ The shipped binary is `FubarDiff`; the on-screen title is "Fubar Diff". Sibling 
 [Fubar API Studio](https://github.com/Fubar83/Fubar-API-Studio), sharing its design system via the
 [`Fubar.Controls`](https://github.com/Fubar83/fubar-components) package.
 
-**Early-stage.** Side-by-side file comparison works end to end; folder comparison and merge editing
-are not built yet. The layering below is already in place and should be followed for new work.
+**Early-stage.** Two-editor side-by-side comparison, character-level diff, change navigation, a diff
+map, and hunk-level merge with save all work end to end. Semantic JSON, folder comparison and
+free-form editing are not built yet. The layering below is already in place and should be followed
+for new work.
 
 ## Architecture (read before changing structure)
 
@@ -53,10 +55,10 @@ because comparing canonical JSON only makes sense if you can see the canonical f
 
 | Area | Location |
 | --- | --- |
-| Domain models, policy, ports | `src/Fubar.Diff.Core` (`Models/`, `Comparison/`, `Files/`) |
-| Use-case services | `src/Fubar.Diff.Application/Comparison` |
-| Diff engine, normalizer, file reader, DI wiring | `src/Fubar.Diff.Infrastructure` |
-| Views + ViewModels + DI (`Composition.cs`) | `src/Fubar.Diff.UI` |
+| Domain models, policy, ports | `src/Fubar.Diff.Core` (`Models/`, `Comparison/`, `Files/`, `Merge/`, `Rendering/`) |
+| Use-case services | `src/Fubar.Diff.Application` (`Comparison/`, `Merge/`) |
+| Diff engine, inline (character) diff, normalizer, file reader/writer, DI wiring | `src/Fubar.Diff.Infrastructure` |
+| Views + ViewModels + DI (`Composition.cs`) | `src/Fubar.Diff.UI` (`Rendering/` = AvaloniaEdit hooks, `Controls/` = diff map) |
 | Reusable controls + theme/design system | External: the `Fubar.Controls` package |
 | Packaging | `build/publish.ps1` |
 
@@ -86,8 +88,9 @@ guard). Keep the suite green; a refactor must not change behavior.
   wrap-around rules precisely so they can be tested without a UI. Put new rules there.
 - **MVVM** via CommunityToolkit.Mvvm source generators (`[ObservableProperty]`, `[RelayCommand]`);
   `ViewModelBase : ObservableObject`.
-- **Style classes bind as `Classes.name="{Binding Flag}"`** — Avalonia's `Classes` property is not
-  itself bindable, which is why `DiffRowViewModel` exposes a bool per class rather than a string.
+- **Editors are read-only.** The aligned documents contain filler lines, so editor text is NOT file
+  text. Typing would desynchronise the panes and there is no offset map yet to put it back. Merge
+  goes through hunk commands on the domain model instead.
 - **Generic UI belongs in `Fubar.Controls`**, not here. Anything that knows what a "hunk" is stays
   app-side; a reusable primitive goes to the package (with a Gallery page).
 - **Central Package Management**: versions live in `Directory.Packages.props`; reference packages
@@ -100,8 +103,12 @@ guard). Keep the suite green; a refactor must not change behavior.
   `Application` type inside `Fubar.Diff.*` code (a namespace member outranks a using-alias, so an
   alias cannot fix it). Qualify Avalonia's type as **`Avalonia.Application`**.
 - **Build fails with locked DLLs while the app is running** → `taskkill //F //IM FubarDiff.exe` first.
-- **Both panes share one scroller on purpose.** Two independently scrolling `ScrollViewer`s is the
-  classic side-by-side diff bug; do not "improve" `DiffView.axaml` by splitting them.
+- **Filler-line discipline is the central invariant**: editor line `i` is always `DiffResult.Lines[i]`,
+  on BOTH sides. Never read the editors back to save - go through `MergedDocument`, or you will write
+  the filler blanks into the user's file. Because both sides have the same line count, scroll sync is
+  a plain vertical-offset copy; do not "improve" it into a line-mapping scheme.
+- **Viewport size must come from `TextView.DefaultLineHeight`, not `VisualLines.Count`** - a document
+  shorter than the pane reports only the lines it drew, which collapses the diff map's scale.
 - **Test both theme variants.** A token used only in Dark throws at runtime in Light.
 
 ## Workflow notes

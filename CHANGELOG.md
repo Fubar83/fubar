@@ -8,6 +8,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Two-editor side-by-side view** built on AvaloniaEdit, replacing the row list. Line numbers show
+  each line's number in its own file rather than in the aligned view, so they still match what is on
+  disk across insertions.
+- **Character-level diff** within modified lines, so a one-word change reads at a glance instead of
+  tinting the whole row.
+- **Diff map** between the panes: one tick per change, coloured by kind, with a viewport indicator;
+  click or drag to jump.
+- **Synchronized scrolling** between the two editors.
+- **Hunk-level merge and save**: take the left or right version of the current change, reset a
+  decision, then Save or Save As. Saving preserves the file's encoding, BOM, line endings and trailing
+  newline byte-for-byte.
+- **Keyboard shortcuts**: F7/F8 for previous/next change, Alt+Left / Alt+Right to merge, Ctrl+S to save.
+
+### Changed
+
+- `TextDocument` now carries a `TextFormat` (encoding, BOM, line ending, trailing newline) instead of
+  loose encoding and line-ending fields — the BOM and trailing newline cannot be recovered from the
+  lines alone, and losing either on save turns a one-line merge into a whole-file diff.
+
 - Initial side-by-side file comparison: pick two files (or pass them on the command line) and see them
   aligned, with line numbers and per-line change highlighting.
 - Placeholder rows opposite insertions and deletions, and a single shared scroller, so the two panes

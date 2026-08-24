@@ -1,4 +1,5 @@
 using Fubar.Diff.Application.Comparison;
+using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Infrastructure;
 using Fubar.Diff.UI.Services;
 using Fubar.Diff.UI.ViewModels;
@@ -23,6 +24,7 @@ internal static class Composition
 
                 // Application-layer use cases.
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();
+                services.AddSingleton<IMergeService, MergeService>();
 
                 services.AddSingleton<IFilePickerService, FilePickerService>();
 

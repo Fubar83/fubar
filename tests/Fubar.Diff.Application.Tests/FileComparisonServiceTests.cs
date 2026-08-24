@@ -51,7 +51,7 @@ public class FileComparisonServiceTests
     {
         public Task<TextDocument> ReadAsync(string path, CancellationToken cancellationToken = default) =>
             files.TryGetValue(path, out var lines)
-                ? Task.FromResult(new TextDocument(path, lines, "utf-8", LineEnding.Lf))
+                ? Task.FromResult(new TextDocument(path, lines, TextFormat.Default))
                 : throw new TextFileReadException(path, "the file does not exist.");
     }
 
@@ -64,15 +64,37 @@ public class FileComparisonServiceTests
             options.NormalizeStructure ? [.. lines.Select(l => l.Trim())] : lines;
     }
 
+    /// <summary>
+    /// Marks the whole of each side as changed. Trivial on purpose: these tests are about WHICH text
+    /// the spans are computed against, not about how words are matched within a line.
+    /// </summary>
+    private sealed class WholeLineInlineEngine : IInlineDiffEngine
+    {
+        public string? LastLeft { get; private set; }
+
+        public string? LastRight { get; private set; }
+
+        public (IReadOnlyList<CharSpan> Left, IReadOnlyList<CharSpan> Right) DiffWithinLine(string left, string right)
+        {
+            LastLeft = left;
+            LastRight = right;
+
+            return (
+                left.Length > 0 ? [new CharSpan(0, left.Length, ChangeKind.Deleted)] : [],
+                right.Length > 0 ? [new CharSpan(0, right.Length, ChangeKind.Inserted)] : []);
+        }
+    }
+
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-    private static (FileComparisonService Service, PositionalEngine Engine) Build(
+    private static (FileComparisonService Service, PositionalEngine Engine, WholeLineInlineEngine Inline) Build(
         params (string Path, string[] Lines)[] files)
     {
         var engine = new PositionalEngine();
+        var inline = new WholeLineInlineEngine();
         var reader = new StubReader(files.ToDictionary(f => f.Path, f => f.Lines));
 
-        return (new FileComparisonService(reader, engine, new UpperCasingNormalizer()), engine);
+        return (new FileComparisonService(reader, engine, inline, new UpperCasingNormalizer()), engine, inline);
     }
 
     [Fact]
@@ -81,7 +103,7 @@ public class FileComparisonServiceTests
         // The regression this guards: with IgnoreCase on, the engine is fed upper-cased keys. If the
         // service failed to project the rows back onto the documents, the user would be shown a
         // SHOUTING copy of their own file.
-        var (service, engine) = Build(
+        var (service, engine, _) = Build(
             ("left", ["Hello"]),
             ("right", ["hello"]));
 
@@ -98,7 +120,7 @@ public class FileComparisonServiceTests
     public async Task Canonicalisation_output_IS_displayed()
     {
         // Unlike keys, canonicalised content is what the user is comparing, so it must be shown.
-        var (service, _) = Build(
+        var (service, _, _) = Build(
             ("left", ["   padded   "]),
             ("right", ["padded"]));
 
@@ -111,7 +133,7 @@ public class FileComparisonServiceTests
     [Fact]
     public async Task Fillers_carry_no_text_on_the_missing_side()
     {
-        var (service, _) = Build(
+        var (service, _, _) = Build(
             ("left", ["a"]),
             ("right", ["a", "b"]));
 
@@ -125,7 +147,7 @@ public class FileComparisonServiceTests
     [Fact]
     public async Task Recompare_does_not_touch_the_disk_again()
     {
-        var (service, _) = Build(
+        var (service, _, _) = Build(
             ("left", ["Hello"]),
             ("right", ["hello"]));
 
@@ -143,7 +165,7 @@ public class FileComparisonServiceTests
     [Fact]
     public async Task A_missing_file_surfaces_as_a_domain_exception()
     {
-        var (service, _) = Build(("left", ["a"]));
+        var (service, _, _) = Build(("left", ["a"]));
 
         var ex = await Assert.ThrowsAsync<TextFileReadException>(
             () => service.CompareFilesAsync("left", "nope", ComparisonOptions.Default, Token));
@@ -152,9 +174,53 @@ public class FileComparisonServiceTests
     }
 
     [Fact]
+    public async Task Inline_spans_are_computed_against_display_text_not_comparison_keys()
+    {
+        // The offset trap: with IgnoreWhitespace on, the key is trimmed, so a span computed against
+        // the key would be shifted left by the indent and highlight the wrong characters. The inline
+        // engine must therefore be handed the DISPLAY text.
+        var (service, _, inline) = Build(
+            ("left", ["      alpha"]),
+            ("right", ["      omega"]));
+
+        var comparison = await service.CompareFilesAsync(
+            "left", "right", new ComparisonOptions { IgnoreCase = true }, Token);
+
+        // Not "ALPHA" (the folded key), and not a trimmed variant.
+        Assert.Equal("      alpha", inline.LastLeft);
+        Assert.Equal("      omega", inline.LastRight);
+
+        // And the resulting span addresses the full display string.
+        var span = Assert.Single(comparison.Result.Lines[0].LeftSpans);
+        Assert.Equal(0, span.Start);
+        Assert.Equal("      alpha".Length, span.Length);
+    }
+
+    [Fact]
+    public async Task Only_modified_rows_get_inline_spans()
+    {
+        // On a wholly inserted or deleted line the entire row is already the change, so picking out
+        // characters within it would be noise.
+        var (service, _, _) = Build(
+            ("left", ["same", "gone"]),
+            ("right", ["same"]));
+
+        var comparison = await service.CompareFilesAsync("left", "right", ComparisonOptions.Default, Token);
+
+        Assert.All(comparison.Result.Lines, line =>
+        {
+            if (line.Kind != ChangeKind.Modified)
+            {
+                Assert.Empty(line.LeftSpans);
+                Assert.Empty(line.RightSpans);
+            }
+        });
+    }
+
+    [Fact]
     public async Task The_options_used_travel_with_the_result()
     {
-        var (service, _) = Build(("left", ["a"]), ("right", ["a"]));
+        var (service, _, _) = Build(("left", ["a"]), ("right", ["a"]));
         var options = new ComparisonOptions { IgnoreWhitespace = true };
 
         var comparison = await service.CompareFilesAsync("left", "right", options, Token);

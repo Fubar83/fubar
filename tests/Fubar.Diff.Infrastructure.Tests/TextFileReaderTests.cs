@@ -42,7 +42,7 @@ public class TextFileReaderTests : IDisposable
         var document = await _reader.ReadAsync(WriteText("a\nb\nc"), Token);
 
         Assert.Equal(["a", "b", "c"], document.Lines);
-        Assert.Equal(LineEnding.Lf, document.LineEnding);
+        Assert.Equal(LineEnding.Lf, document.Format.LineEnding);
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class TextFileReaderTests : IDisposable
         var document = await _reader.ReadAsync(WriteText("a\r\nb"), Token);
 
         Assert.Equal(["a", "b"], document.Lines);
-        Assert.Equal(LineEnding.Crlf, document.LineEnding);
+        Assert.Equal(LineEnding.Crlf, document.Format.LineEnding);
     }
 
     [Fact]

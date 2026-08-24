@@ -17,8 +17,10 @@ public static class ServiceCollectionExtensions
     {
         // All stateless, so singletons: no per-comparison allocation and nothing to reset.
         services.AddSingleton<IDiffEngine, DiffPlexDiffEngine>();
+        services.AddSingleton<IInlineDiffEngine, DiffPlexInlineDiffEngine>();
         services.AddSingleton<ILineNormalizer, TextLineNormalizer>();
         services.AddSingleton<ITextFileReader, TextFileReader>();
+        services.AddSingleton<ITextFileWriter, TextFileWriter>();
 
         return services;
     }

@@ -61,8 +61,11 @@ public sealed class TextFileReader : ITextFileReader
         return new TextDocument(
             path,
             SplitLines(text),
-            encoding.WebName,
-            DetectLineEnding(text));
+            new TextFormat(
+                encoding.WebName,
+                preambleLength > 0,
+                DetectLineEnding(text),
+                EndsWithNewline: EndsWithTerminator(text)));
     }
 
     /// <summary>
@@ -115,6 +118,14 @@ public sealed class TextFileReader : ITextFileReader
         preambleLength = 0;
         return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
     }
+
+    /// <summary>
+    /// Whether the file ended with a terminator. <see cref="SplitLines"/> drops the empty string that
+    /// would otherwise follow one, so this is the only record that it was there - and POSIX text files
+    /// conventionally end with a newline, so losing it on save is a real change to the file.
+    /// </summary>
+    private static bool EndsWithTerminator(string text) =>
+        text.Length > 0 && text[^1] is '\n' or '\r';
 
     private static LineEnding DetectLineEnding(string text)
     {

@@ -9,15 +9,20 @@ side by side, with the panes locked in alignment and changes highlighted line by
 It is a sibling of [Fubar API Studio](https://github.com/Fubar83/Fubar-API-Studio) and shares its
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar-components) package.
 
-> **Status: early.** The side-by-side file comparison below works end to end. Folder comparison and
-> merge editing are not built yet — see [Roadmap](#roadmap).
+> **Status: early.** Two-way file comparison, merge and save work end to end. Semantic JSON,
+> folder comparison and free-form editing are not built yet — see [Roadmap](#roadmap).
 
 ## Features
 
-- **Side-by-side comparison** of two text files, with line numbers on both sides.
-- **Aligned panes.** Insertions and deletions get a placeholder row opposite them, and both sides
-  share a single scroller, so the two columns cannot drift apart.
-- **Change navigation** — jump to the next or previous change, wrapping at either end.
+- **Two-editor side-by-side view**, with each side showing its own file's line numbers — so the
+  numbers still match what is on disk across insertions.
+- **Aligned panes.** Insertions and deletions get a placeholder row opposite them, and the two
+  editors scroll in lockstep, so the columns cannot drift apart.
+- **Character-level diff** inside modified lines, so a one-word change reads at a glance.
+- **Diff map** between the panes — one tick per change, coloured by kind, click or drag to jump.
+- **Change navigation** — next/previous with wrap-around (F7 / F8).
+- **Merge and save** — take the left or right version of a change (Alt+Left / Alt+Right), then save.
+  The file's encoding, BOM, line endings and trailing newline are preserved byte-for-byte.
 - **Comparison options**: ignore leading/trailing whitespace, ignore case, or normalize JSON/XML so a
   pure reformat is not reported as a difference.
 - **Encoding aware** — detects UTF-8/UTF-16 BOMs and CRLF/LF/CR line endings, and declines binary
@@ -81,11 +86,13 @@ the `IDiffEngine` port in Infrastructure — swapping it is a one-file change, a
 
 ## Roadmap
 
-- Folder comparison (recursive tree, per-file status).
-- Inline (unified) view as an alternative to side-by-side.
-- Merge editing — copy a hunk across and save the result.
-- Word-level highlighting within a modified line.
-- Syntax highlighting via the `JsonEditor`/TextMate stack already in `Fubar.Controls`.
+**Next — semantic JSON.** A real JSON parser with source locations, so `{a,b}` vs `{b,a}` is reported
+as identical and an element inserted mid-array marks only that element instead of everything after it.
+Plus a JSON tree view.
+
+**Later.** Free-form editing in the panes; search/replace, settings, recent files, tabs and drag &
+drop; a proper CLI, git integration and patch export; XML/YAML/CSV, directory comparison, and 3-way
+merge.
 
 ## Contributing
 

@@ -1,24 +1,21 @@
-using System;
 using System.Collections.Generic;
 
 namespace Fubar.Diff.Core.Files;
 
 /// <summary>
 /// A loaded text document: its lines plus the details needed to describe it in the UI and to write it
-/// back unchanged if it is only partly edited.
+/// back in the same shape it arrived.
 /// </summary>
 /// <param name="Path">Where it came from. Empty for in-memory content (tests, pasted text).</param>
 /// <param name="Lines">The content, split on line boundaries, with no terminators.</param>
-/// <param name="EncodingName">Detected encoding's web name, e.g. <c>utf-8</c>.</param>
-/// <param name="LineEnding">The dominant line ending in the source.</param>
+/// <param name="Format">Encoding, BOM, and line-ending details, preserved for saving.</param>
 public sealed record TextDocument(
     string Path,
     IReadOnlyList<string> Lines,
-    string EncodingName,
-    LineEnding LineEnding)
+    TextFormat Format)
 {
     /// <summary>An empty document - what a pane shows before a file is chosen.</summary>
-    public static TextDocument Empty { get; } = new(string.Empty, [], "utf-8", LineEnding.Lf);
+    public static TextDocument Empty { get; } = new(string.Empty, [], TextFormat.Default);
 
     /// <summary>The file name alone, for window titles and tab labels.</summary>
     public string DisplayName =>

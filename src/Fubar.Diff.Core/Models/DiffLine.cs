@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace Fubar.Diff.Core.Models;
 
 /// <summary>
@@ -17,6 +19,16 @@ public sealed record DiffLine(
     string? RightText,
     ChangeKind Kind)
 {
+    /// <summary>
+    /// Character ranges within <see cref="LeftText"/> that differ from the right side. Only populated
+    /// for <see cref="ChangeKind.Modified"/> rows - on a wholly inserted or deleted line the entire
+    /// row is the change, so picking out characters within it would be noise.
+    /// </summary>
+    public IReadOnlyList<CharSpan> LeftSpans { get; init; } = [];
+
+    /// <summary>Character ranges within <see cref="RightText"/> that differ from the left side.</summary>
+    public IReadOnlyList<CharSpan> RightSpans { get; init; } = [];
+
     /// <summary>True when this row represents a real difference rather than common context.</summary>
     public bool IsChange => Kind is ChangeKind.Inserted or ChangeKind.Deleted or ChangeKind.Modified;
 }

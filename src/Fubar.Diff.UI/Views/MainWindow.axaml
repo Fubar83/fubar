@@ -12,9 +12,18 @@
         Width="1200" Height="800"
         Background="{DynamicResource BgEditorCanvas}">
 
+    <Window.KeyBindings>
+        <!-- F7/F8 for change navigation matches every other diff tool; Ctrl+S saves the merge. -->
+        <KeyBinding Gesture="F8" Command="{Binding NextChangeCommand}" />
+        <KeyBinding Gesture="F7" Command="{Binding PreviousChangeCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
+        <KeyBinding Gesture="Alt+Left" Command="{Binding TakeLeftCommand}" />
+        <KeyBinding Gesture="Alt+Right" Command="{Binding TakeRightCommand}" />
+    </Window.KeyBindings>
+
     <DockPanel>
-        <!-- Toolbar: the two file slots, the comparison options, and change navigation. All styling
-             comes from Fubar.Controls; this view declares none of its own. -->
+        <!-- Toolbar: the two file slots, comparison options, navigation, and merge. All styling comes
+             from Fubar.Controls; this view declares none of its own. -->
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource BgHeader}"
                 BorderBrush="{DynamicResource BorderSubtle}"
@@ -43,16 +52,39 @@
                 <fc:Toolbar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,8,0,0">
                     <Button Classes="primary-btn" Content="Compare"
                             Command="{Binding CompareCommand}" IsEnabled="{Binding !IsBusy}" />
+
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
+
                     <CheckBox Content="Ignore whitespace" IsChecked="{Binding IgnoreWhitespace}" />
                     <CheckBox Content="Ignore case" IsChecked="{Binding IgnoreCase}" Margin="12,0,0,0" />
                     <CheckBox Content="Normalize JSON/XML" IsChecked="{Binding NormalizeStructure}" Margin="12,0,0,0" />
+
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
-                    <Button Classes="toolbar-btn" Content="◀ Prev"
+
+                    <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7)"
                             Command="{Binding PreviousChangeCommand}" IsEnabled="{Binding HasChanges}" />
-                    <Button Classes="toolbar-btn" Content="Next ▶"
+                    <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8)"
                             Command="{Binding NextChangeCommand}" IsEnabled="{Binding HasChanges}" />
+
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
+
+                    <!-- Merge acts on the CURRENT change, so these stay disabled until one is selected. -->
+                    <Button Classes="toolbar-btn" Content="← Take left" ToolTip.Tip="Use the left version of this change (Alt+Left)"
+                            Command="{Binding TakeLeftCommand}" IsEnabled="{Binding HasCurrentHunk}" />
+                    <Button Classes="toolbar-btn" Content="Take right →" ToolTip.Tip="Use the right version of this change (Alt+Right)"
+                            Command="{Binding TakeRightCommand}" IsEnabled="{Binding HasCurrentHunk}" />
+                    <Button Classes="toolbar-btn" Content="Reset" ToolTip.Tip="Undo the decision on this change"
+                            Command="{Binding ResetHunkCommand}" IsEnabled="{Binding HasCurrentHunk}" />
+
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+
+                    <Button Classes="primary-btn" Content="Save" ToolTip.Tip="Write the merged result (Ctrl+S)"
+                            Command="{Binding SaveCommand}" IsEnabled="{Binding HasUnsavedMerge}" />
+                    <Button Classes="toolbar-btn" Content="Save as…"
+                            Command="{Binding SaveAsCommand}" IsEnabled="{Binding HasChanges}" />
+
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+
                     <ComboBox ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
                               SelectedItem="{Binding ThemeManager.CurrentTheme}"
                               MinWidth="90" />
@@ -66,7 +98,12 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,1,0,0"
                 Padding="10,5">
-            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondary}" />
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <fc:Badge Grid.Column="1" Content="Unsaved merge"
+                          IsVisible="{Binding HasUnsavedMerge}" />
+            </Grid>
         </Border>
 
         <fc:Banner DockPanel.Dock="Top"
@@ -77,9 +114,10 @@
         <Panel>
             <fc:EmptyState Title="Nothing to compare yet"
                            Description="Pick a file on each side to see a side-by-side diff."
-                           IsVisible="{Binding !Rows.Count}" />
+                           IsVisible="{Binding LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
 
-            <views:DiffView IsVisible="{Binding !!Rows.Count}" />
+            <views:DiffView x:Name="Diff"
+                            IsVisible="{Binding LeftDocument, Converter={x:Static ObjectConverters.IsNotNull}}" />
         </Panel>
     </DockPanel>
 </Window>

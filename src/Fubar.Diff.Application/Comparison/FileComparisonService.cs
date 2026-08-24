@@ -8,22 +8,32 @@ using Fubar.Diff.Core.Models;
 namespace Fubar.Diff.Application.Comparison;
 
 /// <summary>
-/// Orchestrates canonicalise -> key -> align -> project. Deliberately thin: the algorithm belongs to
-/// the engine and the rules to the normalizer. What this owns is the ORDER, and one invariant that is
-/// easy to get wrong: the engine matches on comparison KEYS, but every row it produces is projected
-/// back onto the document's own lines before anyone sees it. Without that projection, turning on
-/// "ignore case" would show the user a lower-cased copy of their file.
+/// Orchestrates canonicalise -> key -> align -> project -> refine. Deliberately thin: the algorithm
+/// belongs to the engine and the rules to the normalizer. What this owns is the ORDER, and one
+/// invariant that is easy to get wrong: the engine matches on comparison KEYS, but every row it
+/// produces is projected back onto the document's own lines before anyone sees it. Without that
+/// projection, turning on "ignore case" would show the user a lower-cased copy of their own file.
+///
+/// The final refine step adds character-level spans to modified rows. It runs AFTER projection for
+/// exactly the same reason: span offsets must address the display text, since trimming a key shifts
+/// every offset in it.
 /// </summary>
 public sealed class FileComparisonService : IFileComparisonService
 {
     private readonly ITextFileReader _reader;
     private readonly IDiffEngine _engine;
+    private readonly IInlineDiffEngine _inlineEngine;
     private readonly ILineNormalizer _normalizer;
 
-    public FileComparisonService(ITextFileReader reader, IDiffEngine engine, ILineNormalizer normalizer)
+    public FileComparisonService(
+        ITextFileReader reader,
+        IDiffEngine engine,
+        IInlineDiffEngine inlineEngine,
+        ILineNormalizer normalizer)
     {
         _reader = reader;
         _engine = engine;
+        _inlineEngine = inlineEngine;
         _normalizer = normalizer;
     }
 
@@ -56,11 +66,13 @@ public sealed class FileComparisonService : IFileComparisonService
             ToKeys(rightDoc.Lines, options),
             options);
 
+        var projected = ProjectOntoDocuments(rows, leftDoc.Lines, rightDoc.Lines);
+
         return new FileComparison(
             leftDoc,
             rightDoc,
             options,
-            DiffResult.Create(ProjectOntoDocuments(rows, leftDoc.Lines, rightDoc.Lines)));
+            DiffResult.Create(WithInlineSpans(projected)));
     }
 
     private string[] ToKeys(IReadOnlyList<string> lines, ComparisonOptions options)
@@ -94,5 +106,29 @@ public sealed class FileComparisonService : IFileComparisonService
         }
 
         return projected;
+    }
+
+    /// <summary>
+    /// Adds intra-line spans to modified rows, computed on the DISPLAY text.
+    ///
+    /// Only <see cref="ChangeKind.Modified"/> rows get spans: on a wholly inserted or deleted line the
+    /// entire row is already the change, so picking out words within it would be noise. Rows are
+    /// mutated in place in the list to avoid a second full copy of what can be a very long document.
+    /// </summary>
+    private List<DiffLine> WithInlineSpans(List<DiffLine> rows)
+    {
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Kind != ChangeKind.Modified || row.LeftText is not { } left || row.RightText is not { } right)
+            {
+                continue;
+            }
+
+            var (leftSpans, rightSpans) = _inlineEngine.DiffWithinLine(left, right);
+            rows[i] = row with { LeftSpans = leftSpans, RightSpans = rightSpans };
+        }
+
+        return rows;
     }
 }
