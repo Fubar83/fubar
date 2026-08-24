@@ -3,6 +3,7 @@
         xmlns:vm="using:Fubar.Studio.UI.ViewModels"
         xmlns:views="using:Fubar.Studio.UI.Views"
         xmlns:fc="using:Fubar.Controls"
+        xmlns:models="using:Fubar.Studio.Core.Models"
         xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -16,6 +17,12 @@
         ExtendClientAreaTitleBarHeightHint="38"
         Width="1280" Height="800">
 
+    <!-- The Status &amp; Log strip no longer has a control-bar button (the control bar is reserved for
+         workspace-level actions and the environment selector), so Ctrl+` is the way to toggle it. -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+OemTilde" Command="{Binding ToggleLogCommand}" />
+    </Window.KeyBindings>
+
     <!-- No Design.DataContext: MainViewModel now requires its child view models via
          constructor injection (resolved from the DI host in App.axaml.cs), so it has no
          parameterless constructor for the XAML previewer to call. -->
@@ -24,7 +31,7 @@
          Response Pane. Open workspaces are Chrome-style tabs merged into the native title bar
          (ExtendClientAreaToDecorationsHint - the system min/max/close buttons stay put via
          ExtendClientAreaChromeHints="SystemChrome", our content just fills the rest of that row).
-         A collapsible Status &amp; Log strip lives at the very bottom, toggled from the control bar. -->
+         A collapsible Status &amp; Log strip lives at the very bottom, toggled with Ctrl+`. -->
     <Grid RowDefinitions="38,Auto,*,Auto">
 
         <!-- Title bar row: app title, workspace tabs + new-workspace, and a draggable filler area
@@ -84,8 +91,10 @@
         </Grid>
 
         <!-- Control bar: workspace-level Import (spec import touches requests, environments, auth profiles
-             and variables, so it lives here rather than under the Left Pane's REQUESTS group), plus the
-             theme switcher and log toggle. New Request/New Folder stay in the REQUESTS group header. -->
+             and variables, so it lives here rather than under the Left Pane's REQUESTS group) on the left,
+             and the active-environment selector (+ its secrets reveal toggle) on the right - the
+             environment applies to everything on the canvas, not just the Left Pane's tree, so it sits at
+             shell level. New Request/New Folder stay in the REQUESTS group header. -->
         <Border Grid.Row="1"
                 Padding="8"
                 BorderThickness="0,0,0,1"
@@ -111,12 +120,33 @@
                         </Button.Flyout>
                     </Button>
                 </StackPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
-                    <ComboBox MinWidth="88"
-                              ItemsSource="{Binding ThemeManager.ThemeOptions}"
-                              SelectedItem="{Binding ThemeManager.CurrentTheme}"
-                              ToolTip.Tip="Theme" />
-                    <Button Classes="toolbar-btn" Content="Status &amp; Log" Command="{Binding ToggleLogCommand}" />
+                <StackPanel DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="Env"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <ComboBox MinWidth="180"
+                              FontSize="12"
+                              VerticalAlignment="Center"
+                              ItemsSource="{Binding EnvironmentManager.Environments}"
+                              SelectedItem="{Binding EnvironmentManager.ActiveEnvironment}"
+                              PlaceholderText="No environment"
+                              ToolTip.Tip="Active Environment">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate DataType="models:WorkspaceEnvironment">
+                                <TextBlock Text="{Binding Name}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <ToggleButton Content="Secrets"
+                                  FontSize="11"
+                                  Padding="8,3"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding EnvironmentManager.SecretsRevealed}"
+                                  ToolTip.Tip="Reveal secret variable values in tooltips" />
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -163,7 +193,7 @@
 
         </Grid>
 
-        <!-- Collapsible Status &amp; Log strip -->
+        <!-- Collapsible Status &amp; Log strip (Ctrl+` toggles it - see Window.KeyBindings above) -->
         <Border Grid.Row="3"
                 Height="160"
                 IsVisible="{Binding IsLogVisible}"

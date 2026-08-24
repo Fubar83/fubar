@@ -83,21 +83,25 @@ The table below maps semantic resource tokens to their specific visual implement
 
 ## 4. Component Specification Updates
 
-### 4.1 Header: Integrated Theme Selector Controls
+### 4.1 Header: Workspace tabs, environment selector
 
-The workspace header includes a quick theme selector alongside settings.
+> **As shipped:** the workspace picker became the title-bar tab strip, and the active-environment
+> selector (+ its `Secrets` reveal toggle) now lives on the right of the shell control bar
+> (`MainWindow.axaml`), not in the Left Pane. There is no in-app theme selector any more - the theme
+> is applied at startup from the persisted preference (`ThemeManagerViewModel.Initialize`, default
+> System). The `Status & Log` strip is toggled with <code>Ctrl+`</code> instead of a control-bar button.
 
 ```
 +-------------------------------------------------------------------+
-| [📂 E-Commerce API             ▼ ]  [ ➕ ]  [ ☀️/🌙 Theme ▼ ]   |
-| [ 🟡 Staging (Active)          ▼ ]  [ 👁️ Secrets ]                 |
+| Fubar API Studio  [ E-Commerce API x ][ + ]                       |
+| [ Import v ]                        [ Env: Staging v ][ Secrets ] |
 +-------------------------------------------------------------------+
 
 ```
 
-#### Theme Dropdown Options
+#### Theme options (applied from settings, no in-app switcher)
 
-Clicking the Theme button (`ThemeVariantButton` or Menu) toggles between:
+`ThemeManagerViewModel` still resolves:
 
 1. **`🌙 Dark`**: Sets `Application.Current.RequestedThemeVariant = ThemeVariant.Dark`.
 2. **`☀️ Light`**: Sets `Application.Current.RequestedThemeVariant = ThemeVariant.Light`.

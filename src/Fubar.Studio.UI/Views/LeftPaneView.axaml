@@ -2,7 +2,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Fubar.Studio.UI.ViewModels"
              xmlns:views="using:Fubar.Studio.UI.Views"
-             xmlns:models="using:Fubar.Studio.Core.Models"
              xmlns:conv="using:Avalonia.Data.Converters"
              xmlns:controls="using:Fubar.Studio.UI.Controls"
              xmlns:fc="using:Fubar.Controls"
@@ -15,7 +14,8 @@
 
     <!-- Workspace identity now lives entirely in the title bar's tab strip (MainWindow.axaml) -
          the Left Pane just reflects whichever tab is active (WorkspaceExplorer.ActiveRoot), and is
-         empty (no header rows, no groups) when there isn't one. Environments / Auth Profiles /
+         empty (no header rows, no groups) when there isn't one. The active-environment selector lives
+         in the shell control bar (MainWindow.axaml), not here. Environments / Auth Profiles /
          Requests all share one look: a banded group header (label + "+") over either the list or a
          "nothing yet" message, so the tree reads as just another group instead of a separate
          first-class area. -->
@@ -36,43 +36,10 @@
         </fc:EmptyState>
 
         <Grid IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
-              RowDefinitions="Auto,Auto,Auto,*">
-
-            <!-- Active environment selector + secrets -->
-            <Border Grid.Row="0"
-                    Background="{DynamicResource BgHeader}"
-                    Padding="10,6"
-                    BorderThickness="0,0,0,1"
-                    BorderBrush="{DynamicResource BorderSubtle}">
-                <Grid ColumnDefinitions="*,Auto" x:DataType="vm:LeftPaneViewModel">
-                    <ComboBox Grid.Column="0"
-                              HorizontalAlignment="Stretch"
-                              BorderThickness="0"
-                              Background="Transparent"
-                              FontSize="12"
-                              ItemsSource="{Binding EnvironmentManager.Environments}"
-                              SelectedItem="{Binding EnvironmentManager.ActiveEnvironment}"
-                              PlaceholderText="No environment"
-                              ToolTip.Tip="Active Environment">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate DataType="models:WorkspaceEnvironment">
-                                <TextBlock Text="{Binding Name}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-
-                    <ToggleButton Grid.Column="1"
-                                  Content="Secrets"
-                                  FontSize="11"
-                                  Padding="8,3"
-                                  Margin="4,0,0,0"
-                                  IsChecked="{Binding EnvironmentManager.SecretsRevealed}"
-                                  ToolTip.Tip="Reveal secret variable values in tooltips" />
-                </Grid>
-            </Border>
+              RowDefinitions="Auto,Auto,*">
 
             <!-- Environments group -->
-            <fc:Section Grid.Row="1" Title="ENVIRONMENTS" x:DataType="vm:LeftPaneViewModel">
+            <fc:Section Grid.Row="0" Title="ENVIRONMENTS" x:DataType="vm:LeftPaneViewModel">
                 <fc:Section.Action>
                     <Button Classes="icon-btn"
                             Content="+"
@@ -130,7 +97,7 @@
             </fc:Section>
 
             <!-- Auth Profiles group -->
-            <fc:Section Grid.Row="2" Title="AUTH PROFILES" x:DataType="vm:LeftPaneViewModel">
+            <fc:Section Grid.Row="1" Title="AUTH PROFILES" x:DataType="vm:LeftPaneViewModel">
                 <fc:Section.Action>
                     <Button Classes="icon-btn"
                             Content="+"
@@ -190,7 +157,7 @@
                  Request / New Folder via a flyout menu (it has two create actions, not one) and its
                  list is the request tree itself, filling the remaining space. Last section in the
                  stack, so no bottom divider (BorderThickness="0"). -->
-            <fc:Section Grid.Row="3" Title="REQUESTS" BorderThickness="0" x:DataType="vm:LeftPaneViewModel">
+            <fc:Section Grid.Row="2" Title="REQUESTS" BorderThickness="0" x:DataType="vm:LeftPaneViewModel">
                 <fc:Section.Action>
                     <Button Classes="icon-btn"
                             Content="+"

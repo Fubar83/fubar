@@ -20,8 +20,8 @@ namespace Fubar.Studio.UI.ViewModels;
 /// MainWindow.axaml): owns <see cref="WorkspaceExplorer"/> (Left Pane), <see cref="ActiveEditor"/>
 /// (the single main-canvas surface - a <see cref="RequestEditorViewModel"/>,
 /// <see cref="EnvironmentEditorViewModel"/>, or <see cref="AuthProfileEditorViewModel"/>; never more
-/// than one at a time, mirroring RequestEditorPane.md §1's "no tabs" design), <see cref="ThemeManager"/>
-/// (Dark/Light/System), <see cref="EnvironmentManager"/> (workspace/variable badge), and
+/// than one at a time, mirroring RequestEditorPane.md §1's "no tabs" design), <see cref="EnvironmentManager"/>
+/// (the shell control bar's active-environment selector + secrets toggle), and
 /// <see cref="StatusLog"/> (collapsible bottom strip). Also keeps the Left Pane's tree in sync with
 /// whichever request is open: the active node's unsaved-changes dot (<see cref="SyncDirtyMarker"/>)
 /// and, after a Save, its method/auth badges - and activates the Environments/Auth Profiles groups
@@ -37,7 +37,6 @@ public partial class MainViewModel : ViewModelBase
     public WorkspaceExplorerViewModel WorkspaceExplorer { get; }
     public EnvironmentManagerViewModel EnvironmentManager { get; }
     public StatusLogViewModel StatusLog { get; }
-    public ThemeManagerViewModel ThemeManager { get; }
     public LeftPaneViewModel LeftPane { get; }
 
     /// <summary>The reusable title-bar tab strip's drag bridge (move-between-windows / tear-off),
@@ -66,7 +65,6 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorerViewModel workspaceExplorer,
         EnvironmentManagerViewModel environmentManager,
         StatusLogViewModel statusLog,
-        ThemeManagerViewModel themeManager,
         LeftPaneViewModel leftPane,
         IRequestStore workspaceService,
         IProtocolRegistry protocolRegistry,
@@ -77,7 +75,6 @@ public partial class MainViewModel : ViewModelBase
         TabDragHost = tabDragHost;
         EnvironmentManager = environmentManager;
         StatusLog = statusLog;
-        ThemeManager = themeManager;
         LeftPane = leftPane;
         _workspaceService = workspaceService;
         _protocolRegistry = protocolRegistry;
