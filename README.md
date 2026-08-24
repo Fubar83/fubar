@@ -1,9 +1,22 @@
 # Fubar.Controls
 
+[![CI](https://github.com/Fubar83/fubar-components/actions/workflows/ci.yml/badge.svg)](https://github.com/Fubar83/fubar-components/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/Fubar.Controls.svg)](https://www.nuget.org/packages/Fubar.Controls)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A reusable, **app-agnostic** Avalonia **design system + component library**. It is the single source
 of the shared look and feel for every app built on it — colour tokens, typography-neutral styles,
 shared button/tab styles, and a catalog of composable controls. It depends only on Avalonia
-(+ AvaloniaEdit for the JSON editor) — no reference to `Fubar.Studio.Core`, any host app, or any view model.
+(+ AvaloniaEdit for the JSON editor) — no reference to a host app, a domain model, or any view model.
+
+Used by [Fubar API Studio](https://github.com/Fubar83/Fubar-API-Studio) and
+[Fubar Diff](https://github.com/Fubar83/fubar-diff).
+
+## Install
+
+```bash
+dotnet add package Fubar.Controls
+```
 
 ## Using it (two lines)
 
@@ -113,7 +126,8 @@ Also included: generic value converters — `EqualityConverter`, `InheritedOpaci
   only against **generic abstractions + events** (`ITabDragHost`), never an app view model. The domain
   decisions (what a tab represents, how a window is created) are pushed back to the host.
 - **Enforcement:** `Fubar.Controls.csproj` has no `ProjectReference`, and `Fubar.Controls.Tests`
-  asserts the built assembly references neither `Fubar.Studio.Core` nor any app assembly.
+  asserts the built assembly references nothing outside an allowlist of Avalonia, AvaloniaEdit and
+  the BCL, and that no public type name leaks a domain concept.
 
 ## Gallery
 
@@ -121,9 +135,23 @@ Also included: generic value converters — `EqualityConverter`, `InheritedOpaci
 harness: it renders every component in Dark/Light and includes a two-window `TabStrip` drag demo, so
 components can be built and visually locked without launching a full app.
 
+```bash
+dotnet run --project src/Fubar.Controls.Gallery
+```
+
 ## What deliberately stays in the host app
 
-Anything that depends on the app's domain (`Fubar.Studio.Core`) is **not** here, so the library stays
-app-agnostic: the `{{variable}}` tooltip/intellisense behaviors and their border-tint styles, and the
-HTTP/JSON-specific value converters (method/status/JSON-kind/latency → brushes). These consume the
-tokens above, so they still match the shared look without living in the library.
+Anything that depends on a host app's domain is **not** here, so the library stays app-agnostic. For
+example, Fubar API Studio keeps its `{{variable}}` tooltip/intellisense behaviors and their
+border-tint styles app-side, along with its HTTP/JSON-specific value converters (method/status/
+JSON-kind/latency → brushes). These consume the tokens above, so they still match the shared look
+without living in the library.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Develop against the Gallery — it is the fastest loop and the
+thing that keeps the app-agnostic boundary honest.
+
+## License
+
+[MIT](LICENSE).

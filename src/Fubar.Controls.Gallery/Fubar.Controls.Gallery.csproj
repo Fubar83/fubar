@@ -1,12 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Component gallery / sandbox: a living style guide and dev harness for Fubar.Controls. It
-       references ONLY Fubar.Controls (never Fubar.Studio.Core/Fubar.Studio.UI), so it proves the shared design
-       system stands on its own and looks identical outside the main app. -->
+       references ONLY Fubar.Controls, so it proves the design system stands on its own and looks
+       identical outside any host app. This is the primary place to develop and review controls. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <RootNamespace>Fubar.Controls.Gallery</RootNamespace>
     <AssemblyName>Fubar.Controls.Gallery</AssemblyName>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

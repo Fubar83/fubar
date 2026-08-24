@@ -15,7 +15,7 @@ namespace Fubar.Controls;
 /// A horizontal, Chrome-style tab strip that owns its own drag-and-drop: reorder within the strip, a
 /// floating ghost while a tab is dragged clear of any strip, and - via an <see cref="ITabDragHost"/> -
 /// live move between strips in other windows and tear-off into a new window. It's a <see cref="ListBox"/>
-/// underneath, so selection is <see cref="ListBox.SelectedItem"/> (bind it two-way) and tabs come from
+/// underneath, so selection is <see cref="Avalonia.Controls.Primitives.SelectingItemsControl.SelectedItem"/> (bind it two-way) and tabs come from
 /// <see cref="ItemsControl.ItemsSource"/> with a host-supplied <see cref="ItemsControl.ItemTemplate"/>
 /// for the tab label. Everything domain-specific (what a tab represents, how windows are made) lives in
 /// the host, so the strip stays app-agnostic.
