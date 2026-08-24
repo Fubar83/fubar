@@ -1,0 +1,104 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Shared Button class styles for every app on Fubar.Controls. Applied via Classes="..." (never a
+         bare "Button" selector) so they never bleed into buttons that intentionally keep the default
+         theme. All colours are palette tokens (see Palette.axaml), so they follow the app's theme. -->
+
+    <!-- Toolbar buttons: minimal top-bar look - no border/fill until hover. -->
+    <Style Selector="Button.toolbar-btn">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource PostmanTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.toolbar-btn:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource PostmanPanelBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PostmanBorderBrush}" />
+    </Style>
+
+    <!-- Primary action (Send): solid blue, white text. -->
+    <Style Selector="Button.primary-btn">
+        <Setter Property="Background" Value="{DynamicResource PostmanBlueBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="22,0" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.primary-btn:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#2568D6" />
+    </Style>
+    <Style Selector="Button.primary-btn:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="#9BB8ED" />
+    </Style>
+
+    <!-- Secondary bordered buttons ("+ Add" etc.). -->
+    <Style Selector="Button.secondary-btn">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PostmanBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource PostmanTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.secondary-btn:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource PostmanPanelBackgroundBrush}" />
+    </Style>
+
+    <!-- Tiny icon-only buttons (rename, +, close, etc.): neutral hover highlight for everything by
+         default - only .icon-btn-danger (actual destructive delete actions) tints red on hover. -->
+    <Style Selector="Button.icon-btn">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource PostmanTextSecondaryBrush}" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="6,4" />
+    </Style>
+    <Style Selector="Button.icon-btn:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource BgHover}" />
+    </Style>
+
+    <!-- Destructive icon buttons (delete, remove a row): same shape as .icon-btn, but hover tints red
+         as a deliberate "this removes something" warning. -->
+    <Style Selector="Button.icon-btn-danger:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource BgHover}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource PostmanRedBrush}" />
+    </Style>
+
+    <!-- View-mode tabs: plain Buttons (not RadioButtons - Fluent's default RadioButton template draws
+         an unremovable round selection dot that doesn't fit a boxed-tab look) restyled as traditional
+         boxed tabs: bordered on all sides, rounded top corners; the active one (Classes.Active) drops
+         its bottom border and matches BgResponsePanel so it visually merges into the viewer below it -
+         the same "Chrome tab" illusion as SeamlessTabControl and the title bar's workspace tabs. -->
+    <Style Selector="Button.TabPill">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="12,5" />
+        <Setter Property="Margin" Value="0,0,2,0" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+    </Style>
+    <Style Selector="Button.TabPill /template/ ContentPresenter">
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtle}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6,6,0,0" />
+    </Style>
+    <Style Selector="Button.TabPill:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource BgHover}" />
+    </Style>
+    <Style Selector="Button.TabPill.Active /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource BgResponsePanel}" />
+        <Setter Property="BorderThickness" Value="1,1,1,0" />
+    </Style>
+    <Style Selector="Button.TabPill.Active">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+</Styles>

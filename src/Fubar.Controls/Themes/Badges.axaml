@@ -1,0 +1,111 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:fc="using:Fubar.Controls">
+
+    <!-- Small status/label primitives: Badge, StatusDot, Chip, ValidityIcon. Each is coloured through
+         palette tokens by default and can be re-tinted by binding Background/Foreground on the host. -->
+
+    <!-- Badge: a rounded pill wrapping any content (usually a short string). -->
+    <ControlTheme x:Key="{x:Type fc:Badge}" TargetType="fc:Badge">
+        <Setter Property="Background" Value="{DynamicResource BgHover}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- StatusDot: a filled circle sized by Diameter, coloured by Background. -->
+    <ControlTheme x:Key="{x:Type fc:StatusDot}" TargetType="fc:StatusDot">
+        <Setter Property="Background" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Ellipse Width="{TemplateBinding Diameter}"
+                         Height="{TemplateBinding Diameter}"
+                         Fill="{TemplateBinding Background}" />
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- Chip: content + optional close IconButton (composition). -->
+    <ControlTheme x:Key="{x:Type fc:Chip}" TargetType="fc:Chip">
+        <Setter Property="Background" Value="{DynamicResource BgHover}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          VerticalAlignment="Center" />
+                        <fc:IconButton Name="PART_CloseButton"
+                                       Content="&#x2715;"
+                                       FontSize="9"
+                                       Padding="2"
+                                       IsVisible="{TemplateBinding ShowClose}"
+                                       Command="{TemplateBinding CloseCommand}"
+                                       CommandParameter="{TemplateBinding CloseCommandParameter}" />
+                    </StackPanel>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- ValidityIcon: glyph + colour driven by the State enum via property selectors. -->
+    <ControlTheme x:Key="{x:Type fc:ValidityIcon}" TargetType="fc:ValidityIcon">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <TextBlock Name="PART_Glyph"
+                           Text="&#x25CF;"
+                           FontSize="{TemplateBinding FontSize}"
+                           Foreground="{TemplateBinding Foreground}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center" />
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^[State=Valid]">
+            <Setter Property="Foreground" Value="{DynamicResource MethodGetBrush}" />
+            <Style Selector="^ /template/ TextBlock#PART_Glyph">
+                <Setter Property="Text" Value="&#x2713;" />
+            </Style>
+        </Style>
+
+        <Style Selector="^[State=Invalid]">
+            <Setter Property="Foreground" Value="{DynamicResource MethodDeleteBrush}" />
+            <Style Selector="^ /template/ TextBlock#PART_Glyph">
+                <Setter Property="Text" Value="&#x2717;" />
+            </Style>
+        </Style>
+    </ControlTheme>
+
+</ResourceDictionary>

@@ -1,0 +1,15 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Vector icon geometries (24x24 view box) used via <PathIcon Data="{DynamicResource ...}" />.
+         Pure geometry means they render identically on Windows/macOS/Linux with no icon-font dependency
+         (the app previously used Segoe MDL2 glyphs, which only exist on Windows). PathIcon scales the
+         path to the control's size and paints it with the current Foreground. -->
+
+    <!-- Pencil / rename -->
+    <StreamGeometry x:Key="IconRename">M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z</StreamGeometry>
+
+    <!-- Trash can / delete -->
+    <StreamGeometry x:Key="IconDelete">M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z</StreamGeometry>
+
+</ResourceDictionary>
