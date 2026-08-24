@@ -26,7 +26,18 @@
     <ProjectReference Include="..\..\src\Fubar.Studio.Application\Fubar.Studio.Application.csproj" />
     <ProjectReference Include="..\..\src\Fubar.Studio.Infrastructure\Fubar.Studio.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Fubar.Studio.UI\Fubar.Studio.UI.csproj" />
-    <ProjectReference Include="..\..\src\Fubar.Controls\Fubar.Controls.csproj" />
   </ItemGroup>
 
+  <!-- Shared component library: a package by default, or a ProjectReference into ../fubar-components
+       when built with -p:UseLocalComponents=true. See Directory.Build.props. -->
+  <ItemGroup Condition="'$(UseLocalComponents)' != 'true'">
+    <PackageReference Include="Fubar.Controls" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalComponents)' == 'true'">
+    <!-- SetConfiguration is required, not cosmetic: fubar-components is outside this solution, so a
+         solution build does NOT propagate Configuration to it and it would quietly build Debug even
+         for `dotnet build -c Release`. -->
+    <ProjectReference Include="$(FubarComponentsPath)/src/Fubar.Controls/Fubar.Controls.csproj"
+                      SetConfiguration="Configuration=$(Configuration)" />
+  </ItemGroup>
 </Project>

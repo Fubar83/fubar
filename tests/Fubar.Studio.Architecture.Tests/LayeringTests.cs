@@ -20,7 +20,6 @@ public class LayeringTests
     private static readonly Assembly ApplicationAsm = typeof(Fubar.Studio.Application.Requests.RequestExecutionService).Assembly;
     private static readonly Assembly InfrastructureAsm = typeof(Fubar.Studio.Infrastructure.ServiceCollectionExtensions).Assembly;
     private static readonly Assembly UiAsm = typeof(Fubar.Studio.UI.ViewModels.MainViewModel).Assembly;
-    private static readonly Assembly ControlsAsm = typeof(Fubar.Controls.TabStrip).Assembly;
 
     private static void AssertNoDependency(Assembly assembly, string subject, params string[] forbidden)
     {
@@ -41,9 +40,11 @@ public class LayeringTests
     public void Infrastructure_depends_only_on_core() =>
         AssertNoDependency(InfrastructureAsm, "Infrastructure", Application, Ui, Controls);
 
-    [Fact]
-    public void Controls_is_isolated_from_the_app() =>
-        AssertNoDependency(ControlsAsm, "Fubar.Controls", Core, Application, Infrastructure, Ui);
+    // NOTE: there is deliberately no "Controls does not depend on the app" test any more. Fubar.Controls
+    // is an external package now, compiled in its own repository before this one is built, so such a
+    // test could not fail here even if the rule were broken. That rule is enforced where it can be:
+    // ArchitectureTests in github.com/Fubar83/fubar-components. The assertions above still carry the
+    // half that matters on this side - no app layer may depend on the UI control library.
 
     [Fact]
     public void Ui_view_models_do_not_depend_on_infrastructure()

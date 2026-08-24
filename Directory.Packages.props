@@ -15,6 +15,12 @@
          it's Debug-only (see Fubar.Studio.UI.csproj IncludeAssets/PrivateAssets conditions). -->
     <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
   </ItemGroup>
+  <ItemGroup Label="Shared component library">
+    <!-- The shared design system + control library, extracted from this repo into
+         https://github.com/Fubar83/fubar-components. Not referenced when building with
+         -p:UseLocalComponents=true, which swaps in a ProjectReference to its sources. -->
+    <PackageVersion Include="Fubar.Controls" Version="0.1.0" />
+  </ItemGroup>
   <ItemGroup Label="Data Grid">
     <PackageVersion Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
   </ItemGroup>

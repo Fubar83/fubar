@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **`Fubar.Controls` moved to its own repository** ([fubar-components](https://github.com/Fubar83/fubar-components))
+  and is now consumed as a NuGet package rather than a project reference. It is shared with
+  [Fubar Diff](https://github.com/Fubar83/fubar-diff); keeping it inside this repo would have forced
+  that app to depend on an unrelated product. `src/Fubar.Controls`, `src/Fubar.Controls.Gallery` and
+  `tests/Fubar.Controls.Tests` are gone from this solution — their history moved with them.
+  Build with `-p:UseLocalComponents=true` to compile against a local checkout of the library instead
+  of the package.
+- The solution file is now `FubarApiStudio.slnx` (was `Fubar.slnx`), since three Fubar solutions now
+  exist.
+
 ### Added
 
 - **Variable types** (Normal / Secret / Session) on environment variables, replacing the plain

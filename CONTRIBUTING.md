@@ -13,15 +13,18 @@ JetBrains Rider, and VS Code (with the C# Dev Kit) all understand the `.slnx` so
 ```bash
 git clone https://github.com/Fubar83/Fubar-API-Studio.git
 cd Fubar-API-Studio
-dotnet build Fubar.slnx
-dotnet test  Fubar.slnx
+dotnet build FubarApiStudio.slnx
+dotnet test  FubarApiStudio.slnx
 dotnet run   --project src/Fubar.Studio.UI
 ```
 
-For UI-component work, the sandbox is faster to iterate in than the full app:
+The shared UI components are **not** in this repository — they live in
+[fubar-components](https://github.com/Fubar83/fubar-components) and arrive as the `Fubar.Controls`
+NuGet package. If your change is to a generic control or the design system, open a PR there instead,
+and iterate in its Gallery. To build this app against a local checkout of that library:
 
 ```bash
-dotnet run --project src/Fubar.Controls.Gallery
+dotnet build FubarApiStudio.slnx -p:UseLocalComponents=true
 ```
 
 ## How to contribute
@@ -37,7 +40,7 @@ dotnet run --project src/Fubar.Controls.Gallery
 
 1. Fork and create a branch off `main` (e.g. `feat/oauth-pkce`, `fix/tab-drag-cursor`).
 2. Make your change with tests where it makes sense.
-3. Ensure `dotnet build Fubar.slnx` is warning-clean and `dotnet test Fubar.slnx` is green.
+3. Ensure `dotnet build FubarApiStudio.slnx` is warning-clean and `dotnet test FubarApiStudio.slnx` is green.
 4. Update `CHANGELOG.md` under **Unreleased** and any affected docs.
 5. Open the PR against `main`, fill in the template, and link the issue it closes.
 
@@ -47,11 +50,12 @@ CI (build + test) must pass before a PR can be merged.
 
 The single most important rule in this codebase:
 
-> **`Fubar.Controls` is app-agnostic.** It is a reusable Avalonia control library and must **never**
-> reference `Fubar.Studio.*`, view models, or any API-client domain concept. App-specific panes
-> (Request/Response/Left pane) live in `Fubar.Studio.UI`; only their generic building blocks belong in
-> `Fubar.Controls`. The `Fubar.Controls.Gallery` sandbox references *only* `Fubar.Controls`, which is
-> what keeps this boundary honest.
+> **Keep the layers pointing inward, and keep generic UI out of the app.** `Core` knows nothing but
+> the BCL; `Application` and `Infrastructure` know only `Core`; UI ViewModels never touch
+> `Fubar.Studio.Infrastructure` (`Composition.cs` is the single allowed edge). And anything generic
+> enough to be reusable belongs in the `Fubar.Controls` package, not in a view here — app-specific
+> panes (Request/Response/Left pane) live in `Fubar.Studio.UI`, their generic building blocks do not.
+> `tests/Fubar.Studio.Architecture.Tests` fails the build if any of this is violated.
 
 Other conventions:
 
@@ -69,9 +73,11 @@ Other conventions:
 ## Tests
 
 - `tests/Fubar.Studio.Core.Tests` and `tests/Fubar.Studio.Infrastructure.Tests` — xUnit unit tests.
-- `tests/Fubar.Controls.Tests` — headless Avalonia UI tests for the control library.
+- `tests/Fubar.Studio.Application.Tests` — use-case service tests.
+- `tests/Fubar.Studio.Architecture.Tests` — NetArchTest layering guard.
+- `tests/Fubar.Studio.EndToEnd.Tests` — live HTTP auth tests; skipped unless `FUBAR_E2E=1`.
 
-Run everything with `dotnet test Fubar.slnx`.
+Run everything with `dotnet test FubarApiStudio.slnx`.
 
 ## License
 

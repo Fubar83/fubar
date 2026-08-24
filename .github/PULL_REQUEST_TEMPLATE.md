@@ -14,11 +14,11 @@ Closes #
 
 ## Checklist
 
-- [ ] `dotnet build Fubar.slnx` is warning-clean
-- [ ] `dotnet test Fubar.slnx` passes
+- [ ] `dotnet build FubarApiStudio.slnx` is warning-clean
+- [ ] `dotnet test FubarApiStudio.slnx` passes
 - [ ] Added/updated tests where it makes sense
 - [ ] Updated `CHANGELOG.md` (Unreleased) and any affected docs
-- [ ] No new dependency from `Fubar.Controls` onto app-specific code (`Fubar.Studio.*`)
+- [ ] Generic, reusable UI went to the `Fubar.Controls` package (fubar-components), not into a view here
 
 ## Screenshots / notes
 

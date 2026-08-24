@@ -76,19 +76,22 @@ git clone https://github.com/Fubar83/Fubar-API-Studio.git
 cd Fubar-API-Studio
 
 # Restore + build everything
-dotnet build Fubar.slnx
+dotnet build FubarApiStudio.slnx
 
 # Run the app
 dotnet run --project src/Fubar.Studio.UI
 
 # Run the tests
-dotnet test Fubar.slnx
+dotnet test FubarApiStudio.slnx
 ```
 
-Explore the shared UI component library on its own in the sandbox:
+The shared UI components come from the separate
+[fubar-components](https://github.com/Fubar83/fubar-components) repository as the `Fubar.Controls`
+NuGet package. To build this app against your local checkout of that library instead of the published
+package — useful when changing a control and the app together:
 
 ```bash
-dotnet run --project src/Fubar.Controls.Gallery
+dotnet build FubarApiStudio.slnx -p:UseLocalComponents=true
 ```
 
 ### Packaging release binaries
@@ -107,16 +110,17 @@ Windows, `tar.gz` for Linux, a `.app` for macOS). It runs from any OS with Power
 
 ## Project structure
 
-This is a layered solution: an app-agnostic control library sits underneath the app-specific code.
+This is a layered solution. The shared, app-agnostic design system it builds on lives in its own
+repository and arrives as a NuGet package.
 
 | Project | Role |
 | --- | --- |
-| `src/Fubar.Controls` | **Reusable, app-agnostic** Avalonia control library + design system (tabs, tree view, key/value grid, JSON editor, theming). No dependency on the app. |
-| `src/Fubar.Controls.Gallery` | A living style guide / dev sandbox that references **only** `Fubar.Controls`. |
-| `src/Fubar.Studio.Core` | Domain models and abstractions — requests, auth, variables, workspaces, import contracts. |
-| `src/Fubar.Studio.Infrastructure` | Implementations — HTTP execution, OpenAPI import, OAuth token service, variable resolution, persistence. |
+| `Fubar.Controls` *(package)* | **Reusable, app-agnostic** Avalonia control library + design system (tabs, tree view, key/value grid, JSON editor, theming). Lives in [fubar-components](https://github.com/Fubar83/fubar-components). |
+| `src/Fubar.Studio.Core` | Domain models, policy, and ports — requests, auth, variables, workspaces, import contracts. |
+| `src/Fubar.Studio.Application` | Use-case / orchestration services (the send pipeline, imports). |
+| `src/Fubar.Studio.Infrastructure` | Adapters — HTTP execution, OpenAPI import, OAuth token service, variable resolution, persistence. |
 | `src/Fubar.Studio.UI` | The desktop application (Avalonia + MVVM). Ships as `FubarAPIStudio`. |
-| `tests/*` | xUnit test projects for Core, Infrastructure, and Controls. |
+| `tests/*` | xUnit projects for Core, Application, and Infrastructure, plus an architecture suite that enforces the layering. |
 
 Deeper design notes live in [`docs/`](docs/): the [Left Pane](docs/LeftPane.md),
 [Request Editor](docs/RequestEditorPane.md), and [Response Pane](docs/ResponsePane.md).
@@ -134,7 +138,7 @@ Deeper design notes live in [`docs/`](docs/): the [Left Pane](docs/LeftPane.md),
 ## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, coding
-conventions, and the architectural boundary between `Fubar.Controls` and the app. By participating you
+conventions, and the layering the architecture tests enforce. By participating you
 agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Found a security issue? See [SECURITY.md](SECURITY.md) — please report it privately, not as a public

@@ -26,3 +26,8 @@ publish/
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Locally packed Fubar.Controls builds dropped into the folder feed (see nuget.config).
+# The folder itself is tracked via local-packages/.gitkeep so the NuGet source resolves.
+local-packages/*.nupkg
+local-packages/*.snupkg
