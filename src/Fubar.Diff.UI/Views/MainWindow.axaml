@@ -29,7 +29,7 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,0,0,1"
                 Padding="10,8">
-            <Grid ColumnDefinitions="*,Auto,*" RowDefinitions="Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto,*" RowDefinitions="Auto,Auto,Auto">
 
                 <fc:LabeledField Grid.Row="0" Grid.Column="0" Header="Left" Margin="0,0,8,0">
                     <Grid ColumnDefinitions="*,Auto">
@@ -55,12 +55,37 @@
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
-                    <CheckBox Content="Ignore whitespace" IsChecked="{Binding IgnoreWhitespace}" />
+                    <ComboBox ItemsSource="{x:Static vm:MainViewModel.ModeOptions}"
+                              SelectedItem="{Binding Mode}"
+                              MinWidth="76"
+                              ToolTip.Tip="Auto compares JSON semantically and everything else as text" />
+
+                    <CheckBox Content="Ignore whitespace" IsChecked="{Binding IgnoreWhitespace}" Margin="8,0,0,0" />
                     <CheckBox Content="Ignore case" IsChecked="{Binding IgnoreCase}" Margin="12,0,0,0" />
-                    <CheckBox Content="Normalize JSON/XML" IsChecked="{Binding NormalizeStructure}" Margin="12,0,0,0" />
 
-                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+                    <!-- JSON-only options: shown only once a semantic comparison has actually run, so
+                         they are not offered where they would do nothing. -->
+                    <CheckBox Content="Report key order"
+                              IsChecked="{Binding ReportPropertyOrder}"
+                              IsVisible="{Binding IsSemantic}"
+                              Margin="12,0,0,0"
+                              ToolTip.Tip="JSON objects are unordered, so reordering is not a difference by default" />
+                    <CheckBox Content="Arrays by position"
+                              IsChecked="{Binding MatchArraysByPosition}"
+                              IsVisible="{Binding IsSemantic}"
+                              Margin="12,0,0,0"
+                              ToolTip.Tip="Match array elements by index instead of by an identity key" />
+                    <CheckBox Content="Normalize XML"
+                              IsChecked="{Binding NormalizeStructure}"
+                              IsVisible="{Binding !IsSemantic}"
+                              Margin="12,0,0,0" />
 
+                </fc:Toolbar>
+
+                <!-- Actions on their own row. One row cannot hold everything at a usable window
+                     width - it clips the rightmost controls, and a toolbar that hides Save is worse
+                     than one that takes an extra 30px. -->
+                <fc:Toolbar Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,6,0,0">
                     <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7)"
                             Command="{Binding PreviousChangeCommand}" IsEnabled="{Binding HasChanges}" />
                     <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8)"
@@ -84,6 +109,14 @@
                             Command="{Binding SaveAsCommand}" IsEnabled="{Binding HasChanges}" />
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
+
+                    <!-- Text / Tree. Only offered when a semantic comparison ran, since the tree has
+                         nothing to show for a plain text file. -->
+                    <fc:SegmentedControl ItemsSource="{x:Static vm:MainViewModel.ViewModeOptions}"
+                                         SelectedItem="{Binding ViewMode}"
+                                         IsVisible="{Binding IsSemantic}" />
+
+                    <fc:Divider Orientation="Vertical" Margin="8,0" IsVisible="{Binding IsSemantic}" />
 
                     <ComboBox ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
                               SelectedItem="{Binding ThemeManager.CurrentTheme}"
@@ -117,7 +150,9 @@
                            IsVisible="{Binding LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
 
             <views:DiffView x:Name="Diff"
-                            IsVisible="{Binding LeftDocument, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                            IsVisible="{Binding IsTextViewVisible}" />
+
+            <views:JsonTreeView IsVisible="{Binding IsTreeViewVisible}" />
         </Panel>
     </DockPanel>
 </Window>

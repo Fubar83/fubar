@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -6,6 +7,7 @@ using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
+using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Merge;
 using Fubar.Diff.Core.Models;
 using Fubar.Diff.Core.Rendering;
@@ -75,6 +77,52 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Total display rows - the denominator the diff map scales positions against.</summary>
     public int TotalLines => _comparison.Result.Lines.Count;
 
+    /// <summary>True when the semantic JSON pass ran, which is what enables the tree view.</summary>
+    [ObservableProperty]
+    public partial bool IsSemantic { get; set; }
+
+    /// <summary>The semantic changes as a tree, for the Tree view.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<JsonChangeNodeViewModel> SemanticTree { get; set; } = [];
+
+    /// <summary>Which view the diff pane shows. Only meaningful once a semantic comparison has run.</summary>
+    [ObservableProperty]
+    public partial DiffViewMode ViewMode { get; set; } = DiffViewMode.Text;
+
+    /// <summary>The values offered by the view selector.</summary>
+    public static IReadOnlyList<DiffViewMode> ViewModeOptions { get; } = Enum.GetValues<DiffViewMode>();
+
+    /// <summary>Whether the side-by-side editors are the visible pane.</summary>
+    public bool IsTextViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Text;
+
+    /// <summary>
+    /// Whether the change tree is the visible pane. Requires a semantic comparison - the tree would
+    /// otherwise be permanently empty and look broken.
+    /// </summary>
+    public bool IsTreeViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Tree && IsSemantic;
+
+    partial void OnViewModeChanged(DiffViewMode value) => RaiseViewVisibility();
+
+    partial void OnIsSemanticChanged(bool value)
+    {
+        // Leaving the tree selected when the next comparison is plain text would show an empty pane,
+        // so fall back to the view that always works.
+        if (!value && ViewMode == DiffViewMode.Tree)
+        {
+            ViewMode = DiffViewMode.Text;
+        }
+
+        RaiseViewVisibility();
+    }
+
+    partial void OnLeftDocumentChanged(AlignedDocument? value) => RaiseViewVisibility();
+
+    private void RaiseViewVisibility()
+    {
+        OnPropertyChanged(nameof(IsTextViewVisible));
+        OnPropertyChanged(nameof(IsTreeViewVisible));
+    }
+
     /// <summary>The hunks, for the diff map and navigation.</summary>
     public IReadOnlyList<DiffHunk> Hunks => _comparison.Result.Hunks;
 
@@ -111,11 +159,35 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool NormalizeStructure { get; set; }
 
+    /// <summary>
+    /// Report a property that only moved. Off by default because JSON objects are unordered, so
+    /// reporting order produces noise on files nobody meaningfully edited.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ReportPropertyOrder { get; set; }
+
+    /// <summary>Compare arrays by position instead of by identity key.</summary>
+    [ObservableProperty]
+    public partial bool MatchArraysByPosition { get; set; }
+
+    /// <summary>Text or semantic comparison; <see cref="ComparisonMode.Auto"/> decides per file.</summary>
+    [ObservableProperty]
+    public partial ComparisonMode Mode { get; set; } = ComparisonMode.Auto;
+
+    /// <summary>The values offered by the mode selector.</summary>
+    public static IReadOnlyList<ComparisonMode> ModeOptions { get; } = Enum.GetValues<ComparisonMode>();
+
     partial void OnIgnoreWhitespaceChanged(bool value) => Recompare();
 
     partial void OnIgnoreCaseChanged(bool value) => Recompare();
 
     partial void OnNormalizeStructureChanged(bool value) => Recompare();
+
+    partial void OnReportPropertyOrderChanged(bool value) => Recompare();
+
+    partial void OnMatchArraysByPositionChanged(bool value) => Recompare();
+
+    partial void OnModeChanged(ComparisonMode value) => Recompare();
 
     // ---- Navigation ---------------------------------------------------------------------------
 
@@ -260,6 +332,12 @@ public partial class MainViewModel : ViewModelBase
         IgnoreWhitespace = IgnoreWhitespace,
         IgnoreCase = IgnoreCase,
         NormalizeStructure = NormalizeStructure,
+        Mode = Mode,
+        Json = new JsonComparisonOptions
+        {
+            ReportPropertyOrder = ReportPropertyOrder,
+            MatchArraysByPosition = MatchArraysByPosition,
+        },
     };
 
     private void Resolve(HunkResolution resolution)
@@ -333,11 +411,46 @@ public partial class MainViewModel : ViewModelBase
         CurrentHunk = -1;
         ScrollToRow = -1;
 
+        IsSemantic = _comparison.IsSemantic;
+        SemanticTree = JsonChangeNodeViewModel.Build(_comparison.SemanticChanges);
+
+        // A skipped semantic pass is only worth mentioning when the user explicitly asked for JSON;
+        // the service decides that and leaves the reason null otherwise.
+        ErrorMessage = _comparison.SemanticFallbackReason;
+
         RaiseDerived();
 
-        StatusMessage = result.AreIdentical
-            ? "The files are identical."
-            : $"{result.Hunks.Count} change(s) - {result.Inserted} added, {result.Deleted} removed, {result.Modified} changed";
+        StatusMessage = BuildStatus(result);
+    }
+
+    /// <summary>
+    /// The status line. When a semantic comparison finds nothing, it says so explicitly rather than
+    /// just "identical" - the two files may well differ as text, and claiming otherwise would look
+    /// like a bug to anyone who can see that they do.
+    /// </summary>
+    private string BuildStatus(DiffResult result)
+    {
+        if (result.AreIdentical)
+        {
+            return IsSemantic
+                ? "No semantic differences - the files differ only in formatting or ordering."
+                : "The files are identical.";
+        }
+
+        if (!IsSemantic)
+        {
+            return $"{result.Hunks.Count} change(s) - {result.Inserted} added, "
+                   + $"{result.Deleted} removed, {result.Modified} changed";
+        }
+
+        // Count SEMANTIC changes, not rows. The two genuinely differ - a value that changed and also
+        // moved shows up as a deleted row and an inserted row, so the row count would say "2 changes"
+        // where the tree shows one. Reporting the row count next to a tree that disagrees with it just
+        // looks like a bug.
+        var count = _comparison.SemanticChanges.Count;
+        var hunks = result.Hunks.Count;
+
+        return $"semantic: {count} change(s) across {hunks} region(s)";
     }
 
     private void Reset()

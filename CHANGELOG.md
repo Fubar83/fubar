@@ -21,6 +21,18 @@ All notable changes to this project are documented here. The format is based on
   newline byte-for-byte.
 - **Keyboard shortcuts**: F7/F8 for previous/next change, Alt+Left / Alt+Right to merge, Ctrl+S to save.
 
+- **Semantic JSON comparison.** A hand-written parser records the line and column of every value, and
+  the differ compares structure rather than text:
+  - reordering object properties is not a difference (JSON objects are unordered) — with a
+    **Report key order** toggle for when it matters;
+  - reformatting alone is not a difference;
+  - array elements are matched by an auto-detected identity key (`id`, `_id`, `uuid`, `guid`, `key`,
+    `name`), so an element inserted mid-array marks only itself instead of everything after it —
+    with **Arrays by position** to turn it off;
+  - a **Text / Tree** switch shows the changes as a structural tree.
+  - Falls back to a text diff whenever a file does not parse, since a broken file is exactly when a
+    diff is most wanted.
+
 ### Changed
 
 - `TextDocument` now carries a `TextFormat` (encoding, BOM, line ending, trailing newline) instead of

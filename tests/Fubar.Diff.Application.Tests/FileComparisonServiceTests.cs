@@ -1,3 +1,4 @@
+using Fubar.Diff.Infrastructure.Json;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
@@ -94,7 +95,14 @@ public class FileComparisonServiceTests
         var inline = new WholeLineInlineEngine();
         var reader = new StubReader(files.ToDictionary(f => f.Path, f => f.Lines));
 
-        return (new FileComparisonService(reader, engine, inline, new UpperCasingNormalizer()), engine, inline);
+        var service = new FileComparisonService(
+            reader,
+            engine,
+            inline,
+            new UpperCasingNormalizer(),
+            new JsonSemanticPass(new JsonAstParser()));
+
+        return (service, engine, inline);
     }
 
     [Fact]

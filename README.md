@@ -9,8 +9,8 @@ side by side, with the panes locked in alignment and changes highlighted line by
 It is a sibling of [Fubar API Studio](https://github.com/Fubar83/Fubar-API-Studio) and shares its
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar-components) package.
 
-> **Status: early.** Two-way file comparison, merge and save work end to end. Semantic JSON,
-> folder comparison and free-form editing are not built yet — see [Roadmap](#roadmap).
+> **Status: early.** Two-way file comparison, semantic JSON, merge and save work end to end. Folder
+> comparison, free-form editing and the other formats are not built yet — see [Roadmap](#roadmap).
 
 ## Features
 
@@ -23,8 +23,12 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar-component
 - **Change navigation** — next/previous with wrap-around (F7 / F8).
 - **Merge and save** — take the left or right version of a change (Alt+Left / Alt+Right), then save.
   The file's encoding, BOM, line endings and trailing newline are preserved byte-for-byte.
-- **Comparison options**: ignore leading/trailing whitespace, ignore case, or normalize JSON/XML so a
-  pure reformat is not reported as a difference.
+- **Semantic JSON**: compares structure, not text. Reordered properties and reformatting are not
+  differences; array elements are matched by an auto-detected identity key, so an element inserted
+  mid-array marks only itself. Includes a **Tree** view of the structural changes, and falls back to a
+  text diff for anything that does not parse.
+- **Comparison options**: ignore leading/trailing whitespace, ignore case, report key order, match
+  arrays by position, or normalize XML.
 - **Encoding aware** — detects UTF-8/UTF-16 BOMs and CRLF/LF/CR line endings, and declines binary
   files rather than rendering a screen of mojibake.
 - **Dark and light themes**, switchable at runtime.
@@ -86,11 +90,7 @@ the `IDiffEngine` port in Infrastructure — swapping it is a one-file change, a
 
 ## Roadmap
 
-**Next — semantic JSON.** A real JSON parser with source locations, so `{a,b}` vs `{b,a}` is reported
-as identical and an element inserted mid-array marks only that element instead of everything after it.
-Plus a JSON tree view.
-
-**Later.** Free-form editing in the panes; search/replace, settings, recent files, tabs and drag &
+**Next.** Free-form editing in the panes; search/replace, settings, recent files, tabs and drag &
 drop; a proper CLI, git integration and patch export; XML/YAML/CSV, directory comparison, and 3-way
 merge.
 

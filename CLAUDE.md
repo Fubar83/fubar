@@ -10,9 +10,9 @@ The shipped binary is `FubarDiff`; the on-screen title is "Fubar Diff". Sibling 
 [`Fubar.Controls`](https://github.com/Fubar83/fubar-components) package.
 
 **Early-stage.** Two-editor side-by-side comparison, character-level diff, change navigation, a diff
-map, and hunk-level merge with save all work end to end. Semantic JSON, folder comparison and
-free-form editing are not built yet. The layering below is already in place and should be followed
-for new work.
+map, hunk-level merge with save, and semantic JSON comparison all work end to end. Folder comparison,
+free-form editing and the other formats are not built yet. The layering below is already in place and
+should be followed for new work.
 
 ## Architecture (read before changing structure)
 
@@ -41,6 +41,22 @@ Infrastructure ── Fubar.Diff.Infrastructure   Adapters: DiffPlex engine, nor
 - **DiffPlex is confined to `Infrastructure`.** It is an implementation detail of one adapter; if it
   leaks, swapping the algorithm stops being a one-file change, which is the whole point of `IDiffEngine`.
 
+## How semantic JSON fits in
+
+Semantic comparison is a **refinement of the text pass, not a second pipeline**. The text differ
+decides how the two documents line up; `JsonSemanticPass` then decides which of those rows actually
+matter, and `SemanticLineFilter` downgrades the rest to context. That is why every renderer, the diff
+map, navigation and merge work identically in both modes — there is only ever one `DiffResult` shape.
+
+Building an alignment from the AST instead would mean reimplementing filler rows, hunk grouping and
+ordering a second time, and giving the two modes subtly different behaviour. Do not "improve" it that
+way without a concrete reason the filter cannot cover.
+
+The parser is hand-written (`Infrastructure/Json/JsonAstParser.cs`) because `System.Text.Json` gives no
+per-node line and column, which is exactly what is needed to show a tree-based difference in a text
+editor. It is **iterative with an explicit stack**: nesting depth is attacker-controlled, and a
+recursive parser would die with an uncatchable `StackOverflowException`.
+
 ## The invariant that is easiest to break
 
 **Comparison keys are not display text.** The normalizer produces a key per line (trimmed, case-folded)
@@ -55,9 +71,9 @@ because comparing canonical JSON only makes sense if you can see the canonical f
 
 | Area | Location |
 | --- | --- |
-| Domain models, policy, ports | `src/Fubar.Diff.Core` (`Models/`, `Comparison/`, `Files/`, `Merge/`, `Rendering/`) |
+| Domain models, policy, ports | `src/Fubar.Diff.Core` (`Models/`, `Comparison/`, `Files/`, `Merge/`, `Rendering/`, `Json/`) |
 | Use-case services | `src/Fubar.Diff.Application` (`Comparison/`, `Merge/`) |
-| Diff engine, inline (character) diff, normalizer, file reader/writer, DI wiring | `src/Fubar.Diff.Infrastructure` |
+| Diff engine, inline (character) diff, JSON parser, normalizer, file reader/writer, DI wiring | `src/Fubar.Diff.Infrastructure` |
 | Views + ViewModels + DI (`Composition.cs`) | `src/Fubar.Diff.UI` (`Rendering/` = AvaloniaEdit hooks, `Controls/` = diff map) |
 | Reusable controls + theme/design system | External: the `Fubar.Controls` package |
 | Packaging | `build/publish.ps1` |

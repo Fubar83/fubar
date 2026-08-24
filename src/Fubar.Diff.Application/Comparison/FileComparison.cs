@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
+using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Application.Comparison;
@@ -19,6 +21,20 @@ public sealed record FileComparison(
     ComparisonOptions Options,
     DiffResult Result)
 {
+    /// <summary>Whether the semantic JSON pass ran, as opposed to a plain text comparison.</summary>
+    public bool IsSemantic { get; init; }
+
+    /// <summary>
+    /// The semantic changes, for the JSON tree view. Empty for a text comparison.
+    /// </summary>
+    public IReadOnlyList<JsonChange> SemanticChanges { get; init; } = [];
+
+    /// <summary>
+    /// Why the semantic pass was skipped, when the user asked for it and it could not run. Null when
+    /// there is nothing worth saying - a plain text file failing to parse as JSON is not news.
+    /// </summary>
+    public string? SemanticFallbackReason { get; init; }
+
     /// <summary>Nothing loaded yet - the app's initial state.</summary>
     public static FileComparison Empty { get; } = new(
         TextDocument.Empty,

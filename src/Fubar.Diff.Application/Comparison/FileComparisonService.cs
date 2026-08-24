@@ -24,17 +24,20 @@ public sealed class FileComparisonService : IFileComparisonService
     private readonly IDiffEngine _engine;
     private readonly IInlineDiffEngine _inlineEngine;
     private readonly ILineNormalizer _normalizer;
+    private readonly JsonSemanticPass _semanticPass;
 
     public FileComparisonService(
         ITextFileReader reader,
         IDiffEngine engine,
         IInlineDiffEngine inlineEngine,
-        ILineNormalizer normalizer)
+        ILineNormalizer normalizer,
+        JsonSemanticPass semanticPass)
     {
         _reader = reader;
         _engine = engine;
         _inlineEngine = inlineEngine;
         _normalizer = normalizer;
+        _semanticPass = semanticPass;
     }
 
     public async Task<FileComparison> CompareFilesAsync(
@@ -67,12 +70,22 @@ public sealed class FileComparisonService : IFileComparisonService
             options);
 
         var projected = ProjectOntoDocuments(rows, leftDoc.Lines, rightDoc.Lines);
+        var textResult = DiffResult.Create(WithInlineSpans(projected));
 
-        return new FileComparison(
-            leftDoc,
-            rightDoc,
-            options,
-            DiffResult.Create(WithInlineSpans(projected)));
+        // Semantic refinement runs last, over the finished alignment: it only decides which rows COUNT
+        // as changes, so everything downstream sees the same shape either way.
+        var semantic = _semanticPass.Apply(
+            textResult,
+            string.Join('\n', leftDoc.Lines),
+            string.Join('\n', rightDoc.Lines),
+            options);
+
+        return new FileComparison(leftDoc, rightDoc, options, semantic.Result)
+        {
+            IsSemantic = semantic.Applied,
+            SemanticChanges = semantic.Changes,
+            SemanticFallbackReason = semantic.FallbackReason,
+        };
     }
 
     private string[] ToKeys(IReadOnlyList<string> lines, ComparisonOptions options)

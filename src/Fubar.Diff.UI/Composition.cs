@@ -24,6 +24,7 @@ internal static class Composition
 
                 // Application-layer use cases.
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();
+                services.AddSingleton<JsonSemanticPass>();
                 services.AddSingleton<IMergeService, MergeService>();
 
                 services.AddSingleton<IFilePickerService, FilePickerService>();
