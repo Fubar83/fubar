@@ -1,0 +1,3 @@
+App icons live here (fubar.ico for the Windows exe, fubar.icns for the macOS bundle).
+Fubar Diff ships without custom icons for now; build/publish.ps1 and the .csproj pick them
+up automatically once they are added - see the ApplicationIcon property.

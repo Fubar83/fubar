@@ -1,0 +1,35 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Fubar.Diff.UI.App"
+             xmlns:local="using:Fubar.Diff.UI">
+             <!-- No hardcoded RequestedThemeVariant: ThemeManagerViewModel sets it at startup and
+                  again whenever the toolbar's theme switcher changes it.
+
+                  ALL styling comes from the shared Fubar.Controls package - palette, fonts, component
+                  themes and button/tab styles. This app declares no styles of its own; it only wires
+                  up ViewLocator + the framework themes (Fluent / AvaloniaEdit) that Fubar.Controls
+                  builds on. -->
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Shared palette (colours + pinned accent). In Application.Resources so its
+                     ThemeDictionaries respond to ThemeManagerViewModel's RequestedThemeVariant switch. -->
+                <ResourceInclude Source="avares://Fubar.Controls/Themes/Palette.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+        <!-- Without this, AvaloniaEdit's TextEditor has no control theme at all - it neither renders
+             nor becomes focusable. -->
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+        <!-- The entire shared design system. -->
+        <StyleInclude Source="avares://Fubar.Controls/Themes/Fubar.Controls.axaml" />
+    </Application.Styles>
+</Application>

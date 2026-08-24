@@ -1,0 +1,98 @@
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Fubar.Diff.Core.Comparison;
+using Fubar.Diff.Core.Files;
+using Fubar.Diff.Core.Models;
+
+namespace Fubar.Diff.Application.Comparison;
+
+/// <summary>
+/// Orchestrates canonicalise -> key -> align -> project. Deliberately thin: the algorithm belongs to
+/// the engine and the rules to the normalizer. What this owns is the ORDER, and one invariant that is
+/// easy to get wrong: the engine matches on comparison KEYS, but every row it produces is projected
+/// back onto the document's own lines before anyone sees it. Without that projection, turning on
+/// "ignore case" would show the user a lower-cased copy of their file.
+/// </summary>
+public sealed class FileComparisonService : IFileComparisonService
+{
+    private readonly ITextFileReader _reader;
+    private readonly IDiffEngine _engine;
+    private readonly ILineNormalizer _normalizer;
+
+    public FileComparisonService(ITextFileReader reader, IDiffEngine engine, ILineNormalizer normalizer)
+    {
+        _reader = reader;
+        _engine = engine;
+        _normalizer = normalizer;
+    }
+
+    public async Task<FileComparison> CompareFilesAsync(
+        string leftPath,
+        string rightPath,
+        ComparisonOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        // Sequential rather than Task.WhenAll: a failure must name the file that failed, and reading
+        // two local files is not the bottleneck worth complicating error handling for.
+        var left = await _reader.ReadAsync(leftPath, cancellationToken).ConfigureAwait(false);
+        var right = await _reader.ReadAsync(rightPath, cancellationToken).ConfigureAwait(false);
+
+        return Compare(left, right, options);
+    }
+
+    public FileComparison Recompare(FileComparison comparison, ComparisonOptions options) =>
+        Compare(comparison.Left, comparison.Right, options);
+
+    private FileComparison Compare(TextDocument left, TextDocument right, ComparisonOptions options)
+    {
+        // Canonicalisation can change the line count, so it happens first and produces the documents
+        // that are both compared AND displayed. Everything after this works against these lines.
+        var leftDoc = left with { Lines = _normalizer.Canonicalize(left.Lines, options) };
+        var rightDoc = right with { Lines = _normalizer.Canonicalize(right.Lines, options) };
+
+        var rows = _engine.Align(
+            ToKeys(leftDoc.Lines, options),
+            ToKeys(rightDoc.Lines, options),
+            options);
+
+        return new FileComparison(
+            leftDoc,
+            rightDoc,
+            options,
+            DiffResult.Create(ProjectOntoDocuments(rows, leftDoc.Lines, rightDoc.Lines)));
+    }
+
+    private string[] ToKeys(IReadOnlyList<string> lines, ComparisonOptions options)
+    {
+        var keys = new string[lines.Count];
+        for (var i = 0; i < keys.Length; i++)
+        {
+            keys[i] = _normalizer.ToComparisonKey(lines[i], options);
+        }
+
+        return keys;
+    }
+
+    /// <summary>
+    /// Replaces the keys the engine echoed back with the real document lines, using the line numbers
+    /// on each row. Fillers have no number and stay empty.
+    /// </summary>
+    private static List<DiffLine> ProjectOntoDocuments(
+        IReadOnlyList<DiffLine> rows,
+        IReadOnlyList<string> leftLines,
+        IReadOnlyList<string> rightLines)
+    {
+        var projected = new List<DiffLine>(rows.Count);
+        foreach (var row in rows)
+        {
+            projected.Add(row with
+            {
+                LeftText = row.LeftNumber is { } l ? leftLines[l - 1] : null,
+                RightText = row.RightNumber is { } r ? rightLines[r - 1] : null,
+            });
+        }
+
+        return projected;
+    }
+}

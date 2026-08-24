@@ -1,0 +1,85 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+        xmlns:views="using:Fubar.Diff.UI.Views"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+        x:Class="Fubar.Diff.UI.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Fubar Diff"
+        Width="1200" Height="800"
+        Background="{DynamicResource BgEditorCanvas}">
+
+    <DockPanel>
+        <!-- Toolbar: the two file slots, the comparison options, and change navigation. All styling
+             comes from Fubar.Controls; this view declares none of its own. -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="10,8">
+            <Grid ColumnDefinitions="*,Auto,*" RowDefinitions="Auto,Auto">
+
+                <fc:LabeledField Grid.Row="0" Grid.Column="0" Header="Left" Margin="0,0,8,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding LeftPath}" PlaceholderText="Choose a file…" />
+                        <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                Margin="6,0,0,0" Command="{Binding BrowseLeftCommand}" />
+                    </Grid>
+                </fc:LabeledField>
+
+                <fc:Divider Grid.Row="0" Grid.Column="1" Orientation="Vertical" Margin="4,0" />
+
+                <fc:LabeledField Grid.Row="0" Grid.Column="2" Header="Right" Margin="8,0,0,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding RightPath}" PlaceholderText="Choose a file…" />
+                        <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                Margin="6,0,0,0" Command="{Binding BrowseRightCommand}" />
+                    </Grid>
+                </fc:LabeledField>
+
+                <fc:Toolbar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,8,0,0">
+                    <Button Classes="primary-btn" Content="Compare"
+                            Command="{Binding CompareCommand}" IsEnabled="{Binding !IsBusy}" />
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+                    <CheckBox Content="Ignore whitespace" IsChecked="{Binding IgnoreWhitespace}" />
+                    <CheckBox Content="Ignore case" IsChecked="{Binding IgnoreCase}" Margin="12,0,0,0" />
+                    <CheckBox Content="Normalize JSON/XML" IsChecked="{Binding NormalizeStructure}" Margin="12,0,0,0" />
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+                    <Button Classes="toolbar-btn" Content="◀ Prev"
+                            Command="{Binding PreviousChangeCommand}" IsEnabled="{Binding HasChanges}" />
+                    <Button Classes="toolbar-btn" Content="Next ▶"
+                            Command="{Binding NextChangeCommand}" IsEnabled="{Binding HasChanges}" />
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+                    <ComboBox ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
+                              SelectedItem="{Binding ThemeManager.CurrentTheme}"
+                              MinWidth="90" />
+                </fc:Toolbar>
+            </Grid>
+        </Border>
+
+        <!-- Status strip -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,1,0,0"
+                Padding="10,5">
+            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondary}" />
+        </Border>
+
+        <fc:Banner DockPanel.Dock="Top"
+                   Severity="Error"
+                   Message="{Binding ErrorMessage}"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+        <Panel>
+            <fc:EmptyState Title="Nothing to compare yet"
+                           Description="Pick a file on each side to see a side-by-side diff."
+                           IsVisible="{Binding !Rows.Count}" />
+
+            <views:DiffView IsVisible="{Binding !!Rows.Count}" />
+        </Panel>
+    </DockPanel>
+</Window>

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- References every layer on purpose: this project's job is to assert what the OTHERS may not
+       reference, which means it has to be able to load all of them. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
+    <ProjectReference Include="..\..\src\Fubar.Diff.Application\Fubar.Diff.Application.csproj" />
+    <ProjectReference Include="..\..\src\Fubar.Diff.Infrastructure\Fubar.Diff.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Fubar.Diff.UI\Fubar.Diff.UI.csproj" />
+  </ItemGroup>
+
+</Project>
