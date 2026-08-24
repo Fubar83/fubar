@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="900"
+             x:Class="Fubar.Controls.Gallery.Views.Pages.PrimitivesPage">
+
+    <StackPanel Spacing="18">
+
+        <!-- Badges -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="BADGE" />
+            </fc:Card.Header>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <fc:Badge Content="GET" Background="{DynamicResource MethodGetBrush}" Foreground="White" />
+                <fc:Badge Content="POST" Background="{DynamicResource MethodPostBrush}" Foreground="White" />
+                <fc:Badge Content="PUT" Background="{DynamicResource MethodPutBrush}" Foreground="White" />
+                <fc:Badge Content="DELETE" Background="{DynamicResource MethodDeleteBrush}" Foreground="White" />
+                <fc:Badge Content="PATCH" Background="{DynamicResource MethodOtherBrush}" Foreground="White" />
+                <fc:Badge Content="default" />
+            </StackPanel>
+        </fc:Card>
+
+        <!-- StatusDot -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="STATUS DOT" />
+            </fc:Card.Header>
+            <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <fc:StatusDot Background="{DynamicResource MethodGetBrush}" />
+                    <TextBlock Text="online" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <fc:StatusDot Background="{DynamicResource StatusDirty}" Diameter="10" />
+                    <TextBlock Text="unsaved" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <fc:StatusDot Background="{DynamicResource MethodDeleteBrush}" Diameter="12" />
+                    <TextBlock Text="error" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </fc:Card>
+
+        <!-- ValidityIcon -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="VALIDITY ICON" />
+            </fc:Card.Header>
+            <StackPanel Orientation="Horizontal" Spacing="20">
+                <fc:ValidityIcon State="Unknown" />
+                <fc:ValidityIcon State="Valid" />
+                <fc:ValidityIcon State="Invalid" />
+            </StackPanel>
+        </fc:Card>
+
+        <!-- Buttons: IconButton + PillToggle + Toolbar -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="BUTTONS" />
+            </fc:Card.Header>
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <fc:IconButton Content="&#x2715;" />
+                    <fc:IconButton Content="+" />
+                    <fc:IconButton Content="&#x270E;" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <fc:PillToggle Content="Pretty" IsChecked="True" />
+                    <fc:PillToggle Content="Raw" />
+                    <fc:PillToggle Content="Headers" />
+                </StackPanel>
+                <fc:Toolbar HorizontalAlignment="Left">
+                    <Button Classes="primary-btn" Content="Send" Height="30" />
+                    <Button Classes="secondary-btn" Content="Save" />
+                    <Button Classes="toolbar-btn" Content="Menu" />
+                </fc:Toolbar>
+            </StackPanel>
+        </fc:Card>
+
+        <!-- Chip + SearchBox -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="CHIP &amp; SEARCH" />
+            </fc:Card.Header>
+            <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <fc:Chip Content="prod" />
+                    <fc:Chip Content="staging" />
+                    <fc:Chip Content="no-close" ShowClose="False" />
+                </StackPanel>
+                <fc:SearchBox Watermark="Filter requests..." Width="280" HorizontalAlignment="Left" />
+            </StackPanel>
+        </fc:Card>
+
+        <!-- Divider + LabeledField -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="DIVIDER &amp; LABELED FIELD" />
+            </fc:Card.Header>
+            <StackPanel Spacing="10">
+                <fc:LabeledField Header="Base URL">
+                    <TextBox Text="https://api.example.com" />
+                </fc:LabeledField>
+                <fc:Divider />
+                <fc:LabeledField Header="Timeout" Orientation="Horizontal">
+                    <TextBox Text="30s" Width="120" HorizontalAlignment="Left" />
+                </fc:LabeledField>
+            </StackPanel>
+        </fc:Card>
+
+        <!-- SectionHeader: flat (default) and banded (group-header) variants -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="SECTION HEADER" />
+            </fc:Card.Header>
+            <StackPanel Spacing="10">
+                <fc:SectionHeader Title="FLAT (default)">
+                    <fc:SectionHeader.Action>
+                        <fc:IconButton Content="+" />
+                    </fc:SectionHeader.Action>
+                </fc:SectionHeader>
+                <fc:SectionHeader Title="BANDED (group header)"
+                                  Background="{DynamicResource BgHeader}"
+                                  Foreground="{DynamicResource TextPrimary}"
+                                  FontWeight="Bold"
+                                  Padding="10,7,6,7">
+                    <fc:SectionHeader.Action>
+                        <fc:IconButton Content="+" />
+                    </fc:SectionHeader.Action>
+                </fc:SectionHeader>
+            </StackPanel>
+        </fc:Card>
+
+        <!-- EmptyState -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="EMPTY STATE" />
+            </fc:Card.Header>
+            <fc:EmptyState Icon="&#x1F4E6;"
+                           Title="No workspace open"
+                           Description="Open a folder containing a fubar.json to get started.">
+                <fc:EmptyState.Action>
+                    <Button Classes="secondary-btn" Content="Open Workspace..." />
+                </fc:EmptyState.Action>
+            </fc:EmptyState>
+        </fc:Card>
+
+    </StackPanel>
+
+</UserControl>

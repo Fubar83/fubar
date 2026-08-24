@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:views="using:Fubar.Controls.Gallery.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="320"
+        x:Class="Fubar.Controls.Gallery.Views.GalleryTabWindow"
+        Title="Tab Window"
+        Width="440" Height="320"
+        Background="{DynamicResource BgSidebar}">
+
+    <Grid RowDefinitions="Auto,*">
+        <Border Grid.Row="0" Background="{DynamicResource BgHeader}" Padding="6,2,6,0">
+            <fc:TabStrip x:Name="Strip" ShowCloseButton="True">
+                <fc:TabStrip.ItemTemplate>
+                    <DataTemplate x:DataType="views:DemoTab">
+                        <TextBlock Text="{Binding Title}"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextPrimary}" />
+                    </DataTemplate>
+                </fc:TabStrip.ItemTemplate>
+            </fc:TabStrip>
+        </Border>
+
+        <ContentControl Grid.Row="1" Content="{Binding #Strip.SelectedItem}" Margin="20">
+            <ContentControl.ContentTemplate>
+                <DataTemplate x:DataType="views:DemoTab">
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="22"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource TextPrimary}" />
+                </DataTemplate>
+            </ContentControl.ContentTemplate>
+        </ContentControl>
+    </Grid>
+
+</Window>

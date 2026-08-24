@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:views="using:Fubar.Controls.Gallery.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="500"
+             x:Class="Fubar.Controls.Gallery.Views.Pages.TabStripPage">
+
+    <StackPanel Spacing="18">
+
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="TAB STRIP (inline - reorder)" />
+            </fc:Card.Header>
+            <StackPanel Spacing="10">
+                <TextBlock Text="Drag a tab left/right to reorder. Pull it well clear to see the floating ghost (a small nudge keeps it docked). Press Esc to cancel a drag. Middle-click or the ✕ closes it."
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontSize="12" />
+                <Border Background="{DynamicResource BgHeader}" Padding="6,4,6,0" CornerRadius="6">
+                    <fc:TabStrip x:Name="InlineStrip" ShowCloseButton="True">
+                        <fc:TabStrip.ItemTemplate>
+                            <DataTemplate x:DataType="views:DemoTab">
+                                <TextBlock Text="{Binding Title}"
+                                           VerticalAlignment="Center"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                            </DataTemplate>
+                        </fc:TabStrip.ItemTemplate>
+                    </fc:TabStrip>
+                </Border>
+            </StackPanel>
+        </fc:Card>
+
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="TAB STRIP (cross-window drag)" />
+            </fc:Card.Header>
+            <StackPanel Spacing="10">
+                <TextBlock Text="Opens two windows sharing one ITabDragHost. Drag tabs between them, or pull a tab clear and drop it on empty space to tear it off into a new window (Esc cancels mid-drag); a window whose last tab leaves closes itself."
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontSize="12" />
+                <Button Classes="secondary-btn"
+                        Content="Launch two-window drag demo"
+                        HorizontalAlignment="Left"
+                        Click="LaunchDemo_OnClick" />
+            </StackPanel>
+        </fc:Card>
+
+    </StackPanel>
+
+</UserControl>

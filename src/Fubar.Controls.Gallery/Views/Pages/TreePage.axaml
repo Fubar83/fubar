@@ -1,0 +1,103 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:views="using:Fubar.Controls.Gallery.Views"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="600"
+             x:Class="Fubar.Controls.Gallery.Views.Pages.TreePage">
+
+    <StackPanel Spacing="18">
+
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="SECTION + TREE" />
+            </fc:Card.Header>
+            <StackPanel Spacing="10">
+                <TextBlock Text="fc:Section is one component for a banded group header (Title + an Action slot such as a &quot;+&quot;) over any children - here three sections in a sidebar, each with different content: two flat ListRow lists and, last, an fc:TreeView. Hover/select a row to see the shared explorer-tree row look; expand the folders via the chevrons."
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontSize="12" />
+
+                <!-- A mock left pane, built only from Fubar.Controls. -->
+                <Border Width="300"
+                        HorizontalAlignment="Left"
+                        Background="{DynamicResource BgSidebar}"
+                        BorderBrush="{DynamicResource BorderSubtle}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        ClipToBounds="True">
+                    <StackPanel>
+
+                        <fc:Section Title="ENVIRONMENTS">
+                            <fc:Section.Action>
+                                <Button Classes="icon-btn" Content="+" FontSize="14" Padding="6,0" ToolTip.Tip="New Environment" />
+                            </fc:Section.Action>
+                            <ItemsControl x:Name="EnvList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Classes="ListRow">
+                                            <TextBlock Text="{Binding}" Margin="10,0" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </fc:Section>
+
+                        <fc:Section Title="AUTH PROFILES">
+                            <fc:Section.Action>
+                                <Button Classes="icon-btn" Content="+" FontSize="14" Padding="6,0" ToolTip.Tip="New Auth Profile" />
+                            </fc:Section.Action>
+                            <ItemsControl x:Name="AuthList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Classes="ListRow">
+                                            <TextBlock Text="{Binding}" Margin="10,0" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimary}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </fc:Section>
+
+                        <fc:Section Title="REQUESTS" BorderThickness="0">
+                            <fc:Section.Action>
+                                <Button Classes="icon-btn" Content="+" FontSize="14" Padding="6,0" ToolTip.Tip="New Request or Folder" />
+                            </fc:Section.Action>
+                            <fc:TreeView x:Name="RequestTree" Background="Transparent">
+                                <fc:TreeView.ItemTemplate>
+                                    <TreeDataTemplate DataType="views:DemoTreeNode" ItemsSource="{Binding Children}">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" MinHeight="20">
+                                            <fc:Badge Grid.Column="0"
+                                                      Width="38" Height="16"
+                                                      CornerRadius="3" Padding="0" Margin="0,0,6,0"
+                                                      FontSize="9" FontWeight="Bold" Foreground="White"
+                                                      Background="{DynamicResource BadgeAuth}"
+                                                      Content="{Binding Method}"
+                                                      IsVisible="{Binding Method, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Name}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextPrimary}" />
+                                            <fc:StatusDot Grid.Column="2"
+                                                          Diameter="6"
+                                                          Background="{DynamicResource StatusDirty}"
+                                                          IsVisible="{Binding IsDirty}"
+                                                          Margin="4,0,2,0"
+                                                          VerticalAlignment="Center"
+                                                          ToolTip.Tip="Unsaved changes" />
+                                        </Grid>
+                                    </TreeDataTemplate>
+                                </fc:TreeView.ItemTemplate>
+                            </fc:TreeView>
+                        </fc:Section>
+
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </fc:Card>
+
+    </StackPanel>
+
+</UserControl>
