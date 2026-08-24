@@ -23,6 +23,9 @@
     <PackageVersion Include="MinVer" Version="6.0.0" />
   </ItemGroup>
   <ItemGroup Label="Testing">
+    <!-- Held at 3.2.2: xunit.v3 4.0.0 drops the VSTest `dotnet test` path in favour of
+         Microsoft.Testing.Platform on .NET 10, which needs a test-runner migration. Revisit when
+         migrating - Dependabot will keep proposing the bump, and its CI run will keep failing. -->
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
