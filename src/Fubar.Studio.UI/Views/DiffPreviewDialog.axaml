@@ -18,6 +18,8 @@
         <!-- Same gestures as Fubar Diff, so the view behaves identically wherever it is hosted. -->
         <KeyBinding Gesture="F8" Command="{Binding Pane.NextChangeCommand}" />
         <KeyBinding Gesture="F7" Command="{Binding Pane.PreviousChangeCommand}" />
+        <KeyBinding Gesture="Alt+Down" Command="{Binding Pane.NextChangeCommand}" />
+        <KeyBinding Gesture="Alt+Up" Command="{Binding Pane.PreviousChangeCommand}" />
 
     </Window.KeyBindings>
 
@@ -34,12 +36,17 @@
                            Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0" />
 
                 <fc:Toolbar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,8,0,0">
-                    <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7)"
+                    <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7 or Alt+Up)"
                             Command="{Binding Pane.PreviousChangeCommand}"
                             IsEnabled="{Binding Pane.HasChanges}" />
-                    <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8)"
+                    <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8 or Alt+Down)"
                             Command="{Binding Pane.NextChangeCommand}"
                             IsEnabled="{Binding Pane.HasChanges}" />
+
+                    <CheckBox Content="Diff pane" Margin="8,0,0,0"
+                              ToolTip.Tip="Show the current difference close up, below the panes"
+                              IsChecked="{Binding Pane.IsDetailVisible}"
+                              VerticalAlignment="Center" />
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 

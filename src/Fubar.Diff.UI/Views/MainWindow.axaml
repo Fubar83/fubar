@@ -20,6 +20,10 @@
              These act on the SELECTED tab, so they route through it rather than the shell. -->
         <KeyBinding Gesture="F8" Command="{Binding SelectedTab.Pane.NextChangeCommand}" />
         <KeyBinding Gesture="F7" Command="{Binding SelectedTab.Pane.PreviousChangeCommand}" />
+        <!-- Alt+Up/Down do the same as F7/F8. The function keys match other diff tools, but they are
+             a hand's move away from the text; Alt+arrows can be held down to walk a file. -->
+        <KeyBinding Gesture="Alt+Down" Command="{Binding SelectedTab.Pane.NextChangeCommand}" />
+        <KeyBinding Gesture="Alt+Up" Command="{Binding SelectedTab.Pane.PreviousChangeCommand}" />
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SelectedTab.SaveCommand}" />
         <KeyBinding Gesture="Alt+Left" Command="{Binding SelectedTab.TakeLeftCommand}" />
         <KeyBinding Gesture="Alt+Right" Command="{Binding SelectedTab.TakeRightCommand}" />
@@ -143,9 +147,9 @@
                      width - it clips the rightmost controls, and a toolbar that hides Save is worse
                      than one that takes an extra 30px. -->
                 <fc:Toolbar Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,6,0,0">
-                    <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7)"
+                    <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7 or Alt+Up)"
                             Command="{Binding Pane.PreviousChangeCommand}" IsEnabled="{Binding Pane.HasChanges}" />
-                    <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8)"
+                    <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8 or Alt+Down)"
                             Command="{Binding Pane.NextChangeCommand}" IsEnabled="{Binding Pane.HasChanges}" />
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
@@ -164,6 +168,13 @@
                             Command="{Binding SaveCommand}" IsEnabled="{Binding HasUnsavedMerge}" />
                     <Button Classes="toolbar-btn" Content="Save as…"
                             Command="{Binding SaveAsCommand}" IsEnabled="{Binding Pane.HasChanges}" />
+
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+
+                    <CheckBox Content="Diff pane"
+                              ToolTip.Tip="Show the current difference close up, below the panes"
+                              IsChecked="{Binding Pane.IsDetailVisible}"
+                              VerticalAlignment="Center" />
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
