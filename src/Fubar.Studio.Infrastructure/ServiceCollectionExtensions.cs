@@ -29,6 +29,8 @@ public static class ServiceCollectionExtensions
     {
         // One WorkspaceService instance, surfaced under the aggregate and each focused role interface so
         // consumers can depend on the narrowest one they need (ISP) while sharing state/IO.
+        services.AddSingleton<IRequestSerializer, RequestSerializer>();
+
         services.AddSingleton<WorkspaceService>();
         services.AddSingleton<IWorkspaceService>(sp => sp.GetRequiredService<WorkspaceService>());
         services.AddSingleton<IWorkspaceStore>(sp => sp.GetRequiredService<WorkspaceService>());
