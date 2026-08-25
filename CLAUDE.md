@@ -103,6 +103,11 @@ the diff map, navigation and merge work in both modes.
   control renders unstyled".
 - **Viewport size must come from `TextView.DefaultLineHeight`, not `VisualLines.Count`** — a document
   shorter than the pane reports only the lines it drew, which collapses the diff map's scale.
+- **Background renderers paint in registration order** (Diff). `CurrentHunkRenderer` is added *after*
+  `ChangeLineBackgroundRenderer` on the same layer so the current-difference marker lands on top of
+  the change tint. Swap the order and it disappears under it.
+- **Collapsing a `Grid` row needs its `RowDefinition` height zeroed**, not just `IsVisible=false` on
+  the child — `DiffView`'s detail pane would otherwise leave a 190px blank band.
 - **Settings never throw**: `Load` returns defaults, `SaveAsync` returns false. Losing a preference is
   a nuisance; refusing to start over a corrupt settings file is not acceptable.
 - **`ExecutionSnapshot.ResponseBody` is optional and must stay that way** — null for an empty body, one

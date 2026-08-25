@@ -19,7 +19,15 @@ All notable changes to this project are documented here. The format is based on
 - **Hunk-level merge and save**: take the left or right version of the current change, reset a
   decision, then Save or Save As. Saving preserves the file's encoding, BOM, line endings and trailing
   newline byte-for-byte.
-- **Keyboard shortcuts**: F7/F8 for previous/next change, Alt+Left / Alt+Right to merge, Ctrl+S to save.
+- **Keyboard shortcuts**: F7/F8 or Alt+Up / Alt+Down for previous/next change, Alt+Left / Alt+Right to
+  merge, Ctrl+S to save.
+- **Diff pane** under the side-by-side view, showing the current difference on its own — the two sides
+  of one change are often far enough apart vertically that reading them together is the hard part.
+  Resizable, and toggleable from the toolbar. Available in API Studio's diff dialog too, since both
+  hosts share the same widget.
+- **The current difference is marked with shape, not just colour** — an accent bar down its edge and a
+  hairline boxing it in. In a file where most rows are already tinted, a denser tint does not say
+  which change you just navigated to.
 
 - **Semantic JSON comparison.** A hand-written parser records the line and column of every value, and
   the differ compares structure rather than text:
