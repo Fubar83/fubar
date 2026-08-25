@@ -105,6 +105,14 @@ the diff map, navigation and merge work in both modes.
   shorter than the pane reports only the lines it drew, which collapses the diff map's scale.
 - **Settings never throw**: `Load` returns defaults, `SaveAsync` returns false. Losing a preference is
   a nuisance; refusing to start over a corrupt settings file is not acceptable.
+- **`ExecutionSnapshot.ResponseBody` is optional and must stay that way** — null for an empty body, one
+  over `HistoryBodyPolicy`'s cap, and every ledger written before the field existed. Anything reading
+  it needs the disabled path, not a `!`. The cap is why: 200 entries per request times an unbounded
+  response would turn a workspace into a cache nobody asked for.
+- **The pinned response (`IResponseBaselineService`) is in-memory only.** It is a scratch comparison;
+  persisting response bodies outside the workspace's own history would put whatever they contain
+  somewhere the user did not choose. It is a singleton so it survives switching request — which is
+  also why panes must unsubscribe from it on dispose.
 - **Avalonia 12 renamed drag-drop types**: `DragEventArgs.Data` is now `DataTransfer`, typed
   `IDataTransfer`, with files via `TryGetFiles()`.
 - **Test both theme variants.** A token defined only in Dark throws at runtime in Light.

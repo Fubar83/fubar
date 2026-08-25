@@ -8,17 +8,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **`Fubar.Controls` moved to its own repository** ([fubar-components](https://github.com/Fubar83/fubar))
-  and is now consumed as a NuGet package rather than a project reference. It is shared with
-  [Fubar Diff](https://github.com/Fubar83/fubar); keeping it inside this repo would have forced
-  that app to depend on an unrelated product. `src/Fubar.Controls`, `src/Fubar.Controls.Gallery` and
-  `tests/Fubar.Controls.Tests` are gone from this solution — their history moved with them.
-  Build with `-p:UseLocalComponents=true` to compile against a local checkout of the library instead
-  of the package.
-- The solution file is now `Fubar.slnx` (was `Fubar.slnx`), since three Fubar solutions now
-  exist.
+- **API Studio, Fubar Diff and `Fubar.Controls` now live in one repository.** They were briefly three,
+  with `Fubar.Controls` shipped as a NuGet package; that was reversed when API Studio needed the diff
+  view too, which made the sharing a mesh rather than one-way. Everything is a project reference now,
+  and the solution file is `Fubar.slnx` (was `FubarAPIStudio.slnx`).
 
 ### Added
+
+- **Comparing responses**, reusing Fubar Diff's view — semantic JSON comparison, character-level
+  highlighting and change navigation included:
+  - **Pin / Compare** in the response pane. Pin sets the current response aside; Compare diffs the
+    next one against it. The pin is app-wide, so the two sends can be different environments or
+    different requests — "same request against staging and prod", or before and after a deploy.
+    In-memory only: a pinned response is a scratch comparison, not something to write to disk.
+  - **Compare** next to Replay in the History tab, diffing a past response against the current one —
+    the question Replay leaves unanswered.
+- History now records the **response body** alongside the outcome, which is what makes the above
+  possible. Bodies over 256 KB are not stored (the ledger keeps 200 executions per request), and
+  entries without one — too large, empty, or written before this release — show Compare disabled
+  rather than opening an empty comparison.
 
 - **Variable types** (Normal / Secret / Session) on environment variables, replacing the plain
   "secret" flag. Secret values live in the OS keyring, Session values in an in-memory store, and
