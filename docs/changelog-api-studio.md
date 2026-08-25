@@ -25,10 +25,12 @@ All notable changes to this project are documented here. The format is based on
     the question Replay leaves unanswered.
 - **Ignore rules for response comparison.** Two runs of a real endpoint differ on `requestId`,
   `generatedAt`, `traceId` and a `syncedAt` per array element, so the one field that changed is
-  buried. Click **ignore** on any change in the Tree view and it stops being reported — in the text
-  view, the diff map and navigation as well as the tree, since the rule is applied where differences
-  are decided rather than where they are drawn. **Save to request** persists the rules to
-  `request.json`, per request, so they always apply and the team shares them.
+  buried. Select a difference and press **⊘ Ignore this field** in the toolbar — the responses stay
+  side by side while you walk the noise out — or click **ignore** on a change in the Tree view. Either
+  way it stops being reported — in the text view, the diff map and navigation as well as the tree,
+  since the rule is applied where differences are decided rather than where they are drawn.
+  **Save to request** persists the rules to `request.json`, per request, so they always apply and the
+  team shares them.
   - Ignoring a field inside an array covers every element: clicking `$.items[0].syncedAt` creates
     `$.items[*].syncedAt`, because a noisy field is noisy in every element.
   - Ignoring an object covers everything under it.

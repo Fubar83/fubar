@@ -36,10 +36,13 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   the History tab against the current response. JSON is compared semantically, so reformatting and
   reordered keys are not reported as changes.
 - **Ignore rules** for the fields that differ on every call — `requestId`, `generatedAt`, a `syncedAt`
-  per array element — which otherwise bury the one field that actually changed. Click **ignore** on
-  any change in the Tree view; the comparison updates immediately, and **Save to request** writes the
-  rules to `request.json` so they always apply. Ignoring a field inside an array covers every element
-  (`$.items[*].syncedAt`), and ignoring an object covers everything under it.
+  per array element — which otherwise bury the one field that actually changed. Select a difference
+  and press **⊘ Ignore this field**, which keeps both responses on screen while you walk the noise
+  out, or click **ignore** beside a change in the Tree view. The comparison updates immediately, and
+  **Save to request** writes the rules to `request.json` so they always apply. Ignoring a field inside
+  an array covers every element (`$.items[*].syncedAt`), and ignoring an object covers everything
+  under it. Ignored differences stay visible as a faint band, but are not counted and are skipped by
+  next/previous.
 - **JSON schema intelligence** — when a body schema is known (e.g. from an import), you get validation,
   inline autocomplete, and a readable schema view. Header and query-parameter **names** are suggested
   too (schema-declared names plus common HTTP headers).
@@ -114,12 +117,13 @@ Windows, `tar.gz` for Linux, a `.app` for macOS). It runs from any OS with Power
 
 ## Project structure
 
-This is a layered solution. The shared, app-agnostic design system it builds on lives in its own
-repository and arrives as a NuGet package.
+This is a layered solution, in a monorepo alongside [Fubar Diff](diff.md) and the design system both
+apps share.
 
 | Project | Role |
 | --- | --- |
-| `Fubar.Controls` *(package)* | **Reusable, app-agnostic** Avalonia control library + design system (tabs, tree view, key/value grid, JSON editor, theming). Lives in [fubar-components](https://github.com/Fubar83/fubar). |
+| `src/Fubar.Controls` | **Reusable, app-agnostic** Avalonia control library + design system (tabs, tree view, key/value grid, JSON editor, theming), shared with Fubar Diff. |
+| `src/Fubar.Diff.*` | The diff engine and the embeddable diff view this app uses to compare responses. |
 | `src/Fubar.Studio.Core` | Domain models, policy, and ports — requests, auth, variables, workspaces, import contracts. |
 | `src/Fubar.Studio.Application` | Use-case / orchestration services (the send pipeline, imports). |
 | `src/Fubar.Studio.Infrastructure` | Adapters — HTTP execution, OpenAPI import, OAuth token service, variable resolution, persistence. |
