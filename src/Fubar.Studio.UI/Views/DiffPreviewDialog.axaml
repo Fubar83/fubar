@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:dv="using:Fubar.Diff.Controls.Views"
+        xmlns:dvm="using:Fubar.Diff.Controls.ViewModels"
+        xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
+        x:Class="Fubar.Studio.UI.Views.DiffPreviewDialog"
+        x:DataType="vm:DiffPreviewViewModel"
+        Title="{Binding Title}"
+        Width="1100" Height="700"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgEditorCanvas}">
+
+    <Window.KeyBindings>
+        <!-- Same gestures as Fubar Diff, so the view behaves identically wherever it is hosted. -->
+        <KeyBinding Gesture="F8" Command="{Binding Pane.NextChangeCommand}" />
+        <KeyBinding Gesture="F7" Command="{Binding Pane.PreviousChangeCommand}" />
+
+    </Window.KeyBindings>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="10,8">
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding LeftLabel}"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RightLabel}"
+                           Foreground="{DynamicResource TextSecondary}" Margin="8,0,0,0" />
+
+                <fc:Toolbar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                    <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7)"
+                            Command="{Binding Pane.PreviousChangeCommand}"
+                            IsEnabled="{Binding Pane.HasChanges}" />
+                    <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8)"
+                            Command="{Binding Pane.NextChangeCommand}"
+                            IsEnabled="{Binding Pane.HasChanges}" />
+
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+
+                    <!-- Only offered when the semantic pass ran; the tree has nothing to show for
+                         anything that is not JSON. -->
+                    <fc:SegmentedControl ItemsSource="{x:Static dvm:DiffPaneViewModel.ViewModeOptions}"
+                                         SelectedItem="{Binding Pane.ViewMode}"
+                                         IsVisible="{Binding Pane.IsSemantic}" />
+
+                    <fc:Spinner IsVisible="{Binding IsBusy}" Margin="8,0,0,0" />
+                </fc:Toolbar>
+            </Grid>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,1,0,0"
+                Padding="10,5">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                           Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Classes="secondary-btn" Content="Close"
+                        Click="OnCloseClicked" />
+            </Grid>
+        </Border>
+
+        <Panel>
+            <fc:EmptyState Title="Nothing to compare"
+                           Description="There is no content on either side."
+                           IsVisible="{Binding Pane.LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
+
+            <dv:DiffView DataContext="{Binding Pane}" IsVisible="{Binding IsTextViewVisible}" />
+            <dv:JsonTreeView DataContext="{Binding Pane}" IsVisible="{Binding IsTreeViewVisible}" />
+        </Panel>
+    </DockPanel>
+</Window>
