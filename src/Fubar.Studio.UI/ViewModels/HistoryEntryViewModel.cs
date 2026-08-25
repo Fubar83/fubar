@@ -15,4 +15,14 @@ public sealed class HistoryEntryViewModel(ExecutionSnapshot snapshot) : ViewMode
     public string DurationText => $"{Snapshot.ElapsedMilliseconds} ms";
 
     public string SizeText => $"{Snapshot.SizeBytes} B";
+
+    /// <summary>
+    /// Whether this entry can be diffed against the current response. False for an empty body, one
+    /// over <c>HistoryBodyPolicy</c>'s cap, and every entry written before history stored bodies at
+    /// all - so the button disables itself rather than opening an empty comparison.
+    /// </summary>
+    public bool CanCompare => !string.IsNullOrEmpty(Snapshot.ResponseBody);
+
+    /// <summary>Names this side of the comparison in the diff window's header.</summary>
+    public string CompareLabel => $"{StatusText} · {TimestampText}";
 }

@@ -389,13 +389,24 @@
                         <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="120" />
                         <DataGridTextColumn Header="Duration" Binding="{Binding DurationText}" Width="90" />
                         <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="90" />
-                        <DataGridTemplateColumn Header="Action" Width="140">
+                        <DataGridTemplateColumn Header="Action" Width="230">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="vm:HistoryEntryViewModel">
-                                    <Button Content="⚡ Replay"
-                                            Classes="secondary-btn"
-                                            Command="{Binding #Root.((vm:RequestEditorViewModel)DataContext).ReplayHistoryCommand}"
-                                            CommandParameter="{Binding}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Button Content="⚡ Replay"
+                                                Classes="secondary-btn"
+                                                Command="{Binding #Root.((vm:RequestEditorViewModel)DataContext).ReplayHistoryCommand}"
+                                                CommandParameter="{Binding}" />
+                                        <!-- Disabled for entries with no stored body (too large, empty, or
+                                             recorded before history kept bodies) and until there is a
+                                             current response to compare against. -->
+                                        <Button Content="⇄ Compare"
+                                                Classes="secondary-btn"
+                                                ToolTip.Tip="Diff this response against the current one"
+                                                IsEnabled="{Binding CanCompare}"
+                                                Command="{Binding #Root.((vm:RequestEditorViewModel)DataContext).CompareWithHistoryCommand}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

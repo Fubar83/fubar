@@ -40,6 +40,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     private readonly IInheritanceResolver _inheritanceResolver;
     private readonly IRequestExecutionService _requestExecution;
     private readonly IHistoryService _historyService;
+    private readonly IDiffPreviewService _diffPreview;
     private readonly ICurlExportService _curlExport;
     private readonly IClipboardService _clipboardService;
     private readonly IVariableResolver _variableResolver;
@@ -79,7 +80,8 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         IAuthProvider authProvider,
         IClipboardService clipboardService,
         IFilePickerService filePickerService,
-        StatusLogViewModel statusLog)
+        StatusLogViewModel statusLog,
+        IDiffPreviewService diffPreview)
     {
         _original = request;
         _workspace = workspace;
@@ -94,6 +96,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         _variableResolver = variableResolver;
         _authProvider = authProvider;
         _statusLog = statusLog;
+        _diffPreview = diffPreview;
 
         FilePath = filePath;
         Provider = provider;
@@ -387,6 +390,29 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
 
     private static string Truncate(string? value) =>
         value is { Length: > 40 } ? value[..40] + "…" : value ?? "";
+
+    /// <summary>
+    /// Diffs a past response against the one on screen - "did this change, and where?", which is the
+    /// question Replay leaves unanswered. The history entry is the left (older) side, matching the
+    /// old-on-the-left convention the diff view uses everywhere else.
+    /// </summary>
+    [RelayCommand]
+    private async Task CompareWithHistoryAsync(HistoryEntryViewModel? entry)
+    {
+        // Both guards are also enforced in the view, but a command must not depend on its binding
+        // being the only caller.
+        if (entry?.Snapshot.ResponseBody is not { } previous || !Response.HasResponse)
+        {
+            return;
+        }
+
+        await _diffPreview.ShowAsync(
+            previous,
+            Response.RawBody,
+            entry.CompareLabel,
+            "Current response",
+            $"{Method} {Name} — response vs history");
+    }
 
     /// <summary>
     /// Re-sends exactly what <paramref name="entry"/> captured (method/URL/headers/body), but
