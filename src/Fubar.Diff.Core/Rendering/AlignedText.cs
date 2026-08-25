@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Fubar.Diff.Core.Models;
@@ -19,13 +20,30 @@ namespace Fubar.Diff.Core.Rendering;
 public static class AlignedText
 {
     /// <summary>Builds the document text and per-line metadata for one side.</summary>
-    public static AlignedDocument Build(DiffResult result, DiffSide side)
+    public static AlignedDocument Build(DiffResult result, DiffSide side) =>
+        Build(result, side, 0, result.Lines.Count);
+
+    /// <summary>
+    /// Builds just <paramref name="count"/> rows starting at <paramref name="startIndex"/> - the
+    /// detail pane showing one hunk in isolation.
+    ///
+    /// Filler rows inside the range are kept, exactly as in the full document. Dropping them would
+    /// make the two sides of the excerpt different lengths and stop them lining up, which is the one
+    /// thing a close-up of a single difference has to get right.
+    ///
+    /// The range is clamped rather than validated: it comes from a hunk, and a hunk can outlive the
+    /// result it was computed from for a frame while a new comparison is being applied.
+    /// </summary>
+    public static AlignedDocument Build(DiffResult result, DiffSide side, int startIndex, int count)
     {
         var lines = result.Lines;
-        var builder = new StringBuilder();
-        var meta = new AlignedLine[lines.Count];
+        var from = Math.Clamp(startIndex, 0, lines.Count);
+        var to = Math.Clamp(from + Math.Max(count, 0), from, lines.Count);
 
-        for (var i = 0; i < lines.Count; i++)
+        var builder = new StringBuilder();
+        var meta = new AlignedLine[to - from];
+
+        for (var i = from; i < to; i++)
         {
             var row = lines[i];
             var isLeft = side == DiffSide.Left;
@@ -34,7 +52,7 @@ public static class AlignedText
             var number = isLeft ? row.LeftNumber : row.RightNumber;
             var spans = isLeft ? row.LeftSpans : row.RightSpans;
 
-            if (i > 0)
+            if (i > from)
             {
                 // Always '\n': this is a view document, and AvaloniaEdit normalises anyway. The file's
                 // real terminator is preserved separately on TextDocument.LineEnding and reapplied on save.
@@ -42,7 +60,7 @@ public static class AlignedText
             }
 
             builder.Append(text);
-            meta[i] = new AlignedLine(number, KindFor(row, side), spans);
+            meta[i - from] = new AlignedLine(number, KindFor(row, side), spans);
         }
 
         return new AlignedDocument(builder.ToString(), meta);

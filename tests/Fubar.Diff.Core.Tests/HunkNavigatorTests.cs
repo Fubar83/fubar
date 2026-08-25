@@ -63,3 +63,85 @@ public class HunkNavigatorTests
     public void IndexOfHunkContaining_returns_minus_one_for_context_lines(int line) =>
         Assert.Equal(-1, HunkNavigator.IndexOfHunkContaining(ThreeHunks, line));
 }
+
+/// <summary>
+/// <see cref="HunkNavigator.RangeOf"/> captions a hunk with the lines it covers in the two ORIGINAL
+/// files. The trap it guards is reporting aligned-view row indices as line numbers: those count
+/// filler rows, which exist in neither file.
+/// </summary>
+public class HunkRangeTests
+{
+    private static DiffLine Unchanged(int n) => new(n, "same", n, "same", ChangeKind.Unchanged);
+
+    private static DiffLine Modified(int l, int r) => new(l, "before", r, "after", ChangeKind.Modified);
+
+    private static DiffLine Inserted(int n) => new(null, null, n, "added", ChangeKind.Inserted);
+
+    private static DiffLine Deleted(int n) => new(n, "gone", null, null, ChangeKind.Deleted);
+
+    [Fact]
+    public void Reports_the_source_lines_a_modified_hunk_spans()
+    {
+        var lines = new List<DiffLine> { Unchanged(1), Modified(2, 2), Modified(3, 3), Unchanged(4) };
+
+        var range = HunkNavigator.RangeOf(lines, new DiffHunk(1, 2));
+
+        Assert.Equal(2, range.LeftStart);
+        Assert.Equal(3, range.LeftEnd);
+        Assert.Equal(2, range.RightStart);
+        Assert.Equal(3, range.RightEnd);
+    }
+
+    /// <summary>An insertion covers no left-hand lines - naming any would point at nothing.</summary>
+    [Fact]
+    public void An_inserted_hunk_has_no_left_range()
+    {
+        var lines = new List<DiffLine> { Unchanged(1), Inserted(2), Inserted(3) };
+
+        var range = HunkNavigator.RangeOf(lines, new DiffHunk(1, 2));
+
+        Assert.Null(range.LeftStart);
+        Assert.Null(range.LeftEnd);
+        Assert.Equal(2, range.RightStart);
+        Assert.Equal(3, range.RightEnd);
+    }
+
+    [Fact]
+    public void A_deleted_hunk_has_no_right_range()
+    {
+        var lines = new List<DiffLine> { Unchanged(1), Deleted(2) };
+
+        var range = HunkNavigator.RangeOf(lines, new DiffHunk(1, 1));
+
+        Assert.Equal(2, range.LeftStart);
+        Assert.Null(range.RightStart);
+    }
+
+    /// <summary>
+    /// A replaced block is deletions followed by insertions, so each side's range must come from the
+    /// rows that actually carry a number - not from the hunk's extent.
+    /// </summary>
+    [Fact]
+    public void A_replaced_block_reports_each_side_independently()
+    {
+        var lines = new List<DiffLine> { Deleted(1), Deleted(2), Inserted(1), Inserted(2), Inserted(3) };
+
+        var range = HunkNavigator.RangeOf(lines, new DiffHunk(0, 4));
+
+        Assert.Equal(1, range.LeftStart);
+        Assert.Equal(2, range.LeftEnd);
+        Assert.Equal(1, range.RightStart);
+        Assert.Equal(3, range.RightEnd);
+    }
+
+    /// <summary>Must not throw inside a render pass when the hunk outlives its result.</summary>
+    [Fact]
+    public void An_out_of_range_hunk_clamps()
+    {
+        var lines = new List<DiffLine> { Unchanged(1) };
+
+        var range = HunkNavigator.RangeOf(lines, new DiffHunk(-3, 99));
+
+        Assert.Equal(1, range.LeftStart);
+    }
+}

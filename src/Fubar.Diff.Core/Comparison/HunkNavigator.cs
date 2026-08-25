@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Fubar.Diff.Core.Comparison;
@@ -33,6 +34,37 @@ public static class HunkNavigator
         }
 
         return currentIndex <= 0 ? hunks.Count - 1 : currentIndex - 1;
+    }
+
+    /// <summary>
+    /// Which lines of the two ORIGINAL files a hunk covers, for captioning it.
+    ///
+    /// Not simply the hunk's row indices: those address the aligned view, which contains filler rows
+    /// that exist in neither file. A wholly inserted hunk covers no left-hand lines at all, and
+    /// reporting the filler rows' positions as line numbers would name lines the user cannot find.
+    /// Either side is therefore null when that side contributes nothing.
+    /// </summary>
+    public static HunkRange RangeOf(IReadOnlyList<DiffLine> lines, DiffHunk hunk)
+    {
+        int? leftStart = null, leftEnd = null, rightStart = null, rightEnd = null;
+
+        var last = Math.Min(hunk.EndIndex, lines.Count - 1);
+        for (var i = Math.Max(hunk.StartIndex, 0); i <= last; i++)
+        {
+            if (lines[i].LeftNumber is { } left)
+            {
+                leftStart ??= left;
+                leftEnd = left;
+            }
+
+            if (lines[i].RightNumber is { } right)
+            {
+                rightStart ??= right;
+                rightEnd = right;
+            }
+        }
+
+        return new HunkRange(leftStart, leftEnd, rightStart, rightEnd);
     }
 
     /// <summary>
