@@ -38,6 +38,17 @@ public partial class ImportItemViewModel : ViewModelBase
 
     public bool CanSelect { get; }
 
+    /// <summary>
+    /// Whether this row can show a side-by-side preview.
+    ///
+    /// Only an UPDATE of a request has two sides to compare: an ADD has nothing in the workspace yet,
+    /// a REMOVE has nothing in the spec, and a variable is a single value the Detail column already
+    /// shows in full. Offering the button anywhere else would be a promise the dialog cannot keep.
+    /// </summary>
+    public bool CanPreview =>
+        Change == ImportChange.Update
+        && Model is RequestDiff { Planned: not null, ExistingPath: not null and not "" };
+
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 }
