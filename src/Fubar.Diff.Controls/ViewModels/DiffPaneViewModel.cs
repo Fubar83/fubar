@@ -69,6 +69,9 @@ public partial class DiffPaneViewModel : ObservableObject
     partial void OnCurrentHunkChanged(int value)
     {
         OnPropertyChanged(nameof(HasCurrentHunk));
+        OnPropertyChanged(nameof(CurrentIgnorePath));
+        OnPropertyChanged(nameof(CanIgnoreCurrent));
+        OnPropertyChanged(nameof(IgnoreCurrentTooltip));
         RebuildDetail();
     }
 
@@ -143,8 +146,54 @@ public partial class DiffPaneViewModel : ObservableObject
     /// <summary>Whether to offer the ignore affordance at all.</summary>
     public bool CanIgnorePaths => IgnorePathCommand is not null;
 
-    partial void OnIgnorePathCommandChanged(IRelayCommand<string>? value) =>
+    partial void OnIgnorePathCommandChanged(IRelayCommand<string>? value)
+    {
         OnPropertyChanged(nameof(CanIgnorePaths));
+        OnPropertyChanged(nameof(CanIgnoreCurrent));
+    }
+
+    /// <summary>Resolves a row back to the semantic change on it, for ignoring from the text view.</summary>
+    private JsonChangeIndex _changeIndex = JsonChangeIndex.Empty;
+
+    /// <summary>
+    /// The rule to create for the difference the user is currently on, or null when there is none -
+    /// nothing selected, a non-JSON comparison, or a row the semantic pass never flagged.
+    ///
+    /// Array indices are generalized, so ignoring a field from inside one element covers every
+    /// element. Identical to what the tree produces, deliberately: the two views must not create
+    /// different rules for the same field.
+    /// </summary>
+    public string? CurrentIgnorePath
+    {
+        get
+        {
+            if (!HasCurrentHunk)
+            {
+                return null;
+            }
+
+            var hunk = _result.Hunks[CurrentHunk];
+
+            for (var i = hunk.StartIndex; i <= hunk.EndIndex && i < _result.Lines.Count; i++)
+            {
+                var row = _result.Lines[i];
+                if (_changeIndex.Find(row.LeftNumber, row.RightNumber) is { } change)
+                {
+                    return JsonPathPattern.Generalize(change.Path.ToString());
+                }
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>Whether "ignore this field" is available right now.</summary>
+    public bool CanIgnoreCurrent => CanIgnorePaths && CurrentIgnorePath is not null;
+
+    /// <summary>Describes what would be ignored, for the button's tooltip.</summary>
+    public string IgnoreCurrentTooltip => CurrentIgnorePath is { } path
+        ? $"Never report differences at {path}"
+        : "Select a difference to ignore it";
 
     // ---- Semantic JSON --------------------------------------------------------------------------
 
@@ -205,6 +254,7 @@ public partial class DiffPaneViewModel : ObservableObject
         RightDocument = AlignedText.Build(result, DiffSide.Right);
 
         IsSemantic = isSemantic;
+        _changeIndex = JsonChangeIndex.Build(semanticChanges);
         SemanticTree = JsonChangeNodeViewModel.Build(semanticChanges ?? []);
 
         CurrentHunk = -1;
@@ -262,6 +312,9 @@ public partial class DiffPaneViewModel : ObservableObject
         OnPropertyChanged(nameof(Result));
         OnPropertyChanged(nameof(HasChanges));
         OnPropertyChanged(nameof(HasCurrentHunk));
+        OnPropertyChanged(nameof(CurrentIgnorePath));
+        OnPropertyChanged(nameof(CanIgnoreCurrent));
+        OnPropertyChanged(nameof(IgnoreCurrentTooltip));
         OnPropertyChanged(nameof(TotalLines));
         OnPropertyChanged(nameof(Hunks));
         OnPropertyChanged(nameof(Lines));

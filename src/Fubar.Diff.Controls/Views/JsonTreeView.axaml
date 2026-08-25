@@ -62,20 +62,24 @@
                                    Opacity="0.6"
                                    IsVisible="{Binding IsIgnored}" />
 
-                        <!-- Only when the host supplied a command - Fubar Diff compares files, which
-                             have nowhere to remember a rule, so it never shows this. On a grouping
-                             row the rule covers the whole subtree, which is why it is offered there
-                             too rather than only on leaves. -->
-                        <Button Classes="toolbar-btn"
-                                Content="ignore"
-                                Margin="12,0,0,0"
-                                Padding="4,0"
-                                VerticalAlignment="Center"
-                                ToolTip.Tip="Never report differences at this path"
-                                IsEnabled="{Binding CanIgnore}"
-                                IsVisible="{Binding #Root.((vm:DiffPaneViewModel)DataContext).CanIgnorePaths}"
-                                Command="{Binding #Root.((vm:DiffPaneViewModel)DataContext).IgnorePathCommand}"
-                                CommandParameter="{Binding IgnorePath}" />
+                        <!-- Two conditions, nested rather than combined with a converter: the outer is
+                             whether the HOST can hold a rule at all (Fubar Diff compares files and
+                             cannot, so it never shows this), the inner is whether this ROW is a
+                             difference. Grouping rows like `items` or `[0]` show no change of their
+                             own, and offering to ignore one invites hiding a whole subtree from a
+                             click that does not look like it does that. -->
+                        <Panel IsVisible="{Binding #Root.((vm:DiffPaneViewModel)DataContext).CanIgnorePaths}">
+                            <Button Classes="toolbar-btn"
+                                    Content="ignore"
+                                    Margin="12,0,0,0"
+                                    Padding="4,0"
+                                    VerticalAlignment="Center"
+                                    ToolTip.Tip="Never report differences at this path"
+                                    IsEnabled="{Binding CanIgnore}"
+                                    IsVisible="{Binding ShowIgnore}"
+                                    Command="{Binding #Root.((vm:DiffPaneViewModel)DataContext).IgnorePathCommand}"
+                                    CommandParameter="{Binding IgnorePath}" />
+                        </Panel>
                     </StackPanel>
                 </TreeDataTemplate>
             </TreeView.ItemTemplate>

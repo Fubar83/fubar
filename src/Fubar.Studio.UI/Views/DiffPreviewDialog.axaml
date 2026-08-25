@@ -43,6 +43,17 @@
                             Command="{Binding Pane.NextChangeCommand}"
                             IsEnabled="{Binding Pane.HasChanges}" />
 
+                    <!-- Ignoring from the side-by-side view, so the responses stay on screen while
+                         rules are added. Acts on the current difference, which is why it needs one
+                         selected - Prev/Next or the diff map pick it. -->
+                    <Button Classes="toolbar-btn" Content="⊘ Ignore this field"
+                            Margin="8,0,0,0"
+                            ToolTip.Tip="{Binding Pane.IgnoreCurrentTooltip}"
+                            IsVisible="{Binding Pane.CanIgnorePaths}"
+                            IsEnabled="{Binding Pane.CanIgnoreCurrent}"
+                            Command="{Binding Pane.IgnorePathCommand}"
+                            CommandParameter="{Binding Pane.CurrentIgnorePath}" />
+
                     <CheckBox Content="Diff pane" Margin="8,0,0,0"
                               ToolTip.Tip="Show the current difference close up, below the panes"
                               IsChecked="{Binding Pane.IsDetailVisible}"
@@ -74,7 +85,7 @@
                            Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0" />
 
                 <TextBlock Grid.Column="1"
-                           Text="nothing yet — use “ignore” in the Tree view to skip a noisy field"
+                           Text="nothing yet — select a difference and use “Ignore this field”, or “ignore” in the Tree view"
                            Foreground="{DynamicResource TextSecondary}"
                            FontStyle="Italic"
                            VerticalAlignment="Center"

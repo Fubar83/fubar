@@ -55,6 +55,15 @@ public sealed class JsonChangeNodeViewModel
     /// <summary>True when a rule covers this row, so it can be shown dimmed rather than dropped.</summary>
     public bool IsIgnored => Change?.IsIgnored ?? false;
 
+    /// <summary>
+    /// Whether to offer "ignore" on this row.
+    ///
+    /// Only on rows that ARE a difference. A grouping row like <c>items</c> or <c>[0]</c> exists to
+    /// give the tree its shape, and offering to ignore one invites hiding a whole subtree from a row
+    /// that shows no change of its own - far more than the click looks like it does.
+    /// </summary>
+    public bool ShowIgnore => IsChange;
+
     /// <summary>Ignoring is only offered for a row not already covered by a rule.</summary>
     public bool CanIgnore => !IsIgnored;
 
