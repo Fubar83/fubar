@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Use-case / orchestration layer. Depends on Fubar.Diff.Core ONLY - never on Infrastructure or
+       the UI. Enforced by Fubar.Diff.Architecture.Tests. -->
+  <PropertyGroup>
+    <RootNamespace>Fubar.Diff.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,86 @@
+name: build
+
+# Builds self-contained, single-file, cross-platform binaries. Each OS is built on its NATIVE runner so
+# packaging is correct (macOS .app keeps its executable bit / symlinks; Linux tar keeps +x). Every
+# artifact gets a Sigstore build-provenance attestation (verifiable with `gh attestation verify`); a
+# version tag also publishes a GitHub Release with SHA-256 checksums attached.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rids: win-x64,win-arm64
+          - os: ubuntu-latest
+            rids: linux-x64,linux-arm64
+          - os: macos-latest
+            rids: osx-arm64,osx-x64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write      # OIDC token for Sigstore signing
+      attestations: write  # store the provenance attestation on the repo
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish + package
+        shell: pwsh
+        run: ./build/publish.ps1 -Runtimes ($env:RIDS -split ',') -Version "$env:VERSION"
+        env:
+          RIDS: ${{ matrix.rids }}
+          # Empty on workflow_dispatch (script falls back to 1.0.0); the tag name (e.g. v1.2.3) otherwise.
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+
+      # Cryptographically attests that these exact archives were built by this workflow from this commit
+      # (Sigstore-backed, free). Consumers verify with:
+      #   gh attestation verify <file> --repo ${{ github.repository }}
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artifacts/*.zip
+            artifacts/*.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fubar-${{ matrix.os }}
+          path: |
+            artifacts/*.zip
+            artifacts/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd dist
+          find . -type f \( -name '*.zip' -o -name '*.tar.gz' \) | while read -r f; do
+            printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$(basename "$f")"
+          done | sort -k2 > ../SHA256SUMS.txt
+          echo "== SHA256SUMS.txt =="; cat ../SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/**/*
+            SHA256SUMS.txt
+          generate_release_notes: true

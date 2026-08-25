@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Domain layer. Entities, policy, and PORTS (interfaces) only. Depends on nothing but the BCL -
+       no Avalonia, no DiffPlex, no file system. Adapters live in Fubar.Diff.Infrastructure and are
+       wired in Fubar.Diff.UI/Composition.cs. Enforced by Fubar.Diff.Architecture.Tests. -->
+  <PropertyGroup>
+    <RootNamespace>Fubar.Diff.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

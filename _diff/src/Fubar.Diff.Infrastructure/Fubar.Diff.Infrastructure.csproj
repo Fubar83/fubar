@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Adapters for the ports declared in Fubar.Diff.Core: the diff algorithm, the file system, and
+       text normalisation. Depends on Core ONLY (never Application or UI) - enforced by
+       Fubar.Diff.Architecture.Tests. This is the only project allowed to reference DiffPlex, which is
+       what keeps the algorithm swappable. -->
+  <PropertyGroup>
+    <RootNamespace>Fubar.Diff.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DiffPlex" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,49 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <ItemGroup Label="Avalonia">
+    <PackageVersion Include="Avalonia" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.1" />
+    <!-- The legacy Avalonia.Diagnostics package has not shipped a 12.x build (stuck at 11.3.20).
+         Avalonia's tooling moved to AvaloniaUI.DiagnosticsSupport for the 12.x line instead;
+         it's Debug-only (see Fubar.Diff.UI.csproj IncludeAssets/PrivateAssets conditions). -->
+    <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
+  </ItemGroup>
+  <ItemGroup Label="Editor">
+    <PackageVersion Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
+    <PackageVersion Include="AvaloniaEdit.TextMate" Version="12.0.0" />
+  </ItemGroup>
+  <ItemGroup Label="Shared component library">
+    <!-- The shared design system + controls: https://github.com/Fubar83/fubar-components.
+         Not referenced when building with -p:UseLocalComponents=true. -->
+    <PackageVersion Include="Fubar.Controls" Version="0.1.0" />
+  </ItemGroup>
+  <ItemGroup Label="Diff engine">
+    <!-- MIT-licensed line/word differ. Lives behind IDiffEngine in Core, and is referenced ONLY by
+         Fubar.Diff.Infrastructure - the architecture tests enforce that. -->
+    <PackageVersion Include="DiffPlex" Version="1.9.0" />
+  </ItemGroup>
+  <ItemGroup Label="MVVM">
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+  <ItemGroup Label="Hosting / DI">
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+  </ItemGroup>
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+    <!-- Held at 3.2.2: xunit.v3 4.0.0 drops the VSTest `dotnet test` path in favour of
+         Microsoft.Testing.Platform on .NET 10, which needs a test-runner migration. Revisit when
+         migrating - Dependabot will keep proposing the bump, and its CI run will keep failing. -->
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+  </ItemGroup>
+</Project>

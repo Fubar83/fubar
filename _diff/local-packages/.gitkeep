@@ -1,0 +1,2 @@
+# Folder feed for locally packed Fubar.Controls builds (see ../nuget.config).
+# The folder is tracked so the NuGet source always resolves; the .nupkg files in it are not.

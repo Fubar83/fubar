@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ae="using:AvaloniaEdit"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="400"
+             x:Class="Fubar.Diff.UI.Views.DiffEditorPane">
+
+    <!-- One side of the diff. Read-only on purpose: the document contains filler lines to keep the
+         panes aligned, so it is NOT the file's text - typing into it would desynchronise the two
+         sides and there is no offset map yet to put it back. Merging happens through hunk commands
+         on the domain model instead (see MergedDocument). Selection, copy and search still work. -->
+    <ae:TextEditor x:Name="Editor"
+                   IsReadOnly="True"
+                   ShowLineNumbers="False"
+                   FontFamily="Cascadia Mono,Consolas,Menlo,DejaVu Sans Mono,monospace"
+                   FontSize="12.5"
+                   Background="Transparent"
+                   Foreground="{DynamicResource TextPrimary}"
+                   HorizontalScrollBarVisibility="Auto"
+                   VerticalScrollBarVisibility="Auto" />
+
+</UserControl>

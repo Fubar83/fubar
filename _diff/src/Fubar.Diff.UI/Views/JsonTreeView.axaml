@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+             x:Class="Fubar.Diff.UI.Views.JsonTreeView"
+             x:DataType="vm:ComparisonViewModel">
+
+    <UserControl.Styles>
+        <!-- Same palette tokens as the editors' line tints, so a change reads the same colour in
+             either view. -->
+        <Style Selector="TextBlock.inserted">
+            <Setter Property="Foreground" Value="{DynamicResource MethodPostBrush}" />
+        </Style>
+        <Style Selector="TextBlock.deleted">
+            <Setter Property="Foreground" Value="{DynamicResource MethodDeleteBrush}" />
+        </Style>
+        <Style Selector="TextBlock.modified">
+            <Setter Property="Foreground" Value="{DynamicResource MethodPutBrush}" />
+        </Style>
+        <Style Selector="TextBlock.path">
+            <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,Menlo,monospace" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="TextBlock.summary">
+            <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,Menlo,monospace" />
+            <Setter Property="Margin" Value="12,0,0,0" />
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
+        <fc:EmptyState Title="No structural changes"
+                       Description="The two documents are the same once formatting and ordering are ignored."
+                       IsVisible="{Binding !SemanticTree.Count}" />
+
+        <fc:TreeView ItemsSource="{Binding SemanticTree}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     IsVisible="{Binding !!SemanticTree.Count}">
+            <TreeView.ItemTemplate>
+                <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:JsonChangeNodeViewModel">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Classes="path" Text="{Binding Label}" VerticalAlignment="Center" />
+                        <TextBlock Classes="summary"
+                                   Classes.inserted="{Binding IsInserted}"
+                                   Classes.deleted="{Binding IsDeleted}"
+                                   Classes.modified="{Binding IsModified}"
+                                   Text="{Binding Summary}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </TreeDataTemplate>
+            </TreeView.ItemTemplate>
+        </fc:TreeView>
+    </Panel>
+</UserControl>

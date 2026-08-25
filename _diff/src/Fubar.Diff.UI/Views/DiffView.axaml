@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:Fubar.Diff.UI.Controls"
+             xmlns:views="using:Fubar.Diff.UI.Views"
+             xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+             x:Class="Fubar.Diff.UI.Views.DiffView"
+             x:DataType="vm:ComparisonViewModel">
+
+    <!-- Two independent editors, kept in step by DiffView.axaml.cs rather than by sharing a scroller.
+         Both documents contain filler lines and therefore have the SAME line count, which is what
+         makes the sync a plain vertical-offset copy instead of a line-mapping problem. -->
+    <Grid ColumnDefinitions="*,Auto,Auto,*">
+
+        <views:DiffEditorPane x:Name="LeftPane"
+                              Grid.Column="0"
+                              Document="{Binding LeftDocument}" />
+
+        <!-- The map sits between the panes so it reads as belonging to both. -->
+        <controls:DiffMap x:Name="Map"
+                          Grid.Column="1"
+                          Margin="2,0"
+                          Hunks="{Binding Hunks}"
+                          TotalLines="{Binding TotalLines}"
+                          CurrentHunk="{Binding CurrentHunk}"
+                          ViewportStart="{Binding ViewportStart}"
+                          ViewportLength="{Binding ViewportLength}" />
+
+        <Border Grid.Column="2" Width="1" Background="{DynamicResource BorderSubtle}" />
+
+        <views:DiffEditorPane x:Name="RightPane"
+                              Grid.Column="3"
+                              Document="{Binding RightDocument}" />
+    </Grid>
+</UserControl>
