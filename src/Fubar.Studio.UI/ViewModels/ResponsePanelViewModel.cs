@@ -17,29 +17,47 @@ namespace Fubar.Studio.UI.ViewModels;
 /// Pretty/Tree/Raw/Headers/Preview view modes, and the Tree view's JSONPath filter. Populated by
 /// <c>RequestEditorViewModel.ApplyResultToResponse</c> after every Send/Replay.
 /// </summary>
-public partial class ResponsePanelViewModel : ViewModelBase
+public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
 {
     private readonly IClipboardService _clipboardService;
     private readonly IFilePickerService _filePickerService;
     private readonly StatusLogViewModel _statusLog;
     private readonly IJsonSchemaValidator _schemaValidator;
     private readonly IJsonPathEvaluator _jsonPathEvaluator;
+    private readonly IResponseBaselineService _baseline;
+    private readonly IDiffPreviewService _diffPreview;
 
     public ResponsePanelViewModel(
         IClipboardService clipboardService,
         IFilePickerService filePickerService,
         StatusLogViewModel statusLog,
         IJsonSchemaValidator schemaValidator,
-        IJsonPathEvaluator jsonPathEvaluator)
+        IJsonPathEvaluator jsonPathEvaluator,
+        IResponseBaselineService baseline,
+        IDiffPreviewService diffPreview)
     {
         _clipboardService = clipboardService;
         _filePickerService = filePickerService;
         _statusLog = statusLog;
         _schemaValidator = schemaValidator;
         _jsonPathEvaluator = jsonPathEvaluator;
+        _baseline = baseline;
+        _diffPreview = diffPreview;
 
         Headers.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HeadersTabTitle));
+
+        // The pin is app-wide, so it can change from another request's pane. Without this the button
+        // here would still claim there is nothing pinned.
+        _baseline.Changed += OnBaselineChanged;
     }
+
+    /// <summary>
+    /// Detaches from the app-wide pin. The baseline service outlives every request editor, so a pane
+    /// that never unsubscribes keeps its whole editor alive for the rest of the session.
+    /// </summary>
+    public void Dispose() => _baseline.Changed -= OnBaselineChanged;
+
+    private void OnBaselineChanged(object? sender, EventArgs e) => RaiseBaselineState();
 
     [ObservableProperty]
     public partial bool HasResponse { get; set; }
@@ -229,6 +247,62 @@ public partial class ResponsePanelViewModel : ViewModelBase
     /// <see cref="LoadBody"/>). Also honoured by the manual Format button. In-memory only for now.</summary>
     [ObservableProperty]
     public partial bool AutoFormatJson { get; set; }
+
+    // ---- Comparing two responses ----------------------------------------------------------------
+
+    /// <summary>
+    /// Names this response in a diff header - set by <c>RequestEditorViewModel</c> after each send,
+    /// because the pane knows the status and the clock but not which request produced it.
+    /// </summary>
+    public string SourceLabel { get; set; } = "Response";
+
+    /// <summary>Whether there is a pinned response to compare the current one against.</summary>
+    public bool HasBaseline => _baseline.Pinned is not null;
+
+    /// <summary>Both sides must exist before Compare means anything.</summary>
+    public bool CanCompareWithBaseline => HasResponse && HasBaseline;
+
+    public string BaselineTooltip => _baseline.Pinned is { } pinned
+        ? $"Compare this response against the pinned one ({pinned.Label})"
+        : "Pin a response first, then send again and compare";
+
+    partial void OnHasResponseChanged(bool value) => RaiseBaselineState();
+
+    private void RaiseBaselineState()
+    {
+        OnPropertyChanged(nameof(HasBaseline));
+        OnPropertyChanged(nameof(CanCompareWithBaseline));
+        OnPropertyChanged(nameof(BaselineTooltip));
+    }
+
+    /// <summary>
+    /// Sets this response aside as the left-hand side of a later comparison. Snapshots the text
+    /// rather than referencing the pane: the next send overwrites <see cref="RawBody"/>, and pinning
+    /// a live reference would quietly compare the response against itself.
+    /// </summary>
+    [RelayCommand]
+    private void PinAsBaseline()
+    {
+        if (!HasResponse)
+        {
+            return;
+        }
+
+        _baseline.Pin(new PinnedResponse(RawBody, $"{SourceLabel} · {DateTime.Now:HH:mm:ss}"));
+        _statusLog.Log($"Pinned response for comparison ({RawBody.Length:N0} chars)");
+    }
+
+    /// <summary>Diffs the pinned response (left, older) against this one (right, current).</summary>
+    [RelayCommand]
+    private async Task CompareWithBaselineAsync()
+    {
+        if (_baseline.Pinned is not { } pinned || !HasResponse)
+        {
+            return;
+        }
+
+        await _diffPreview.ShowAsync(pinned.Body, RawBody, pinned.Label, SourceLabel, "Compare responses");
+    }
 
     private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
 

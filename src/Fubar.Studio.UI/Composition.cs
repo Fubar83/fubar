@@ -39,6 +39,8 @@ internal static class Composition
                 services.AddSingleton<JsonSemanticPass>();
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();
                 services.AddSingleton<IDiffPreviewService, DiffPreviewService>();
+                // Singleton on purpose: a response pinned on one request must survive opening another.
+                services.AddSingleton<IResponseBaselineService, ResponseBaselineService>();
 
                 // Shared across every window (one theme, one log, all stateless services).
                 services.AddSingleton<StatusLogViewModel>();

@@ -81,7 +81,8 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         IClipboardService clipboardService,
         IFilePickerService filePickerService,
         StatusLogViewModel statusLog,
-        IDiffPreviewService diffPreview)
+        IDiffPreviewService diffPreview,
+        IResponseBaselineService responseBaseline)
     {
         _original = request;
         _workspace = workspace;
@@ -125,7 +126,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         Body = RequestBodyViewModel.FromModel(request.Body, filePickerService, schemaValidator, bodySchema);
         Auth = new RequestAuthViewModel(new TokenRequestEditorViewModel(filePickerService, schemaValidator));
         Auth.LoadFrom(request.Auth);
-        Response = new ResponsePanelViewModel(clipboardService, filePickerService, statusLog, schemaValidator, jsonPathEvaluator);
+        Response = new ResponsePanelViewModel(clipboardService, filePickerService, statusLog, schemaValidator, jsonPathEvaluator, responseBaseline, diffPreview);
         // A success-response JSON Schema stashed by the OpenAPI importer lets the Response pane validate
         // what actually comes back against what the spec promised.
         Response.SetResponseSchema(request.Settings?["fubarOpenApi"]?["responseSchema"]?.ToJsonString());
@@ -180,7 +181,11 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     /// <summary>Unsubscribes from <see cref="EnvironmentManagerViewModel"/> - it outlives every
     /// individual request (it's a shared singleton), so without this each replaced
     /// <see cref="MainViewModel.ActiveRequest"/> would leak forever as a dangling event handler.</summary>
-    public void Dispose() => _environmentManager.PropertyChanged -= OnEnvironmentManagerPropertyChanged;
+    public void Dispose()
+    {
+        _environmentManager.PropertyChanged -= OnEnvironmentManagerPropertyChanged;
+        Response.Dispose();
+    }
 
     /// <summary>The workspace this request belongs to - used by MainViewModel to clear the main
     /// canvas when that workspace's tab is closed.</summary>
@@ -614,6 +619,14 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
 
     private void ApplyResultToResponse(ExecutionResult result)
     {
+        // Names this response in a diff header. Includes the environment because comparing the same
+        // request across two of them is the main reason to pin one, and "Response" on both sides of
+        // the diff would make the comparison unreadable.
+        var environment = _environmentManager.ActiveEnvironment?.Name;
+        Response.SourceLabel = environment is null
+            ? $"{Method} {Name} · {result.StatusCode}"
+            : $"{Method} {Name} · {environment} · {result.StatusCode}";
+
         Response.HasResponse = true;
         Response.ElapsedMilliseconds = result.ElapsedMilliseconds;
         Response.SizeBytes = result.SizeBytes;

@@ -231,6 +231,21 @@
                             Command="{Binding FormatResponseJsonCommand}" />
                     <Button Content="📋 Copy Body" Classes="secondary-btn" IsEnabled="{Binding HasResponse}" Command="{Binding CopyResponseBodyCommand}" />
                     <Button Content="💾 Save File" Classes="secondary-btn" IsEnabled="{Binding HasResponse}" Command="{Binding SaveResponseToFileCommand}" />
+
+                    <fc:Divider Orientation="Vertical" Margin="4,0" />
+
+                    <!-- Pin sets this response aside; Compare diffs the next one against it. The pin is
+                         app-wide, so the two sends can be different environments or different requests. -->
+                    <Button Content="📌 Pin"
+                            Classes="secondary-btn"
+                            ToolTip.Tip="Set this response aside to compare a later one against"
+                            IsEnabled="{Binding HasResponse}"
+                            Command="{Binding PinAsBaselineCommand}" />
+                    <Button Content="⇄ Compare"
+                            Classes="secondary-btn"
+                            ToolTip.Tip="{Binding BaselineTooltip}"
+                            IsEnabled="{Binding CanCompareWithBaseline}"
+                            Command="{Binding CompareWithBaselineCommand}" />
                 </StackPanel>
             </Grid>
         </Border>
