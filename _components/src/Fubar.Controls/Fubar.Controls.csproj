@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Reusable, app-agnostic Avalonia component library. Depends only on Avalonia (+ AvaloniaEdit for
+       the code editor) - deliberately no reference to any host app, view model, or domain concept, so
+       the components drop into any Avalonia app. Consumers add one line to Application.Styles:
+       <StyleInclude Source="avares://Fubar.Controls/Themes/Fubar.Controls.axaml" />
+       The Themes/*.axaml files are compiled into this assembly by the Avalonia build tasks, so the
+       avares:// URIs resolve identically whether this is a project or a package reference. -->
+  <PropertyGroup>
+    <RootNamespace>Fubar.Controls</RootNamespace>
+    <AssemblyName>Fubar.Controls</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- The package ships an XML doc file so consumers get IntelliSense on the many members that ARE
+         documented (every control has a type-level summary). Backfilling doc comments for the
+         remaining ~228 public members - mostly StyledProperty fields and StyleKeyOverride/OnXxx
+         overrides - is tracked separately; until then CS1591 would drown out real warnings. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <IsPackable>true</IsPackable>
+    <PackageId>Fubar.Controls</PackageId>
+    <Title>Fubar.Controls</Title>
+    <Description>An app-agnostic Avalonia design system and control library: themeable colour tokens with Dark/Light variants, and a catalog of composable controls (tab strip with drag/tear-off, key-value grid, tree view, JSON editor with schema completion, search box, segmented control, cards, badges, banners and more).</Description>
+    <PackageTags>avalonia;avaloniaui;controls;design-system;ui;components;xaml;theme</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>See https://github.com/Fubar83/fubar-components/blob/main/CHANGELOG.md</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../../README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../../LICENSE" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" />
+    <PackageReference Include="AvaloniaEdit.TextMate" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The JSON schema completion engine is internal; expose it to the test project. -->
+    <InternalsVisibleTo Include="Fubar.Controls.Tests" />
+  </ItemGroup>
+
+</Project>

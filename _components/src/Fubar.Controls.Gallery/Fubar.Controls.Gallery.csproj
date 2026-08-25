@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Component gallery / sandbox: a living style guide and dev harness for Fubar.Controls. It
+       references ONLY Fubar.Controls, so it proves the design system stands on its own and looks
+       identical outside any host app. This is the primary place to develop and review controls. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Fubar.Controls.Gallery</RootNamespace>
+    <AssemblyName>Fubar.Controls.Gallery</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" />
+    <PackageReference Include="AvaloniaEdit.TextMate" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fubar.Controls\Fubar.Controls.csproj" />
+  </ItemGroup>
+
+</Project>

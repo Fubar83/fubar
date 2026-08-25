@@ -1,0 +1,227 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:conv="using:Avalonia.Data.Converters"
+                    xmlns:fc="using:Fubar.Controls">
+
+    <!-- Layout/structure primitives: Divider, Card, SectionHeader, EmptyState, LabeledField, Toolbar.
+         Card composes Divider; SectionHeader/EmptyState expose action slots that hosts fill with
+         IconButton/Button. -->
+
+    <!-- Divider: a 1px rule, horizontal or vertical. -->
+    <ControlTheme x:Key="{x:Type fc:Divider}" TargetType="fc:Divider">
+        <Setter Property="Background" Value="{DynamicResource BorderSubtle}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}" />
+            </ControlTemplate>
+        </Setter>
+        <Style Selector="^[Orientation=Horizontal]">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0,4" />
+        </Style>
+        <Style Selector="^[Orientation=Vertical]">
+            <Setter Property="Width" Value="1" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="4,0" />
+        </Style>
+    </ControlTheme>
+
+    <!-- Card: bordered surface with an optional header strip + divider. -->
+    <ControlTheme x:Key="{x:Type fc:Card}" TargetType="fc:Card">
+        <Setter Property="Background" Value="{DynamicResource BgEditorCanvas}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderEditor}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="12" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top"
+                                    IsVisible="{TemplateBinding Header, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+                            <ContentPresenter Content="{TemplateBinding Header}"
+                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                              Margin="12,10"
+                                              FontWeight="SemiBold" />
+                            <fc:Divider Margin="0" />
+                        </StackPanel>
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Padding="{TemplateBinding Padding}" />
+                    </DockPanel>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- SectionHeader: uppercase-style group title + right-aligned action slot. Defaults to a flat,
+         semibold, secondary-colour label; set Background (a banded strip), Foreground and FontWeight to
+         get the heavier "group header" treatment (see Fubar API Studio's Left Pane groups). -->
+    <ControlTheme x:Key="{x:Type fc:SectionHeader}" TargetType="fc:SectionHeader">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Text="{TemplateBinding Title}"
+                                   Foreground="{TemplateBinding Foreground}"
+                                   FontSize="11"
+                                   FontWeight="{TemplateBinding FontWeight}"
+                                   VerticalAlignment="Center" />
+                        <ContentPresenter Grid.Column="1"
+                                          Content="{TemplateBinding Action}"
+                                          VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- Section: a banded group header (Title + Action slot) over its Content - the Left Pane's
+         REQUESTS / ENVIRONMENTS / AUTH PROFILES group pattern in one component. Composes SectionHeader
+         for the header (with the heavy "group" treatment baked in: BgHeader band, primary text, bold),
+         and a ContentPresenter for the body (host supplies the list / tree / empty-state). Draws a bottom
+         divider via BorderThickness (default 0,0,0,1); set BorderThickness="0" on the last one in a
+         stack. Content sits in a star row so a stretching child (a tree filling the pane) works. -->
+    <ControlTheme x:Key="{x:Type fc:Section}" TargetType="fc:Section">
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtle}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}">
+                    <Grid RowDefinitions="Auto,*">
+                        <fc:SectionHeader Grid.Row="0"
+                                          Title="{TemplateBinding Title}"
+                                          Action="{TemplateBinding Action}"
+                                          Background="{DynamicResource BgHeader}"
+                                          Foreground="{DynamicResource TextPrimary}"
+                                          FontWeight="Bold"
+                                          Padding="10,7,6,7" />
+                        <ContentPresenter Grid.Row="1"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}" />
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- EmptyState: centered icon + title + description + optional action. -->
+    <ControlTheme x:Key="{x:Type fc:EmptyState}" TargetType="fc:EmptyState">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Padding="24">
+                    <StackPanel HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="8"
+                                MaxWidth="360">
+                        <TextBlock Text="{TemplateBinding Icon}"
+                                   FontSize="40"
+                                   HorizontalAlignment="Center"
+                                   IsVisible="{TemplateBinding Icon, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                        <TextBlock Text="{TemplateBinding Title}"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimary}"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{TemplateBinding Title, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                        <TextBlock Text="{TemplateBinding Description}"
+                                   FontSize="12"
+                                   Foreground="{TemplateBinding Foreground}"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{TemplateBinding Description, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                        <ContentPresenter Content="{TemplateBinding Action}"
+                                          HorizontalAlignment="Center"
+                                          Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- LabeledField: caption (Header) + field (Content), stacked or side-by-side. -->
+    <ControlTheme x:Key="{x:Type fc:LabeledField}" TargetType="fc:LabeledField">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <DockPanel>
+                    <ContentPresenter Name="PART_Label"
+                                      Content="{TemplateBinding Header}"
+                                      ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontSize="12" />
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}" />
+                </DockPanel>
+            </ControlTemplate>
+        </Setter>
+        <Style Selector="^[Orientation=Vertical] /template/ ContentPresenter#PART_Label">
+            <Setter Property="DockPanel.Dock" Value="Top" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style Selector="^[Orientation=Horizontal] /template/ ContentPresenter#PART_Label">
+            <Setter Property="DockPanel.Dock" Value="Left" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </ControlTheme>
+
+    <!-- Toolbar: horizontal items strip with consistent spacing. -->
+    <ControlTheme x:Key="{x:Type fc:Toolbar}" TargetType="fc:Toolbar">
+        <Setter Property="Background" Value="{DynamicResource BgHeader}" />
+        <Setter Property="Padding" Value="6" />
+        <Setter Property="ItemsPanel">
+            <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="6" />
+            </ItemsPanelTemplate>
+        </Setter>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <ItemsPresenter ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- MetricChip: icon + monospace value (latency / size / count readouts). -->
+    <ControlTheme x:Key="{x:Type fc:MetricChip}" TargetType="fc:MetricChip">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <TextBlock Text="{TemplateBinding Icon}"
+                               FontSize="{TemplateBinding FontSize}"
+                               VerticalAlignment="Center"
+                               IsVisible="{TemplateBinding Icon, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{TemplateBinding Text}"
+                               FontSize="{TemplateBinding FontSize}"
+                               Foreground="{TemplateBinding Foreground}"
+                               FontFamily="Cascadia Code,Consolas,monospace"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+</ResourceDictionary>
