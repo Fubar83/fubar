@@ -1,0 +1,60 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <ItemGroup Label="Avalonia">
+    <PackageVersion Include="Avalonia" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.1" />
+    <!-- The legacy Avalonia.Diagnostics package has not shipped a 12.x build (stuck at 11.3.20).
+         Avalonia's tooling moved to AvaloniaUI.DiagnosticsSupport for the 12.x line instead;
+         it's Debug-only (see Fubar.Studio.UI.csproj IncludeAssets/PrivateAssets conditions). -->
+    <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
+  </ItemGroup>
+  <ItemGroup Label="Shared component library">
+    <!-- The shared design system + control library, extracted from this repo into
+         https://github.com/Fubar83/fubar-components. Not referenced when building with
+         -p:UseLocalComponents=true, which swaps in a ProjectReference to its sources. -->
+    <PackageVersion Include="Fubar.Controls" Version="0.1.0" />
+  </ItemGroup>
+  <ItemGroup Label="Data Grid">
+    <PackageVersion Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+  </ItemGroup>
+  <ItemGroup Label="JSONPath">
+    <PackageVersion Include="JsonPath.Net" Version="3.0.2" />
+  </ItemGroup>
+  <ItemGroup Label="OpenAPI import">
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
+  </ItemGroup>
+  <ItemGroup Label="MVVM">
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+  <ItemGroup Label="Editor">
+    <PackageVersion Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
+    <PackageVersion Include="AvaloniaEdit.TextMate" Version="12.0.0" />
+  </ItemGroup>
+  <ItemGroup Label="Secrets">
+    <PackageVersion Include="KeySharp" Version="1.0.5" />
+  </ItemGroup>
+  <ItemGroup Label="Hosting / DI / Http">
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.11" />
+  </ItemGroup>
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <!-- Held at 3.2.2: xunit.v3 4.0.0 drops the VSTest `dotnet test` path in favour of
+         Microsoft.Testing.Platform on .NET 10, which needs a test-runner migration (and mixed
+         MTP/VSTest projects don't run together under one `dotnet test`). Revisit when migrating. -->
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,33 @@
+name: CI
+
+# Build + test on every push to main and every pull request. Release packaging lives in build.yml
+# (it runs on version tags). Public repos get unlimited free Actions minutes, so this runs on all PRs.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel an in-progress run for a ref when a newer commit is pushed to it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore FubarApiStudio.slnx
+
+      - name: Build
+        run: dotnet build FubarApiStudio.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test FubarApiStudio.slnx --configuration Release --no-build --verbosity normal

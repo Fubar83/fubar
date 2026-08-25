@@ -1,0 +1,38 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Fubar.Studio.UI.App"
+             xmlns:local="using:Fubar.Studio.UI">
+             <!-- No hardcoded RequestedThemeVariant: ThemeManagerViewModel sets it at startup from
+                  the user's persisted Dark/Light/System preference (see App.axaml.cs) and again at
+                  runtime whenever the Left Pane's theme switcher changes it.
+
+                  ALL styling lives in the Fubar.Controls shared library now - palette, accent, fonts,
+                  component themes, button/tab/tree/list styles and the variable-tint classes. This app
+                  declares no styles of its own; it only wires up ViewLocator + the framework themes
+                  (Fluent / DataGrid / AvaloniaEdit) that Fubar.Controls builds on. -->
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Shared palette (colours + pinned accent). In Application.Resources so its
+                     ThemeDictionaries respond to ThemeManagerViewModel's RequestedThemeVariant switch. -->
+                <ResourceInclude Source="avares://Fubar.Controls/Themes/Palette.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+        <!-- Without this, AvaloniaEdit's TextEditor has no control theme at all - it neither
+             renders nor becomes focusable (Body Json/RawText editor + Response Pretty view). -->
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+        <!-- The entire shared design system: palette-driven component themes, SeamlessTabControl/TabStrip,
+             KeyValueGrid, button/tab/tree/list class styles, fonts, and the variable-tint classes. -->
+        <StyleInclude Source="avares://Fubar.Controls/Themes/Fubar.Controls.axaml" />
+    </Application.Styles>
+</Application>

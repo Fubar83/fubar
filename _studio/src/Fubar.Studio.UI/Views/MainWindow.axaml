@@ -1,0 +1,208 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+        xmlns:views="using:Fubar.Studio.UI.Views"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:models="using:Fubar.Studio.Core.Models"
+        xmlns:conv="using:Avalonia.Data.Converters"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
+        x:Class="Fubar.Studio.UI.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/fubar.ico"
+        Title=""
+        Background="{DynamicResource BgSidebar}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="38"
+        Width="1280" Height="800">
+
+    <!-- The Status &amp; Log strip no longer has a control-bar button (the control bar is reserved for
+         workspace-level actions and the environment selector), so Ctrl+` is the way to toggle it. -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+OemTilde" Command="{Binding ToggleLogCommand}" />
+    </Window.KeyBindings>
+
+    <!-- No Design.DataContext: MainViewModel now requires its child view models via
+         constructor injection (resolved from the DI host in App.axaml.cs), so it has no
+         parameterless constructor for the XAML previewer to call. -->
+
+    <!-- Fixed 3-pane single-canvas shell (RequestEditorPane.md §1): Left Pane | Request Editor |
+         Response Pane. Open workspaces are Chrome-style tabs merged into the native title bar
+         (ExtendClientAreaToDecorationsHint - the system min/max/close buttons stay put via
+         ExtendClientAreaChromeHints="SystemChrome", our content just fills the rest of that row).
+         A collapsible Status &amp; Log strip lives at the very bottom, toggled with Ctrl+`. -->
+    <Grid RowDefinitions="38,Auto,*,Auto">
+
+        <!-- Title bar row: app title, workspace tabs + new-workspace, and a draggable filler area
+             so the window can still be moved/maximized from empty space in this row like a normal
+             title bar. Window.Title is deliberately blank (see below) - the OS would otherwise draw
+             it over/behind the first tab, since content and system decorations share this same row. -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*" Background="{DynamicResource BgHeader}">
+
+            <TextBlock Grid.Column="0"
+                       Text="Fubar API Studio"
+                       FontWeight="Bold"
+                       FontSize="13"
+                       VerticalAlignment="Center"
+                       Margin="12,0,10,0"
+                       Foreground="{DynamicResource TextPrimary}" />
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom">
+                <!-- Reusable Chrome-style tab strip (Fubar.Controls). It owns all the drag/reorder/ghost/
+                     tear-off/move-between-windows mechanics; the app supplies only the data (Roots), the
+                     two-way selection (ActiveRoot), the close command, the tab-label template, and the
+                     drag bridge (TabDragHost, an ITabDragHost over WindowManager). -->
+                <fc:TabStrip x:Name="WorkspaceTabs"
+                             VerticalAlignment="Bottom"
+                             Background="Transparent"
+                             ItemsSource="{Binding WorkspaceExplorer.Roots}"
+                             SelectedItem="{Binding WorkspaceExplorer.ActiveRoot, Mode=TwoWay}"
+                             ShowCloseButton="True"
+                             CloseCommand="{Binding WorkspaceExplorer.CloseWorkspaceCommand}"
+                             DragHost="{Binding TabDragHost}">
+                    <fc:TabStrip.ItemTemplate>
+                        <DataTemplate DataType="vm:WorkspaceRootViewModel">
+                            <TextBlock Text="{Binding Name}"
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextPrimary}"
+                                       ToolTip.Tip="{Binding FullPath}" />
+                        </DataTemplate>
+                    </fc:TabStrip.ItemTemplate>
+                </fc:TabStrip>
+
+                <Button Classes="icon-btn"
+                        Content="+"
+                        FontSize="15"
+                        Margin="2,8,0,0"
+                        ToolTip.Tip="Open Workspace (fubar.json)"
+                        Command="{Binding WorkspaceExplorer.OpenWorkspaceDirectoryCommand}" />
+            </StackPanel>
+
+            <!-- Draggable filler: empty title-bar space behaves like a normal window title bar
+                 (drag to move, double-click to maximize/restore). Needs an explicit Background
+                 (even Transparent) to be hit-test visible at all. -->
+            <Panel Grid.Column="2"
+                   Background="Transparent"
+                   PointerPressed="TitleBarDragArea_OnPointerPressed"
+                   DoubleTapped="TitleBarDragArea_OnDoubleTapped" />
+        </Grid>
+
+        <!-- Control bar: workspace-level Import (spec import touches requests, environments, auth profiles
+             and variables, so it lives here rather than under the Left Pane's REQUESTS group) on the left,
+             and the active-environment selector (+ its secrets reveal toggle) on the right - the
+             environment applies to everything on the canvas, not just the Left Pane's tree, so it sits at
+             shell level. New Request/New Folder stay in the REQUESTS group header. -->
+        <Border Grid.Row="1"
+                Padding="8"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource BorderSubtle}">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6">
+                    <Button Classes="toolbar-btn"
+                            Content="Import ▾"
+                            ToolTip.Tip="Import requests into this workspace"
+                            IsEnabled="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="OpenAPI / Swagger…"
+                                          ToolTip.Tip="Import an OpenAPI / Swagger spec (JSON/YAML file or URL)"
+                                          Command="{Binding WorkspaceExplorer.ImportOpenApiCommand}" />
+                                <MenuItem Header="Postman collection…"
+                                          ToolTip.Tip="Import a Postman Collection v2.1 JSON export"
+                                          Command="{Binding WorkspaceExplorer.ImportPostmanCommand}" />
+                                <MenuItem Header="From curl…"
+                                          ToolTip.Tip="Paste a curl command to import as a request"
+                                          Command="{Binding WorkspaceExplorer.ImportCurlCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+                    <TextBlock Text="Env"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <ComboBox MinWidth="180"
+                              FontSize="12"
+                              VerticalAlignment="Center"
+                              ItemsSource="{Binding EnvironmentManager.Environments}"
+                              SelectedItem="{Binding EnvironmentManager.ActiveEnvironment}"
+                              PlaceholderText="No environment"
+                              ToolTip.Tip="Active Environment">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate DataType="models:WorkspaceEnvironment">
+                                <TextBlock Text="{Binding Name}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <ToggleButton Content="Secrets"
+                                  FontSize="11"
+                                  Padding="8,3"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding EnvironmentManager.SecretsRevealed}"
+                                  ToolTip.Tip="Reveal secret variable values in tooltips" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Left Pane | Request Editor | Response Pane -->
+        <Grid Grid.Row="2" ColumnDefinitions="280,4,*" Margin="4">
+
+            <views:LeftPaneView Grid.Column="0" DataContext="{Binding LeftPane}" />
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{DynamicResource BorderSubtle}" />
+
+            <Grid Grid.Column="2" RowDefinitions="*,4,*">
+
+                <Panel Grid.Row="0">
+                    <!-- ContentControl (not a direct <views:RequestEditorView DataContext="..."/>)
+                         so ViewLocator resolves the view from ActiveEditor's own type
+                         (RequestEditorViewModel -> RequestEditorView, EnvironmentEditorViewModel ->
+                         EnvironmentEditorView, AuthProfileEditorViewModel -> AuthProfileEditorView)
+                         - keeps IsVisible below evaluated against MainViewModel rather than against
+                         whatever gets set as this element's own DataContext. -->
+                    <ContentControl Content="{Binding ActiveEditor}" IsVisible="{Binding ActiveEditor, Converter={x:Static conv:ObjectConverters.IsNotNull}}" />
+                    <fc:EmptyState IsVisible="{Binding ActiveEditor, Converter={x:Static conv:ObjectConverters.IsNull}}"
+                                   Icon="&#x1F4C4;"
+                                   Title="Nothing open"
+                                   Description="Double-click a request, environment, or auth profile in the Explorer." />
+                </Panel>
+
+                <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="{DynamicResource BorderSubtle}" ResizeDirection="Rows" />
+
+                <!-- IsVisible lives on this wrapping Border (not on ResponsePanelView itself) so it
+                     still evaluates against MainViewModel - setting DataContext and IsVisible on
+                     the very same element makes IsVisible resolve against the *new* DataContext
+                     instead (see the ContentControl comment above). Gating visibility at all here
+                     matters because when ActiveRequest is null, ResponsePanelView's DataContext
+                     below resolves to null, and a null DataContext makes every one of its own
+                     "{Binding HasResponse}"-style IsVisible bindings fail to evaluate and fall back
+                     to Visual.IsVisible's own default (true) - which would otherwise show every
+                     view-mode pill and "No response yet" at once. -->
+                <Border Grid.Row="2" IsVisible="{Binding ActiveRequest, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+                    <views:ResponsePanelView DataContext="{Binding ActiveRequest.Response}" />
+                </Border>
+
+            </Grid>
+
+        </Grid>
+
+        <!-- Collapsible Status &amp; Log strip (Ctrl+` toggles it - see Window.KeyBindings above) -->
+        <Border Grid.Row="3"
+                Height="160"
+                IsVisible="{Binding IsLogVisible}"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                Background="{DynamicResource BgHeader}">
+            <views:StatusLogView DataContext="{Binding StatusLog}" />
+        </Border>
+
+    </Grid>
+
+</Window>

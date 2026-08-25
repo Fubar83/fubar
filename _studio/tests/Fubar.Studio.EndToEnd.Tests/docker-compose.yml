@@ -1,0 +1,24 @@
+# Two throwaway httpbin instances for the live auth e2e tests, so they can run fully offline and
+# deterministically without depending on public services. This is a third-party server image
+# (httpbin) - we deliberately do NOT write our own server to test our own client.
+#
+# The second instance is on a different port, i.e. a different ORIGIN, which is what the
+# cross-origin redirect credential-stripping tests need.
+#
+#   docker compose -f tests/Fubar.Studio.EndToEnd.Tests/docker-compose.yml up -d
+#   FUBAR_E2E=1 \
+#     FUBAR_E2E_BASEURL=http://localhost:8080 \
+#     FUBAR_E2E_OTHERHOST=http://localhost:8081/get \
+#     dotnet test tests/Fubar.Studio.EndToEnd.Tests
+#   docker compose -f tests/Fubar.Studio.EndToEnd.Tests/docker-compose.yml down
+
+services:
+  httpbin:
+    image: kennethreitz/httpbin        # same code as httpbin.org, so response shapes match the assertions
+    ports:
+      - "8080:80"
+
+  httpbin-other:
+    image: kennethreitz/httpbin
+    ports:
+      - "8081:80"

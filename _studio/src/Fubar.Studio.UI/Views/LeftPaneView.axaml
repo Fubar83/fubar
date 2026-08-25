@@ -1,0 +1,192 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:views="using:Fubar.Studio.UI.Views"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:controls="using:Fubar.Studio.UI.Controls"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
+             x:Class="Fubar.Studio.UI.Views.LeftPaneView"
+             x:DataType="vm:LeftPaneViewModel"
+             Background="{DynamicResource BgSidebar}">
+
+    <!-- Workspace identity now lives entirely in the title bar's tab strip (MainWindow.axaml) -
+         the Left Pane just reflects whichever tab is active (WorkspaceExplorer.ActiveRoot), and is
+         empty (no header rows, no groups) when there isn't one. The active-environment selector lives
+         in the shell control bar (MainWindow.axaml), not here. Environments / Auth Profiles /
+         Requests all share one look: a banded group header (label + "+") over either the list or a
+         "nothing yet" message, so the tree reads as just another group instead of a separate
+         first-class area. -->
+    <!-- All styling (group headers, list rows, row-action glyphs) comes from Fubar.Controls now -
+         this view declares none of its own. -->
+
+    <Grid>
+
+        <fc:EmptyState IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNull}}"
+                       Icon="&#x1F4E6;"
+                       Title="No workspace open"
+                       Description="Open a folder containing a fubar.json to get started.">
+            <fc:EmptyState.Action>
+                <Button Classes="secondary-btn"
+                        Content="Open Workspace..."
+                        Command="{Binding WorkspaceExplorer.OpenWorkspaceDirectoryCommand}" />
+            </fc:EmptyState.Action>
+        </fc:EmptyState>
+
+        <Grid IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+              RowDefinitions="Auto,Auto,*">
+
+            <!-- Environments group -->
+            <fc:Section Grid.Row="0" Title="ENVIRONMENTS" x:DataType="vm:LeftPaneViewModel">
+                <fc:Section.Action>
+                    <Button Classes="icon-btn"
+                            Content="+"
+                            FontSize="14"
+                            Padding="6,0"
+                            ToolTip.Tip="New Environment"
+                            Command="{Binding EnvironmentsSection.NewEnvironmentCommand}" />
+                </fc:Section.Action>
+                <StackPanel>
+                    <TextBlock Text="No environments yet."
+                               IsVisible="{Binding !EnvironmentsSection.HasRows}"
+                               Margin="10,8"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" />
+
+                    <ScrollViewer MaxHeight="120" IsVisible="{Binding EnvironmentsSection.HasRows}">
+                        <ItemsControl ItemsSource="{Binding EnvironmentsSection.Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:EnvironmentRowViewModel">
+                                    <Border Classes="ListRow" Tapped="EnvironmentRow_OnTapped">
+                                        <Panel>
+                                            <!-- Selected-row background, fills the whole row behind the content. -->
+                                            <Border CornerRadius="4" Background="{DynamicResource BgSelected}">
+                                                <Border.IsVisible>
+                                                    <MultiBinding Converter="{x:Static fc:EqualityConverter.Instance}">
+                                                        <Binding Path="Model.Id" />
+                                                        <Binding Path="$parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).EnvironmentsSection.SelectedEnvironmentId" />
+                                                    </MultiBinding>
+                                                </Border.IsVisible>
+                                            </Border>
+                                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="10,0">
+                                                <Panel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" IsVisible="{Binding !IsEditing}" FontSize="12" Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBox Text="{Binding EditName}" IsVisible="{Binding IsEditing}" FontSize="12" fc:FocusHelper.FocusOnTrue="{Binding IsEditing}" KeyDown="EnvironmentEditNameTextBox_OnKeyDown" LostFocus="EnvironmentEditNameTextBox_OnLostFocus" />
+                                                </Panel>
+                                                <Button Grid.Column="1" Classes="icon-btn RowActionGlyph" ToolTip.Tip="Rename"
+                                                        Command="{Binding $parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).EnvironmentsSection.BeginRenameCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <PathIcon Data="{DynamicResource IconRename}" Width="13" Height="13" />
+                                                </Button>
+                                                <Button Grid.Column="2" Classes="icon-btn icon-btn-danger RowActionGlyph" ToolTip.Tip="Delete"
+                                                        Command="{Binding $parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).EnvironmentsSection.DeleteCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <PathIcon Data="{DynamicResource IconDelete}" Width="13" Height="13" />
+                                                </Button>
+                                            </Grid>
+                                        </Panel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </fc:Section>
+
+            <!-- Auth Profiles group -->
+            <fc:Section Grid.Row="1" Title="AUTH PROFILES" x:DataType="vm:LeftPaneViewModel">
+                <fc:Section.Action>
+                    <Button Classes="icon-btn"
+                            Content="+"
+                            FontSize="14"
+                            Padding="6,0"
+                            ToolTip.Tip="New Auth Profile"
+                            Command="{Binding AuthProfilesSection.NewProfileCommand}" />
+                </fc:Section.Action>
+                <StackPanel>
+                    <TextBlock Text="No auth profiles yet."
+                               IsVisible="{Binding !AuthProfilesSection.HasRows}"
+                               Margin="10,8"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" />
+
+                    <ScrollViewer MaxHeight="120" IsVisible="{Binding AuthProfilesSection.HasRows}">
+                        <ItemsControl ItemsSource="{Binding AuthProfilesSection.Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:AuthProfileRowViewModel">
+                                    <Border Classes="ListRow" Tapped="AuthProfileRow_OnTapped">
+                                        <Panel>
+                                            <Border CornerRadius="4" Background="{DynamicResource BgSelected}">
+                                                <Border.IsVisible>
+                                                    <MultiBinding Converter="{x:Static fc:EqualityConverter.Instance}">
+                                                        <Binding Path="Model.Id" />
+                                                        <Binding Path="$parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).AuthProfilesSection.SelectedProfileId" />
+                                                    </MultiBinding>
+                                                </Border.IsVisible>
+                                            </Border>
+                                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="10,0">
+                                                <Panel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" IsVisible="{Binding !IsEditing}" FontSize="12" Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBox Text="{Binding EditName}" IsVisible="{Binding IsEditing}" FontSize="12" fc:FocusHelper.FocusOnTrue="{Binding IsEditing}" KeyDown="AuthProfileEditNameTextBox_OnKeyDown" LostFocus="AuthProfileEditNameTextBox_OnLostFocus" />
+                                                </Panel>
+                                                <Button Grid.Column="1" Classes="icon-btn RowActionGlyph" ToolTip.Tip="Rename"
+                                                        Command="{Binding $parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).AuthProfilesSection.BeginRenameCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <PathIcon Data="{DynamicResource IconRename}" Width="13" Height="13" />
+                                                </Button>
+                                                <Button Grid.Column="2" Classes="icon-btn icon-btn-danger RowActionGlyph" ToolTip.Tip="Delete"
+                                                        Command="{Binding $parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).AuthProfilesSection.DeleteCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <PathIcon Data="{DynamicResource IconDelete}" Width="13" Height="13" />
+                                                </Button>
+                                            </Grid>
+                                        </Panel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </fc:Section>
+
+            <!-- Requests group - same header treatment as the two above, but its "+" opens New
+                 Request / New Folder via a flyout menu (it has two create actions, not one) and its
+                 list is the request tree itself, filling the remaining space. Last section in the
+                 stack, so no bottom divider (BorderThickness="0"). -->
+            <fc:Section Grid.Row="2" Title="REQUESTS" BorderThickness="0" x:DataType="vm:LeftPaneViewModel">
+                <fc:Section.Action>
+                    <Button Classes="icon-btn"
+                            Content="+"
+                            FontSize="14"
+                            Padding="6,0"
+                            ToolTip.Tip="New Request or Folder">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="New Request" Command="{Binding WorkspaceExplorer.NewRequestCommand}" />
+                                <MenuItem Header="New Folder" Command="{Binding WorkspaceExplorer.NewFolderCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </fc:Section.Action>
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Grid.Row="0"
+                               Text="No requests yet."
+                               IsVisible="{Binding !WorkspaceExplorer.HasActiveRootChildren}"
+                               Margin="10,8"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" />
+
+                    <views:WorkspaceExplorerView Grid.Row="1" DataContext="{Binding WorkspaceExplorer}" />
+                </Grid>
+            </fc:Section>
+
+        </Grid>
+
+    </Grid>
+
+</UserControl>

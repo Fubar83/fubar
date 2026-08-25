@@ -1,0 +1,117 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:views="using:Fubar.Studio.UI.Views"
+             xmlns:controls="using:Fubar.Studio.UI.Controls"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:avc="using:Avalonia.Data.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="520"
+             x:Class="Fubar.Studio.UI.Views.TokenRequestEditorView"
+             x:Name="Root"
+             x:DataType="vm:TokenRequestEditorViewModel">
+
+    <!-- OAuth 2.0 / login edited as a real request seeded from a template. The token request runs on
+         Test/Get token or before a send; its capture rules pull tokens into session variables, and a
+         failing token request clears them. -->
+    <StackPanel Spacing="10">
+
+        <!-- Template picker -->
+        <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Template" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+            <ComboBox ItemsSource="{Binding TemplateOptions}"
+                      SelectedItem="{Binding SelectedTemplate}"
+                      MinWidth="240"
+                      PlaceholderText="Choose a template" />
+            <Button Classes="secondary-btn" Content="Apply" Command="{Binding ApplyTemplateCommand}"
+                    ToolTip.Tip="Seed the request below from this template (overwrites the current fields)" />
+        </StackPanel>
+
+        <!-- Method + token URL -->
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <ComboBox Grid.Column="0" ItemsSource="{Binding MethodOptions}" SelectedItem="{Binding Method}" MinWidth="110" />
+            <TextBox Grid.Column="1" Text="{Binding Url}" PlaceholderText="Token URL (e.g. https://auth.example.com/oauth/token)"
+                     controls:VariableTooltip.Context="{Binding VariableContext}"
+                     controls:VariableIntellisense.Context="{Binding VariableContext}" />
+        </Grid>
+
+        <fc:SeamlessTabControl Background="{DynamicResource BgEditorCanvas}" MinHeight="220">
+
+            <TabItem Header="Headers">
+                <fc:KeyValueGrid DataContext="{Binding Headers}"
+                                 ItemsSource="{Binding Rows}"
+                                 AddCommand="{Binding AddRowCommand}"
+                                 RemoveCommand="{Binding RemoveRowCommand}" />
+            </TabItem>
+
+            <TabItem Header="Body">
+                <views:RequestBodyView DataContext="{Binding Body}" />
+            </TabItem>
+
+            <TabItem Header="Captures">
+                <StackPanel Spacing="6" Margin="4">
+                    <TextBlock Text="Extract tokens from the response into session variables. If the token request fails, these clear."
+                               FontSize="11" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                    <Grid ColumnDefinitions="28,2*,1.4*,3*,28">
+                        <TextBlock Grid.Column="1" Text="VARIABLE" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                        <TextBlock Grid.Column="2" Text="FROM" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                        <TextBlock Grid.Column="3" Text="EXPRESSION" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Captures}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:CaptureRowViewModel">
+                                <Grid ColumnDefinitions="28,2*,1.4*,3*,28" Margin="0,2">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding VariableName}" PlaceholderText="name" Margin="2,0" />
+                                    <ComboBox Grid.Column="2" Margin="2,0" HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding #Root.((vm:TokenRequestEditorViewModel)DataContext).SourceOptions}"
+                                              SelectedItem="{Binding Source}" />
+                                    <TextBox Grid.Column="3" Text="{Binding Expression}" IsVisible="{Binding NeedsExpression}"
+                                             PlaceholderText="$.access_token  or  Header-Name"
+                                             FontFamily="Cascadia Code,Consolas,monospace" Margin="2,0" />
+                                    <Button Grid.Column="4" Classes="icon-btn" Content="&#x2715;" FontSize="11"
+                                            HorizontalAlignment="Center"
+                                            Command="{Binding #Root.((vm:TokenRequestEditorViewModel)DataContext).RemoveCaptureCommand}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Classes="secondary-btn" Content="+ Add capture" HorizontalAlignment="Left"
+                            Command="{Binding AddCaptureCommand}" />
+                </StackPanel>
+            </TabItem>
+
+        </fc:SeamlessTabControl>
+
+        <Expander Header="Token variables (session-only, not saved)">
+            <StackPanel Spacing="6" Margin="0,6,0,0">
+                <TextBox Text="{Binding AccessTokenVariable}" PlaceholderText="Access token variable (default: oauth2_access_token)" />
+                <TextBox Text="{Binding ExpiryVariable}" PlaceholderText="Expiry variable (default: oauth2_expires_at)" />
+                <TextBox Text="{Binding ExpiresInExpression}" PlaceholderText="Expiry JSONPath (optional, e.g. $.expires_in)"
+                         FontFamily="Cascadia Code,Consolas,monospace" />
+            </StackPanel>
+        </Expander>
+
+        <StackPanel Orientation="Horizontal" Spacing="10">
+            <Button Classes="secondary-btn" Content="Verify request" ToolTip.Tip="Preview the token request (no call)" Command="{Binding VerifyRequestCommand}" />
+            <Button Classes="secondary-btn" Content="Test / Get token" Command="{Binding TestAuthCommand}" />
+            <TextBlock Text="{Binding TestStatus}"
+                       IsVisible="{Binding TestStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="12" />
+        </StackPanel>
+
+        <Border IsVisible="{Binding RequestPreview, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1" CornerRadius="6" Padding="10">
+            <SelectableTextBlock Text="{Binding RequestPreview}" FontFamily="Cascadia Code,Consolas,monospace"
+                                 FontSize="12" Foreground="{DynamicResource TextPrimary}" />
+        </Border>
+
+    </StackPanel>
+
+</UserControl>

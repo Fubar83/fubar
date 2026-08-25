@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Enforces the clean-architecture dependency rules at build/test time so accidental cross-layer
+       references fail CI. References every layer so their assemblies can be reflected over. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Fubar.Studio.Core\Fubar.Studio.Core.csproj" />
+    <ProjectReference Include="..\..\src\Fubar.Studio.Application\Fubar.Studio.Application.csproj" />
+    <ProjectReference Include="..\..\src\Fubar.Studio.Infrastructure\Fubar.Studio.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Fubar.Studio.UI\Fubar.Studio.UI.csproj" />
+  </ItemGroup>
+
+  <!-- Shared component library: a package by default, or a ProjectReference into ../fubar-components
+       when built with -p:UseLocalComponents=true. See Directory.Build.props. -->
+  <ItemGroup Condition="'$(UseLocalComponents)' != 'true'">
+    <PackageReference Include="Fubar.Controls" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalComponents)' == 'true'">
+    <!-- SetConfiguration is required, not cosmetic: fubar-components is outside this solution, so a
+         solution build does NOT propagate Configuration to it and it would quietly build Debug even
+         for `dotnet build -c Release`. -->
+    <ProjectReference Include="$(FubarComponentsPath)/src/Fubar.Controls/Fubar.Controls.csproj"
+                      SetConfiguration="Configuration=$(Configuration)" />
+  </ItemGroup>
+</Project>

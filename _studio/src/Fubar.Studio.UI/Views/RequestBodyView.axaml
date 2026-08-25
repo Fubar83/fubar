@@ -1,0 +1,142 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:avc="using:Avalonia.Data.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="300"
+             x:Class="Fubar.Studio.UI.Views.RequestBodyView"
+             x:DataType="vm:RequestBodyViewModel">
+
+    <!-- Request Body editor: type selector + the editor that type needs (JSON/RawText, FormData/
+         UrlEncoded key-value grids, or a binary file picker). Hosted by RequestEditorView's Body tab;
+         DataContext is a RequestBodyViewModel. -->
+    <DockPanel>
+        <!-- Body-type selector, plus (JSON only) a validity indicator, a Schema toggle, and Pretty. -->
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,8" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+            <ComboBox Grid.Column="0"
+                      HorizontalAlignment="Left"
+                      ItemsSource="{Binding TypeOptions}"
+                      SelectedItem="{Binding Type}" />
+
+            <TextBlock Grid.Column="2"
+                       Text="{Binding JsonValidityGlyph}"
+                       ToolTip.Tip="{Binding JsonValidityTooltip}"
+                       Foreground="{Binding JsonValidityBrush}"
+                       FontWeight="Bold"
+                       FontSize="15"
+                       VerticalAlignment="Center"
+                       Margin="0,0,10,0"
+                       IsVisible="{Binding IsJsonType}" />
+
+            <ToggleButton Grid.Column="3"
+                          Content="Schema"
+                          IsChecked="{Binding ShowSchema}"
+                          IsEnabled="{Binding HasSchema}"
+                          IsVisible="{Binding IsJsonType}"
+                          Margin="0,0,6,0"
+                          ToolTip.Tip="Show the request body's JSON Schema (read-only)" />
+
+            <Button Grid.Column="4"
+                    Classes="secondary-btn"
+                    Content="Pretty"
+                    ToolTip.Tip="Format JSON (2-space indent)"
+                    Command="{Binding FormatJsonCommand}"
+                    IsVisible="{Binding IsJsonType}" />
+        </Grid>
+
+        <!-- Schema intelligence: problems from validating the JSON body against the operation's schema
+             (from an OpenAPI import), to help the user enter correctly-shaped data. -->
+        <Border DockPanel.Dock="Bottom"
+                IsVisible="{Binding HasSchemaProblems}"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Margin="0,8,0,0"
+                Padding="8"
+                MaxHeight="130">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top"
+                           Text="Schema issues"
+                           FontWeight="SemiBold"
+                           FontSize="11"
+                           Margin="0,0,0,4"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding SchemaProblems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}"
+                                           Foreground="#E5942B"
+                                           FontSize="11"
+                                           FontFamily="Cascadia Code,Consolas,monospace"
+                                           TextWrapping="Wrap"
+                                           Margin="0,1" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- All four body-type views overlay in one Grid cell (only one visible at a time) rather than
+             sitting side-by-side as separate DockPanel children - a DockPanel defaults undocked
+             children to Dock="Left" and gives Fill treatment only to the LAST one, so with more than
+             one undocked child here, JsonEditor would be squeezed into a sliver instead of filling. -->
+        <Grid>
+            <!-- Json/RawText -->
+            <fc:JsonEditor Text="{Binding Raw}" SchemaJson="{Binding SchemaJson}" IsVisible="{Binding IsRawEditorVisible}" />
+
+            <!-- Read-only schema view, overlaying the editor when the Schema toggle is on. -->
+            <Border IsVisible="{Binding IsSchemaViewVisible}"
+                    Background="{DynamicResource BgEditorCanvas}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="1"
+                    CornerRadius="6">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Request body schema (read-only)"
+                               FontWeight="SemiBold"
+                               FontSize="11"
+                               Margin="8,6,8,4"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <fc:JsonEditor Text="{Binding SchemaPretty}" IsReadOnly="True" />
+                </DockPanel>
+            </Border>
+
+            <!-- FormData/UrlEncoded: same key-value-description grid as the Params tab. IsVisible binds
+                 on a wrapping Panel (not the grid itself) so it still resolves against
+                 RequestBodyViewModel - setting DataContext and IsVisible on the very same element
+                 would make IsVisible resolve against the *new* DataContext instead. -->
+            <Panel IsVisible="{Binding IsFormDataVisible}">
+                <fc:KeyValueGrid DataContext="{Binding FormData}"
+                                 ItemsSource="{Binding Rows}"
+                                 AddCommand="{Binding AddRowCommand}"
+                                 RemoveCommand="{Binding RemoveRowCommand}" />
+            </Panel>
+            <Panel IsVisible="{Binding IsUrlEncodedVisible}">
+                <fc:KeyValueGrid DataContext="{Binding UrlEncoded}"
+                                 ItemsSource="{Binding Rows}"
+                                 AddCommand="{Binding AddRowCommand}"
+                                 RemoveCommand="{Binding RemoveRowCommand}" />
+            </Panel>
+
+            <!-- BinaryFile -->
+            <StackPanel IsVisible="{Binding IsBinaryFileVisible}" Orientation="Horizontal" Spacing="10" VerticalAlignment="Top">
+                <Button Classes="secondary-btn" Content="Choose File..." Command="{Binding PickBinaryFileCommand}" />
+                <TextBlock Text="{Binding BinaryFilePath}"
+                           IsVisible="{Binding BinaryFilePath, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="No file chosen."
+                           IsVisible="{Binding BinaryFilePath, Converter={x:Static avc:StringConverters.IsNullOrEmpty}}"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}" />
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+
+</UserControl>

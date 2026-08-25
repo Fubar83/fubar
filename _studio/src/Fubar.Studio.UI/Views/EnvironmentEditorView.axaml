@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:conv="using:Fubar.Studio.UI.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="500"
+             x:Class="Fubar.Studio.UI.Views.EnvironmentEditorView"
+             x:DataType="vm:EnvironmentEditorViewModel"
+             Background="{DynamicResource BgEditorCanvas}">
+
+    <!-- Opened in the main canvas when a Left Pane "Environments" row is clicked for editing
+         (LeftPane.md §4.1). Variables here resolve every {{variable}} in the Request Editor when
+         this environment is active - RequestEditorPane.md §1.3. -->
+    <DockPanel Margin="20,16">
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="0,0,0,16">
+            <TextBlock Text="Environment" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondary}" />
+            <TextBox Text="{Binding Name}" Width="280" FontWeight="Bold" FontSize="14" />
+            <Button Content="Save" Classes="primary-btn" Command="{Binding SaveCommand}" />
+        </StackPanel>
+
+        <Border DockPanel.Dock="Top"
+                BorderBrush="{DynamicResource BorderEditor}"
+                BorderThickness="0,0,0,1"
+                Padding="6,0,6,8">
+            <Grid ColumnDefinitions="2*,2*,2*,110,28">
+                <TextBlock Grid.Column="0" Text="KEY" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Grid.Column="1" Text="VALUE" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Grid.Column="2" Text="DESCRIPTION" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Grid.Column="3" Text="TYPE" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+            </Grid>
+        </Border>
+
+        <Button DockPanel.Dock="Bottom"
+                Classes="secondary-btn"
+                Content="+ Add Variable"
+                Margin="0,10,0,0"
+                HorizontalAlignment="Left"
+                Command="{Binding AddRowCommand}" />
+
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Rows}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:EnvironmentVariableRowViewModel">
+                        <Border BorderBrush="{DynamicResource BorderEditor}" BorderThickness="0,0,0,1" Padding="6,6">
+                            <Grid ColumnDefinitions="2*,2*,2*,110,28">
+                                <TextBox Grid.Column="0" Text="{Binding Key}" PlaceholderText="Key" Margin="2,0" BorderThickness="0" Background="Transparent" />
+                                <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Value" Margin="2,0" BorderThickness="0" Background="Transparent" PasswordChar="{Binding IsSecretKind, Converter={x:Static conv:SecretMaskConverter.Instance}}" />
+                                <TextBox Grid.Column="2" Text="{Binding Description}" PlaceholderText="Description" Margin="2,0" BorderThickness="0" Background="Transparent" />
+                                <ComboBox Grid.Column="3"
+                                          ItemsSource="{x:Static vm:EnvironmentVariableRowViewModel.KindOptions}"
+                                          SelectedItem="{Binding Kind}"
+                                          HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Center"
+                                          Margin="2,0" />
+                                <Button Grid.Column="4"
+                                        Classes="icon-btn icon-btn-danger"
+                                        Content="&#x2715;"
+                                        FontSize="11"
+                                        HorizontalAlignment="Center"
+                                        Command="{Binding $parent[ItemsControl].((vm:EnvironmentEditorViewModel)DataContext).RemoveRowCommand}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+    </DockPanel>
+
+</UserControl>

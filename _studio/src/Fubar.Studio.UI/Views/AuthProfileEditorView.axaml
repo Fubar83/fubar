@@ -1,0 +1,50 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:views="using:Fubar.Studio.UI.Views"
+             xmlns:avc="using:Avalonia.Data.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="500"
+             x:Class="Fubar.Studio.UI.Views.AuthProfileEditorView"
+             x:DataType="vm:AuthProfileEditorViewModel"
+             Background="{DynamicResource BgEditorCanvas}">
+
+    <!-- Opened in the main canvas when a Left Pane "Auth Profiles" row is clicked for editing
+         (LeftPane.md §4.1). A profile is always one concrete scheme - unlike the Request Editor's
+         Auth tab, there's no Inherit/None/Profile selector here. -->
+    <ScrollViewer>
+        <StackPanel Margin="20,16" Spacing="12" MaxWidth="760" HorizontalAlignment="Left">
+
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Auth Profile" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondary}" />
+                <TextBox Text="{Binding Name}" Width="260" FontWeight="Bold" FontSize="14" />
+                <Button Content="Save" Classes="primary-btn" Command="{Binding SaveCommand}" />
+            </StackPanel>
+
+            <ComboBox ItemsSource="{Binding TypeOptions}"
+                      SelectedItem="{Binding Type}"
+                      HorizontalAlignment="Left"
+                      MinWidth="180" />
+
+            <TextBox Text="{Binding Token}" PlaceholderText="Bearer token" IsVisible="{Binding IsBearerVisible}" MaxWidth="480" HorizontalAlignment="Left" />
+
+            <StackPanel IsVisible="{Binding IsApiKeyVisible}" Spacing="8" MaxWidth="480" HorizontalAlignment="Left">
+                <TextBox Text="{Binding ApiKeyName}" PlaceholderText="Key name" />
+                <TextBox Text="{Binding ApiKeyValue}" PlaceholderText="Key value" PasswordChar="*" />
+                <ComboBox ItemsSource="{Binding ApiKeyLocationOptions}" SelectedItem="{Binding ApiKeyLocation}" HorizontalAlignment="Left" />
+            </StackPanel>
+
+            <StackPanel IsVisible="{Binding IsBasicVisible}" Spacing="8" MaxWidth="480" HorizontalAlignment="Left">
+                <TextBox Text="{Binding Username}" PlaceholderText="Username" />
+                <TextBox Text="{Binding Password}" PlaceholderText="Password" PasswordChar="*" />
+            </StackPanel>
+
+            <ContentControl IsVisible="{Binding IsOAuth2Visible}">
+                <views:TokenRequestEditorView DataContext="{Binding OAuth2}" />
+            </ContentControl>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

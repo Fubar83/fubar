@@ -1,0 +1,240 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:test="using:Fubar.Studio.Core.Testing"
+             xmlns:controls="using:Fubar.Studio.UI.Controls"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:conv="using:Fubar.Studio.UI.Converters"
+             xmlns:avc="using:Avalonia.Data.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="320"
+             x:Class="Fubar.Studio.UI.Views.ResponsePanelView"
+             x:Name="Root"
+             x:DataType="vm:ResponsePanelViewModel"
+             Background="{DynamicResource BgResponsePanel}">
+
+    <!-- Response Pane (ResponsePane.md): its own top-level shell region, bound to
+         MainViewModel.ActiveRequest.Response and split from the Request Editor by MainWindow's
+         GridSplitter. The Pretty/Tree/Raw/Headers/Preview switcher uses the same boxed
+         fc:SeamlessTabControl as the Request editor (Fubar.Controls/Themes/SeamlessTab.axaml). -->
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- 1. Telemetry & Header Toolbar (status / latency / size + empty-state text) -->
+        <Border Grid.Row="0"
+                Padding="8,6"
+                Background="{DynamicResource BgResponseHeader}"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource BorderSubtle}">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*">
+
+                <fc:Badge Grid.Column="0"
+                          IsVisible="{Binding HasResponse}"
+                          Background="{Binding StatusCode, Converter={x:Static conv:StatusCodeToBrushConverter.Instance}}"
+                          CornerRadius="4"
+                          Padding="8,3"
+                          Margin="0,0,8,0">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="{Binding StatusIcon}" FontSize="12" />
+                        <TextBlock Text="{Binding StatusCode}"
+                                   FontWeight="Bold"
+                                   FontSize="12"
+                                   Foreground="{Binding StatusCode, Converter={x:Static conv:StatusCodeToForegroundConverter.Instance}}" />
+                        <TextBlock Text="{Binding StatusText}"
+                                   FontWeight="Bold"
+                                   FontSize="12"
+                                   Foreground="{Binding StatusCode, Converter={x:Static conv:StatusCodeToForegroundConverter.Instance}}" />
+                    </StackPanel>
+                </fc:Badge>
+
+                <fc:MetricChip Grid.Column="1"
+                               Icon="&#x23F1;"
+                               Text="{Binding ElapsedTimeText}"
+                               Margin="0,0,12,0"
+                               IsVisible="{Binding HasResponse}"
+                               Foreground="{Binding ElapsedMilliseconds, Converter={x:Static conv:LatencyToBrushConverter.Instance}}" />
+
+                <fc:MetricChip Grid.Column="2"
+                               Icon="&#x1F4E6;"
+                               Text="{Binding ContentSizeText}"
+                               Margin="0,0,16,0"
+                               IsVisible="{Binding HasResponse}" />
+
+                <!-- Response-body schema validation badge (only when the request carries an imported schema). -->
+                <Border Grid.Column="3"
+                        IsVisible="{Binding ShowSchemaStatus}"
+                        ToolTip.Tip="{Binding SchemaStatusTooltip}"
+                        BorderBrush="{Binding SchemaStatusBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="7,3"
+                        Margin="0,0,12,0"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="{Binding SchemaStatusGlyph}" FontWeight="Bold" FontSize="12" Foreground="{Binding SchemaStatusBrush}" />
+                        <TextBlock Text="{Binding SchemaStatusText}" FontSize="12" Foreground="{Binding SchemaStatusBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Grid.Column="4"
+                           Text="No response yet - send the request to see results here."
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}"
+                           IsVisible="{Binding !HasResponse}" />
+            </Grid>
+        </Border>
+
+        <!-- 2. View switcher + content: boxed tabs, one per response view. SelectedIndex is bound
+             two-way so the shared tab component drives the view. Preview's tab only appears for
+             image content (HasPreview); the Headers tab title carries the header count. -->
+        <fc:SeamlessTabControl Grid.Row="1"
+                                     Margin="12,10,12,12"
+                                     Background="{DynamicResource BgResponsePanel}"
+                                     SelectedIndex="{Binding SelectedViewIndex, Mode=TwoWay}">
+
+            <!-- Pretty (read-only JSON editor, with AvaloniaEdit's own Ctrl+F search built in) -->
+            <TabItem Header="Pretty">
+                <fc:JsonEditor Text="{Binding RawBody}" IsReadOnly="True" />
+            </TabItem>
+
+            <!-- Tree, with its JSONPath live filter docked above it (ResponsePane.md §5) -->
+            <TabItem Header="Tree">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+                        <TextBox Text="{Binding JsonPathQuery}"
+                                 PlaceholderText="Filter with JSONPath (e.g. $.data.users[0].id)..."
+                                 Height="28"
+                                 FontSize="12"
+                                 FontFamily="Cascadia Code,Consolas,monospace" />
+                        <fc:Banner Severity="Error"
+                                   Message="{Binding JsonPathError}"
+                                   IsVisible="{Binding JsonPathError, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+
+                    <Grid>
+                        <fc:TreeView ItemsSource="{Binding JsonTreeNodes}"
+                                  IsVisible="{Binding !IsJsonPathFilterActive}"
+                                  Background="Transparent">
+                            <fc:TreeView.ItemTemplate>
+                                <TreeDataTemplate ItemsSource="{Binding Children}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Height="22">
+                                        <TextBlock Text="{Binding Key}" Foreground="{DynamicResource JsonKey}" FontFamily="Cascadia Code,Consolas,monospace" />
+                                        <TextBlock Text=":" Foreground="{DynamicResource TextSecondary}" />
+                                        <TextBlock Text="{Binding DisplayValue}"
+                                                   Foreground="{Binding Kind, Converter={x:Static conv:JsonKindToBrushConverter.Instance}}"
+                                                   FontFamily="Cascadia Code,Consolas,monospace" />
+                                        <TextBlock Text="{Binding Kind}" Foreground="{DynamicResource TextSecondary}" FontSize="10" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </TreeDataTemplate>
+                            </fc:TreeView.ItemTemplate>
+                        </fc:TreeView>
+
+                        <ListBox ItemsSource="{Binding JsonPathMatches}"
+                                 IsVisible="{Binding IsJsonPathFilterActive}"
+                                 Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="vm:JsonPathMatchViewModel">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Path}" Foreground="{DynamicResource JsonKey}" FontFamily="Cascadia Code,Consolas,monospace" />
+                                        <TextBlock Text="{Binding Value}" Foreground="{DynamicResource TextPrimary}" FontFamily="Cascadia Code,Consolas,monospace" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- Raw -->
+            <TabItem Header="Raw">
+                <TextBox Text="{Binding RawBody}"
+                         IsReadOnly="True"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         FontFamily="Cascadia Code,Consolas,monospace"
+                         BorderThickness="0"
+                         Background="Transparent" />
+            </TabItem>
+
+            <!-- Headers -->
+            <TabItem Header="{Binding HeadersTabTitle}">
+                <DataGrid ItemsSource="{Binding Headers}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          GridLinesVisibility="Horizontal"
+                          HeadersVisibility="Column">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Header Name" Binding="{Binding Key}" Width="1*" />
+                        <DataGridTextColumn Header="Header Value" Binding="{Binding Value}" Width="2*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+            <!-- Tests (assertion results) - only present when the request defined assertions -->
+            <TabItem Header="{Binding TestsTabTitle}" IsVisible="{Binding HasTestResults}">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="8,5" Margin="0,0,0,8" CornerRadius="4"
+                            Background="{DynamicResource BgResponseHeader}">
+                        <TextBlock FontWeight="SemiBold">
+                            <Run Text="{Binding TestSummary}" />
+                        </TextBlock>
+                    </Border>
+                    <ListBox ItemsSource="{Binding TestResults}" Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="test:AssertionResult">
+                                <Grid ColumnDefinitions="20,*,Auto" Height="24">
+                                    <TextBlock Grid.Column="0" Text="&#x2714;" IsVisible="{Binding Passed}" Foreground="#43A047" FontWeight="Bold" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="0" Text="&#x2718;" IsVisible="{Binding !Passed}" Foreground="#E53935" FontWeight="Bold" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Description}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Actual}" Foreground="{DynamicResource TextSecondary}"
+                                               FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" VerticalAlignment="Center"
+                                               MaxWidth="220" TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </TabItem>
+
+            <!-- Preview (image content only) -->
+            <TabItem Header="Preview" IsVisible="{Binding HasPreview}">
+                <ScrollViewer>
+                    <Image Source="{Binding PreviewBitmapImage}" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16" MaxHeight="600" />
+                </ScrollViewer>
+            </TabItem>
+
+        </fc:SeamlessTabControl>
+
+        <!-- 3. Action Footer & Content Metadata -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource BgResponseHeader}"
+                Padding="8,4"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource BorderSubtle}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding ContentTypeHeader}"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondary}"
+                           VerticalAlignment="Center"
+                           FontFamily="Cascadia Code,Consolas,monospace" />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <!-- JSON-only: manual Format + auto-format toggle (pretty-prints the body). -->
+                    <CheckBox Content="Auto-format"
+                              IsChecked="{Binding AutoFormatJson}"
+                              IsVisible="{Binding IsJsonResponse}"
+                              VerticalAlignment="Center" />
+                    <Button Content="Format"
+                            Classes="secondary-btn"
+                            IsVisible="{Binding IsJsonResponse}"
+                            Command="{Binding FormatResponseJsonCommand}" />
+                    <Button Content="📋 Copy Body" Classes="secondary-btn" IsEnabled="{Binding HasResponse}" Command="{Binding CopyResponseBodyCommand}" />
+                    <Button Content="💾 Save File" Classes="secondary-btn" IsEnabled="{Binding HasResponse}" Command="{Binding SaveResponseToFileCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+    </Grid>
+
+</UserControl>

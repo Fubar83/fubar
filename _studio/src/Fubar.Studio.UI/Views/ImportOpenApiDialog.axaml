@@ -1,0 +1,113 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+        xmlns:conv="using:Fubar.Studio.UI.Converters"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:avc="using:Avalonia.Data.Converters"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="680"
+        x:Class="Fubar.Studio.UI.Views.ImportOpenApiDialog"
+        x:DataType="vm:ImportOpenApiViewModel"
+        Title="Import OpenAPI / Swagger"
+        Width="740" Height="700"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgSidebar}">
+
+    <Window.Resources>
+        <DataTemplate x:Key="ChangeRow" x:DataType="vm:ImportItemViewModel">
+            <Grid ColumnDefinitions="Auto,72,*,Auto" Margin="4,2" ColumnSpacing="8">
+                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanSelect}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding ChangeLabel}"
+                           Foreground="{Binding Change, Converter={x:Static conv:ImportChangeBrushConverter.Instance}}"
+                           FontSize="10" FontWeight="Bold" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding Label}" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource TextPrimary}" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" MaxWidth="240"
+                           Foreground="{DynamicResource TextSecondary}" FontSize="11" VerticalAlignment="Center"
+                           FontFamily="Cascadia Code,Consolas,monospace" />
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="16" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
+
+        <!-- Source -->
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock Text="Spec source (a local JSON/YAML file, or an http(s) URL)"
+                       FontSize="12" Foreground="{DynamicResource TextSecondary}" />
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBox Grid.Column="0" Text="{Binding Source}" PlaceholderText="https://petstore3.swagger.io/api/v3/openapi.json" VerticalContentAlignment="Center" />
+                <Button Grid.Column="1" Classes="secondary-btn" Content="Browse..." Margin="6,0,0,0" Command="{Binding BrowseCommand}" />
+                <Button Grid.Column="2" Classes="primary-btn" Content="Load" Margin="6,0,0,0" Command="{Binding LoadCommand}" />
+            </Grid>
+        </StackPanel>
+
+        <TextBlock Grid.Row="1" Margin="0,8,0,0" Text="{Binding StatusMessage}"
+                   IsVisible="{Binding StatusMessage, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                   Foreground="{DynamicResource StatusDirty}" TextWrapping="Wrap" FontSize="12" />
+
+        <TextBlock Grid.Row="2" Margin="0,10,0,6" Text="{Binding Summary}" IsVisible="{Binding HasDiff}"
+                   FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
+
+        <!-- Diff -->
+        <Grid Grid.Row="3" IsVisible="{Binding HasDiff}" RowDefinitions="*,Auto,*,Auto">
+
+            <Border Grid.Row="0" Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="6">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="8,6">
+                        <TextBlock Grid.Column="0" Text="Requests" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="secondary-btn" Content="All" Padding="8,2" Command="{Binding SelectAllRequestsCommand}" />
+                        <Button Grid.Column="2" Classes="secondary-btn" Content="None" Padding="8,2" Margin="6,0,0,0" Command="{Binding SelectNoRequestsCommand}" />
+                    </Grid>
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding RequestItems}" ItemTemplate="{StaticResource ChangeRow}" />
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows" />
+
+            <Border Grid.Row="2" Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1" CornerRadius="6">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="8,6">
+                        <TextBlock Grid.Column="0" Text="Environment variables" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="secondary-btn" Content="All" Padding="8,2" Command="{Binding SelectAllVariablesCommand}" />
+                        <Button Grid.Column="2" Classes="secondary-btn" Content="None" Padding="8,2" Margin="6,0,0,0" Command="{Binding SelectNoVariablesCommand}" />
+                    </Grid>
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding VariableItems}" ItemTemplate="{StaticResource ChangeRow}" />
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <ItemsControl Grid.Row="3" ItemsSource="{Binding Warnings}" Margin="0,8,0,0" IsVisible="{Binding HasWarnings}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <TextBlock Text="{Binding}" Foreground="{DynamicResource StatusDirty}" FontSize="11" TextWrapping="Wrap" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Grid>
+
+        <!-- Empty state before loading -->
+        <fc:EmptyState Grid.Row="3" IsVisible="{Binding !HasDiff}"
+                       Icon="&#x1F4E5;"
+                       Title="Nothing loaded yet"
+                       Description="Choose a spec file or paste a URL, then Load to preview and pick what to import or update." />
+
+        <!-- Options -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,12,0,0" IsVisible="{Binding HasDiff}">
+            <CheckBox Content="Create / replace auth profiles" IsChecked="{Binding CreateAuthProfiles}" />
+        </StackPanel>
+
+        <!-- Footer -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,16,0,0">
+            <Button Classes="secondary-btn" Content="Cancel" Command="{Binding CancelCommand}" />
+            <Button Classes="primary-btn" Content="Apply selected" IsEnabled="{Binding HasDiff}" Command="{Binding ImportCommand}" />
+        </StackPanel>
+
+    </Grid>
+
+</Window>

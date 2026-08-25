@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Application layer: cohesive use-case / orchestration services that sit between the Presentation
+       (Fubar.Studio.UI) and Domain (Fubar.Studio.Core). Depends only on Core - never on Infrastructure
+       or UI - so orchestration is testable in isolation and the dependency direction stays inward. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fubar.Studio.Core\Fubar.Studio.Core.csproj" />
+  </ItemGroup>
+
+</Project>

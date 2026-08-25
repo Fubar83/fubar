@@ -1,0 +1,410 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:views="using:Fubar.Studio.UI.Views"
+             xmlns:controls="using:Fubar.Studio.UI.Controls"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:conv="using:Fubar.Studio.UI.Converters"
+             xmlns:avc="using:Avalonia.Data.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="400"
+             x:Class="Fubar.Studio.UI.Views.RequestEditorView"
+             x:Name="Root"
+             x:DataType="vm:RequestEditorViewModel"
+             Background="{DynamicResource BgEditorCanvas}">
+
+    <!-- Single Active Request Canvas (RequestEditorPane.md §1): no request tabs - MainWindow's
+         single ContentControl swaps this whole view's DataContext whenever a different request is
+         activated from the Left Pane. The Response Viewer is a sibling pane now (ResponsePanelView),
+         not embedded here - see MainWindow.axaml. -->
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- Address Bar -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,14,16,10" Height="40">
+            <Border Grid.Column="0"
+                    BorderBrush="{DynamicResource BorderEditor}"
+                    BorderThickness="1"
+                    CornerRadius="6">
+                <Grid ColumnDefinitions="Auto,*">
+                    <ComboBox Grid.Column="0"
+                              BorderThickness="0"
+                              Background="Transparent"
+                              FontWeight="Bold"
+                              FontSize="13"
+                              Foreground="{Binding Method, Converter={x:Static conv:MethodToBrushConverter.Instance}}"
+                              ItemsSource="{Binding Provider.Methods}"
+                              SelectedItem="{Binding Method}"
+                              MinWidth="104"
+                              HorizontalAlignment="Stretch" />
+                    <Rectangle Grid.Column="0" Width="1" Margin="0,9" HorizontalAlignment="Right" Fill="{DynamicResource BorderEditor}" />
+                    <TextBox Grid.Column="1"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             FontSize="13"
+                             FontFamily="Cascadia Code,Consolas,monospace"
+                             Text="{Binding Url}"
+                             PlaceholderText="{}{{baseUrl}}/path?param={{var}}"
+                             VerticalContentAlignment="Center"
+                             controls:VariableTooltip.Context="{Binding VariableContext}"
+                             controls:VariableIntellisense.Context="{Binding VariableContext}" />
+                </Grid>
+            </Border>
+            <Panel Grid.Column="1" Margin="10,0,0,0">
+                <Button Classes="primary-btn"
+                        Content="Send"
+                        IsVisible="{Binding !IsSending}"
+                        ToolTip.Tip="Send (Ctrl+Enter)"
+                        HotKey="Ctrl+Enter"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Command="{Binding SendCommand}" />
+                <Button Classes="secondary-btn"
+                        Content="Cancel"
+                        IsVisible="{Binding IsSending}"
+                        ToolTip.Tip="Cancel the in-flight request"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Command="{Binding CancelSendCommand}" />
+            </Panel>
+            <Button Grid.Column="2"
+                    Classes="secondary-btn"
+                    Content="Save"
+                    Margin="6,0,0,0"
+                    ToolTip.Tip="Save Request (Ctrl+S)"
+                    HotKey="Ctrl+S"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Command="{Binding SaveCommand}" />
+            <Button Grid.Column="3"
+                    Classes="icon-btn"
+                    Content="⋯"
+                    FontSize="15"
+                    Margin="4,0,0,0"
+                    ToolTip.Tip="More actions"
+                    VerticalContentAlignment="Center">
+                <Button.Flyout>
+                    <MenuFlyout>
+                        <MenuItem Header="Copy as cURL"
+                                  ToolTip.Tip="Copy this request as a runnable curl command (variables resolved)"
+                                  Command="{Binding CopyAsCurlCommand}" />
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
+        </Grid>
+
+        <!-- Tabbed Request Builder: Params / Headers / Body / Auth / History (no Variables tab -
+             variables are environment-only, RequestEditorPane.md §1). Boxed tabs + seam merge +
+             content padding all come from the shared SeamlessTabControl; Background is the surface it
+             paints the merge in (the editor canvas). -->
+        <fc:SeamlessTabControl Grid.Row="1"
+                                     Margin="12,0,12,12"
+                                     Background="{DynamicResource BgEditorCanvas}">
+
+            <TabItem Header="Params">
+                <DockPanel>
+                    <!-- Read-only auth placeholder (API-key-in-query): shows the query credential the auth
+                         prestep will inject, so the user can see auth will be applied. -->
+                    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding AuthParams}" IsVisible="{Binding HasAuthParams}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:HeaderRowViewModel">
+                                <Border BorderBrush="{DynamicResource BorderEditor}" BorderThickness="0,0,0,1" Padding="6,6"
+                                        Background="{Binding IsInherited, Converter={x:Static conv:InheritedRowBackgroundConverter.Instance}}">
+                                    <Grid ColumnDefinitions="28,2*,3*,1.6*,28">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" IsEnabled="False" VerticalAlignment="Center" />
+                                        <SelectableTextBlock Grid.Column="1" Text="{Binding Key}" Margin="2,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <SelectableTextBlock Grid.Column="2" Text="{Binding Value}" Margin="2,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="3" Text="{Binding SourceName}" FontSize="11" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondary}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <fc:KeyValueGrid DataContext="{Binding Params}"
+                                     ItemsSource="{Binding Rows}"
+                                     KeySuggestions="{Binding #Root.((vm:RequestEditorViewModel)DataContext).QueryParamSuggestions}"
+                                     AddCommand="{Binding AddRowCommand}"
+                                     RemoveCommand="{Binding RemoveRowCommand}" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- Header &amp; Auth Inheritance (RequestEditorPane.md §5): inherited rows (folder
+                 chain + resolved auth profile) render readonly/grayed but stay toggleable; direct
+                 rows are fully editable. -->
+            <TabItem Header="Headers">
+                <DockPanel x:DataType="vm:HeadersTabViewModel" DataContext="{Binding Headers}">
+
+                    <Border DockPanel.Dock="Top"
+                            BorderBrush="{DynamicResource BorderEditor}"
+                            BorderThickness="0,0,0,1"
+                            Padding="6,0,6,8">
+                        <Grid ColumnDefinitions="28,2*,3*,1.6*,28">
+                            <TextBlock Grid.Column="1" Text="KEY" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                            <TextBlock Grid.Column="2" Text="VALUE" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                            <TextBlock Grid.Column="3" Text="SOURCE" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                        </Grid>
+                    </Border>
+
+                    <Button DockPanel.Dock="Bottom"
+                            Classes="secondary-btn"
+                            Content="+ Add"
+                            Margin="0,10,0,0"
+                            HorizontalAlignment="Left"
+                            Command="{Binding AddRowCommand}" />
+
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:HeaderRowViewModel">
+                                    <Border BorderBrush="{DynamicResource BorderEditor}"
+                                            BorderThickness="0,0,0,1"
+                                            Padding="6,6"
+                                            Background="{Binding IsInherited, Converter={x:Static conv:InheritedRowBackgroundConverter.Instance}}">
+                                        <Grid ColumnDefinitions="28,2*,3*,1.6*,28">
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
+
+                                            <!-- Inherited rows show a SelectableTextBlock (copy-able, but not
+                                                 an IsReadOnly TextBox - that still shows an edit caret and
+                                                 reads as "editable" even when it technically isn't) - only the
+                                                 Enabled checkbox stays interactive. Key/Value dim via
+                                                 DisplayOpacity for both cases - strongest when the row is
+                                                 unchecked (regardless of inherited/direct), a lighter touch
+                                                 just for being inherited while still enabled. -->
+                                            <Panel Grid.Column="1" Margin="2,0">
+                                                <SelectableTextBlock Text="{Binding Key}"
+                                                                     IsVisible="{Binding IsInherited}"
+                                                                     Opacity="{Binding DisplayOpacity}"
+                                                                     VerticalAlignment="Center"
+                                                                     TextTrimming="CharacterEllipsis" />
+                                                <!-- Autocomplete over common + schema-declared header names.
+                                                     Header keys are names, not variable expressions, so this
+                                                     cell offers name hints rather than {{variable}} intellisense. -->
+                                                <AutoCompleteBox Text="{Binding Key, Mode=TwoWay}"
+                                                                 IsVisible="{Binding !IsInherited}"
+                                                                 Opacity="{Binding DisplayOpacity}"
+                                                                 BorderThickness="0"
+                                                                 Background="Transparent"
+                                                                 PlaceholderText="Key"
+                                                                 FilterMode="ContainsOrdinal"
+                                                                 MinimumPrefixLength="0"
+                                                                 MaxDropDownHeight="220"
+                                                                 ItemsSource="{Binding #Root.((vm:RequestEditorViewModel)DataContext).HeaderNameSuggestions}" />
+                                            </Panel>
+                                            <Panel Grid.Column="2" Margin="2,0">
+                                                <SelectableTextBlock Text="{Binding Value}"
+                                                                     IsVisible="{Binding IsInherited}"
+                                                                     Opacity="{Binding DisplayOpacity}"
+                                                                     VerticalAlignment="Center"
+                                                                     TextTrimming="CharacterEllipsis" />
+                                                <TextBox Text="{Binding Value}"
+                                                         IsVisible="{Binding !IsInherited}"
+                                                         Opacity="{Binding DisplayOpacity}"
+                                                         BorderThickness="0"
+                                                         Background="Transparent"
+                                                         controls:VariableTooltip.Context="{Binding #Root.((vm:RequestEditorViewModel)DataContext).VariableContext}"
+                                                         controls:VariableIntellisense.Context="{Binding #Root.((vm:RequestEditorViewModel)DataContext).VariableContext}" />
+                                            </Panel>
+                                            <TextBlock Grid.Column="3"
+                                                       Text="{Binding SourceName}"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondary}" />
+                                            <Button Grid.Column="4"
+                                                    Classes="icon-btn"
+                                                    Content="&#x2715;"
+                                                    FontSize="11"
+                                                    IsVisible="{Binding !IsInherited}"
+                                                    HorizontalAlignment="Center"
+                                                    Command="{Binding #Root.((vm:RequestEditorViewModel)DataContext).Headers.RemoveRowCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="Body">
+                <views:RequestBodyView DataContext="{Binding Body}" />
+            </TabItem>
+
+            <TabItem Header="Auth">
+                <StackPanel x:DataType="vm:RequestAuthViewModel" Spacing="10" DataContext="{Binding Auth}">
+                    <ComboBox ItemsSource="{Binding TypeOptions}"
+                              SelectedItem="{Binding Type}"
+                              HorizontalAlignment="Left"
+                              MinWidth="180" />
+
+                    <TextBlock Text="Inherit from the nearest parent folder's (or workspace's) auth assignment."
+                               IsVisible="{Binding Type, Converter={x:Static conv:AuthTypeConverters.IsInherit}}"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="No authentication will be sent, overriding anything inherited."
+                               IsVisible="{Binding Type, Converter={x:Static conv:AuthTypeConverters.IsNone}}"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" />
+
+                    <TextBox Text="{Binding Token}" PlaceholderText="Bearer token" IsVisible="{Binding IsBearerVisible}" MaxWidth="420" HorizontalAlignment="Left"
+                             controls:VariableTooltip.Context="{Binding #Root.((vm:RequestEditorViewModel)DataContext).VariableContext}"
+                             controls:VariableIntellisense.Context="{Binding #Root.((vm:RequestEditorViewModel)DataContext).VariableContext}" />
+
+                    <StackPanel IsVisible="{Binding IsApiKeyVisible}" Spacing="8" MaxWidth="420" HorizontalAlignment="Left">
+                        <TextBox Text="{Binding ApiKeyName}" PlaceholderText="Key name" />
+                        <TextBox Text="{Binding ApiKeyValue}" PlaceholderText="Key value" PasswordChar="*" />
+                        <ComboBox ItemsSource="{Binding ApiKeyLocationOptions}" SelectedItem="{Binding ApiKeyLocation}" HorizontalAlignment="Left" />
+                    </StackPanel>
+
+                    <StackPanel IsVisible="{Binding IsBasicVisible}" Spacing="8" MaxWidth="420" HorizontalAlignment="Left">
+                        <TextBox Text="{Binding Username}" PlaceholderText="Username" />
+                        <TextBox Text="{Binding Password}" PlaceholderText="Password" PasswordChar="*" />
+                    </StackPanel>
+
+                    <StackPanel IsVisible="{Binding IsProfileVisible}" Spacing="8" MaxWidth="420" HorizontalAlignment="Left">
+                        <ComboBox ItemsSource="{Binding AvailableProfiles}"
+                                  SelectedItem="{Binding SelectedProfile}"
+                                  HorizontalAlignment="Stretch"
+                                  PlaceholderText="Select an auth profile">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <ContentControl IsVisible="{Binding IsOAuth2Visible}">
+                        <views:TokenRequestEditorView DataContext="{Binding OAuth2}" />
+                    </ContentControl>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Tests: per-request timeout, response-capture rules, and assertions. -->
+            <TabItem Header="Tests">
+                <ScrollViewer DataContext="{Binding Tests}">
+                    <StackPanel Margin="4" Spacing="18">
+
+                        <!-- Timeout -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="TIMEOUT" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <NumericUpDown Value="{Binding TimeoutValue}" Minimum="0" Increment="5" Width="150" FormatString="0" />
+                                <TextBlock Text="seconds — blank uses the default (100 s)" VerticalAlignment="Center"
+                                           FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Captures -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="CAPTURE VARIABLES" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                            <TextBlock Text="After a response, extract a value into a variable so later requests can use {{name}} (e.g. a login token)."
+                                       FontSize="11" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="28,2*,1.4*,3*,1.4*,28">
+                                <TextBlock Grid.Column="1" Text="VARIABLE" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                                <TextBlock Grid.Column="2" Text="FROM" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                                <TextBlock Grid.Column="3" Text="EXPRESSION" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                                <TextBlock Grid.Column="4" Text="SCOPE" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Captures}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:CaptureRowViewModel">
+                                        <Grid ColumnDefinitions="28,2*,1.4*,3*,1.4*,28" Margin="0,2">
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
+                                            <TextBox Grid.Column="1" Text="{Binding VariableName}" PlaceholderText="name" Margin="2,0" />
+                                            <ComboBox Grid.Column="2" Margin="2,0" HorizontalAlignment="Stretch"
+                                                      ItemsSource="{Binding #Root.((vm:RequestEditorViewModel)DataContext).Tests.SourceOptions}"
+                                                      SelectedItem="{Binding Source}" />
+                                            <TextBox Grid.Column="3" Text="{Binding Expression}" IsVisible="{Binding NeedsExpression}"
+                                                     PlaceholderText="$.token  or  Header-Name"
+                                                     FontFamily="Cascadia Code,Consolas,monospace" Margin="2,0" />
+                                            <ComboBox Grid.Column="4" Margin="2,0" HorizontalAlignment="Stretch"
+                                                      ItemsSource="{Binding #Root.((vm:RequestEditorViewModel)DataContext).Tests.ScopeOptions}"
+                                                      SelectedItem="{Binding Scope}" />
+                                            <Button Grid.Column="5" Classes="icon-btn" Content="&#x2715;" FontSize="11"
+                                                    HorizontalAlignment="Center"
+                                                    Command="{Binding #Root.((vm:RequestEditorViewModel)DataContext).Tests.RemoveCaptureCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Classes="secondary-btn" Content="+ Add capture" HorizontalAlignment="Left"
+                                    Command="{Binding AddCaptureCommand}" />
+                        </StackPanel>
+
+                        <!-- Assertions -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="ASSERTIONS" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                            <TextBlock Text="Checks run against each response; results appear in the Response pane's Tests tab."
+                                       FontSize="11" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="28,1.4*,3*,1.6*,2*,28">
+                                <TextBlock Grid.Column="1" Text="FROM" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                                <TextBlock Grid.Column="2" Text="TARGET" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                                <TextBlock Grid.Column="3" Text="OPERATOR" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                                <TextBlock Grid.Column="4" Text="EXPECTED" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Assertions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:AssertionRowViewModel">
+                                        <Grid ColumnDefinitions="28,1.4*,3*,1.6*,2*,28" Margin="0,2">
+                                            <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Column="1" Margin="2,0" HorizontalAlignment="Stretch"
+                                                      ItemsSource="{Binding #Root.((vm:RequestEditorViewModel)DataContext).Tests.SourceOptions}"
+                                                      SelectedItem="{Binding Source}" />
+                                            <TextBox Grid.Column="2" Text="{Binding Target}" IsVisible="{Binding NeedsTarget}"
+                                                     PlaceholderText="$.status  or  Header-Name"
+                                                     FontFamily="Cascadia Code,Consolas,monospace" Margin="2,0" />
+                                            <ComboBox Grid.Column="3" Margin="2,0" HorizontalAlignment="Stretch"
+                                                      ItemsSource="{Binding #Root.((vm:RequestEditorViewModel)DataContext).Tests.OperatorOptions}"
+                                                      SelectedItem="{Binding Operator}" />
+                                            <TextBox Grid.Column="4" Text="{Binding Expected}" IsVisible="{Binding NeedsExpected}"
+                                                     PlaceholderText="expected value" Margin="2,0" />
+                                            <Button Grid.Column="5" Classes="icon-btn" Content="&#x2715;" FontSize="11"
+                                                    HorizontalAlignment="Center"
+                                                    Command="{Binding #Root.((vm:RequestEditorViewModel)DataContext).Tests.RemoveAssertionCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Classes="secondary-btn" Content="+ Add assertion" HorizontalAlignment="Left"
+                                    Command="{Binding AddAssertionCommand}" />
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- History &amp; Replay (RequestEditorPane.md §6) -->
+            <TabItem Header="History">
+                <DataGrid ItemsSource="{Binding ExecutionHistory}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          GridLinesVisibility="Horizontal"
+                          HeadersVisibility="Column">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Timestamp" Binding="{Binding TimestampText}" Width="170" />
+                        <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="120" />
+                        <DataGridTextColumn Header="Duration" Binding="{Binding DurationText}" Width="90" />
+                        <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="90" />
+                        <DataGridTemplateColumn Header="Action" Width="140">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate DataType="vm:HistoryEntryViewModel">
+                                    <Button Content="⚡ Replay"
+                                            Classes="secondary-btn"
+                                            Command="{Binding #Root.((vm:RequestEditorViewModel)DataContext).ReplayHistoryCommand}"
+                                            CommandParameter="{Binding}" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+        </fc:SeamlessTabControl>
+
+    </Grid>
+
+</UserControl>

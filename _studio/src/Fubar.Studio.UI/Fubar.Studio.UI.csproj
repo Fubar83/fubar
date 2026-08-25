@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Output exe is FubarAPIStudio.exe (the readable product/GUI title is "Fubar API Studio", see
+         MainWindow.axaml); project/assembly namespaces are Fubar.Studio.UI. -->
+    <AssemblyName>FubarAPIStudio</AssemblyName>
+    <Product>Fubar API Studio</Product>
+    <ApplicationTitle>Fubar API Studio</ApplicationTitle>
+    <!-- Windows .exe icon (the app window icon is set in MainWindow.axaml; macOS .app icon is wired by
+         build/publish.ps1 from Assets/fubar.icns). -->
+    <ApplicationIcon>Assets/fubar.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Models\" />
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="AvaloniaEdit.TextMate" />
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fubar.Studio.Infrastructure\Fubar.Studio.Infrastructure.csproj" />
+    <ProjectReference Include="..\Fubar.Studio.Application\Fubar.Studio.Application.csproj" />
+    <ProjectReference Include="..\Fubar.Studio.Core\Fubar.Studio.Core.csproj" />
+  </ItemGroup>
+  <!-- Shared component library: a package by default, or a ProjectReference into ../fubar-components
+       when built with -p:UseLocalComponents=true. See Directory.Build.props. -->
+  <ItemGroup Condition="'$(UseLocalComponents)' != 'true'">
+    <PackageReference Include="Fubar.Controls" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalComponents)' == 'true'">
+    <!-- SetConfiguration is required, not cosmetic: fubar-components is outside this solution, so a
+         solution build does NOT propagate Configuration to it and it would quietly build Debug even
+         for `dotnet build -c Release`. -->
+    <ProjectReference Include="$(FubarComponentsPath)/src/Fubar.Controls/Fubar.Controls.csproj"
+                      SetConfiguration="Configuration=$(Configuration)" />
+  </ItemGroup>
+</Project>

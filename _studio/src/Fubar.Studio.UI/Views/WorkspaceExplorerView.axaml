@@ -1,0 +1,104 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:methodConv="using:Fubar.Studio.UI.Converters"
+             xmlns:controls="using:Fubar.Studio.UI.Controls"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="400"
+             x:Class="Fubar.Studio.UI.Views.WorkspaceExplorerView"
+             x:DataType="vm:WorkspaceExplorerViewModel"
+             Background="{DynamicResource BgSidebar}">
+
+    <!-- All tree-row styling comes from Fubar.Controls (AppStyles.axaml) now - this view declares
+         none of its own. -->
+
+    <Grid>
+
+        <!-- Only the active workspace tab's own children populate the tree - the root itself isn't
+             represented here anymore, since its name is already shown by its title-bar tab. -->
+        <fc:TreeView ItemsSource="{Binding ActiveRoot.Children}"
+                  SelectedItem="{Binding SelectedNode}"
+                  Background="Transparent"
+                  Tapped="TreeView_OnTapped">
+
+            <fc:TreeView.ContextFlyout>
+                <MenuFlyout>
+                    <MenuItem Header="New Request" Command="{Binding NewRequestCommand}" />
+                    <MenuItem Header="New Folder" Command="{Binding NewFolderCommand}" />
+                    <Separator />
+                    <MenuItem Header="Rename" Command="{Binding BeginRenameCommand}" />
+                    <MenuItem Header="Duplicate" Command="{Binding DuplicateCommand}" />
+                    <MenuItem Header="Delete" Command="{Binding DeleteCommand}" />
+                    <Separator />
+                    <MenuItem Header="Reveal in File Manager" Command="{Binding RevealInFileManagerCommand}" />
+                </MenuFlyout>
+            </fc:TreeView.ContextFlyout>
+
+            <fc:TreeView.DataTemplates>
+                <!-- One template for both folder and request nodes (LeftPane.md §5): the method
+                     badge, auth badge, and dirty dot are simply invisible on a folder node, since
+                     WorkspaceNodeViewModel.Method/HasAuthOverride/IsDirty are only ever populated
+                     for request files. -->
+                <TreeDataTemplate DataType="vm:WorkspaceNodeViewModel" ItemsSource="{Binding Children}">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" HorizontalAlignment="Stretch" Margin="{Binding Depth, Converter={x:Static fc:TreeLevelIndentConverter.Instance}}" MinHeight="20">
+
+                        <!-- Method Badge (fc:Badge - the reusable pill) -->
+                        <fc:Badge Grid.Column="0"
+                                  Width="38"
+                                  Height="16"
+                                  CornerRadius="3"
+                                  Padding="0"
+                                  Margin="0,0,6,0"
+                                  FontSize="9"
+                                  FontWeight="Bold"
+                                  Foreground="White"
+                                  Content="{Binding Method}"
+                                  IsVisible="{Binding Method, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}"
+                                  Background="{Binding Method, Converter={x:Static methodConv:MethodToBrushConverter.Instance}}" />
+
+                        <!-- Name / inline rename -->
+                        <Panel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}"
+                                       IsVisible="{Binding !IsEditing}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                            <TextBox Text="{Binding EditName}"
+                                     IsVisible="{Binding IsEditing}"
+                                     fc:FocusHelper.FocusOnTrue="{Binding IsEditing}"
+                                     KeyDown="EditNameTextBox_OnKeyDown"
+                                     LostFocus="EditNameTextBox_OnLostFocus" />
+                        </Panel>
+
+                        <!-- Auth Override Badge (fc:Badge) -->
+                        <fc:Badge Grid.Column="2"
+                                  Content="Auth"
+                                  FontSize="9"
+                                  FontWeight="Normal"
+                                  Foreground="White"
+                                  Background="{DynamicResource BadgeAuth}"
+                                  CornerRadius="3"
+                                  Padding="4,1"
+                                  Margin="4,0"
+                                  IsVisible="{Binding HasAuthOverride}"
+                                  VerticalAlignment="Center" />
+
+                        <!-- Dirty Indicator Dot (fc:StatusDot) -->
+                        <fc:StatusDot Grid.Column="3"
+                                      Diameter="6"
+                                      Background="{DynamicResource StatusDirty}"
+                                      IsVisible="{Binding IsDirty}"
+                                      Margin="4,0,2,0"
+                                      VerticalAlignment="Center"
+                                      ToolTip.Tip="Unsaved changes" />
+                    </Grid>
+                </TreeDataTemplate>
+            </fc:TreeView.DataTemplates>
+
+        </fc:TreeView>
+
+    </Grid>
+
+</UserControl>
