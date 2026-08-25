@@ -1,0 +1,34 @@
+<Solution>
+  <Folder Name="/src/shared/">
+    <Project Path="src/Fubar.Controls/Fubar.Controls.csproj" />
+    <Project Path="src/Fubar.Controls.Gallery/Fubar.Controls.Gallery.csproj" />
+  </Folder>
+  <Folder Name="/src/api-studio/">
+    <Project Path="src/Fubar.Studio.Core/Fubar.Studio.Core.csproj" />
+    <Project Path="src/Fubar.Studio.Application/Fubar.Studio.Application.csproj" />
+    <Project Path="src/Fubar.Studio.Infrastructure/Fubar.Studio.Infrastructure.csproj" />
+    <Project Path="src/Fubar.Studio.UI/Fubar.Studio.UI.csproj" />
+  </Folder>
+  <Folder Name="/src/diff/">
+    <Project Path="src/Fubar.Diff.Core/Fubar.Diff.Core.csproj" />
+    <Project Path="src/Fubar.Diff.Application/Fubar.Diff.Application.csproj" />
+    <Project Path="src/Fubar.Diff.Infrastructure/Fubar.Diff.Infrastructure.csproj" />
+    <Project Path="src/Fubar.Diff.UI/Fubar.Diff.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/shared/">
+    <Project Path="tests/Fubar.Controls.Tests/Fubar.Controls.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/api-studio/">
+    <Project Path="tests/Fubar.Studio.Core.Tests/Fubar.Studio.Core.Tests.csproj" />
+    <Project Path="tests/Fubar.Studio.Application.Tests/Fubar.Studio.Application.Tests.csproj" />
+    <Project Path="tests/Fubar.Studio.Infrastructure.Tests/Fubar.Studio.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Fubar.Studio.Architecture.Tests/Fubar.Studio.Architecture.Tests.csproj" />
+    <Project Path="tests/Fubar.Studio.EndToEnd.Tests/Fubar.Studio.EndToEnd.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/diff/">
+    <Project Path="tests/Fubar.Diff.Core.Tests/Fubar.Diff.Core.Tests.csproj" />
+    <Project Path="tests/Fubar.Diff.Application.Tests/Fubar.Diff.Application.Tests.csproj" />
+    <Project Path="tests/Fubar.Diff.Infrastructure.Tests/Fubar.Diff.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Fubar.Diff.Architecture.Tests/Fubar.Diff.Architecture.Tests.csproj" />
+  </Folder>
+</Solution>
