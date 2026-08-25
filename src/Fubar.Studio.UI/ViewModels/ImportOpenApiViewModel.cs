@@ -1,9 +1,14 @@
+using System;
+using System.IO;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fubar.Studio.Core.Import;
+using Fubar.Studio.Core.Workspaces;
 using Fubar.Studio.UI.Services;
 
 namespace Fubar.Studio.UI.ViewModels;
@@ -18,12 +23,24 @@ public partial class ImportOpenApiViewModel : ViewModelBase
 {
     private readonly IOpenApiImportService _import;
     private readonly IFilePickerService _filePicker;
+    private readonly IRequestStore _requests;
+    private readonly IRequestSerializer _serializer;
+    private readonly IDiffPreviewService _diffPreview;
     private readonly string _workspaceRoot;
 
-    public ImportOpenApiViewModel(IOpenApiImportService import, IFilePickerService filePicker, string workspaceRoot)
+    public ImportOpenApiViewModel(
+        IOpenApiImportService import,
+        IFilePickerService filePicker,
+        IRequestStore requests,
+        IRequestSerializer serializer,
+        IDiffPreviewService diffPreview,
+        string workspaceRoot)
     {
         _import = import;
         _filePicker = filePicker;
+        _requests = requests;
+        _serializer = serializer;
+        _diffPreview = diffPreview;
         _workspaceRoot = workspaceRoot;
     }
 
@@ -140,6 +157,49 @@ public partial class ImportOpenApiViewModel : ViewModelBase
             ImportChange.Remove => $"was \"{variable.ExistingValue}\"",
             _ => $"\"{variable.NewValue}\"",
         };
+    }
+
+    /// <summary>
+    /// Shows what an <c>UPDATE</c> would actually change: the request as it exists in the workspace,
+    /// against the version the spec would write.
+    ///
+    /// This is the gap the tick-list left. "UPDATE" tells the user something differs but not what, so
+    /// ticking it means accepting an unseen overwrite of a request they may have edited by hand.
+    /// </summary>
+    [RelayCommand]
+    private async Task PreviewAsync(ImportItemViewModel? item)
+    {
+        if (item?.Model is not RequestDiff request)
+        {
+            return;
+        }
+
+        // Only an update has two sides. An add has nothing to compare against, and a remove has
+        // nothing to compare to.
+        if (request.Change != ImportChange.Update
+            || request.Planned is not { } planned
+            || string.IsNullOrEmpty(request.ExistingPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var existing = await _requests.LoadRequestAsync(request.ExistingPath).ConfigureAwait(true);
+
+            await _diffPreview.ShowAsync(
+                _serializer.ToJson(existing),
+                _serializer.ToJson(planned.Request),
+                "In workspace",
+                "From spec",
+                $"{request.Method} {request.DisplayName}").ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // The preview is informational; failing to read the existing request must not derail the
+            // import the user is in the middle of configuring.
+            StatusMessage = $"Could not preview '{request.DisplayName}': {ex.Message}";
+        }
     }
 
     [RelayCommand]

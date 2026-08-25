@@ -16,7 +16,7 @@
 
     <Window.Resources>
         <DataTemplate x:Key="ChangeRow" x:DataType="vm:ImportItemViewModel">
-            <Grid ColumnDefinitions="Auto,72,*,Auto" Margin="4,2" ColumnSpacing="8">
+            <Grid ColumnDefinitions="Auto,72,*,Auto,Auto" Margin="4,2" ColumnSpacing="8">
                 <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanSelect}" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
                            Text="{Binding ChangeLabel}"
@@ -27,6 +27,16 @@
                 <TextBlock Grid.Column="3" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" MaxWidth="240"
                            Foreground="{DynamicResource TextSecondary}" FontSize="11" VerticalAlignment="Center"
                            FontFamily="Cascadia Code,Consolas,monospace" />
+
+                <!-- Only on an UPDATE, which is the one case where ticking the box means accepting an
+                     overwrite the user cannot otherwise see. The command lives on the dialog's view
+                     model, so the row reaches up to it. -->
+                <Button Grid.Column="4" Classes="toolbar-btn" Content="Diff…"
+                        FontSize="11" Padding="6,2" VerticalAlignment="Center"
+                        ToolTip.Tip="Show what this update would change"
+                        IsVisible="{Binding CanPreview}"
+                        Command="{Binding $parent[Window].((vm:ImportOpenApiViewModel)DataContext).PreviewCommand}"
+                        CommandParameter="{Binding}" />
             </Grid>
         </DataTemplate>
     </Window.Resources>

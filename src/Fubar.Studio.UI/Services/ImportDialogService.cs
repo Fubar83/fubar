@@ -2,6 +2,7 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Fubar.Studio.Core.Import;
+using Fubar.Studio.Core.Workspaces;
 using Fubar.Studio.UI.ViewModels;
 using Fubar.Studio.UI.Views;
 
@@ -14,11 +15,22 @@ public sealed class ImportDialogService : IImportDialogService
 {
     private readonly IOpenApiImportService _import;
     private readonly IFilePickerService _filePicker;
+    private readonly IRequestStore _requests;
+    private readonly IRequestSerializer _serializer;
+    private readonly IDiffPreviewService _diffPreview;
 
-    public ImportDialogService(IOpenApiImportService import, IFilePickerService filePicker)
+    public ImportDialogService(
+        IOpenApiImportService import,
+        IFilePickerService filePicker,
+        IRequestStore requests,
+        IRequestSerializer serializer,
+        IDiffPreviewService diffPreview)
     {
         _import = import;
         _filePicker = filePicker;
+        _requests = requests;
+        _serializer = serializer;
+        _diffPreview = diffPreview;
     }
 
     public async Task<ImportDialogResult?> ShowAsync(string workspaceRoot)
@@ -34,7 +46,8 @@ public sealed class ImportDialogService : IImportDialogService
             return null;
         }
 
-        var viewModel = new ImportOpenApiViewModel(_import, _filePicker, workspaceRoot);
+        var viewModel = new ImportOpenApiViewModel(
+            _import, _filePicker, _requests, _serializer, _diffPreview, workspaceRoot);
         var dialog = new ImportOpenApiDialog(viewModel);
         return await dialog.ShowDialog<ImportDialogResult?>(owner);
     }
