@@ -1,0 +1,21 @@
+<Project>
+
+  <!-- Shared compiler + analyzer settings for every project in the repository. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Authors>Fubar Contributors</Authors>
+    <Product>Fubar</Product>
+    <NeutralLanguage>en-US</NeutralLanguage>
+
+    <!-- Nothing here is packed. The projects share each other by ProjectReference; consolidating the
+         three former repositories into this one is precisely what removed the need for packages. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
