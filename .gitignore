@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+artifacts/
+[Dd]ebug/
+[Rr]elease/
+publish/
+*.binlog
+
+# IDE / editor
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# Claude Code local state (machine-specific; keep private)
+.claude/
+
+# Local machine scratch
+.fubar/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
