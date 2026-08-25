@@ -174,6 +174,22 @@ public partial class DiffView : UserControl
         ReportViewport();
     }
 
+    /// <summary>
+    /// Opens the find bar. Targets whichever pane has focus, falling back to the left - Ctrl+F in a
+    /// two-pane view means "search where I am looking".
+    /// </summary>
+    public void OpenSearch()
+    {
+        if (RightPane.TextEditor.TextArea.IsFocused || RightPane.TextEditor.IsFocused)
+        {
+            RightPane.OpenSearch();
+        }
+        else
+        {
+            LeftPane.OpenSearch();
+        }
+    }
+
     /// <summary>Re-resolves palette colours in both panes after a theme switch.</summary>
     public void OnThemeChanged()
     {

@@ -31,6 +31,9 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar-component
   arrays by position, or normalize XML.
 - **Encoding aware** — detects UTF-8/UTF-16 BOMs and CRLF/LF/CR line endings, and declines binary
   files rather than rendering a screen of mojibake.
+- **Search** inside either pane with Ctrl+F.
+- **Drag and drop** two files onto the window to compare them.
+- **Recent comparisons**, and your options and theme are remembered between sessions.
 - **Dark and light themes**, switchable at runtime.
 
 ## Getting started

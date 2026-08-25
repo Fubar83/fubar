@@ -22,4 +22,13 @@ public interface IFileComparisonService
     /// re-read from disk - that would be slower and would silently pick up edits made meanwhile.
     /// </summary>
     FileComparison Recompare(FileComparison comparison, ComparisonOptions options);
+
+    /// <summary>
+    /// <see cref="Recompare"/>, off the calling thread. Diffing is CPU-bound and grows with file size,
+    /// so a UI caller should use this and keep the window responsive.
+    /// </summary>
+    Task<FileComparison> RecompareAsync(
+        FileComparison comparison,
+        ComparisonOptions options,
+        CancellationToken cancellationToken = default);
 }

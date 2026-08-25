@@ -25,6 +25,17 @@ public partial class ThemeManagerViewModel : ViewModelBase
     [ObservableProperty]
     public partial AppTheme CurrentTheme { get; set; } = AppTheme.System;
 
+    /// <summary>
+    /// Restores a persisted choice, e.g. the string held in settings. An unrecognised value falls back
+    /// to System rather than failing - a settings file from a future version should not stop startup.
+    /// </summary>
+    public void Restore(string themeName)
+    {
+        CurrentTheme = Enum.TryParse<AppTheme>(themeName, ignoreCase: true, out var parsed)
+            ? parsed
+            : AppTheme.System;
+    }
+
     partial void OnCurrentThemeChanged(AppTheme value) => Apply();
 
     /// <summary>

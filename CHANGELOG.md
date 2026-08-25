@@ -33,6 +33,15 @@ All notable changes to this project are documented here. The format is based on
   - Falls back to a text diff whenever a file does not parse, since a broken file is exactly when a
     diff is most wanted.
 
+- **Search** within either pane (Ctrl+F), from AvaloniaEdit's own find bar.
+- **Drag and drop**: drop two files onto the window to compare them, or one to fill the empty side.
+- **Recent comparisons**, with comparison options and theme persisted to
+  `%APPDATA%/fubar-diff/settings.json`. The file is hand-editable (enums by name) and also holds the
+  per-JSON-path array key overrides.
+- Comparisons and re-comparisons now run **off the UI thread**, with the in-flight one cancelled when
+  options change again — so toggling several options quickly cannot queue diffs or apply them out of
+  order.
+
 ### Changed
 
 - `TextDocument` now carries a `TextFormat` (encoding, BOM, line ending, trailing newline) instead of

@@ -75,6 +75,7 @@ because comparing canonical JSON only makes sense if you can see the canonical f
 | Use-case services | `src/Fubar.Diff.Application` (`Comparison/`, `Merge/`) |
 | Diff engine, inline (character) diff, JSON parser, normalizer, file reader/writer, DI wiring | `src/Fubar.Diff.Infrastructure` |
 | Views + ViewModels + DI (`Composition.cs`) | `src/Fubar.Diff.UI` (`Rendering/` = AvaloniaEdit hooks, `Controls/` = diff map) |
+| Settings, recent files | `src/Fubar.Diff.Core/Settings` + `src/Fubar.Diff.Infrastructure/Settings` (`%APPDATA%/fubar-diff/settings.json`) |
 | Reusable controls + theme/design system | External: the `Fubar.Controls` package |
 | Packaging | `build/publish.ps1` |
 
@@ -126,6 +127,10 @@ guard). Keep the suite green; a refactor must not change behavior.
 - **Viewport size must come from `TextView.DefaultLineHeight`, not `VisualLines.Count`** - a document
   shorter than the pane reports only the lines it drew, which collapses the diff map's scale.
 - **Test both theme variants.** A token used only in Dark throws at runtime in Light.
+- **Settings never throw.** `Load` returns defaults and `SaveAsync` returns false on failure - losing a
+  preference is a nuisance, refusing to start over a corrupt settings file is not acceptable.
+- **Avalonia 12 renamed drag-drop types**: `DragEventArgs.Data` is now `DataTransfer`, typed
+  `IDataTransfer` (not `IDataObject`), and files come from `TryGetFiles()`.
 
 ## Workflow notes
 

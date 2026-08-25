@@ -5,12 +5,14 @@
         xmlns:fc="using:Fubar.Controls"
         xmlns:vm="using:Fubar.Diff.UI.ViewModels"
         xmlns:views="using:Fubar.Diff.UI.Views"
+        xmlns:settings="using:Fubar.Diff.Core.Settings"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="Fubar.Diff.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="Fubar Diff"
         Width="1200" Height="800"
-        Background="{DynamicResource BgEditorCanvas}">
+        Background="{DynamicResource BgEditorCanvas}"
+        DragDrop.AllowDrop="True">
 
     <Window.KeyBindings>
         <!-- F7/F8 for change navigation matches every other diff tool; Ctrl+S saves the merge. -->
@@ -52,6 +54,26 @@
                 <fc:Toolbar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,8,0,0">
                     <Button Classes="primary-btn" Content="Compare"
                             Command="{Binding CompareCommand}" IsEnabled="{Binding !IsBusy}" />
+
+                    <!-- Recent pairs. Hidden rather than disabled when empty: an always-greyed control
+                         on first run is just clutter. -->
+                    <Button Classes="toolbar-btn" Content="Recent ▾"
+                            Margin="6,0,0,0"
+                            IsVisible="{Binding !!Recent.Count}">
+                        <Button.Flyout>
+                            <MenuFlyout ItemsSource="{Binding Recent}">
+                                <MenuFlyout.ItemContainerTheme>
+                                    <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                                  x:DataType="settings:RecentComparison">
+                                        <Setter Property="Header" Value="{Binding DisplayName}" />
+                                        <Setter Property="Command"
+                                                Value="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenRecentCommand}" />
+                                        <Setter Property="CommandParameter" Value="{Binding}" />
+                                    </ControlTheme>
+                                </MenuFlyout.ItemContainerTheme>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 

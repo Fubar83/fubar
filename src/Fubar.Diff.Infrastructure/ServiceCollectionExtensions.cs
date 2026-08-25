@@ -1,9 +1,11 @@
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Json;
+using Fubar.Diff.Core.Settings;
 using Fubar.Diff.Infrastructure.Comparison;
 using Fubar.Diff.Infrastructure.Files;
 using Fubar.Diff.Infrastructure.Json;
+using Fubar.Diff.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Fubar.Diff.Infrastructure;
@@ -24,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITextFileReader, TextFileReader>();
         services.AddSingleton<ITextFileWriter, TextFileWriter>();
         services.AddSingleton<IJsonParser, JsonAstParser>();
+        services.AddSingleton<ISettingsStore, JsonSettingsStore>();
 
         return services;
     }

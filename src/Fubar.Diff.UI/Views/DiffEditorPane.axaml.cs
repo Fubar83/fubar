@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using AvaloniaEdit;
 using AvaloniaEdit.Rendering;
+using AvaloniaEdit.Search;
 using Fubar.Diff.Core.Rendering;
 using Fubar.Diff.UI.Rendering;
 
@@ -27,6 +28,7 @@ public partial class DiffEditorPane : UserControl
     private readonly ChangeLineBackgroundRenderer _backgroundRenderer;
     private readonly CharSpanColorizer _colorizer;
     private readonly SourceLineNumberMargin _lineNumbers;
+    private readonly SearchPanel _searchPanel;
 
     public DiffEditorPane()
     {
@@ -40,6 +42,11 @@ public partial class DiffEditorPane : UserControl
         Editor.TextArea.TextView.LineTransformers.Add(_colorizer);
         Editor.TextArea.LeftMargins.Add(_lineNumbers);
 
+        // Ctrl+F within a pane. AvaloniaEdit brings its own search panel, so this is one line rather
+        // than a find bar of our own - and it searches the pane the caret is in, which is what a user
+        // pressing Ctrl+F in a two-pane view means.
+        _searchPanel = SearchPanel.Install(Editor);
+
         ApplyGutterStyle();
     }
 
@@ -51,6 +58,13 @@ public partial class DiffEditorPane : UserControl
 
     /// <summary>The underlying editor, for the parent view to wire scroll sync and caret moves.</summary>
     internal TextEditor TextEditor => Editor;
+
+    /// <summary>Opens the find bar for this pane.</summary>
+    internal void OpenSearch()
+    {
+        Editor.Focus();
+        _searchPanel.Open();
+    }
 
     /// <summary>The text view, which owns the scroll offset the two panes keep in step.</summary>
     internal TextView TextView => Editor.TextArea.TextView;

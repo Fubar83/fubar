@@ -51,8 +51,20 @@ public sealed class FileComparisonService : IFileComparisonService
         var left = await _reader.ReadAsync(leftPath, cancellationToken).ConfigureAwait(false);
         var right = await _reader.ReadAsync(rightPath, cancellationToken).ConfigureAwait(false);
 
-        return Compare(left, right, options);
+        // Off the calling thread. Diffing is CPU-bound and grows with file size; on the UI thread a
+        // large pair freezes the window, including the cancel path that would let the user escape it.
+        return await Task.Run(() => Compare(left, right, options), cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Re-runs the comparison off the calling thread. The synchronous <see cref="Recompare"/> stays for
+    /// callers that are already on a background thread, and for tests.
+    /// </summary>
+    public Task<FileComparison> RecompareAsync(
+        FileComparison comparison,
+        ComparisonOptions options,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => Compare(comparison.Left, comparison.Right, options), cancellationToken);
 
     public FileComparison Recompare(FileComparison comparison, ComparisonOptions options) =>
         Compare(comparison.Left, comparison.Right, options);

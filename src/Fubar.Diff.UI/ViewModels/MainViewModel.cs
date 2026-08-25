@@ -11,6 +11,7 @@ using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Merge;
 using Fubar.Diff.Core.Models;
 using Fubar.Diff.Core.Rendering;
+using Fubar.Diff.Core.Settings;
 using Fubar.Diff.UI.Services;
 
 namespace Fubar.Diff.UI.ViewModels;
@@ -27,26 +28,74 @@ public partial class MainViewModel : ViewModelBase
     private readonly IFileComparisonService _comparisonService;
     private readonly IMergeService _mergeService;
     private readonly IFilePickerService _filePicker;
+    private readonly ISettingsStore _settingsStore;
     private readonly bool _compareOnLoad;
 
     private FileComparison _comparison = FileComparison.Empty;
     private MergeState _mergeState = MergeState.Empty;
+    private AppSettings _settings = AppSettings.Default;
+
+    /// <summary>
+    /// Suppresses persistence while the constructor applies loaded settings - otherwise each property
+    /// assignment below would fire its own change handler and write the file back.
+    /// </summary>
+    private bool _loadingSettings;
 
     public MainViewModel(
         IFileComparisonService comparisonService,
         IMergeService mergeService,
         IFilePickerService filePicker,
+        ISettingsStore settingsStore,
         ThemeManagerViewModel themeManager,
         StartupFiles startupFiles)
     {
         _comparisonService = comparisonService;
         _mergeService = mergeService;
         _filePicker = filePicker;
+        _settingsStore = settingsStore;
         ThemeManager = themeManager;
+
+        ApplySettings(settingsStore.Load());
+
+        // The theme manager applies its own value at startup (before the first frame, from App); this
+        // only has to persist later changes, which it cannot do itself without knowing about settings.
+        themeManager.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ThemeManagerViewModel.CurrentTheme) && !_loadingSettings)
+            {
+                PersistSettings();
+            }
+        };
 
         LeftPath = startupFiles.Left ?? string.Empty;
         RightPath = startupFiles.Right ?? string.Empty;
         _compareOnLoad = startupFiles.HasBoth;
+    }
+
+    /// <summary>Applies persisted preferences without triggering a save or a re-comparison.</summary>
+    private void ApplySettings(AppSettings settings)
+    {
+        _loadingSettings = true;
+        try
+        {
+            _settings = settings;
+
+            ThemeManager.Restore(settings.Theme);
+
+            IgnoreWhitespace = settings.IgnoreWhitespace;
+            IgnoreCase = settings.IgnoreCase;
+            ReportPropertyOrder = settings.ReportPropertyOrder;
+            MatchArraysByPosition = settings.MatchArraysByPosition;
+            Mode = settings.Mode;
+
+            // Entries whose files have since been deleted or moved are dropped: offering to reopen a
+            // file that is not there produces an error the user did not ask for.
+            Recent = [.. RecentComparisons.Prune(settings.Recent, System.IO.File.Exists)];
+        }
+        finally
+        {
+            _loadingSettings = false;
+        }
     }
 
     public ThemeManagerViewModel ThemeManager { get; }
@@ -177,17 +226,58 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>The values offered by the mode selector.</summary>
     public static IReadOnlyList<ComparisonMode> ModeOptions { get; } = Enum.GetValues<ComparisonMode>();
 
-    partial void OnIgnoreWhitespaceChanged(bool value) => Recompare();
+    /// <summary>Recently compared pairs, most recent first.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<RecentComparison> Recent { get; set; } = [];
 
-    partial void OnIgnoreCaseChanged(bool value) => Recompare();
+    partial void OnIgnoreWhitespaceChanged(bool value) => OptionChanged();
 
-    partial void OnNormalizeStructureChanged(bool value) => Recompare();
+    partial void OnIgnoreCaseChanged(bool value) => OptionChanged();
 
-    partial void OnReportPropertyOrderChanged(bool value) => Recompare();
+    partial void OnNormalizeStructureChanged(bool value) => OptionChanged();
 
-    partial void OnMatchArraysByPositionChanged(bool value) => Recompare();
+    partial void OnReportPropertyOrderChanged(bool value) => OptionChanged();
 
-    partial void OnModeChanged(ComparisonMode value) => Recompare();
+    partial void OnMatchArraysByPositionChanged(bool value) => OptionChanged();
+
+    partial void OnModeChanged(ComparisonMode value) => OptionChanged();
+
+    /// <summary>
+    /// An option was toggled: re-run the comparison and remember the choice. Both are skipped while
+    /// settings are being applied at startup, which would otherwise re-save what was just loaded.
+    /// </summary>
+    private void OptionChanged()
+    {
+        if (_loadingSettings)
+        {
+            return;
+        }
+
+        Recompare();
+        PersistSettings();
+    }
+
+    /// <summary>
+    /// Writes the current preferences.
+    ///
+    /// Fire-and-forget: saving a preference is not something the user should ever wait for, and the
+    /// store reports failure rather than throwing, so there is nothing to await for correctness.
+    /// </summary>
+    private void PersistSettings()
+    {
+        _settings = _settings with
+        {
+            Theme = ThemeManager.CurrentTheme.ToString(),
+            IgnoreWhitespace = IgnoreWhitespace,
+            IgnoreCase = IgnoreCase,
+            ReportPropertyOrder = ReportPropertyOrder,
+            MatchArraysByPosition = MatchArraysByPosition,
+            Mode = Mode,
+            Recent = Recent,
+        };
+
+        _ = _settingsStore.SaveAsync(_settings);
+    }
 
     // ---- Navigation ---------------------------------------------------------------------------
 
@@ -274,6 +364,11 @@ public partial class MainViewModel : ViewModelBase
             // A fresh pair of files invalidates any decisions made about the previous one.
             _mergeState = MergeState.Empty;
             Refresh();
+
+            // Recorded only after a successful read - a path that could not be opened is not something
+            // worth offering to reopen.
+            Recent = RecentComparisons.Add(Recent, LeftPath, RightPath);
+            PersistSettings();
         }
         catch (TextFileReadException ex)
         {
@@ -316,6 +411,50 @@ public partial class MainViewModel : ViewModelBase
         {
             await SaveToAsync(path).ConfigureAwait(true);
         }
+    }
+
+    /// <summary>Reopens a remembered pair.</summary>
+    [RelayCommand]
+    private async Task OpenRecentAsync(RecentComparison? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        LeftPath = entry.Left;
+        RightPath = entry.Right;
+        await CompareAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Loads a pair of files, e.g. from a drag and drop. Compares immediately when both are given;
+    /// a single file fills whichever side is empty, so dropping two files one at a time works.
+    /// </summary>
+    public async Task OpenFilesAsync(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0)
+        {
+            return;
+        }
+
+        if (paths.Count >= 2)
+        {
+            LeftPath = paths[0];
+            RightPath = paths[1];
+        }
+        else if (string.IsNullOrWhiteSpace(LeftPath))
+        {
+            LeftPath = paths[0];
+        }
+        else
+        {
+            // Left is taken, so a single dropped file becomes the right-hand side - which is what
+            // "compare this against what I already have open" means.
+            RightPath = paths[0];
+        }
+
+        await CompareAsync().ConfigureAwait(true);
     }
 
     /// <summary>Jumps to a row, e.g. from a diff-map click, syncing the hunk selection to match.</summary>
@@ -480,18 +619,47 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Cancels the in-flight re-comparison, if any. Toggling several options quickly would otherwise
+    /// queue a diff per keystroke and apply them out of order.
+    /// </summary>
+    private System.Threading.CancellationTokenSource? _recompareCancellation;
+
+    /// <summary>
     /// Re-runs against the loaded documents when an option changes. Silent when nothing is loaded -
     /// toggling a checkbox before choosing files is not an error.
     /// </summary>
-    private void Recompare()
+    private async void Recompare()
     {
         if (!_comparison.HasBothSides)
         {
             return;
         }
 
-        _comparison = _comparisonService.Recompare(_comparison, CurrentOptions());
-        Refresh();
+        var previous = _recompareCancellation;
+        var cancellation = new System.Threading.CancellationTokenSource();
+        _recompareCancellation = cancellation;
+
+        previous?.Cancel();
+        previous?.Dispose();
+
+        try
+        {
+            var result = await _comparisonService
+                .RecompareAsync(_comparison, CurrentOptions(), cancellation.Token)
+                .ConfigureAwait(true);
+
+            // A newer toggle superseded this one while it ran; applying it now would show a result for
+            // options the user has already moved on from.
+            if (!cancellation.IsCancellationRequested)
+            {
+                _comparison = result;
+                Refresh();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toggle - nothing to report.
+        }
     }
 
     private void MoveTo(int? hunkIndex)
