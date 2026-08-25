@@ -23,6 +23,17 @@ All notable changes to this project are documented here. The format is based on
     In-memory only: a pinned response is a scratch comparison, not something to write to disk.
   - **Compare** next to Replay in the History tab, diffing a past response against the current one —
     the question Replay leaves unanswered.
+- **Ignore rules for response comparison.** Two runs of a real endpoint differ on `requestId`,
+  `generatedAt`, `traceId` and a `syncedAt` per array element, so the one field that changed is
+  buried. Click **ignore** on any change in the Tree view and it stops being reported — in the text
+  view, the diff map and navigation as well as the tree, since the rule is applied where differences
+  are decided rather than where they are drawn. **Save to request** persists the rules to
+  `request.json`, per request, so they always apply and the team shares them.
+  - Ignoring a field inside an array covers every element: clicking `$.items[0].syncedAt` creates
+    `$.items[*].syncedAt`, because a noisy field is noisy in every element.
+  - Ignoring an object covers everything under it.
+  - Rules are hand-editable in `request.json`; `$..timestamp` matches at any depth. A malformed rule
+    is skipped rather than failing the comparison.
 - History now records the **response body** alongside the outcome, which is what makes the above
   possible. Bodies over 256 KB are not stored (the ledger keeps 200 executions per request), and
   entries without one — too large, empty, or written before this release — show Compare disabled

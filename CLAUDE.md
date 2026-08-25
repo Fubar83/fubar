@@ -76,6 +76,11 @@ offset copy rather than a line-mapping scheme.
 line up; `JsonSemanticPass` decides which of them matter. One `DiffResult` shape means every renderer,
 the diff map, navigation and merge work in both modes.
 
+**Ignore rules are applied where differences are DECIDED, not where they are drawn** (Diff).
+`JsonSemanticDiffer.Compare` filters through `JsonIgnoreRules` before returning, so the tree, the text
+view's line filter, the diff map and navigation all agree. Filtering in a view instead would make that
+view disagree with the others about what changed.
+
 **Ports live in Core, adapters in Infrastructure**, wired in each app's
 `Infrastructure/ServiceCollectionExtensions.cs` and `UI/Composition.cs`.
 

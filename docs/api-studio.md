@@ -30,11 +30,16 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   requests, environments, variables, and auth profiles, with `$ref` / `allOf` resolution.
   Re-importing shows a **diff** (add / update / unchanged / remove, per request and per variable) so
   your manual edits survive — you choose what to apply.
-- **Response comparison** — Fubar Diff's view, embedded. **Pin** a response and **Compare** the next
-  one against it (the pin outlives switching request or environment, so "staging vs prod" and
-  "before vs after a deploy" both work), or **Compare** a past execution from the History tab against
-  the current response. JSON is compared semantically, so reformatting and reordered keys are not
-  reported as changes.
+- **Response comparison** — Fubar Diff's view, embedded and read-only. **Pin** a response and
+  **Compare** the next one against it (the pin outlives switching request or environment, so
+  "staging vs prod" and "before vs after a deploy" both work), or **Compare** a past execution from
+  the History tab against the current response. JSON is compared semantically, so reformatting and
+  reordered keys are not reported as changes.
+- **Ignore rules** for the fields that differ on every call — `requestId`, `generatedAt`, a `syncedAt`
+  per array element — which otherwise bury the one field that actually changed. Click **ignore** on
+  any change in the Tree view; the comparison updates immediately, and **Save to request** writes the
+  rules to `request.json` so they always apply. Ignoring a field inside an array covers every element
+  (`$.items[*].syncedAt`), and ignoring an object covers everything under it.
 - **JSON schema intelligence** — when a body schema is known (e.g. from an import), you get validation,
   inline autocomplete, and a readable schema view. Header and query-parameter **names** are suggested
   too (schema-declared names plus common HTTP headers).
