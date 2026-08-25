@@ -40,11 +40,11 @@ public class LayeringTests
     public void Infrastructure_depends_only_on_core() =>
         AssertNoDependency(InfrastructureAsm, "Infrastructure", Application, Ui, Controls);
 
-    // NOTE: there is deliberately no "Controls does not depend on the app" test any more. Fubar.Controls
-    // is an external package now, compiled in its own repository before this one is built, so such a
-    // test could not fail here even if the rule were broken. That rule is enforced where it can be:
-    // ArchitectureTests in github.com/Fubar83/fubar-components. The assertions above still carry the
-    // half that matters on this side - no app layer may depend on the UI control library.
+    // NOTE: "Fubar.Controls does not depend on the app" is not asserted here, but it IS asserted -
+    // by the allowlist in Fubar.Controls.Tests.ArchitectureTests, which is the stronger form: it
+    // permits only Avalonia, AvaloniaEdit and the BCL, so it catches a dependency on ANY app rather
+    // than on this one specifically. The assertions above carry the half that belongs on this side:
+    // no app layer may depend on the UI control library.
 
     [Fact]
     public void Ui_view_models_do_not_depend_on_infrastructure()
