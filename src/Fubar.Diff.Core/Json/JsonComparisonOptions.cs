@@ -43,6 +43,14 @@ public sealed record JsonComparisonOptions
         new Dictionary<string, string>();
 
     /// <summary>
+    /// Paths whose differences are never reported, in <see cref="JsonPathPattern"/> syntax.
+    ///
+    /// For the fields that change on every call - <c>requestId</c>, <c>timestamp</c>, a trace header
+    /// echoed into the body - which otherwise bury the one difference that matters.
+    /// </summary>
+    public IReadOnlyList<string> IgnoredPaths { get; init; } = [];
+
+    /// <summary>
     /// Disable identity matching entirely and compare arrays by position.
     ///
     /// Occasionally what you want: for an array whose order IS the meaning (a sequence of steps, a

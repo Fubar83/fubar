@@ -253,3 +253,75 @@ public class JsonSemanticDifferTests
     public void Awkward_property_names_are_bracket_quoted() =>
         Assert.Equal("$['my key']", JsonPath.Root.Property("my key").ToString());
 }
+
+/// <summary>
+/// Ignore rules, applied inside the differ so every view agrees on what counts as a change.
+/// </summary>
+public class JsonIgnoreRuleTests
+{
+    private static JsonAstScalar Str(string value) =>
+        new(JsonAstKind.String, $"\"{value}\"", value, SourceSpan.None);
+
+    private static JsonAstObject Obj(params (string Name, JsonAstNode Value)[] properties) =>
+        new([.. properties.Select(p => new JsonAstProperty(p.Name, p.Value, SourceSpan.None))], SourceSpan.None);
+
+    private static JsonAstArray Arr(params JsonAstNode[] items) => new(items, SourceSpan.None);
+
+    private static JsonComparisonOptions Ignoring(params string[] paths) =>
+        JsonComparisonOptions.Default with { IgnoredPaths = paths };
+
+    /// <summary>The case that motivates the feature: a field that differs on every single call.</summary>
+    [Fact]
+    public void An_ignored_path_is_not_reported()
+    {
+        var left = Obj(("requestId", Str("a")), ("status", Str("ok")));
+        var right = Obj(("requestId", Str("b")), ("status", Str("ok")));
+
+        Assert.Single(JsonSemanticDiffer.Compare(left, right, JsonComparisonOptions.Default));
+        Assert.Empty(JsonSemanticDiffer.Compare(left, right, Ignoring("$.requestId")));
+    }
+
+    /// <summary>Ignoring noise must not also hide the difference the user is looking for.</summary>
+    [Fact]
+    public void A_real_change_still_survives_alongside_an_ignored_one()
+    {
+        var left = Obj(("requestId", Str("a")), ("status", Str("pending")));
+        var right = Obj(("requestId", Str("b")), ("status", Str("shipped")));
+
+        var changes = JsonSemanticDiffer.Compare(left, right, Ignoring("$.requestId"));
+
+        Assert.Single(changes);
+        Assert.Equal("$.status", changes[0].Path.ToString());
+    }
+
+    [Fact]
+    public void One_wildcard_rule_covers_a_whole_array()
+    {
+        var left = Arr(Obj(("at", Str("1"))), Obj(("at", Str("2"))));
+        var right = Arr(Obj(("at", Str("9"))), Obj(("at", Str("8"))));
+
+        Assert.Equal(2, JsonSemanticDiffer.Compare(left, right, JsonComparisonOptions.Default).Count);
+        Assert.Empty(JsonSemanticDiffer.Compare(left, right, Ignoring("$[*].at")));
+    }
+
+    [Fact]
+    public void Ignoring_an_object_ignores_everything_under_it()
+    {
+        var left = Obj(("meta", Obj(("id", Str("a")), ("at", Str("1")))));
+        var right = Obj(("meta", Obj(("id", Str("b")), ("at", Str("2")))));
+
+        Assert.Empty(JsonSemanticDiffer.Compare(left, right, Ignoring("$.meta")));
+    }
+
+    /// <summary>A typo in a persisted rule must not stop the comparison working.</summary>
+    [Fact]
+    public void A_malformed_rule_is_skipped_rather_than_failing_the_comparison()
+    {
+        var left = Obj(("status", Str("pending")));
+        var right = Obj(("status", Str("shipped")));
+
+        var changes = JsonSemanticDiffer.Compare(left, right, Ignoring("$.items[", "$.nothing"));
+
+        Assert.Single(changes);
+    }
+}
