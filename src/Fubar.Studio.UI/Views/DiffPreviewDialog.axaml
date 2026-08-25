@@ -61,6 +61,60 @@
             </Grid>
         </Border>
 
+        <!-- Ignore rules. Only present for a comparison that has somewhere to keep them - the OpenAPI
+             import preview passes no context and never shows this strip. -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6"
+                IsVisible="{Binding ShowIgnoreRules}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0" Text="Ignoring" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0" />
+
+                <TextBlock Grid.Column="1"
+                           Text="nothing yet — use “ignore” in the Tree view to skip a noisy field"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontStyle="Italic"
+                           VerticalAlignment="Center"
+                           IsVisible="{Binding !IgnoredPaths.Count}" />
+
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding IgnoredPaths}"
+                              IsVisible="{Binding !!IgnoredPaths.Count}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Border Background="{DynamicResource BgSelected}"
+                                    CornerRadius="3" Padding="6,2" Margin="0,0,6,2">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding}"
+                                               FontFamily="Cascadia Mono,Consolas,monospace"
+                                               FontSize="11" VerticalAlignment="Center" />
+                                    <Button Classes="toolbar-btn" Content="✕" Padding="3,0"
+                                            ToolTip.Tip="Stop ignoring this path"
+                                            Command="{Binding $parent[Window].((vm:DiffPreviewViewModel)DataContext).RemoveIgnoreCommand}"
+                                            CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Rules apply immediately but are session-only until this is pressed: ignoring is
+                     often exploratory, and rewriting request.json on every click would not be. -->
+                <Button Grid.Column="2" Classes="secondary-btn" Content="Save to request"
+                        ToolTip.Tip="Remember these rules on the request, so they always apply"
+                        IsVisible="{Binding CanSaveIgnoreRules}"
+                        IsEnabled="{Binding IgnoreRulesDirty}"
+                        Command="{Binding SaveIgnoreRulesCommand}" />
+            </Grid>
+        </Border>
+
         <Border DockPanel.Dock="Bottom"
                 Background="{DynamicResource BgHeader}"
                 BorderBrush="{DynamicResource BorderSubtle}"

@@ -1,8 +1,12 @@
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Controls.ViewModels;
 using Fubar.Diff.Core.Comparison;
+using Fubar.Studio.UI.Services;
 
 namespace Fubar.Studio.UI.ViewModels;
 
@@ -18,10 +22,81 @@ public partial class DiffPreviewViewModel : ViewModelBase
 {
     private readonly IFileComparisonService _comparison;
 
-    public DiffPreviewViewModel(IFileComparisonService comparison) => _comparison = comparison;
+    /// <summary>The content being compared, kept so ignoring a path can re-run the comparison.</summary>
+    private string _leftText = string.Empty;
+    private string _rightText = string.Empty;
+
+    private DiffIgnoreContext? _ignoreContext;
+
+    // The ignore command is set in LoadAsync, once it is known whether this comparison has a host
+    // that can hold a rule.
+    public DiffPreviewViewModel(IFileComparisonService comparison)
+    {
+        _comparison = comparison;
+    }
 
     /// <summary>The diff widget itself.</summary>
     public DiffPaneViewModel Pane { get; } = new();
+
+    // ---- Ignore rules ---------------------------------------------------------------------------
+
+    /// <summary>Rules in force for this comparison, newest last. Bound as removable chips.</summary>
+    public ObservableCollection<string> IgnoredPaths { get; } = [];
+
+    /// <summary>True once the set differs from what was persisted, which is what enables Save.</summary>
+    [ObservableProperty]
+    public partial bool IgnoreRulesDirty { get; set; }
+
+    /// <summary>Whether this comparison can persist its rules at all.</summary>
+    public bool CanSaveIgnoreRules => _ignoreContext?.SaveAsync is not null;
+
+    /// <summary>Whether to show the rules strip - hidden entirely for a comparison that has no host.</summary>
+    public bool ShowIgnoreRules => _ignoreContext is not null;
+
+    /// <summary>
+    /// Adds a rule and re-compares immediately, so the effect is visible rather than promised. The
+    /// rule is session-only until saved - ignoring is often exploratory, and silently rewriting
+    /// request.json on a click inside a diff window is a side effect nobody asked for.
+    /// </summary>
+    private async Task IgnorePathAsync(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || IgnoredPaths.Contains(path))
+        {
+            return;
+        }
+
+        IgnoredPaths.Add(path);
+        IgnoreRulesDirty = true;
+
+        await RecompareAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task RemoveIgnoreAsync(string? path)
+    {
+        if (path is null || !IgnoredPaths.Remove(path))
+        {
+            return;
+        }
+
+        IgnoreRulesDirty = true;
+        await RecompareAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Persists the rules onto whatever owns this comparison, via the host's callback.</summary>
+    [RelayCommand]
+    private async Task SaveIgnoreRulesAsync()
+    {
+        if (_ignoreContext?.SaveAsync is not { } save)
+        {
+            return;
+        }
+
+        await save(IgnoredPaths.ToList()).ConfigureAwait(true);
+
+        IgnoreRulesDirty = false;
+        StatusMessage = $"Saved {IgnoredPaths.Count} ignore rule(s) to the request.";
+    }
 
     /// <summary>Dialog title, e.g. "GET /api/users — existing vs spec".</summary>
     [ObservableProperty]
@@ -53,17 +128,53 @@ public partial class DiffPreviewViewModel : ViewModelBase
         string rightText,
         string leftLabel,
         string rightLabel,
-        string title)
+        string title,
+        DiffIgnoreContext? ignore = null)
     {
         Title = title;
         LeftLabel = leftLabel;
         RightLabel = rightLabel;
+
+        _leftText = leftText;
+        _rightText = rightText;
+        _ignoreContext = ignore;
+
+        IgnoredPaths.Clear();
+        foreach (var path in ignore?.Paths ?? [])
+        {
+            IgnoredPaths.Add(path);
+        }
+
+        IgnoreRulesDirty = false;
+
+        // Hides the "ignore" affordance in the tree for a comparison with nowhere to put a rule.
+        Pane.IgnorePathCommand = ignore is null
+            ? null
+            : new RelayCommand<string>(path => _ = IgnorePathAsync(path));
+
+        OnPropertyChanged(nameof(ShowIgnoreRules));
+        OnPropertyChanged(nameof(CanSaveIgnoreRules));
+
+        await RecompareAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Runs the comparison against the current rule set. Called on load and again after every rule
+    /// change - the rules are a comparison OPTION, so the only way to apply them is to compare again.
+    /// </summary>
+    private async Task RecompareAsync()
+    {
         IsBusy = true;
 
         try
         {
+            var options = ComparisonOptions.Default with
+            {
+                Json = ComparisonOptions.Default.Json with { IgnoredPaths = IgnoredPaths.ToList() },
+            };
+
             var result = await _comparison
-                .CompareTextAsync(leftText, rightText, ComparisonOptions.Default, leftLabel, rightLabel)
+                .CompareTextAsync(_leftText, _rightText, options, LeftLabel, RightLabel)
                 .ConfigureAwait(true);
 
             Pane.Show(result.Result, result.IsSemantic, result.SemanticChanges);

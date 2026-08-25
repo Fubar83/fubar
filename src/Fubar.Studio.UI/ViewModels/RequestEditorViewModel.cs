@@ -62,6 +62,9 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     /// <see cref="RequestModel"/> never itself flags a freshly-opened request as unsaved.</summary>
     private bool _populating = true;
 
+    /// <summary>Response-diff ignore rules as last loaded or saved - see BuildIgnoreContext.</summary>
+    private List<string> _responseDiffIgnorePaths = [];
+
     public RequestEditorViewModel(
         RequestModel request,
         string filePath,
@@ -130,6 +133,11 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         // A success-response JSON Schema stashed by the OpenAPI importer lets the Response pane validate
         // what actually comes back against what the spec promised.
         Response.SetResponseSchema(request.Settings?["fubarOpenApi"]?["responseSchema"]?.ToJsonString());
+
+        // The response pane owns Pin/Compare but knows nothing about requests, so it asks for the
+        // rules when it needs them rather than being handed a snapshot that would go stale on save.
+        _responseDiffIgnorePaths = [.. request.ResponseDiffIgnorePaths];
+        Response.IgnoreContextProvider = BuildIgnoreContext;
 
         Method = request.Method;
         Url = request.Url;
@@ -416,8 +424,37 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
             Response.RawBody,
             entry.CompareLabel,
             "Current response",
-            $"{Method} {Name} — response vs history");
+            $"{Method} {Name} — response vs history",
+            BuildIgnoreContext());
     }
+
+    /// <summary>
+    /// The response-diff ignore rules, plus how to persist them.
+    ///
+    /// Saving writes the version ON DISK with only this field changed, rather than the editor's
+    /// current state. Pressing "Save to request" inside a diff window must not also commit whatever
+    /// half-finished URL or header edit happens to be open behind it.
+    /// </summary>
+    private DiffIgnoreContext BuildIgnoreContext() => new(
+        [.. _responseDiffIgnorePaths],
+        async paths =>
+        {
+            _responseDiffIgnorePaths = [.. paths];
+
+            try
+            {
+                var persisted = await _requestStore.LoadRequestAsync(FilePath);
+                persisted.ResponseDiffIgnorePaths = [.. paths];
+                await _requestStore.SaveRequestAsync(FilePath, persisted);
+                _statusLog.Log($"Saved {paths.Count} response-diff ignore rule(s) to {Name}");
+            }
+            catch (Exception ex)
+            {
+                // The rules still apply for this session; only persistence failed, and the diff
+                // window is the wrong place to lose a comparison over it.
+                _statusLog.Log($"Could not save ignore rules: {ex.Message}");
+            }
+        });
 
     /// <summary>
     /// Re-sends exactly what <paramref name="entry"/> captured (method/URL/headers/body), but
@@ -691,6 +728,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
             Captures = Tests.CapturesToModel(),
             Assertions = Tests.AssertionsToModel(),
             SuppressedInheritedHeaderKeys = Headers.SuppressedInheritedKeys(),
+            ResponseDiffIgnorePaths = [.. _responseDiffIgnorePaths],
             // Local variables are obsolete (RequestModel.LocalVariables doc comment) - no UI edits
             // them anymore, so just carry the original value through unchanged on save.
             LocalVariables = _original.LocalVariables,

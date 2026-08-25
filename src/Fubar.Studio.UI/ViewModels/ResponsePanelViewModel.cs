@@ -292,7 +292,21 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
         _statusLog.Log($"Pinned response for comparison ({RawBody.Length:N0} chars)");
     }
 
-    /// <summary>Diffs the pinned response (left, older) against this one (right, current).</summary>
+    /// <summary>
+    /// Supplies the ignore rules for a response comparison, set by the request editor that owns this
+    /// pane. Null in any host that has no request behind it, which hides the affordance.
+    ///
+    /// A factory rather than a value: the rules can be edited and saved from inside the diff window,
+    /// so a snapshot taken when the pane was built would be stale by the second comparison.
+    /// </summary>
+    public Func<DiffIgnoreContext>? IgnoreContextProvider { get; set; }
+
+    /// <summary>
+    /// Diffs the pinned response (left, older) against this one (right, current).
+    ///
+    /// The rules are the CURRENT request's, even when the pin came from another one: it is the
+    /// request on screen, and the only one whose file could remember a new rule.
+    /// </summary>
     [RelayCommand]
     private async Task CompareWithBaselineAsync()
     {
@@ -301,7 +315,13 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        await _diffPreview.ShowAsync(pinned.Body, RawBody, pinned.Label, SourceLabel, "Compare responses");
+        await _diffPreview.ShowAsync(
+            pinned.Body,
+            RawBody,
+            pinned.Label,
+            SourceLabel,
+            "Compare responses",
+            IgnoreContextProvider?.Invoke());
     }
 
     private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };

@@ -22,7 +22,8 @@ public sealed class DiffPreviewService : IDiffPreviewService
         string rightText,
         string leftLabel,
         string rightLabel,
-        string title)
+        string title,
+        DiffIgnoreContext? ignore = null)
     {
         if (Avalonia.Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime lifetime)
         {
@@ -40,7 +41,7 @@ public sealed class DiffPreviewService : IDiffPreviewService
 
         // Load before showing so the window opens with content rather than flashing empty - the
         // comparison itself runs on a background thread inside the service.
-        await viewModel.LoadAsync(leftText, rightText, leftLabel, rightLabel, title).ConfigureAwait(true);
+        await viewModel.LoadAsync(leftText, rightText, leftLabel, rightLabel, title, ignore).ConfigureAwait(true);
 
         await dialog.ShowDialog(owner);
     }

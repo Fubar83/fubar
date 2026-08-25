@@ -51,6 +51,17 @@ public sealed class RequestModel
     public List<string> SuppressedInheritedHeaderKeys { get; set; } = [];
 
     /// <summary>
+    /// JSON paths whose differences are never reported when comparing this request's responses -
+    /// <c>$.meta.requestId</c>, <c>$..timestamp</c>, <c>$.items[*].updatedAt</c>. See
+    /// <c>Fubar.Diff.Core.Json.JsonPathPattern</c> for the syntax.
+    ///
+    /// Per request rather than global: which fields are noise is a property of the endpoint, and the
+    /// same field name can be meaningful on one response and a timestamp on another. Committed with
+    /// the request, so a team shares the rules rather than each rediscovering them.
+    /// </summary>
+    public List<string> ResponseDiffIgnorePaths { get; set; } = [];
+
+    /// <summary>
     /// Obsolete: variables now resolve strictly from the active <see cref="WorkspaceEnvironment"/>
     /// (RequestEditorPane.md §1.3 - "Environment-Only Variables"; the request-local Variables tab
     /// is removed). Kept only so older <c>request.json</c> files still deserialize; no longer read
