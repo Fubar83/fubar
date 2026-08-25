@@ -4,8 +4,9 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:fc="using:Fubar.Controls"
         xmlns:vm="using:Fubar.Diff.UI.ViewModels"
-        xmlns:views="using:Fubar.Diff.UI.Views"
+        xmlns:dv="using:Fubar.Diff.Controls.Views"
         xmlns:settings="using:Fubar.Diff.Core.Settings"
+        xmlns:dvm="using:Fubar.Diff.Controls.ViewModels"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="Fubar.Diff.UI.Views.MainWindow"
         x:DataType="vm:ShellViewModel"
@@ -17,8 +18,8 @@
     <Window.KeyBindings>
         <!-- F7/F8 for change navigation matches every other diff tool; Ctrl+S saves the merge.
              These act on the SELECTED tab, so they route through it rather than the shell. -->
-        <KeyBinding Gesture="F8" Command="{Binding SelectedTab.NextChangeCommand}" />
-        <KeyBinding Gesture="F7" Command="{Binding SelectedTab.PreviousChangeCommand}" />
+        <KeyBinding Gesture="F8" Command="{Binding SelectedTab.Pane.NextChangeCommand}" />
+        <KeyBinding Gesture="F7" Command="{Binding SelectedTab.Pane.PreviousChangeCommand}" />
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SelectedTab.SaveCommand}" />
         <KeyBinding Gesture="Alt+Left" Command="{Binding SelectedTab.TakeLeftCommand}" />
         <KeyBinding Gesture="Alt+Right" Command="{Binding SelectedTab.TakeRightCommand}" />
@@ -123,17 +124,17 @@
                          they are not offered where they would do nothing. -->
                     <CheckBox Content="Report key order"
                               IsChecked="{Binding ReportPropertyOrder}"
-                              IsVisible="{Binding IsSemantic}"
+                              IsVisible="{Binding Pane.IsSemantic}"
                               Margin="12,0,0,0"
                               ToolTip.Tip="JSON objects are unordered, so reordering is not a difference by default" />
                     <CheckBox Content="Arrays by position"
                               IsChecked="{Binding MatchArraysByPosition}"
-                              IsVisible="{Binding IsSemantic}"
+                              IsVisible="{Binding Pane.IsSemantic}"
                               Margin="12,0,0,0"
                               ToolTip.Tip="Match array elements by index instead of by an identity key" />
                     <CheckBox Content="Normalize XML"
                               IsChecked="{Binding NormalizeStructure}"
-                              IsVisible="{Binding !IsSemantic}"
+                              IsVisible="{Binding !Pane.IsSemantic}"
                               Margin="12,0,0,0" />
 
                 </fc:Toolbar>
@@ -143,36 +144,36 @@
                      than one that takes an extra 30px. -->
                 <fc:Toolbar Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,6,0,0">
                     <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7)"
-                            Command="{Binding PreviousChangeCommand}" IsEnabled="{Binding HasChanges}" />
+                            Command="{Binding Pane.PreviousChangeCommand}" IsEnabled="{Binding Pane.HasChanges}" />
                     <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8)"
-                            Command="{Binding NextChangeCommand}" IsEnabled="{Binding HasChanges}" />
+                            Command="{Binding Pane.NextChangeCommand}" IsEnabled="{Binding Pane.HasChanges}" />
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
                     <!-- Merge acts on the CURRENT change, so these stay disabled until one is selected. -->
                     <Button Classes="toolbar-btn" Content="← Take left" ToolTip.Tip="Use the left version of this change (Alt+Left)"
-                            Command="{Binding TakeLeftCommand}" IsEnabled="{Binding HasCurrentHunk}" />
+                            Command="{Binding TakeLeftCommand}" IsEnabled="{Binding Pane.HasCurrentHunk}" />
                     <Button Classes="toolbar-btn" Content="Take right →" ToolTip.Tip="Use the right version of this change (Alt+Right)"
-                            Command="{Binding TakeRightCommand}" IsEnabled="{Binding HasCurrentHunk}" />
+                            Command="{Binding TakeRightCommand}" IsEnabled="{Binding Pane.HasCurrentHunk}" />
                     <Button Classes="toolbar-btn" Content="Reset" ToolTip.Tip="Undo the decision on this change"
-                            Command="{Binding ResetHunkCommand}" IsEnabled="{Binding HasCurrentHunk}" />
+                            Command="{Binding ResetHunkCommand}" IsEnabled="{Binding Pane.HasCurrentHunk}" />
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
                     <Button Classes="primary-btn" Content="Save" ToolTip.Tip="Write the merged result (Ctrl+S)"
                             Command="{Binding SaveCommand}" IsEnabled="{Binding HasUnsavedMerge}" />
                     <Button Classes="toolbar-btn" Content="Save as…"
-                            Command="{Binding SaveAsCommand}" IsEnabled="{Binding HasChanges}" />
+                            Command="{Binding SaveAsCommand}" IsEnabled="{Binding Pane.HasChanges}" />
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
                     <!-- Text / Tree. Only offered when a semantic comparison ran, since the tree has
                          nothing to show for a plain text file. -->
-                    <fc:SegmentedControl ItemsSource="{x:Static vm:ComparisonViewModel.ViewModeOptions}"
-                                         SelectedItem="{Binding ViewMode}"
-                                         IsVisible="{Binding IsSemantic}" />
+                    <fc:SegmentedControl ItemsSource="{x:Static dvm:DiffPaneViewModel.ViewModeOptions}"
+                                         SelectedItem="{Binding Pane.ViewMode}"
+                                         IsVisible="{Binding Pane.IsSemantic}" />
 
-                    <fc:Divider Orientation="Vertical" Margin="8,0" IsVisible="{Binding IsSemantic}" />
+                    <fc:Divider Orientation="Vertical" Margin="8,0" IsVisible="{Binding Pane.IsSemantic}" />
 
                     <ComboBox ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
                               SelectedItem="{Binding ThemeManager.CurrentTheme}"
@@ -203,12 +204,16 @@
         <Panel>
             <fc:EmptyState Title="Nothing to compare yet"
                            Description="Pick a file on each side to see a side-by-side diff."
-                           IsVisible="{Binding LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
+                           IsVisible="{Binding Pane.LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
 
-            <views:DiffView x:Name="Diff"
-                            IsVisible="{Binding IsTextViewVisible}" />
+            <!-- Both bind to the pane, not to the tab: they are the embeddable widget, shared with
+                 API Studio, and know nothing about files, options or merge. -->
+            <dv:DiffView x:Name="Diff"
+                         DataContext="{Binding Pane}"
+                         IsVisible="{Binding IsTextViewVisible}" />
 
-            <views:JsonTreeView IsVisible="{Binding IsTreeViewVisible}" />
+            <dv:JsonTreeView DataContext="{Binding Pane}"
+                             IsVisible="{Binding IsTreeViewVisible}" />
         </Panel>
         </DockPanel>
         </ContentControl>

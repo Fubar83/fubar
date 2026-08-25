@@ -35,7 +35,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The shared design system. -->
+    <!-- The design system, used directly by this app's own window (fc: in MainWindow.axaml), and the
+         embeddable diff widget this app is a shell around. -->
     <ProjectReference Include="..\Fubar.Controls\Fubar.Controls.csproj" />
+    <ProjectReference Include="..\Fubar.Diff.Controls\Fubar.Diff.Controls.csproj" />
   </ItemGroup>
 </Project>

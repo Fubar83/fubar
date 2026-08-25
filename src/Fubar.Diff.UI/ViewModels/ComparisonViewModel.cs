@@ -10,7 +10,7 @@ using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Merge;
 using Fubar.Diff.Core.Models;
-using Fubar.Diff.Core.Rendering;
+using Fubar.Diff.Controls.ViewModels;
 using Fubar.Diff.Core.Settings;
 using Fubar.Diff.UI.Services;
 
@@ -52,6 +52,8 @@ public partial class ComparisonViewModel : ViewModelBase
         _mergeService = mergeService;
         _filePicker = filePicker;
         ThemeManager = themeManager;
+
+        Pane.Navigated += OnPaneNavigated;
     }
 
     /// <summary>
@@ -121,70 +123,14 @@ public partial class ComparisonViewModel : ViewModelBase
         }
     }
 
-    // ---- Documents shown by the two editors --------------------------------------------------
-
-    /// <summary>The left editor's flattened document, including filler lines.</summary>
-    [ObservableProperty]
-    public partial AlignedDocument? LeftDocument { get; set; }
-
-    /// <summary>The right editor's flattened document, including filler lines.</summary>
-    [ObservableProperty]
-    public partial AlignedDocument? RightDocument { get; set; }
-
-    /// <summary>Total display rows - the denominator the diff map scales positions against.</summary>
-    public int TotalLines => _comparison.Result.Lines.Count;
-
-    /// <summary>True when the semantic JSON pass ran, which is what enables the tree view.</summary>
-    [ObservableProperty]
-    public partial bool IsSemantic { get; set; }
-
-    /// <summary>The semantic changes as a tree, for the Tree view.</summary>
-    [ObservableProperty]
-    public partial IReadOnlyList<JsonChangeNodeViewModel> SemanticTree { get; set; } = [];
-
-    /// <summary>Which view the diff pane shows. Only meaningful once a semantic comparison has run.</summary>
-    [ObservableProperty]
-    public partial DiffViewMode ViewMode { get; set; } = DiffViewMode.Text;
-
-    /// <summary>The values offered by the view selector.</summary>
-    public static IReadOnlyList<DiffViewMode> ViewModeOptions { get; } = Enum.GetValues<DiffViewMode>();
-
-    /// <summary>Whether the side-by-side editors are the visible pane.</summary>
-    public bool IsTextViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Text;
+    // ---- The diff pane ---------------------------------------------------------------------
 
     /// <summary>
-    /// Whether the change tree is the visible pane. Requires a semantic comparison - the tree would
-    /// otherwise be permanently empty and look broken.
+    /// Everything about DISPLAYING the comparison - the two documents, hunks, navigation and the
+    /// semantic tree. Held rather than inherited so the same widget can be hosted by API Studio,
+    /// which produces its comparisons from memory rather than from files.
     /// </summary>
-    public bool IsTreeViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Tree && IsSemantic;
-
-    partial void OnViewModeChanged(DiffViewMode value) => RaiseViewVisibility();
-
-    partial void OnIsSemanticChanged(bool value)
-    {
-        // Leaving the tree selected when the next comparison is plain text would show an empty pane,
-        // so fall back to the view that always works.
-        if (!value && ViewMode == DiffViewMode.Tree)
-        {
-            ViewMode = DiffViewMode.Text;
-        }
-
-        RaiseViewVisibility();
-    }
-
-    partial void OnLeftDocumentChanged(AlignedDocument? value) => RaiseViewVisibility();
-
-    private void RaiseViewVisibility()
-    {
-        OnPropertyChanged(nameof(IsTextViewVisible));
-        OnPropertyChanged(nameof(IsTreeViewVisible));
-    }
-
-    /// <summary>The hunks, for the diff map and navigation.</summary>
-    public IReadOnlyList<DiffHunk> Hunks => _comparison.Result.Hunks;
-
-    /// <summary>The rows, so the diff map can colour each tick by change kind.</summary>
-    public IReadOnlyList<DiffLine> Lines => _comparison.Result.Lines;
+    public DiffPaneViewModel Pane { get; } = new();
 
     // ---- File selection ----------------------------------------------------------------------
 
@@ -261,35 +207,6 @@ public partial class ComparisonViewModel : ViewModelBase
         OptionsChanged?.Invoke(this, System.EventArgs.Empty);
     }
 
-    // ---- Navigation ---------------------------------------------------------------------------
-
-    /// <summary>Index into the current hunk list, or -1 when nothing is selected yet.</summary>
-    [ObservableProperty]
-    public partial int CurrentHunk { get; set; } = -1;
-
-    /// <summary>Row to bring into view. The view watches this and scrolls; -1 means nothing pending.</summary>
-    [ObservableProperty]
-    public partial int ScrollToRow { get; set; } = -1;
-
-    /// <summary>First visible row, pushed up by the view so the diff map can draw its viewport box.</summary>
-    [ObservableProperty]
-    public partial int ViewportStart { get; set; }
-
-    /// <summary>Number of visible rows, pushed up by the view.</summary>
-    [ObservableProperty]
-    public partial int ViewportLength { get; set; }
-
-    public bool HasChanges => _comparison.Result.Hunks.Count > 0;
-
-    /// <summary>
-    /// True when a specific change is selected. The merge commands act on the CURRENT hunk, so
-    /// without this they would appear available before the user has picked one and then silently do
-    /// nothing when clicked.
-    /// </summary>
-    public bool HasCurrentHunk => CurrentHunk >= 0 && CurrentHunk < _comparison.Result.Hunks.Count;
-
-    partial void OnCurrentHunkChanged(int value) => OnPropertyChanged(nameof(HasCurrentHunk));
-
     // ---- Merge --------------------------------------------------------------------------------
 
     /// <summary>True once at least one hunk has been resolved, i.e. there is something to save.</summary>
@@ -365,12 +282,6 @@ public partial class ComparisonViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
-    private void NextChange() => MoveTo(HunkNavigator.Next(_comparison.Result.Hunks, CurrentHunk));
-
-    [RelayCommand]
-    private void PreviousChange() => MoveTo(HunkNavigator.Previous(_comparison.Result.Hunks, CurrentHunk));
-
     /// <summary>Resolves the current hunk in favour of the left side.</summary>
     [RelayCommand]
     private void TakeLeft() => Resolve(HunkResolution.TakeLeft);
@@ -425,13 +336,6 @@ public partial class ComparisonViewModel : ViewModelBase
         await CompareAsync().ConfigureAwait(true);
     }
 
-    /// <summary>Jumps to a row, e.g. from a diff-map click, syncing the hunk selection to match.</summary>
-    public void JumpToRow(int rowIndex)
-    {
-        ScrollToRow = rowIndex;
-        CurrentHunk = HunkNavigator.IndexOfHunkContaining(_comparison.Result.Hunks, rowIndex);
-    }
-
     // ---- Internals ----------------------------------------------------------------------------
 
     private ComparisonOptions CurrentOptions() => new()
@@ -449,19 +353,19 @@ public partial class ComparisonViewModel : ViewModelBase
 
     private void Resolve(HunkResolution resolution)
     {
-        if (CurrentHunk < 0 || CurrentHunk >= _comparison.Result.Hunks.Count)
+        if (Pane.CurrentHunk < 0 || Pane.CurrentHunk >= _comparison.Result.Hunks.Count)
         {
             return;
         }
 
-        _mergeState = _mergeState.With(CurrentHunk, resolution);
+        _mergeState = _mergeState.With(Pane.CurrentHunk, resolution);
         HasUnsavedMerge = _mergeState.HasResolutions;
 
         StatusMessage = resolution switch
         {
-            HunkResolution.TakeLeft => $"Change {CurrentHunk + 1} resolved: left.",
-            HunkResolution.TakeRight => $"Change {CurrentHunk + 1} resolved: right.",
-            _ => $"Change {CurrentHunk + 1} reset.",
+            HunkResolution.TakeLeft => $"Change {Pane.CurrentHunk + 1} resolved: left.",
+            HunkResolution.TakeRight => $"Change {Pane.CurrentHunk + 1} resolved: right.",
+            _ => $"Change {Pane.CurrentHunk + 1} reset.",
         };
     }
 
@@ -512,20 +416,13 @@ public partial class ComparisonViewModel : ViewModelBase
         _mergeState = _mergeState.RemapTo(result.Hunks.Count);
         HasUnsavedMerge = _mergeState.HasResolutions;
 
-        LeftDocument = AlignedText.Build(result, DiffSide.Left);
-        RightDocument = AlignedText.Build(result, DiffSide.Right);
-
-        CurrentHunk = -1;
-        ScrollToRow = -1;
-
-        IsSemantic = _comparison.IsSemantic;
-        SemanticTree = JsonChangeNodeViewModel.Build(_comparison.SemanticChanges);
+        Pane.Show(result, _comparison.IsSemantic, _comparison.SemanticChanges);
 
         // A skipped semantic pass is only worth mentioning when the user explicitly asked for JSON;
         // the service decides that and leaves the reason null otherwise.
         ErrorMessage = _comparison.SemanticFallbackReason;
 
-        RaiseDerived();
+        RaiseTitle();
 
         StatusMessage = BuildStatus(result);
     }
@@ -539,12 +436,12 @@ public partial class ComparisonViewModel : ViewModelBase
     {
         if (result.AreIdentical)
         {
-            return IsSemantic
+            return Pane.IsSemantic
                 ? "No semantic differences - the files differ only in formatting or ordering."
                 : "The files are identical.";
         }
 
-        if (!IsSemantic)
+        if (!Pane.IsSemantic)
         {
             return $"{result.Hunks.Count} change(s) - {result.Inserted} added, "
                    + $"{result.Deleted} removed, {result.Modified} changed";
@@ -565,29 +462,16 @@ public partial class ComparisonViewModel : ViewModelBase
         _comparison = FileComparison.Empty;
         _mergeState = MergeState.Empty;
         HasUnsavedMerge = false;
-        LeftDocument = null;
-        RightDocument = null;
-        CurrentHunk = -1;
-        ScrollToRow = -1;
+        Pane.Clear();
 
-        RaiseDerived();
+        RaiseTitle();
     }
 
     /// <summary>
-    /// Notifies the computed properties that read through to <c>_comparison</c>. They have no setter
-    /// for the generator to hook, so they must be raised by hand whenever the comparison is replaced.
+    /// The tab label is computed from the loaded documents, so it has to be raised by hand whenever
+    /// the comparison is replaced - it has no setter for the generator to hook.
     /// </summary>
-    private void RaiseDerived()
-    {
-        OnPropertyChanged(nameof(HasChanges));
-        OnPropertyChanged(nameof(HasCurrentHunk));
-        OnPropertyChanged(nameof(TotalLines));
-        OnPropertyChanged(nameof(Hunks));
-        OnPropertyChanged(nameof(Lines));
-
-        // The tab label is derived from the loaded documents, so it changes whenever they do.
-        OnPropertyChanged(nameof(Title));
-    }
+    private void RaiseTitle() => OnPropertyChanged(nameof(Title));
 
     /// <summary>
     /// Cancels the in-flight re-comparison, if any. Toggling several options quickly would otherwise
@@ -633,15 +517,7 @@ public partial class ComparisonViewModel : ViewModelBase
         }
     }
 
-    private void MoveTo(int? hunkIndex)
-    {
-        if (hunkIndex is not { } index)
-        {
-            return;
-        }
-
-        CurrentHunk = index;
-        ScrollToRow = _comparison.Result.Hunks[index].StartIndex;
-        StatusMessage = $"Change {index + 1} of {_comparison.Result.Hunks.Count}";
-    }
+    /// <summary>Reports the position after the pane navigates. Navigation itself lives on the pane.</summary>
+    private void OnPaneNavigated(object? sender, EventArgs e) =>
+        StatusMessage = $"Change {Pane.CurrentHunk + 1} of {Pane.Hunks.Count}";
 }
