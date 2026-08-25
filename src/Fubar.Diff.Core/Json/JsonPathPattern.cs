@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace Fubar.Diff.Core.Json;
@@ -134,8 +135,41 @@ public sealed class JsonPathPattern
         return true;
     }
 
-    /// <summary>The pattern a change's path would produce, so "ignore this" round-trips as a rule.</summary>
-    public static string ForPath(JsonPath path) => path.ToString();
+    /// <summary>
+    /// The rule to create from a change at <paramref name="path"/>, with every array index replaced by
+    /// <c>[*]</c>.
+    ///
+    /// Deliberately broader than the path clicked. A noisy field is noisy in every element - ignoring
+    /// <c>$.items[0].syncedAt</c> and still being shown <c>$.items[1].syncedAt</c> would look broken,
+    /// and the fix would be for the user to know the wildcard syntax and hand-edit the rule. The
+    /// element index is almost never the point; the field is.
+    /// </summary>
+    public static string Generalize(string path)
+    {
+        var builder = new StringBuilder(path.Length);
+
+        for (var i = 0; i < path.Length; i++)
+        {
+            if (path[i] != '[')
+            {
+                builder.Append(path[i]);
+                continue;
+            }
+
+            var close = path.IndexOf(']', i);
+            if (close < 0)
+            {
+                builder.Append(path[i..]);
+                break;
+            }
+
+            var inner = path[(i + 1)..close];
+            builder.Append(inner.Length > 0 && inner.All(char.IsDigit) ? "[*]" : path[i..(close + 1)]);
+            i = close;
+        }
+
+        return builder.ToString();
+    }
 
     /// <summary>True when this pattern covers <paramref name="path"/> or any ancestor of it.</summary>
     public bool Matches(JsonPath path)

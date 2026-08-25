@@ -127,6 +127,25 @@ public partial class DiffPaneViewModel : ObservableObject
         ? "—"
         : start == end ? $"line {start}" : $"lines {start}–{end}";
 
+    // ---- Ignore rules ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// What to run when the user asks to ignore a path, or null when the host does not support it.
+    ///
+    /// Supplied by the host rather than implemented here, because ignoring means re-running the
+    /// comparison, and this view model deliberately knows nothing about where its content came from.
+    /// Fubar Diff leaves it null and the affordance never appears; API Studio sets it, because there
+    /// a comparison belongs to a request that can remember the rule.
+    /// </summary>
+    [ObservableProperty]
+    public partial IRelayCommand<string>? IgnorePathCommand { get; set; }
+
+    /// <summary>Whether to offer the ignore affordance at all.</summary>
+    public bool CanIgnorePaths => IgnorePathCommand is not null;
+
+    partial void OnIgnorePathCommandChanged(IRelayCommand<string>? value) =>
+        OnPropertyChanged(nameof(CanIgnorePaths));
+
     // ---- Semantic JSON --------------------------------------------------------------------------
 
     /// <summary>True when the semantic JSON pass ran, which is what enables the tree view.</summary>

@@ -164,3 +164,38 @@ public class JsonPathPatternTests
         Assert.False(Parse("$.b").Matches(path));
     }
 }
+
+/// <summary>
+/// Rules created by clicking "ignore" on a change. A noisy field is noisy in every array element, so
+/// the generated rule must not pin the index the user happened to click.
+/// </summary>
+public class JsonPathGeneralizeTests
+{
+    [Theory]
+    [InlineData("$.items[0].syncedAt", "$.items[*].syncedAt")]
+    [InlineData("$.a[3].b[12].c", "$.a[*].b[*].c")]
+    [InlineData("$[0]", "$[*]")]
+    public void Array_indices_become_wildcards(string path, string expected)
+    {
+        Assert.Equal(expected, JsonPathPattern.Generalize(path));
+    }
+
+    [Theory]
+    [InlineData("$.meta.requestId")]
+    [InlineData("$.items[*].syncedAt")]
+    [InlineData("$..timestamp")]
+    public void A_path_with_no_index_is_unchanged(string path)
+    {
+        Assert.Equal(path, JsonPathPattern.Generalize(path));
+    }
+
+    /// <summary>The generalized form must still parse, or "ignore" would produce a dead rule.</summary>
+    [Fact]
+    public void The_generalized_form_round_trips_through_the_parser()
+    {
+        var rule = JsonPathPattern.Generalize("$.items[0].syncedAt");
+
+        Assert.True(JsonPathPattern.TryParse(rule, out var pattern));
+        Assert.True(pattern!.Matches(JsonPath.Root.Property("items").Index(4).Property("syncedAt")));
+    }
+}

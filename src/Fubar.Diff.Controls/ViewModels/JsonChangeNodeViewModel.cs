@@ -24,6 +24,17 @@ public sealed class JsonChangeNodeViewModel
     /// <summary>The change at exactly this path, or null for an intermediate grouping row.</summary>
     public JsonChange? Change { get; private set; }
 
+    /// <summary>
+    /// The full path of this row, in ignore-rule syntax - <c>$.items[2].updatedAt</c>.
+    ///
+    /// Set on grouping rows too, so a user can ignore a whole object from the row that represents it
+    /// rather than having to ignore each of its fields.
+    /// </summary>
+    public string Path { get; private set; } = "$";
+
+    /// <summary>The rule this row would create - the path with array indices generalized to [*].</summary>
+    public string IgnorePath => JsonPathPattern.Generalize(Path);
+
     public IReadOnlyList<JsonChangeNodeViewModel> Children => _children;
 
     /// <summary>True for rows that are a change in their own right, rather than just a grouping.</summary>
@@ -84,7 +95,7 @@ public sealed class JsonChangeNodeViewModel
 
         var parent = path.Parent is { } parentPath ? EnsureNode(parentPath, index, root) : root;
 
-        var node = new JsonChangeNodeViewModel(path.Label);
+        var node = new JsonChangeNodeViewModel(path.Label) { Path = key };
         parent._children.Add(node);
         index[key] = node;
 

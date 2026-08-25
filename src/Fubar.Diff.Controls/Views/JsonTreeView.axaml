@@ -3,6 +3,7 @@
              xmlns:fc="using:Fubar.Controls"
              xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
              x:Class="Fubar.Diff.Controls.Views.JsonTreeView"
+             x:Name="Root"
              x:DataType="vm:DiffPaneViewModel">
 
     <UserControl.Styles>
@@ -46,6 +47,20 @@
                                    Classes.modified="{Binding IsModified}"
                                    Text="{Binding Summary}"
                                    VerticalAlignment="Center" />
+
+                        <!-- Only when the host supplied a command - Fubar Diff compares files, which
+                             have nowhere to remember a rule, so it never shows this. On a grouping
+                             row the rule covers the whole subtree, which is why it is offered there
+                             too rather than only on leaves. -->
+                        <Button Classes="toolbar-btn"
+                                Content="ignore"
+                                Margin="12,0,0,0"
+                                Padding="4,0"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="Never report differences at this path"
+                                IsVisible="{Binding #Root.((vm:DiffPaneViewModel)DataContext).CanIgnorePaths}"
+                                Command="{Binding #Root.((vm:DiffPaneViewModel)DataContext).IgnorePathCommand}"
+                                CommandParameter="{Binding IgnorePath}" />
                     </StackPanel>
                 </TreeDataTemplate>
             </TreeView.ItemTemplate>
