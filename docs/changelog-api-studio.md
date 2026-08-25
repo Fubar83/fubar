@@ -32,6 +32,9 @@ All notable changes to this project are documented here. The format is based on
   - Ignoring a field inside an array covers every element: clicking `$.items[0].syncedAt` creates
     `$.items[*].syncedAt`, because a noisy field is noisy in every element.
   - Ignoring an object covers everything under it.
+  - An ignored difference is still drawn, as a barely-there grey band, so "these are the same" stays
+    distinguishable from "this is being ignored" — but it forms no region, is not counted, and
+    next/previous steps straight over it. The status line reports the ignored count separately.
   - Rules are hand-editable in `request.json`; `$..timestamp` matches at any depth. A malformed rule
     is skipped rather than failing the comparison.
 - History now records the **response body** alongside the outcome, which is what makes the above

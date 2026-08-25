@@ -52,6 +52,12 @@ public sealed class JsonChangeNodeViewModel
 
     public bool IsModified => Kind == ChangeKind.Modified;
 
+    /// <summary>True when a rule covers this row, so it can be shown dimmed rather than dropped.</summary>
+    public bool IsIgnored => Change?.IsIgnored ?? false;
+
+    /// <summary>Ignoring is only offered for a row not already covered by a rule.</summary>
+    public bool CanIgnore => !IsIgnored;
+
     /// <summary>A short summary of the change, shown beside the label.</summary>
     public string Summary => Change is null
         ? string.Empty

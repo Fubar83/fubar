@@ -256,6 +256,9 @@ public class JsonSemanticDifferTests
 
 /// <summary>
 /// Ignore rules, applied inside the differ so every view agrees on what counts as a change.
+///
+/// The contract is MARKED, not removed: an ignored difference still exists and is still returned, so
+/// a renderer can show a faint band there. Everything that counts differences filters on the flag.
 /// </summary>
 public class JsonIgnoreRuleTests
 {
@@ -270,15 +273,35 @@ public class JsonIgnoreRuleTests
     private static JsonComparisonOptions Ignoring(params string[] paths) =>
         JsonComparisonOptions.Default with { IgnoredPaths = paths };
 
+    private static IReadOnlyList<JsonChange> Counted(IReadOnlyList<JsonChange> changes) =>
+        [.. changes.Where(c => !c.IsIgnored)];
+
     /// <summary>The case that motivates the feature: a field that differs on every single call.</summary>
     [Fact]
-    public void An_ignored_path_is_not_reported()
+    public void An_ignored_path_is_flagged_rather_than_counted()
     {
         var left = Obj(("requestId", Str("a")), ("status", Str("ok")));
         var right = Obj(("requestId", Str("b")), ("status", Str("ok")));
 
-        Assert.Single(JsonSemanticDiffer.Compare(left, right, JsonComparisonOptions.Default));
-        Assert.Empty(JsonSemanticDiffer.Compare(left, right, Ignoring("$.requestId")));
+        var changes = JsonSemanticDiffer.Compare(left, right, Ignoring("$.requestId"));
+
+        Assert.Empty(Counted(changes));
+
+        // Still returned, so the row can be drawn faintly instead of vanishing.
+        var ignored = Assert.Single(changes);
+        Assert.True(ignored.IsIgnored);
+        Assert.Equal("$.requestId", ignored.Path.ToString());
+    }
+
+    [Fact]
+    public void Without_a_rule_nothing_is_flagged()
+    {
+        var left = Obj(("requestId", Str("a")));
+        var right = Obj(("requestId", Str("b")));
+
+        Assert.DoesNotContain(
+            JsonSemanticDiffer.Compare(left, right, JsonComparisonOptions.Default),
+            c => c.IsIgnored);
     }
 
     /// <summary>Ignoring noise must not also hide the difference the user is looking for.</summary>
@@ -288,10 +311,9 @@ public class JsonIgnoreRuleTests
         var left = Obj(("requestId", Str("a")), ("status", Str("pending")));
         var right = Obj(("requestId", Str("b")), ("status", Str("shipped")));
 
-        var changes = JsonSemanticDiffer.Compare(left, right, Ignoring("$.requestId"));
+        var counted = Counted(JsonSemanticDiffer.Compare(left, right, Ignoring("$.requestId")));
 
-        Assert.Single(changes);
-        Assert.Equal("$.status", changes[0].Path.ToString());
+        Assert.Equal("$.status", Assert.Single(counted).Path.ToString());
     }
 
     [Fact]
@@ -300,8 +322,8 @@ public class JsonIgnoreRuleTests
         var left = Arr(Obj(("at", Str("1"))), Obj(("at", Str("2"))));
         var right = Arr(Obj(("at", Str("9"))), Obj(("at", Str("8"))));
 
-        Assert.Equal(2, JsonSemanticDiffer.Compare(left, right, JsonComparisonOptions.Default).Count);
-        Assert.Empty(JsonSemanticDiffer.Compare(left, right, Ignoring("$[*].at")));
+        Assert.Equal(2, Counted(JsonSemanticDiffer.Compare(left, right, JsonComparisonOptions.Default)).Count);
+        Assert.Empty(Counted(JsonSemanticDiffer.Compare(left, right, Ignoring("$[*].at"))));
     }
 
     [Fact]
@@ -310,7 +332,10 @@ public class JsonIgnoreRuleTests
         var left = Obj(("meta", Obj(("id", Str("a")), ("at", Str("1")))));
         var right = Obj(("meta", Obj(("id", Str("b")), ("at", Str("2")))));
 
-        Assert.Empty(JsonSemanticDiffer.Compare(left, right, Ignoring("$.meta")));
+        var changes = JsonSemanticDiffer.Compare(left, right, Ignoring("$.meta"));
+
+        Assert.Empty(Counted(changes));
+        Assert.All(changes, c => Assert.True(c.IsIgnored));
     }
 
     /// <summary>A typo in a persisted rule must not stop the comparison working.</summary>
@@ -322,6 +347,6 @@ public class JsonIgnoreRuleTests
 
         var changes = JsonSemanticDiffer.Compare(left, right, Ignoring("$.items[", "$.nothing"));
 
-        Assert.Single(changes);
+        Assert.Single(Counted(changes));
     }
 }

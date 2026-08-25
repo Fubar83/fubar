@@ -28,7 +28,7 @@ public static class JsonSemanticDiffer
         // Filtered here rather than by a caller, so every consumer of a semantic comparison - the
         // tree, the line filter behind the text view, the diff map, navigation - agrees on what
         // counts as a difference. A view that filtered for itself would disagree with the others.
-        return JsonIgnoreRules.From(options.IgnoredPaths).Filter(changes);
+        return JsonIgnoreRules.From(options.IgnoredPaths).Mark(changes);
     }
 
     private static void CompareNode(

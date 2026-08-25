@@ -27,6 +27,16 @@ internal static class DiffLineColors
     };
 
     /// <summary>
+    /// The band behind a row that differs only at ignored paths.
+    ///
+    /// Barely there on purpose, and neutral rather than a change colour: it says "something differs
+    /// here and you asked not to be told", which must not compete for attention with the differences
+    /// that were not ignored. Any stronger and adding a rule would not visibly quieten the diff,
+    /// which is the whole point of adding one.
+    /// </summary>
+    public static IBrush? IgnoredBackground(StyledElement host) => Tinted(host, "TextSecondary", 0.07);
+
+    /// <summary>
     /// Stronger tint for the characters that actually changed within a modified line. It sits ON TOP
     /// of the line tint, so it must be noticeably denser or it simply disappears into it.
     /// </summary>

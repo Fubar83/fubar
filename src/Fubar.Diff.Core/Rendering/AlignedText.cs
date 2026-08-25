@@ -60,7 +60,7 @@ public static class AlignedText
             }
 
             builder.Append(text);
-            meta[i - from] = new AlignedLine(number, KindFor(row, side), spans);
+            meta[i - from] = new AlignedLine(number, KindFor(row, side), spans) { IsIgnored = row.IsIgnored };
         }
 
         return new AlignedDocument(builder.ToString(), meta);
@@ -93,4 +93,8 @@ public sealed record AlignedDocument(string Text, IReadOnlyList<AlignedLine> Lin
 /// </param>
 /// <param name="Kind">How to tint the line on this side.</param>
 /// <param name="Spans">Character ranges to highlight within the line; empty unless modified.</param>
-public sealed record AlignedLine(int? SourceNumber, ChangeKind Kind, IReadOnlyList<CharSpan> Spans);
+public sealed record AlignedLine(int? SourceNumber, ChangeKind Kind, IReadOnlyList<CharSpan> Spans)
+{
+    /// <summary>True when this row differs only at ignored paths - drawn as a faint band, nothing more.</summary>
+    public bool IsIgnored { get; init; }
+}

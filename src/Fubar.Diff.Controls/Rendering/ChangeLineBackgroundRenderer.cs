@@ -50,7 +50,15 @@ internal sealed class ChangeLineBackgroundRenderer : IBackgroundRenderer
                 continue;
             }
 
-            if (DiffLineColors.LineBackground(_host, _lines[index].Kind) is not { } brush)
+            // An ignored row's Kind is Unchanged - it was downgraded so it forms no hunk - so the
+            // flag has to be checked before falling through to the by-kind lookup, which would
+            // otherwise return no tint at all.
+            var line = _lines[index];
+            var brushOrNull = line.IsIgnored
+                ? DiffLineColors.IgnoredBackground(_host)
+                : DiffLineColors.LineBackground(_host, line.Kind);
+
+            if (brushOrNull is not { } brush)
             {
                 continue;
             }

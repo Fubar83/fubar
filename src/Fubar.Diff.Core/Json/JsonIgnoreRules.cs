@@ -55,14 +55,24 @@ public sealed class JsonIgnoreRules
     /// <summary>True when any rule covers this path.</summary>
     public bool IsIgnored(JsonPath path) => _patterns.Any(p => p.Matches(path));
 
-    /// <summary>The changes that survive the rules.</summary>
-    public IReadOnlyList<JsonChange> Filter(IReadOnlyList<JsonChange> changes)
+    /// <summary>
+    /// The same changes, with the covered ones flagged <see cref="JsonChange.IsIgnored"/>.
+    ///
+    /// Flagged rather than removed. An ignored difference still exists, and rendering nothing where
+    /// one is would leave the user unable to tell "these are the same" from "this is being ignored" -
+    /// which matters most right after adding a rule, when what they want to confirm is that it hid
+    /// the field they meant. Everything downstream drops them from counts, hunks and navigation; only
+    /// the renderers still know they are there.
+    /// </summary>
+    public IReadOnlyList<JsonChange> Mark(IReadOnlyList<JsonChange> changes)
     {
         if (IsEmpty || changes.Count == 0)
         {
             return changes;
         }
 
-        return changes.Where(c => !IsIgnored(c.Path)).ToList();
+        return changes
+            .Select(c => IsIgnored(c.Path) ? c with { IsIgnored = true } : c)
+            .ToList();
     }
 }

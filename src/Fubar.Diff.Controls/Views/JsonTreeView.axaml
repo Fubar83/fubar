@@ -26,6 +26,12 @@
             <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,Menlo,monospace" />
             <Setter Property="Margin" Value="12,0,0,0" />
         </Style>
+        <!-- Last, so it wins over the change colours above: an ignored row is still shown, but must
+             read as quieter than everything that was not ignored. -->
+        <Style Selector="TextBlock.ignored">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
     </UserControl.Styles>
 
     <Panel>
@@ -40,13 +46,21 @@
             <TreeView.ItemTemplate>
                 <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:JsonChangeNodeViewModel">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Classes="path" Text="{Binding Label}" VerticalAlignment="Center" />
+                        <TextBlock Classes="path" Text="{Binding Label}" VerticalAlignment="Center"
+                                   Classes.ignored="{Binding IsIgnored}" />
                         <TextBlock Classes="summary"
                                    Classes.inserted="{Binding IsInserted}"
                                    Classes.deleted="{Binding IsDeleted}"
                                    Classes.modified="{Binding IsModified}"
+                                   Classes.ignored="{Binding IsIgnored}"
                                    Text="{Binding Summary}"
                                    VerticalAlignment="Center" />
+
+                        <TextBlock Text="ignored" Margin="12,0,0,0" FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   Opacity="0.6"
+                                   IsVisible="{Binding IsIgnored}" />
 
                         <!-- Only when the host supplied a command - Fubar Diff compares files, which
                              have nowhere to remember a rule, so it never shows this. On a grouping
@@ -58,6 +72,7 @@
                                 Padding="4,0"
                                 VerticalAlignment="Center"
                                 ToolTip.Tip="Never report differences at this path"
+                                IsEnabled="{Binding CanIgnore}"
                                 IsVisible="{Binding #Root.((vm:DiffPaneViewModel)DataContext).CanIgnorePaths}"
                                 Command="{Binding #Root.((vm:DiffPaneViewModel)DataContext).IgnorePathCommand}"
                                 CommandParameter="{Binding IgnorePath}" />

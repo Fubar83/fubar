@@ -451,10 +451,14 @@ public partial class ComparisonViewModel : ViewModelBase
         // moved shows up as a deleted row and an inserted row, so the row count would say "2 changes"
         // where the tree shows one. Reporting the row count next to a tree that disagrees with it just
         // looks like a bug.
-        var count = _comparison.SemanticChanges.Count;
+        // Ignored changes are excluded: they form no hunk and are drawn only as a faint band, so
+        // counting them here would contradict both the tree and the region count beside it.
+        var count = _comparison.SemanticChanges.Count(c => !c.IsIgnored);
+        var ignored = _comparison.SemanticChanges.Count - count;
         var hunks = result.Hunks.Count;
 
-        return $"semantic: {count} change(s) across {hunks} region(s)";
+        var suffix = ignored > 0 ? $"   ·   {ignored} ignored" : string.Empty;
+        return $"semantic: {count} change(s) across {hunks} region(s){suffix}";
     }
 
     private void Reset()

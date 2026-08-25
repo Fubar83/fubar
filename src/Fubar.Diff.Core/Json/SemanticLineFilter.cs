@@ -25,15 +25,26 @@ public static class SemanticLineFilter
     public static DiffResult Apply(
         DiffResult textResult,
         IReadOnlySet<int> significantLeftLines,
-        IReadOnlySet<int> significantRightLines)
+        IReadOnlySet<int> significantRightLines,
+        IReadOnlySet<int>? ignoredLeftLines = null,
+        IReadOnlySet<int>? ignoredRightLines = null)
     {
         var filtered = new List<DiffLine>(textResult.Lines.Count);
 
         foreach (var row in textResult.Lines)
         {
-            filtered.Add(IsSignificant(row, significantLeftLines, significantRightLines)
-                ? row
-                : Downgrade(row));
+            if (IsSignificant(row, significantLeftLines, significantRightLines))
+            {
+                filtered.Add(row);
+                continue;
+            }
+
+            // A row can touch both a real change and an ignored one; significance wins above, so
+            // this only marks rows whose ONLY reason to differ was ignored.
+            var wasIgnored = ignoredLeftLines is not null
+                             && IsSignificant(row, ignoredLeftLines, ignoredRightLines ?? ignoredLeftLines);
+
+            filtered.Add(Downgrade(row) with { IsIgnored = wasIgnored });
         }
 
         return DiffResult.Create(filtered);

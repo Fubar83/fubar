@@ -35,5 +35,15 @@ public sealed record JsonChange(
     /// </summary>
     public bool IsReorder { get; init; }
 
+    /// <summary>
+    /// True when an ignore rule covers this path.
+    ///
+    /// Marked rather than removed: an ignored difference still EXISTS, and a comparison that renders
+    /// nothing at all where one is would leave the user unable to tell "this field is the same" from
+    /// "this field is being ignored". It is excluded from the counts, the hunks and navigation, and
+    /// drawn only as a faint band.
+    /// </summary>
+    public bool IsIgnored { get; init; }
+
     public override string ToString() => $"{Kind} at {Path}";
 }

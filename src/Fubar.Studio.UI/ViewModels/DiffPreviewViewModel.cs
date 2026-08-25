@@ -191,15 +191,28 @@ public partial class DiffPreviewViewModel : ViewModelBase
     {
         var result = comparison.Result;
 
+        // Ignored changes form no hunk and are drawn only as a faint band, so they are counted
+        // separately - reporting them among the changes would contradict what the view shows.
+        var ignored = comparison.SemanticChanges.Count(c => c.IsIgnored);
+        var counted = comparison.SemanticChanges.Count - ignored;
+        var suffix = ignored > 0 ? $"   ·   {ignored} ignored" : string.Empty;
+
         if (result.AreIdentical)
         {
-            return comparison.IsSemantic
-                ? "No semantic differences - these differ only in formatting or ordering."
-                : "Identical.";
+            if (!comparison.IsSemantic)
+            {
+                return "Identical.";
+            }
+
+            // Worth distinguishing: "nothing differs" and "everything that differs is ignored" look
+            // the same on screen, and only one of them means the responses actually match.
+            return ignored > 0
+                ? $"No differences outside the ignored paths.{suffix}"
+                : "No semantic differences - these differ only in formatting or ordering.";
         }
 
         return comparison.IsSemantic
-            ? $"semantic: {comparison.SemanticChanges.Count} change(s) across {result.Hunks.Count} region(s)"
+            ? $"semantic: {counted} change(s) across {result.Hunks.Count} region(s){suffix}"
             : $"{result.Hunks.Count} change(s) - {result.Inserted} added, {result.Deleted} removed, "
               + $"{result.Modified} changed";
     }

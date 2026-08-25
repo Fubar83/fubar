@@ -29,6 +29,16 @@ public sealed record DiffLine(
     /// <summary>Character ranges within <see cref="RightText"/> that differ from the left side.</summary>
     public IReadOnlyList<CharSpan> RightSpans { get; init; } = [];
 
+    /// <summary>
+    /// True when this row differs, but only at paths an ignore rule covers.
+    ///
+    /// Deliberately NOT part of <see cref="IsChange"/>: an ignored row forms no hunk, is not counted,
+    /// and navigation steps past it. It exists only so a renderer can draw a faint band there -
+    /// showing nothing at all would leave the reader unable to tell "these are the same" from "this
+    /// is being ignored", which is exactly what they want to check after adding a rule.
+    /// </summary>
+    public bool IsIgnored { get; init; }
+
     /// <summary>True when this row represents a real difference rather than common context.</summary>
     public bool IsChange => Kind is ChangeKind.Inserted or ChangeKind.Deleted or ChangeKind.Modified;
 }

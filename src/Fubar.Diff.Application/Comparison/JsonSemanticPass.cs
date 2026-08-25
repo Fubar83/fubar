@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Models;
@@ -48,10 +49,17 @@ public sealed class JsonSemanticPass
         }
 
         var changes = JsonSemanticDiffer.Compare(left, right, options.Json);
-        var (significantLeft, significantRight) = JsonChangeLines.Collect(changes);
+
+        // Split, not filtered: the significant lines decide what is a change, the ignored ones decide
+        // where to draw a faint band. Collecting them together would make an ignored field count as a
+        // real difference again.
+        var (significantLeft, significantRight) =
+            JsonChangeLines.Collect([.. changes.Where(c => !c.IsIgnored)]);
+        var (ignoredLeft, ignoredRight) =
+            JsonChangeLines.Collect([.. changes.Where(c => c.IsIgnored)]);
 
         return new JsonSemanticOutcome(
-            SemanticLineFilter.Apply(textResult, significantLeft, significantRight),
+            SemanticLineFilter.Apply(textResult, significantLeft, significantRight, ignoredLeft, ignoredRight),
             Applied: true,
             Changes: changes,
             FallbackReason: null);
