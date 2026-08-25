@@ -4,7 +4,7 @@ using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
 using Fubar.Diff.Core.Rendering;
 
-namespace Fubar.Diff.UI.Rendering;
+namespace Fubar.Diff.Controls.Rendering;
 
 /// <summary>
 /// Highlights the individual words that changed within a modified line, on top of the line tint.

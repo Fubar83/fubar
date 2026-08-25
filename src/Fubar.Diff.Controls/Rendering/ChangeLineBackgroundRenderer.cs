@@ -6,7 +6,7 @@ using AvaloniaEdit.Rendering;
 using Fubar.Diff.Core.Models;
 using Fubar.Diff.Core.Rendering;
 
-namespace Fubar.Diff.UI.Rendering;
+namespace Fubar.Diff.Controls.Rendering;
 
 /// <summary>
 /// Paints the whole-line change tint behind the text - green for inserted, red for deleted, amber for

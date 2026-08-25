@@ -7,7 +7,7 @@ using AvaloniaEdit.Editing;
 using AvaloniaEdit.Rendering;
 using Fubar.Diff.Core.Rendering;
 
-namespace Fubar.Diff.UI.Rendering;
+namespace Fubar.Diff.Controls.Rendering;
 
 /// <summary>
 /// A line-number gutter that shows each line's number in the ORIGINAL file.

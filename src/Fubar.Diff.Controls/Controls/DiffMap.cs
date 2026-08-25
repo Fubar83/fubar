@@ -5,9 +5,9 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Fubar.Diff.Core.Models;
-using Fubar.Diff.UI.Rendering;
+using Fubar.Diff.Controls.Rendering;
 
-namespace Fubar.Diff.UI.Controls;
+namespace Fubar.Diff.Controls.Controls;
 
 /// <summary>
 /// A scaled-down map of the whole comparison: one tick per hunk, positioned proportionally through the

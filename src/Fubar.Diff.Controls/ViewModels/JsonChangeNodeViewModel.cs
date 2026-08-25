@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Models;
 
-namespace Fubar.Diff.UI.ViewModels;
+namespace Fubar.Diff.Controls.ViewModels;
 
 /// <summary>
 /// One row of the JSON change tree: a path segment, with any nested changes beneath it.

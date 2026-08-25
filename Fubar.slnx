@@ -11,6 +11,7 @@
   </Folder>
   <Folder Name="/src/diff/">
     <Project Path="src/Fubar.Diff.Core/Fubar.Diff.Core.csproj" />
+    <Project Path="src/Fubar.Diff.Controls/Fubar.Diff.Controls.csproj" />
     <Project Path="src/Fubar.Diff.Application/Fubar.Diff.Application.csproj" />
     <Project Path="src/Fubar.Diff.Infrastructure/Fubar.Diff.Infrastructure.csproj" />
     <Project Path="src/Fubar.Diff.UI/Fubar.Diff.UI.csproj" />

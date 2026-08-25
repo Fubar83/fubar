@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The embeddable diff widget: the two-editor view, its renderers, the diff map and the JSON change
+       tree, bound to a DiffPaneViewModel that knows only how to DISPLAY a comparison.
+
+       A library rather than part of Fubar.Diff.UI (which is an executable) so API Studio can host the
+       same view - for the OpenAPI import preview and for comparing responses - without dragging in the
+       diff app's shell, tabs and settings.
+
+       Depends on Fubar.Diff.Core for the models and Fubar.Controls for the design system. Deliberately
+       NOT on Fubar.Diff.Application or .Infrastructure: it renders a DiffResult, it does not produce
+       one, so a host chooses how the comparison is run. -->
+  <PropertyGroup>
+    <RootNamespace>Fubar.Diff.Controls</RootNamespace>
+    <AssemblyName>Fubar.Diff.Controls</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" />
+    <PackageReference Include="AvaloniaEdit.TextMate" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fubar.Controls\Fubar.Controls.csproj" />
+    <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
+  </ItemGroup>
+
+</Project>

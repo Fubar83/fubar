@@ -4,7 +4,7 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Fubar.Diff.Core.Models;
 
-namespace Fubar.Diff.UI.Rendering;
+namespace Fubar.Diff.Controls.Rendering;
 
 /// <summary>
 /// Resolves the brushes used to tint diff lines and character spans.

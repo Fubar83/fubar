@@ -1,4 +1,4 @@
-namespace Fubar.Diff.UI.ViewModels;
+namespace Fubar.Diff.Controls.ViewModels;
 
 /// <summary>How the diff pane presents the comparison.</summary>
 public enum DiffViewMode
