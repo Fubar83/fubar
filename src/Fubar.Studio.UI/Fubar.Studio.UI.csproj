@@ -41,7 +41,13 @@
     <ProjectReference Include="..\Fubar.Studio.Core\Fubar.Studio.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The shared design system. -->
+    <!-- The shared design system, plus the diff widget and engine reused for the OpenAPI import
+         preview and response comparisons. Fubar.Diff.Infrastructure is referenced for its adapters,
+         which Composition.cs wires - the same single UI->Infrastructure edge this app already allows
+         for its own. -->
     <ProjectReference Include="..\Fubar.Controls\Fubar.Controls.csproj" />
+    <ProjectReference Include="..\Fubar.Diff.Controls\Fubar.Diff.Controls.csproj" />
+    <ProjectReference Include="..\Fubar.Diff.Application\Fubar.Diff.Application.csproj" />
+    <ProjectReference Include="..\Fubar.Diff.Infrastructure\Fubar.Diff.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

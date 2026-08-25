@@ -1,3 +1,5 @@
+using Fubar.Diff.Application.Comparison;
+using Fubar.Diff.Infrastructure;
 using Fubar.Controls;
 using Fubar.Studio.Application.Requests;
 using Fubar.Studio.Infrastructure;
@@ -29,6 +31,14 @@ internal static class Composition
                 services.AddSingleton<IFilePickerService, FilePickerService>();
                 services.AddSingleton<IClipboardService, ClipboardService>();
                 services.AddSingleton<IImportDialogService, ImportDialogService>();
+
+                // The diff engine, reused for the OpenAPI import preview and response comparisons.
+                // AddFubarDiffInfrastructure binds its Core ports (diff engine, JSON parser, text
+                // normalizer) exactly as it does inside Fubar Diff.
+                services.AddFubarDiffInfrastructure();
+                services.AddSingleton<JsonSemanticPass>();
+                services.AddSingleton<IFileComparisonService, FileComparisonService>();
+                services.AddSingleton<IDiffPreviewService, DiffPreviewService>();
 
                 // Shared across every window (one theme, one log, all stateless services).
                 services.AddSingleton<StatusLogViewModel>();
