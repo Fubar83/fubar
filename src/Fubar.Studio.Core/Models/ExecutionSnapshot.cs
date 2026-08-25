@@ -28,5 +28,14 @@ public sealed class ExecutionSnapshot
 
     public long SizeBytes { get; set; }
 
+    /// <summary>
+    /// The response body as it came back, so a past execution can be diffed against the current one.
+    /// Null when the response was empty or larger than
+    /// <see cref="History.HistoryBodyPolicy.MaxResponseBodyChars"/>, and null on every entry written
+    /// before this field existed - so a reader must treat it as optional rather than assume history
+    /// is comparable.
+    /// </summary>
+    public string? ResponseBody { get; set; }
+
     public string? ErrorMessage { get; set; }
 }
