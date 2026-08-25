@@ -5,10 +5,14 @@ namespace Fubar.Controls.Tests;
 
 /// <summary>
 /// Guards the library's core contract: Fubar.Controls is app-agnostic, so it drops into ANY Avalonia
-/// app. Now that the library ships as a standalone NuGet package there is no single "forbidden" app to
-/// name, so this is an allowlist instead: the only things it may reference are Avalonia, the AvaloniaEdit
-/// stack behind <see cref="JsonEditor"/>, and the BCL. Anything else - a host app, an MVVM toolkit, a
-/// JSON or HTTP library - is a dependency consumers did not ask for and breaks the drop-in promise.
+/// app. Both apps in this repository consume it, so naming one as the "forbidden" dependency would be
+/// arbitrary - this is an allowlist instead: the only things it may reference are Avalonia, the
+/// AvaloniaEdit stack behind <see cref="JsonEditor"/>, and the BCL. Anything else - a host app, an MVVM
+/// toolkit, a JSON or HTTP library - is a dependency consumers did not ask for, and breaks the promise
+/// that the library drops into anything.
+///
+/// This matters MORE in a monorepo, not less: with everything a project reference away, adding
+/// `using Fubar.Studio.Core` here compiles fine and nothing but this test would object.
 /// </summary>
 public class ArchitectureTests
 {
