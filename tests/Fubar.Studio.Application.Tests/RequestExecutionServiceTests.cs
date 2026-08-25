@@ -36,6 +36,30 @@ public class RequestExecutionServiceTests
     }
 
     [Fact]
+    public async Task Snapshot_carries_the_response_body_so_it_can_be_diffed_later()
+    {
+        var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200, Body = "{\"id\":1}" });
+        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, new FakeTestService(), new FakeHistoryService());
+
+        var result = await sut.RunAsync(new RequestRun(RequestWithTests(), Ws, null, EffectiveAuth: null));
+
+        Assert.Equal("{\"id\":1}", result.HistorySnapshot!.ResponseBody);
+    }
+
+    [Fact]
+    public async Task Snapshot_drops_a_response_body_over_the_cap()
+    {
+        var body = new string('x', HistoryBodyPolicy.MaxResponseBodyChars + 1);
+        var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200, Body = body });
+        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, new FakeTestService(), new FakeHistoryService());
+
+        var result = await sut.RunAsync(new RequestRun(RequestWithTests(), Ws, null, EffectiveAuth: null));
+
+        Assert.NotNull(result.HistorySnapshot);
+        Assert.Null(result.HistorySnapshot.ResponseBody);
+    }
+
+    [Fact]
     public async Task On_transport_error_skips_tests_but_still_records_history()
     {
         var executor = new FakeExecutorRegistry(new ExecutionResult { ErrorMessage = "boom" });

@@ -43,6 +43,17 @@ public class HistoryServiceTests : IDisposable
         Assert.Equal(200, result[1].StatusCode);
     }
 
+    /// <summary>The whole point of storing the body is comparing it later, which needs it back verbatim.</summary>
+    [Fact]
+    public async Task AppendAsync_RoundTripsTheResponseBody()
+    {
+        await _sut.AppendAsync(_root, "req1", new ExecutionSnapshot { StatusCode = 200, ResponseBody = "{\n  \"id\": 1\n}" });
+
+        var result = await _sut.LoadAsync(_root, "req1");
+
+        Assert.Equal("{\n  \"id\": 1\n}", result[0].ResponseBody);
+    }
+
     [Fact]
     public async Task AppendAsync_DoesNotLeakAcrossDifferentRequestIds()
     {

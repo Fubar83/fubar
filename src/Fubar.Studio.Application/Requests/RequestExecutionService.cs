@@ -107,6 +107,7 @@ public sealed class RequestExecutionService : IRequestExecutionService
         ReasonPhrase = result.ReasonPhrase,
         ElapsedMilliseconds = result.ElapsedMilliseconds,
         SizeBytes = result.SizeBytes,
+        ResponseBody = HistoryBodyPolicy.Capture(result.Body),
         ErrorMessage = result.ErrorMessage,
     };
 }
