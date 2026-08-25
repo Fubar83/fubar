@@ -6,29 +6,45 @@
              x:Class="Fubar.Diff.Controls.Views.DiffView"
              x:DataType="vm:DiffPaneViewModel">
 
-    <!-- Two independent editors, kept in step by DiffView.axaml.cs rather than by sharing a scroller.
-         Both documents contain filler lines and therefore have the SAME line count, which is what
-         makes the sync a plain vertical-offset copy instead of a line-mapping problem. -->
-    <Grid ColumnDefinitions="*,Auto,Auto,*">
+    <!-- Rows: the side-by-side panes, a drag handle, and the close-up of the current difference.
+         The bottom two collapse to zero height when the detail pane is off - code-behind sets the
+         row heights, because a GridSplitter needs real definitions to resize and cannot be told to
+         ignore a hidden one. -->
+    <Grid x:Name="Root" RowDefinitions="*,Auto,190">
 
-        <views:DiffEditorPane x:Name="LeftPane"
-                              Grid.Column="0"
-                              Document="{Binding LeftDocument}" />
+        <!-- Two independent editors, kept in step by DiffView.axaml.cs rather than by sharing a
+             scroller. Both documents contain filler lines and therefore have the SAME line count,
+             which is what makes the sync a plain vertical-offset copy instead of a line-mapping
+             problem. -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,*">
 
-        <!-- The map sits between the panes so it reads as belonging to both. -->
-        <controls:DiffMap x:Name="Map"
-                          Grid.Column="1"
-                          Margin="2,0"
-                          Hunks="{Binding Hunks}"
-                          TotalLines="{Binding TotalLines}"
-                          CurrentHunk="{Binding CurrentHunk}"
-                          ViewportStart="{Binding ViewportStart}"
-                          ViewportLength="{Binding ViewportLength}" />
+            <views:DiffEditorPane x:Name="LeftPane"
+                                  Grid.Column="0"
+                                  Document="{Binding LeftDocument}" />
 
-        <Border Grid.Column="2" Width="1" Background="{DynamicResource BorderSubtle}" />
+            <!-- The map sits between the panes so it reads as belonging to both. -->
+            <controls:DiffMap x:Name="Map"
+                              Grid.Column="1"
+                              Margin="2,0"
+                              Hunks="{Binding Hunks}"
+                              TotalLines="{Binding TotalLines}"
+                              CurrentHunk="{Binding CurrentHunk}"
+                              ViewportStart="{Binding ViewportStart}"
+                              ViewportLength="{Binding ViewportLength}" />
 
-        <views:DiffEditorPane x:Name="RightPane"
-                              Grid.Column="3"
-                              Document="{Binding RightDocument}" />
+            <Border Grid.Column="2" Width="1" Background="{DynamicResource BorderSubtle}" />
+
+            <views:DiffEditorPane x:Name="RightPane"
+                                  Grid.Column="3"
+                                  Document="{Binding RightDocument}" />
+        </Grid>
+
+        <GridSplitter x:Name="DetailSplitter"
+                      Grid.Row="1"
+                      Height="4"
+                      ResizeDirection="Rows"
+                      Background="{DynamicResource BorderSubtle}" />
+
+        <views:DiffDetailPane x:Name="Detail" Grid.Row="2" />
     </Grid>
 </UserControl>

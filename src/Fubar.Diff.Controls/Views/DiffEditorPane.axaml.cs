@@ -28,6 +28,7 @@ public partial class DiffEditorPane : UserControl
     private readonly ChangeLineBackgroundRenderer _backgroundRenderer;
     private readonly CharSpanColorizer _colorizer;
     private readonly SourceLineNumberMargin _lineNumbers;
+    private readonly CurrentHunkRenderer _currentHunk;
     private readonly SearchPanel _searchPanel;
 
     public DiffEditorPane()
@@ -37,8 +38,12 @@ public partial class DiffEditorPane : UserControl
         _backgroundRenderer = new ChangeLineBackgroundRenderer(this);
         _colorizer = new CharSpanColorizer(this);
         _lineNumbers = new SourceLineNumberMargin();
+        _currentHunk = new CurrentHunkRenderer(this);
 
         Editor.TextArea.TextView.BackgroundRenderers.Add(_backgroundRenderer);
+        // AFTER the change tint, deliberately: same layer, and background renderers paint in
+        // registration order, so the current-hunk marker must be added second to land on top.
+        Editor.TextArea.TextView.BackgroundRenderers.Add(_currentHunk);
         Editor.TextArea.TextView.LineTransformers.Add(_colorizer);
         Editor.TextArea.LeftMargins.Add(_lineNumbers);
 
@@ -69,6 +74,16 @@ public partial class DiffEditorPane : UserControl
     /// <summary>The text view, which owns the scroll offset the two panes keep in step.</summary>
     internal TextView TextView => Editor.TextArea.TextView;
 
+    /// <summary>
+    /// Marks a row range as the current difference, or clears it with a negative start. Redraws
+    /// immediately - this is driven by navigation, where the whole point is instant feedback.
+    /// </summary>
+    internal void SetCurrentHunk(int startIndex, int endIndex)
+    {
+        _currentHunk.SetRange(startIndex, endIndex);
+        Editor.TextArea.TextView.Redraw();
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -92,6 +107,9 @@ public partial class DiffEditorPane : UserControl
         _backgroundRenderer.SetLines(lines);
         _colorizer.SetLines(lines);
         _lineNumbers.SetLines(lines);
+
+        // A row range from the previous comparison addresses rows this document may not have.
+        _currentHunk.SetRange(-1, -1);
 
         Editor.Document.Text = document?.Text ?? string.Empty;
 

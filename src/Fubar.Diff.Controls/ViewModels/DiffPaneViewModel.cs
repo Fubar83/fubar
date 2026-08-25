@@ -66,7 +66,66 @@ public partial class DiffPaneViewModel : ObservableObject
     /// </summary>
     public bool HasCurrentHunk => CurrentHunk >= 0 && CurrentHunk < _result.Hunks.Count;
 
-    partial void OnCurrentHunkChanged(int value) => OnPropertyChanged(nameof(HasCurrentHunk));
+    partial void OnCurrentHunkChanged(int value)
+    {
+        OnPropertyChanged(nameof(HasCurrentHunk));
+        RebuildDetail();
+    }
+
+    // ---- Detail pane ----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether the close-up of the current difference is shown below the panes. On by default: in a
+    /// long file the two sides of one change are often far enough apart vertically that reading them
+    /// together is the hard part, which is the whole reason the pane exists.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsDetailVisible { get; set; } = true;
+
+    /// <summary>The current hunk's rows, left side, or null when no hunk is selected.</summary>
+    [ObservableProperty]
+    public partial AlignedDocument? DetailLeft { get; set; }
+
+    /// <summary>The current hunk's rows, right side.</summary>
+    [ObservableProperty]
+    public partial AlignedDocument? DetailRight { get; set; }
+
+    /// <summary>Names the current difference and the file lines it covers.</summary>
+    [ObservableProperty]
+    public partial string DetailCaption { get; set; } = "No difference selected";
+
+    /// <summary>True once there is something to show, so the host can swap in an empty state.</summary>
+    public bool HasDetail => DetailLeft is not null;
+
+    partial void OnDetailLeftChanged(AlignedDocument? value) => OnPropertyChanged(nameof(HasDetail));
+
+    private void RebuildDetail()
+    {
+        if (!HasCurrentHunk)
+        {
+            DetailLeft = null;
+            DetailRight = null;
+            DetailCaption = _result.Hunks.Count == 0
+                ? "No differences"
+                : "No difference selected";
+            return;
+        }
+
+        var hunk = _result.Hunks[CurrentHunk];
+
+        DetailLeft = AlignedText.Build(_result, DiffSide.Left, hunk.StartIndex, hunk.Length);
+        DetailRight = AlignedText.Build(_result, DiffSide.Right, hunk.StartIndex, hunk.Length);
+
+        var range = HunkNavigator.RangeOf(_result.Lines, hunk);
+        DetailCaption =
+            $"Difference {CurrentHunk + 1} of {_result.Hunks.Count}   ·   " +
+            $"left {Describe(range.LeftStart, range.LeftEnd)}   ·   right {Describe(range.RightStart, range.RightEnd)}";
+    }
+
+    /// <summary>"added"/"removed" rather than a line range when a side contributes no lines at all.</summary>
+    private static string Describe(int? start, int? end) => start is null || end is null
+        ? "—"
+        : start == end ? $"line {start}" : $"lines {start}–{end}";
 
     // ---- Semantic JSON --------------------------------------------------------------------------
 
@@ -132,6 +191,7 @@ public partial class DiffPaneViewModel : ObservableObject
         CurrentHunk = -1;
         ScrollToRow = -1;
 
+        RebuildDetail();
         RaiseDerived();
     }
 

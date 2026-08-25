@@ -1,0 +1,37 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="using:Fubar.Diff.Controls.Views"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="180"
+             x:Class="Fubar.Diff.Controls.Views.DiffDetailPane"
+             x:DataType="vm:DiffPaneViewModel">
+
+    <!-- A close-up of just the current difference, the way WinMerge's diff pane works. The main panes
+         answer "where are the changes"; this answers "what exactly does this one say", without
+         hunting for two blocks that may be a screen apart.
+
+         Reuses DiffEditorPane, so the excerpt is tinted, character-highlighted and line-numbered by
+         exactly the same renderers as the main view - a second rendering path here would be free to
+         disagree with the one above it, which is the last thing a close-up should do. -->
+    <Border Background="{DynamicResource BgHeader}"
+            BorderBrush="{DynamicResource BorderSubtle}"
+            BorderThickness="0,1,0,0">
+
+        <DockPanel>
+            <TextBlock DockPanel.Dock="Top"
+                       Text="{Binding DetailCaption}"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="11"
+                       Margin="8,4" />
+
+            <Grid ColumnDefinitions="*,1,*">
+                <views:DiffEditorPane Grid.Column="0" Document="{Binding DetailLeft}" />
+                <Border Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
+                <views:DiffEditorPane Grid.Column="2" Document="{Binding DetailRight}" />
+            </Grid>
+        </DockPanel>
+    </Border>
+
+</UserControl>

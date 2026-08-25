@@ -32,10 +32,24 @@ internal static class DiffLineColors
     /// </summary>
     public static IBrush? SpanBackground(StyledElement host, ChangeKind kind) => kind switch
     {
-        ChangeKind.Inserted => Tinted(host, "MethodPostBrush", 0.42),
-        ChangeKind.Deleted => Tinted(host, "MethodDeleteBrush", 0.42),
+        ChangeKind.Inserted => Tinted(host, "MethodPostBrush", 0.55),
+        ChangeKind.Deleted => Tinted(host, "MethodDeleteBrush", 0.55),
         _ => null,
     };
+
+    /// <summary>
+    /// Extra wash over the hunk the user is currently on, painted on top of its change tint.
+    ///
+    /// Kept low: it stacks with a tint that is already there, and the point is to make one difference
+    /// findable among many, not to obscure the text inside it. The accent bar and outline below do
+    /// most of the work - colour alone is too weak a signal to locate a block by.
+    /// </summary>
+    public static IBrush? CurrentHunkWash(StyledElement host) => Tinted(host, "PostmanOrangeBrush", 0.10);
+
+    /// <summary>The bar down the edge of the current hunk, and the hairline boxing it in.</summary>
+    public static IBrush? CurrentHunkAccent(StyledElement host) => Tinted(host, "PostmanOrangeBrush", 0.95);
+
+    public static IBrush? CurrentHunkOutline(StyledElement host) => Tinted(host, "PostmanOrangeBrush", 0.50);
 
     /// <summary>
     /// Looks up a palette token for the host's CURRENT theme variant and applies an opacity.

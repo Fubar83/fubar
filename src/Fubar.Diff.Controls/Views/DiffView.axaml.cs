@@ -42,6 +42,9 @@ public partial class DiffView : UserControl
         DataContextChanged += OnDataContextChanged;
     }
 
+    /// <summary>Row heights the splitter starts from, restored when the detail pane is shown again.</summary>
+    private GridLength _detailHeight = new(190);
+
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         if (_viewModel is not null)
@@ -58,6 +61,9 @@ public partial class DiffView : UserControl
             // The map colours each tick by change kind, and the rows are a plain list rather than a
             // styled property, so it is handed over directly instead of bound.
             Map.DiffLines = _viewModel.Lines;
+
+            ApplyCurrentHunk();
+            ApplyDetailVisibility();
         }
     }
 
@@ -76,6 +82,14 @@ public partial class DiffView : UserControl
 
             case nameof(DiffPaneViewModel.Lines):
                 Map.DiffLines = _viewModel.Lines;
+                break;
+
+            case nameof(DiffPaneViewModel.CurrentHunk):
+                ApplyCurrentHunk();
+                break;
+
+            case nameof(DiffPaneViewModel.IsDetailVisible):
+                ApplyDetailVisibility();
                 break;
 
             // A new document invalidates the reported viewport, but recomputing it here would read a
@@ -117,6 +131,60 @@ public partial class DiffView : UserControl
         }
 
         ReportViewport();
+    }
+
+    /// <summary>
+    /// Pushes the current hunk's row range into both panes so it is drawn as the selected block.
+    ///
+    /// Rows rather than a hunk index, because the renderers know nothing about hunks - they paint
+    /// document lines, and the range is the only part of a hunk that means anything to them.
+    /// </summary>
+    private void ApplyCurrentHunk()
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        var (start, end) = _viewModel.HasCurrentHunk
+            ? (_viewModel.Hunks[_viewModel.CurrentHunk].StartIndex, _viewModel.Hunks[_viewModel.CurrentHunk].EndIndex)
+            : (-1, -1);
+
+        LeftPane.SetCurrentHunk(start, end);
+        RightPane.SetCurrentHunk(start, end);
+    }
+
+    /// <summary>
+    /// Collapses or restores the detail pane. The splitter and the pane both need their ROW heights
+    /// zeroed, not just IsVisible: a hidden child still leaves its row occupying 190px, which would
+    /// show as a blank band under the panes.
+    /// </summary>
+    private void ApplyDetailVisibility()
+    {
+        var visible = _viewModel?.IsDetailVisible ?? true;
+
+        var splitterRow = Root.RowDefinitions[1];
+        var detailRow = Root.RowDefinitions[2];
+
+        if (visible)
+        {
+            splitterRow.Height = GridLength.Auto;
+            detailRow.Height = _detailHeight;
+        }
+        else
+        {
+            // Remember whatever the user dragged it to, so re-showing does not reset their layout.
+            if (detailRow.Height.Value > 0)
+            {
+                _detailHeight = detailRow.Height;
+            }
+
+            splitterRow.Height = new GridLength(0);
+            detailRow.Height = new GridLength(0);
+        }
+
+        DetailSplitter.IsVisible = visible;
+        Detail.IsVisible = visible;
     }
 
     /// <summary>Tells the view model which rows are on screen, so the map can draw its viewport box.</summary>
