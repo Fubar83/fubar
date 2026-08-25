@@ -33,6 +33,8 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar-component
   files rather than rendering a screen of mojibake.
 - **Search** inside either pane with Ctrl+F.
 - **Drag and drop** two files onto the window to compare them.
+- **Tabs** — several comparisons open at once (Ctrl+T / Ctrl+W), each with its own files, options and
+  merge decisions.
 - **Recent comparisons**, and your options and theme are remembered between sessions.
 - **Dark and light themes**, switchable at runtime.
 

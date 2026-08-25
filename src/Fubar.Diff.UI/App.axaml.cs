@@ -20,19 +20,18 @@ public partial class App : Avalonia.Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Apply the theme before the window is constructed so the very first frame already
-            // renders in the right variant (no startup flash).
-            Services.GetRequiredService<ThemeManagerViewModel>().Apply();
+            // renders in the right variant (no startup flash). The shell has already restored the
+            // persisted choice by this point.
+            var shell = Services.GetRequiredService<ShellViewModel>();
+            shell.ThemeManager.Apply();
 
-            var mainViewModel = Services.GetRequiredService<MainViewModel>();
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = mainViewModel,
-            };
+            desktop.MainWindow = new MainWindow { DataContext = shell };
 
-            // Fire-and-forget: if two files were named on the command line, compare them once the
-            // dispatcher is pumping. Deliberately not awaited - showing the window a moment before
-            // the rows populate is correct, and errors surface in the view models error banner.
-            _ = mainViewModel.InitializeAsync();
+            // Fire-and-forget: opens the first tab and, if two files were named on the command line,
+            // compares them once the dispatcher is pumping. Deliberately not awaited - showing the
+            // window a moment before the rows populate is correct, and errors surface in the tab's
+            // own error banner.
+            _ = shell.InitializeAsync(Services.GetRequiredService<StartupFiles>());
         }
 
         base.OnFrameworkInitializationCompleted();

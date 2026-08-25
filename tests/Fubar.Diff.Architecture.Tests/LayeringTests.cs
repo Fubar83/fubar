@@ -17,7 +17,7 @@ public class LayeringTests
     private static readonly Assembly CoreAsm = typeof(Fubar.Diff.Core.Models.DiffLine).Assembly;
     private static readonly Assembly ApplicationAsm = typeof(Fubar.Diff.Application.Comparison.FileComparisonService).Assembly;
     private static readonly Assembly InfrastructureAsm = typeof(Fubar.Diff.Infrastructure.ServiceCollectionExtensions).Assembly;
-    private static readonly Assembly UiAsm = typeof(Fubar.Diff.UI.ViewModels.MainViewModel).Assembly;
+    private static readonly Assembly UiAsm = typeof(Fubar.Diff.UI.ViewModels.ShellViewModel).Assembly;
 
     private static void AssertNoDependency(Assembly assembly, string subject, params string[] forbidden)
     {

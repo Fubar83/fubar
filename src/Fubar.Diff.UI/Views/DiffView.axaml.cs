@@ -11,13 +11,13 @@ namespace Fubar.Diff.UI.Views;
 /// The side-by-side diff: two editor panes plus the diff map between them.
 ///
 /// All the code-behind here exists because scrolling has no data representation. The view model can
-/// say WHICH row it wants shown (<see cref="MainViewModel.ScrollToRow"/>) and needs to know which rows
-/// are visible (<see cref="MainViewModel.ViewportStart"/>), but only the controls can scroll or
+/// say WHICH row it wants shown (<see cref="ComparisonViewModel.ScrollToRow"/>) and needs to know which rows
+/// are visible (<see cref="ComparisonViewModel.ViewportStart"/>), but only the controls can scroll or
 /// measure themselves - so this bridges the two rather than handing the view model a control.
 /// </summary>
 public partial class DiffView : UserControl
 {
-    private MainViewModel? _viewModel;
+    private ComparisonViewModel? _viewModel;
 
     /// <summary>
     /// Guards the two scroll handlers against each other. Setting one pane's offset raises its own
@@ -49,7 +49,7 @@ public partial class DiffView : UserControl
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         }
 
-        _viewModel = DataContext as MainViewModel;
+        _viewModel = DataContext as ComparisonViewModel;
 
         if (_viewModel is not null)
         {
@@ -70,11 +70,11 @@ public partial class DiffView : UserControl
 
         switch (e.PropertyName)
         {
-            case nameof(MainViewModel.ScrollToRow):
+            case nameof(ComparisonViewModel.ScrollToRow):
                 ScrollTo(_viewModel.ScrollToRow);
                 break;
 
-            case nameof(MainViewModel.Lines):
+            case nameof(ComparisonViewModel.Lines):
                 Map.DiffLines = _viewModel.Lines;
                 break;
 

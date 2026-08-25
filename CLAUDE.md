@@ -74,7 +74,7 @@ because comparing canonical JSON only makes sense if you can see the canonical f
 | Domain models, policy, ports | `src/Fubar.Diff.Core` (`Models/`, `Comparison/`, `Files/`, `Merge/`, `Rendering/`, `Json/`) |
 | Use-case services | `src/Fubar.Diff.Application` (`Comparison/`, `Merge/`) |
 | Diff engine, inline (character) diff, JSON parser, normalizer, file reader/writer, DI wiring | `src/Fubar.Diff.Infrastructure` |
-| Views + ViewModels + DI (`Composition.cs`) | `src/Fubar.Diff.UI` (`Rendering/` = AvaloniaEdit hooks, `Controls/` = diff map) |
+| Views + ViewModels + DI (`Composition.cs`) | `src/Fubar.Diff.UI` — `ShellViewModel` owns tabs, `ComparisonViewModel` is one tab (`Rendering/` = AvaloniaEdit hooks, `Controls/` = diff map) |
 | Settings, recent files | `src/Fubar.Diff.Core/Settings` + `src/Fubar.Diff.Infrastructure/Settings` (`%APPDATA%/fubar-diff/settings.json`) |
 | Reusable controls + theme/design system | External: the `Fubar.Controls` package |
 | Packaging | `build/publish.ps1` |

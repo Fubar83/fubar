@@ -3,7 +3,7 @@
              xmlns:fc="using:Fubar.Controls"
              xmlns:vm="using:Fubar.Diff.UI.ViewModels"
              x:Class="Fubar.Diff.UI.Views.JsonTreeView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:ComparisonViewModel">
 
     <UserControl.Styles>
         <!-- Same palette tokens as the editors' line tints, so a change reads the same colour in

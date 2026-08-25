@@ -54,7 +54,7 @@ public partial class MainWindow : Window
     {
         e.Handled = true;
 
-        if (DataContext is not MainViewModel viewModel)
+        if (DataContext is not ShellViewModel shell)
         {
             return;
         }
@@ -64,7 +64,7 @@ public partial class MainWindow : Window
         {
             // Fire-and-forget: the drop handler must return promptly to release the drag source, and
             // the comparison reports its own errors through the view model.
-            _ = viewModel.OpenFilesAsync(paths);
+            _ = shell.OpenFilesAsync(paths);
         }
     }
 

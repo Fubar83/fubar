@@ -1,3 +1,4 @@
+using System;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Infrastructure;
@@ -19,7 +20,8 @@ internal static class Composition
         Host.CreateDefaultBuilder(args)
             .ConfigureServices((_, services) =>
             {
-                // Core ports -> Infrastructure adapters (diff engine, normalizer, file reader).
+                // Core ports -> Infrastructure adapters (diff engine, normalizer, file reader/writer,
+                // JSON parser, settings).
                 services.AddFubarDiffInfrastructure();
 
                 // Application-layer use cases.
@@ -32,8 +34,17 @@ internal static class Composition
                 // Two files may be named on the command line: FubarDiff left.txt right.txt
                 services.AddSingleton(StartupFiles.FromArgs(args));
 
+                // Shared across every tab.
                 services.AddSingleton<ThemeManagerViewModel>();
-                services.AddSingleton<MainViewModel>();
+
+                // Per tab: transient, so each one gets its own comparison, options and merge state.
+                // The shell creates them through this factory rather than holding the container, which
+                // keeps it testable with a plain lambda.
+                services.AddTransient<ComparisonViewModel>();
+                services.AddSingleton<Func<ComparisonViewModel>>(provider =>
+                    provider.GetRequiredService<ComparisonViewModel>);
+
+                services.AddSingleton<ShellViewModel>();
             })
             .Build();
 }

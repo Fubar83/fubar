@@ -8,22 +8,51 @@
         xmlns:settings="using:Fubar.Diff.Core.Settings"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="Fubar.Diff.UI.Views.MainWindow"
-        x:DataType="vm:MainViewModel"
+        x:DataType="vm:ShellViewModel"
         Title="Fubar Diff"
         Width="1200" Height="800"
         Background="{DynamicResource BgEditorCanvas}"
         DragDrop.AllowDrop="True">
 
     <Window.KeyBindings>
-        <!-- F7/F8 for change navigation matches every other diff tool; Ctrl+S saves the merge. -->
-        <KeyBinding Gesture="F8" Command="{Binding NextChangeCommand}" />
-        <KeyBinding Gesture="F7" Command="{Binding PreviousChangeCommand}" />
-        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
-        <KeyBinding Gesture="Alt+Left" Command="{Binding TakeLeftCommand}" />
-        <KeyBinding Gesture="Alt+Right" Command="{Binding TakeRightCommand}" />
+        <!-- F7/F8 for change navigation matches every other diff tool; Ctrl+S saves the merge.
+             These act on the SELECTED tab, so they route through it rather than the shell. -->
+        <KeyBinding Gesture="F8" Command="{Binding SelectedTab.NextChangeCommand}" />
+        <KeyBinding Gesture="F7" Command="{Binding SelectedTab.PreviousChangeCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SelectedTab.SaveCommand}" />
+        <KeyBinding Gesture="Alt+Left" Command="{Binding SelectedTab.TakeLeftCommand}" />
+        <KeyBinding Gesture="Alt+Right" Command="{Binding SelectedTab.TakeRightCommand}" />
+        <KeyBinding Gesture="Ctrl+T" Command="{Binding NewTabCommand}" />
+        <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseTabCommand}" CommandParameter="{Binding SelectedTab}" />
     </Window.KeyBindings>
 
     <DockPanel>
+        <!-- The tab strip. Hidden while only one comparison is open: a single tab is chrome the user
+             gains nothing from. Ctrl+T opens another. -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="6,4,6,0"
+                IsVisible="{Binding HasMultipleTabs}">
+            <fc:TabStrip ItemsSource="{Binding Tabs}"
+                         SelectedItem="{Binding SelectedTab}"
+                         CloseCommand="{Binding CloseTabCommand}"
+                         ShowCloseButton="True">
+                <fc:TabStrip.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ComparisonViewModel">
+                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                    </DataTemplate>
+                </fc:TabStrip.ItemTemplate>
+            </fc:TabStrip>
+        </Border>
+
+        <!-- Everything below belongs to the SELECTED comparison. Scoping the DataContext here means
+             the whole body binds to the tab exactly as it did when there was only one, rather than
+             every binding growing a SelectedTab. prefix. -->
+        <ContentControl DataContext="{Binding SelectedTab}"
+                        x:DataType="vm:ComparisonViewModel">
+        <DockPanel>
         <!-- Toolbar: the two file slots, comparison options, navigation, and merge. All styling comes
              from Fubar.Controls; this view declares none of its own. -->
         <Border DockPanel.Dock="Top"
@@ -55,19 +84,20 @@
                     <Button Classes="primary-btn" Content="Compare"
                             Command="{Binding CompareCommand}" IsEnabled="{Binding !IsBusy}" />
 
-                    <!-- Recent pairs. Hidden rather than disabled when empty: an always-greyed control
-                         on first run is just clutter. -->
+                    <!-- Recent and New tab belong to the SHELL, not this tab, so they reach back up to
+                         the window's DataContext. Recent is hidden rather than disabled when empty: an
+                         always-greyed control on first run is just clutter. -->
                     <Button Classes="toolbar-btn" Content="Recent ▾"
                             Margin="6,0,0,0"
-                            IsVisible="{Binding !!Recent.Count}">
+                            IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Recent.Count}">
                         <Button.Flyout>
-                            <MenuFlyout ItemsSource="{Binding Recent}">
+                            <MenuFlyout ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Recent}">
                                 <MenuFlyout.ItemContainerTheme>
                                     <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
                                                   x:DataType="settings:RecentComparison">
                                         <Setter Property="Header" Value="{Binding DisplayName}" />
                                         <Setter Property="Command"
-                                                Value="{Binding $parent[Window].((vm:MainViewModel)DataContext).OpenRecentCommand}" />
+                                                Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenRecentCommand}" />
                                         <Setter Property="CommandParameter" Value="{Binding}" />
                                     </ControlTheme>
                                 </MenuFlyout.ItemContainerTheme>
@@ -75,9 +105,13 @@
                         </Button.Flyout>
                     </Button>
 
+                    <Button Classes="toolbar-btn" Content="+ Tab" ToolTip.Tip="Open another comparison (Ctrl+T)"
+                            Margin="6,0,0,0"
+                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).NewTabCommand}" />
+
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
-                    <ComboBox ItemsSource="{x:Static vm:MainViewModel.ModeOptions}"
+                    <ComboBox ItemsSource="{x:Static vm:ComparisonViewModel.ModeOptions}"
                               SelectedItem="{Binding Mode}"
                               MinWidth="76"
                               ToolTip.Tip="Auto compares JSON semantically and everything else as text" />
@@ -134,7 +168,7 @@
 
                     <!-- Text / Tree. Only offered when a semantic comparison ran, since the tree has
                          nothing to show for a plain text file. -->
-                    <fc:SegmentedControl ItemsSource="{x:Static vm:MainViewModel.ViewModeOptions}"
+                    <fc:SegmentedControl ItemsSource="{x:Static vm:ComparisonViewModel.ViewModeOptions}"
                                          SelectedItem="{Binding ViewMode}"
                                          IsVisible="{Binding IsSemantic}" />
 
@@ -176,5 +210,7 @@
 
             <views:JsonTreeView IsVisible="{Binding IsTreeViewVisible}" />
         </Panel>
+        </DockPanel>
+        </ContentControl>
     </DockPanel>
 </Window>

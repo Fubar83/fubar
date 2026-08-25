@@ -17,80 +17,76 @@ using Fubar.Diff.UI.Services;
 namespace Fubar.Diff.UI.ViewModels;
 
 /// <summary>
-/// The shell view model: pick two files, compare them, page through the changes, resolve hunks, save.
+/// One comparison: pick two files, compare them, page through the changes, resolve hunks, save.
+///
+/// This is the per-TAB view model - the window may hold several, each with its own files, options,
+/// merge decisions and scroll position. Shared concerns (the theme, the settings file) are owned by
+/// <see cref="ShellViewModel"/> and passed in.
 ///
 /// It holds no diff or merge logic of its own - alignment belongs to <see cref="IFileComparisonService"/>,
 /// the next/previous rules to <see cref="HunkNavigator"/>, and what gets written to
 /// <see cref="MergedDocument"/>, all in Core. What lives here is the UI state those produce.
 /// </summary>
-public partial class MainViewModel : ViewModelBase
+public partial class ComparisonViewModel : ViewModelBase
 {
     private readonly IFileComparisonService _comparisonService;
     private readonly IMergeService _mergeService;
     private readonly IFilePickerService _filePicker;
-    private readonly ISettingsStore _settingsStore;
-    private readonly bool _compareOnLoad;
 
     private FileComparison _comparison = FileComparison.Empty;
     private MergeState _mergeState = MergeState.Empty;
-    private AppSettings _settings = AppSettings.Default;
 
     /// <summary>
-    /// Suppresses persistence while the constructor applies loaded settings - otherwise each property
-    /// assignment below would fire its own change handler and write the file back.
+    /// Suppresses persistence while defaults are being applied - otherwise each property assignment
+    /// would fire its own change handler and write the settings file back.
     /// </summary>
     private bool _loadingSettings;
 
-    public MainViewModel(
+    public ComparisonViewModel(
         IFileComparisonService comparisonService,
         IMergeService mergeService,
         IFilePickerService filePicker,
-        ISettingsStore settingsStore,
-        ThemeManagerViewModel themeManager,
-        StartupFiles startupFiles)
+        ThemeManagerViewModel themeManager)
     {
         _comparisonService = comparisonService;
         _mergeService = mergeService;
         _filePicker = filePicker;
-        _settingsStore = settingsStore;
         ThemeManager = themeManager;
-
-        ApplySettings(settingsStore.Load());
-
-        // The theme manager applies its own value at startup (before the first frame, from App); this
-        // only has to persist later changes, which it cannot do itself without knowing about settings.
-        themeManager.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(ThemeManagerViewModel.CurrentTheme) && !_loadingSettings)
-            {
-                PersistSettings();
-            }
-        };
-
-        LeftPath = startupFiles.Left ?? string.Empty;
-        RightPath = startupFiles.Right ?? string.Empty;
-        _compareOnLoad = startupFiles.HasBoth;
     }
 
-    /// <summary>Applies persisted preferences without triggering a save or a re-comparison.</summary>
-    private void ApplySettings(AppSettings settings)
+    /// <summary>
+    /// Raised when an option changes, so the shell can persist it as the default for new tabs. The tab
+    /// deliberately does not write the settings file itself - several tabs doing so independently
+    /// would race, and the last one to finish would win regardless of which the user touched.
+    /// </summary>
+    public event System.EventHandler? OptionsChanged;
+
+    /// <summary>
+    /// Raised after a comparison reads both files successfully, so the shell can add the pair to the
+    /// recent list. The list is shared across tabs, so the shell owns it.
+    /// </summary>
+    public event System.EventHandler? ComparisonSucceeded;
+
+    /// <summary>The label shown on this tab.</summary>
+    public string Title => _comparison.HasBothSides
+        ? $"{_comparison.Left.DisplayName} ↔ {_comparison.Right.DisplayName}"
+        : "New comparison";
+
+    /// <summary>
+    /// Seeds this tab's options from the persisted defaults, without triggering a save or a
+    /// re-comparison. Options are per-tab on purpose - a JSON comparison and a log comparison want
+    /// different settings - and the persisted values are only the starting point for a new one.
+    /// </summary>
+    public void ApplyDefaults(AppSettings settings)
     {
         _loadingSettings = true;
         try
         {
-            _settings = settings;
-
-            ThemeManager.Restore(settings.Theme);
-
             IgnoreWhitespace = settings.IgnoreWhitespace;
             IgnoreCase = settings.IgnoreCase;
             ReportPropertyOrder = settings.ReportPropertyOrder;
             MatchArraysByPosition = settings.MatchArraysByPosition;
             Mode = settings.Mode;
-
-            // Entries whose files have since been deleted or moved are dropped: offering to reopen a
-            // file that is not there produces an error the user did not ask for.
-            Recent = [.. RecentComparisons.Prune(settings.Recent, System.IO.File.Exists)];
         }
         finally
         {
@@ -98,16 +94,28 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>The current option values, for the shell to persist as the defaults.</summary>
+    public AppSettings CaptureOptions(AppSettings settings) => settings with
+    {
+        IgnoreWhitespace = IgnoreWhitespace,
+        IgnoreCase = IgnoreCase,
+        ReportPropertyOrder = ReportPropertyOrder,
+        MatchArraysByPosition = MatchArraysByPosition,
+        Mode = Mode,
+    };
+
     public ThemeManagerViewModel ThemeManager { get; }
 
     /// <summary>
-    /// Runs the startup comparison, if two files were named on the command line. Kept out of the
-    /// constructor: file I/O there would block the UI thread before the first frame, and errors would
-    /// have nowhere to be shown.
+    /// Loads and compares a pair of files. Kept out of the constructor: file I/O there would block the
+    /// UI thread before the first frame, and errors would have nowhere to be shown.
     /// </summary>
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(string? left, string? right)
     {
-        if (_compareOnLoad)
+        LeftPath = left ?? string.Empty;
+        RightPath = right ?? string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(LeftPath) && !string.IsNullOrWhiteSpace(RightPath))
         {
             await CompareAsync().ConfigureAwait(true);
         }
@@ -226,10 +234,6 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>The values offered by the mode selector.</summary>
     public static IReadOnlyList<ComparisonMode> ModeOptions { get; } = Enum.GetValues<ComparisonMode>();
 
-    /// <summary>Recently compared pairs, most recent first.</summary>
-    [ObservableProperty]
-    public partial IReadOnlyList<RecentComparison> Recent { get; set; } = [];
-
     partial void OnIgnoreWhitespaceChanged(bool value) => OptionChanged();
 
     partial void OnIgnoreCaseChanged(bool value) => OptionChanged();
@@ -254,29 +258,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         Recompare();
-        PersistSettings();
-    }
-
-    /// <summary>
-    /// Writes the current preferences.
-    ///
-    /// Fire-and-forget: saving a preference is not something the user should ever wait for, and the
-    /// store reports failure rather than throwing, so there is nothing to await for correctness.
-    /// </summary>
-    private void PersistSettings()
-    {
-        _settings = _settings with
-        {
-            Theme = ThemeManager.CurrentTheme.ToString(),
-            IgnoreWhitespace = IgnoreWhitespace,
-            IgnoreCase = IgnoreCase,
-            ReportPropertyOrder = ReportPropertyOrder,
-            MatchArraysByPosition = MatchArraysByPosition,
-            Mode = Mode,
-            Recent = Recent,
-        };
-
-        _ = _settingsStore.SaveAsync(_settings);
+        OptionsChanged?.Invoke(this, System.EventArgs.Empty);
     }
 
     // ---- Navigation ---------------------------------------------------------------------------
@@ -365,10 +347,10 @@ public partial class MainViewModel : ViewModelBase
             _mergeState = MergeState.Empty;
             Refresh();
 
-            // Recorded only after a successful read - a path that could not be opened is not something
-            // worth offering to reopen.
-            Recent = RecentComparisons.Add(Recent, LeftPath, RightPath);
-            PersistSettings();
+            // Announced only after a successful read - a path that could not be opened is not
+            // something worth offering to reopen. The shell owns the recent list, since it is shared
+            // across tabs.
+            ComparisonSucceeded?.Invoke(this, System.EventArgs.Empty);
         }
         catch (TextFileReadException ex)
         {
@@ -411,20 +393,6 @@ public partial class MainViewModel : ViewModelBase
         {
             await SaveToAsync(path).ConfigureAwait(true);
         }
-    }
-
-    /// <summary>Reopens a remembered pair.</summary>
-    [RelayCommand]
-    private async Task OpenRecentAsync(RecentComparison? entry)
-    {
-        if (entry is null)
-        {
-            return;
-        }
-
-        LeftPath = entry.Left;
-        RightPath = entry.Right;
-        await CompareAsync().ConfigureAwait(true);
     }
 
     /// <summary>
@@ -616,6 +584,9 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(TotalLines));
         OnPropertyChanged(nameof(Hunks));
         OnPropertyChanged(nameof(Lines));
+
+        // The tab label is derived from the loaded documents, so it changes whenever they do.
+        OnPropertyChanged(nameof(Title));
     }
 
     /// <summary>

@@ -4,7 +4,7 @@
              xmlns:views="using:Fubar.Diff.UI.Views"
              xmlns:vm="using:Fubar.Diff.UI.ViewModels"
              x:Class="Fubar.Diff.UI.Views.DiffView"
-             x:DataType="vm:MainViewModel">
+             x:DataType="vm:ComparisonViewModel">
 
     <!-- Two independent editors, kept in step by DiffView.axaml.cs rather than by sharing a scroller.
          Both documents contain filler lines and therefore have the SAME line count, which is what

@@ -32,7 +32,9 @@ All notable changes to this project are documented here. The format is based on
   - a **Text / Tree** switch shows the changes as a structural tree.
   - Falls back to a text diff whenever a file does not parse, since a broken file is exactly when a
     diff is most wanted.
-
+- **Tabs**: several comparisons open at once (Ctrl+T / Ctrl+W). `MainViewModel` became the per-tab
+  `ComparisonViewModel`, with a thin `ShellViewModel` owning the tab collection and the genuinely
+  shared state (theme, settings file, recent list).
 - **Search** within either pane (Ctrl+F), from AvaloniaEdit's own find bar.
 - **Drag and drop**: drop two files onto the window to compare them, or one to fill the empty side.
 - **Recent comparisons**, with comparison options and theme persisted to
