@@ -56,6 +56,40 @@ public sealed class FileComparisonService : IFileComparisonService
         return await Task.Run(() => Compare(left, right, options), cancellationToken).ConfigureAwait(false);
     }
 
+    public Task<FileComparison> CompareTextAsync(
+        string leftText,
+        string rightText,
+        ComparisonOptions options,
+        string leftLabel = "left",
+        string rightLabel = "right",
+        CancellationToken cancellationToken = default)
+    {
+        // The labels go in the Path slot so DisplayName shows something meaningful in a title or tab.
+        // TextFormat.Default is right here: this content never came from a file, so there is no
+        // encoding, BOM or terminator to preserve - and nothing will be saved back over one.
+        var left = new TextDocument(leftLabel, SplitLines(leftText), TextFormat.Default);
+        var right = new TextDocument(rightLabel, SplitLines(rightText), TextFormat.Default);
+
+        return Task.Run(() => Compare(left, right, options), cancellationToken);
+    }
+
+    /// <summary>
+    /// Splits on any of the three terminators, dropping the empty string a trailing one would leave -
+    /// matching how <c>ITextFileReader</c> treats a file, so both paths produce the same line count for
+    /// the same content.
+    /// </summary>
+    private static string[] SplitLines(string text)
+    {
+        if (text.Length == 0)
+        {
+            return [];
+        }
+
+        var lines = text.Split(["\r\n", "\n", "\r"], System.StringSplitOptions.None);
+
+        return lines.Length > 1 && lines[^1].Length == 0 ? lines[..^1] : lines;
+    }
+
     /// <summary>
     /// Re-runs the comparison off the calling thread. The synchronous <see cref="Recompare"/> stays for
     /// callers that are already on a background thread, and for tests.

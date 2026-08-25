@@ -18,6 +18,26 @@ public interface IFileComparisonService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Compares two strings already in memory - no file system involved.
+    ///
+    /// This is what lets a host that is not a file-diff tool use the same engine and the same view:
+    /// API Studio compares an existing request against the version an OpenAPI spec would import, and
+    /// two HTTP response bodies, neither of which is on disk.
+    /// </summary>
+    /// <param name="leftText">Left-hand content.</param>
+    /// <param name="rightText">Right-hand content.</param>
+    /// <param name="options">Comparison options, including the text/semantic mode.</param>
+    /// <param name="leftLabel">A name for the left side, shown where a file name would be.</param>
+    /// <param name="rightLabel">A name for the right side.</param>
+    Task<FileComparison> CompareTextAsync(
+        string leftText,
+        string rightText,
+        ComparisonOptions options,
+        string leftLabel = "left",
+        string rightLabel = "right",
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Re-runs the comparison over already-loaded documents. Toggling "ignore whitespace" should not
     /// re-read from disk - that would be slower and would silently pick up edits made meanwhile.
     /// </summary>
