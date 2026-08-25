@@ -1,9 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/Fubar.Controls/Fubar.Controls.csproj" />
-    <Project Path="src/Fubar.Controls.Gallery/Fubar.Controls.Gallery.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Fubar.Controls.Tests/Fubar.Controls.Tests.csproj" />
-  </Folder>
-</Solution>
