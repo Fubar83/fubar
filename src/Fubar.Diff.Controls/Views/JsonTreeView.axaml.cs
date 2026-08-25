@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace Fubar.Diff.UI.Views;
+namespace Fubar.Diff.Controls.Views;
 
 /// <summary>
 /// The semantic change tree. Pure XAML - no code-behind beyond initialisation, because unlike the

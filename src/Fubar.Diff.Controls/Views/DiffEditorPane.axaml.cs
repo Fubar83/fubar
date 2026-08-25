@@ -7,9 +7,9 @@ using AvaloniaEdit;
 using AvaloniaEdit.Rendering;
 using AvaloniaEdit.Search;
 using Fubar.Diff.Core.Rendering;
-using Fubar.Diff.UI.Rendering;
+using Fubar.Diff.Controls.Rendering;
 
-namespace Fubar.Diff.UI.Views;
+namespace Fubar.Diff.Controls.Views;
 
 /// <summary>
 /// One side of the side-by-side view: a read-only <see cref="TextEditor"/> wired to the three diff

@@ -1,9 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:fc="using:Fubar.Controls"
-             xmlns:vm="using:Fubar.Diff.UI.ViewModels"
-             x:Class="Fubar.Diff.UI.Views.JsonTreeView"
-             x:DataType="vm:ComparisonViewModel">
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             x:Class="Fubar.Diff.Controls.Views.JsonTreeView"
+             x:DataType="vm:DiffPaneViewModel">
 
     <UserControl.Styles>
         <!-- Same palette tokens as the editors' line tints, so a change reads the same colour in

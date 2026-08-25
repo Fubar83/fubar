@@ -3,21 +3,21 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 
-using Fubar.Diff.UI.ViewModels;
+using Fubar.Diff.Controls.ViewModels;
 
-namespace Fubar.Diff.UI.Views;
+namespace Fubar.Diff.Controls.Views;
 
 /// <summary>
 /// The side-by-side diff: two editor panes plus the diff map between them.
 ///
 /// All the code-behind here exists because scrolling has no data representation. The view model can
-/// say WHICH row it wants shown (<see cref="ComparisonViewModel.ScrollToRow"/>) and needs to know which rows
-/// are visible (<see cref="ComparisonViewModel.ViewportStart"/>), but only the controls can scroll or
+/// say WHICH row it wants shown (<see cref="DiffPaneViewModel.ScrollToRow"/>) and needs to know which rows
+/// are visible (<see cref="DiffPaneViewModel.ViewportStart"/>), but only the controls can scroll or
 /// measure themselves - so this bridges the two rather than handing the view model a control.
 /// </summary>
 public partial class DiffView : UserControl
 {
-    private ComparisonViewModel? _viewModel;
+    private DiffPaneViewModel? _viewModel;
 
     /// <summary>
     /// Guards the two scroll handlers against each other. Setting one pane's offset raises its own
@@ -49,7 +49,7 @@ public partial class DiffView : UserControl
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         }
 
-        _viewModel = DataContext as ComparisonViewModel;
+        _viewModel = DataContext as DiffPaneViewModel;
 
         if (_viewModel is not null)
         {
@@ -70,11 +70,11 @@ public partial class DiffView : UserControl
 
         switch (e.PropertyName)
         {
-            case nameof(ComparisonViewModel.ScrollToRow):
+            case nameof(DiffPaneViewModel.ScrollToRow):
                 ScrollTo(_viewModel.ScrollToRow);
                 break;
 
-            case nameof(ComparisonViewModel.Lines):
+            case nameof(DiffPaneViewModel.Lines):
                 Map.DiffLines = _viewModel.Lines;
                 break;
 

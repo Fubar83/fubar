@@ -1,10 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:controls="using:Fubar.Diff.UI.Controls"
-             xmlns:views="using:Fubar.Diff.UI.Views"
-             xmlns:vm="using:Fubar.Diff.UI.ViewModels"
-             x:Class="Fubar.Diff.UI.Views.DiffView"
-             x:DataType="vm:ComparisonViewModel">
+             xmlns:controls="using:Fubar.Diff.Controls.Controls"
+             xmlns:views="using:Fubar.Diff.Controls.Views"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             x:Class="Fubar.Diff.Controls.Views.DiffView"
+             x:DataType="vm:DiffPaneViewModel">
 
     <!-- Two independent editors, kept in step by DiffView.axaml.cs rather than by sharing a scroller.
          Both documents contain filler lines and therefore have the SAME line count, which is what
