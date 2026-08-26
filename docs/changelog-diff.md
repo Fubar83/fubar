@@ -18,6 +18,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Hybrid view**: a third mode alongside Text and Tree, for a semantic JSON comparison - the change
+  tree, plus BOTH documents shown as their own unaligned text. Stepping through changes (Prev/Next, or
+  a click in the tree) highlights the current change's own location directly in each pane. There is no
+  cross-document line alignment at all, which is what makes it immune to formatting and property-order
+  differences by construction - reformatting, minifying, or reordering keys on one side changes
+  nothing about where the other side's matching field gets highlighted, since each side is addressed
+  independently by its own parsed structure rather than by a shared line number.
+
 - **Two-editor side-by-side view** built on AvaloniaEdit, replacing the row list. Line numbers show
   each line's number in its own file rather than in the aligned view, so they still match what is on
   disk across insertions.

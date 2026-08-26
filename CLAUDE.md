@@ -89,6 +89,13 @@ braces it will match to each other across unrelated elements.
 text view's line filter, the diff map and navigation all agree. Filtering in a view instead would make
 that view disagree with the others about what changed.
 
+**Hybrid mode has no alignment at all, on purpose** (Diff). `RawJsonPane` shows each side's raw,
+unaligned text and highlights the current change's own `JsonAstNode.Span` directly - no fillers, no
+line-for-line correspondence between the two sides. This is what makes it immune to the class of
+problem the alignment fix above patches around: there is no shared line numbering for a formatting or
+property-order difference to break. Do not "simplify" it by routing Hybrid through `AlignedText` -
+that would reintroduce exactly the dependency it exists to avoid.
+
 **An ignored row is `Unchanged` + `IsIgnored`, never its own `ChangeKind`** (Diff). That is what keeps
 it out of `IsChange`, and therefore out of hunks, counts, the diff map and F7/F8 — while still letting
 a renderer draw a faint band. Promoting it to a `ChangeKind` would silently put every ignored row back

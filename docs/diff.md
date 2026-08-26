@@ -29,8 +29,10 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   The file's encoding, BOM, line endings and trailing newline are preserved byte-for-byte.
 - **Semantic JSON**: compares structure, not text. Reordered properties and reformatting are not
   differences; array elements are matched by an auto-detected identity key, so an element inserted
-  mid-array marks only itself. Includes a **Tree** view of the structural changes, and falls back to a
-  text diff for anything that does not parse.
+  mid-array marks only itself. Includes a **Tree** view of the structural changes, and a **Hybrid**
+  view (tree + both documents, each shown as its own unaligned text) where stepping through changes
+  highlights each one directly - immune to formatting or property-order differences, since neither
+  side depends on lining up with the other. Falls back to a text diff for anything that does not parse.
 - **Comparison options**: ignore leading/trailing whitespace, ignore case, report key order, match
   arrays by position, or normalize XML.
 - **Encoding aware** — detects UTF-8/UTF-16 BOMs and CRLF/LF/CR line endings, and declines binary
