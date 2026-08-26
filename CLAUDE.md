@@ -89,12 +89,26 @@ braces it will match to each other across unrelated elements.
 text view's line filter, the diff map and navigation all agree. Filtering in a view instead would make
 that view disagree with the others about what changed.
 
-**Hybrid mode has no alignment at all, on purpose** (Diff). `RawJsonPane` shows each side's raw,
+**The Json view has no alignment at all, on purpose** (Diff). `RawJsonPane` shows each side's raw,
 unaligned text and highlights the current change's own `JsonAstNode.Span` directly - no fillers, no
 line-for-line correspondence between the two sides. This is what makes it immune to the class of
 problem the alignment fix above patches around: there is no shared line numbering for a formatting or
-property-order difference to break. Do not "simplify" it by routing Hybrid through `AlignedText` -
-that would reintroduce exactly the dependency it exists to avoid.
+property-order difference to break. Do not "simplify" it by routing this view through `AlignedText` -
+that would reintroduce exactly the dependency it exists to avoid. There is no standalone Tree mode any
+more - `Text` and `Json` are the only two `DiffViewMode` values, and `DiffPaneViewModel.Show` picks
+between them itself (Json whenever semantic comparison ran) rather than leaving whatever was
+previously selected.
+
+**Two semantic change lists exist for a reason - do not collapse them** (Diff). `FileComparison`
+carries `SemanticChanges` (spans into the CANONICALIZED text, used by Text mode's line filter, ignore
+rules and the tree) and `OriginalSemanticChanges` (spans into each side's text exactly as given, used
+by the Json view's highlighting). They are guaranteed to agree on path, kind and count - canonicalizing
+never reorders or renames anything - which is what lets `DiffPaneViewModel` pair the tree (built from
+the first list) with navigation (walking the second) by matching `JsonPath` strings rather than the
+`JsonChange` objects, whose spans legitimately differ between the two. `RecompareAsync`/`Recompare`
+thread the original text through explicitly from the previous result - computing it fresh from
+`Left`/`Right` on a recompare would silently substitute the canonicalized text the moment any option
+was toggled after the first render.
 
 **An ignored row is `Unchanged` + `IsIgnored`, never its own `ChangeKind`** (Diff). That is what keeps
 it out of `IsChange`, and therefore out of hunks, counts, the diff map and F7/F8 — while still letting
