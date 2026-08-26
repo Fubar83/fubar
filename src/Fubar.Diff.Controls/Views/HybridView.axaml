@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:views="using:Fubar.Diff.Controls.Views"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             x:Class="Fubar.Diff.Controls.Views.HybridView"
+             x:DataType="vm:DiffPaneViewModel">
+
+    <!-- Tree, then both documents shown unaligned - each highlighting only its OWN change span. There
+         is no cross-document line alignment here at all, which is what makes this immune to
+         formatting and property-order differences: Text mode's usefulness rests on the two sides
+         lining up as TEXT, and nothing forces that when one side is minified and the other is not
+         (see the alignment fix this view was built alongside). Hybrid sidesteps the question by
+         never needing an alignment in the first place. -->
+    <DockPanel>
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <fc:Toolbar>
+                <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous difference"
+                        Command="{Binding PreviousSemanticChangeCommand}" />
+                <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next difference"
+                        Command="{Binding NextSemanticChangeCommand}" />
+
+                <TextBlock Text="{Binding HybridCaption}"
+                           Foreground="{DynamicResource TextSecondary}"
+                           VerticalAlignment="Center"
+                           Margin="12,0,0,0" />
+            </fc:Toolbar>
+        </Border>
+
+        <Grid ColumnDefinitions="280,4,*,1,*">
+            <!-- Reuses the exact same tree as Tree mode - same ignore affordances, same tinting -
+                 clicking a row here is a second way to navigate, alongside Prev/Next. -->
+            <views:JsonTreeView Grid.Column="0" />
+
+            <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource BorderSubtle}" />
+
+            <views:RawJsonPane Grid.Column="2"
+                               Text="{Binding LeftRawText}"
+                               HighlightSpan="{Binding LeftHighlightSpan}" />
+
+            <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderSubtle}" />
+
+            <views:RawJsonPane Grid.Column="4"
+                               Text="{Binding RightRawText}"
+                               HighlightSpan="{Binding RightHighlightSpan}" />
+        </Grid>
+    </DockPanel>
+</UserControl>

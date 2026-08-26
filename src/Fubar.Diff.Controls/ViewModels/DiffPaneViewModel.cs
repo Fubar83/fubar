@@ -201,9 +201,13 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsSemantic { get; set; }
 
-    /// <summary>The semantic changes as a tree, for the Tree view.</summary>
+    /// <summary>The semantic changes as a tree, for the Tree and Hybrid views.</summary>
     [ObservableProperty]
     public partial IReadOnlyList<JsonChangeNodeViewModel> SemanticTree { get; set; } = [];
+
+    /// <summary>Looks up a change's tree row without re-walking the tree - see <see cref="JsonChangeNodeViewModel.Build"/>.</summary>
+    private IReadOnlyDictionary<string, JsonChangeNodeViewModel> _treeNodesByPath =
+        new Dictionary<string, JsonChangeNodeViewModel>();
 
     /// <summary>Which view the pane shows. Only meaningful once a semantic comparison has run.</summary>
     [ObservableProperty]
@@ -221,20 +225,176 @@ public partial class DiffPaneViewModel : ObservableObject
     /// </summary>
     public bool IsTreeViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Tree && IsSemantic;
 
+    /// <summary>Whether the tree-plus-both-documents view is the visible pane. Also semantic-only.</summary>
+    public bool IsHybridViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Hybrid && IsSemantic;
+
     partial void OnViewModeChanged(DiffViewMode value) => RaiseViewVisibility();
 
     partial void OnLeftDocumentChanged(AlignedDocument? value) => RaiseViewVisibility();
 
     partial void OnIsSemanticChanged(bool value)
     {
-        // Leaving the tree selected when the next comparison is plain text would show an empty pane,
-        // so fall back to the view that always works.
-        if (!value && ViewMode == DiffViewMode.Tree)
+        // Leaving the tree or Hybrid view selected when the next comparison is plain text would show
+        // an empty pane, so fall back to the view that always works.
+        if (!value && ViewMode is DiffViewMode.Tree or DiffViewMode.Hybrid)
         {
             ViewMode = DiffViewMode.Text;
         }
 
         RaiseViewVisibility();
+    }
+
+    // ---- Hybrid view ----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Each side's own document text, unaligned - exactly what the semantic pass parsed, so every
+    /// <see cref="JsonChange"/>'s <see cref="SourceSpan"/> addresses it directly. Supplied by the host
+    /// alongside the comparison, since building it is just joining the lines it already has.
+    /// </summary>
+    [ObservableProperty]
+    public partial string LeftRawText { get; set; } = string.Empty;
+
+    /// <summary>The right side's own document text, unaligned.</summary>
+    [ObservableProperty]
+    public partial string RightRawText { get; set; } = string.Empty;
+
+    /// <summary>The full, flat change list Hybrid navigation walks - document order, ignored included.</summary>
+    private IReadOnlyList<JsonChange> _semanticChanges = [];
+
+    /// <summary>Index into <see cref="_semanticChanges"/>, or -1 when nothing is selected.</summary>
+    [ObservableProperty]
+    public partial int CurrentSemanticChangeIndex { get; set; } = -1;
+
+    /// <summary>
+    /// The tree row for the current change, bound two-way to the embedded tree's own selection - so
+    /// clicking a row in the tree navigates Hybrid exactly like Prev/Next does, and stepping with
+    /// Prev/Next moves the tree's selection to match.
+    /// </summary>
+    [ObservableProperty]
+    public partial JsonChangeNodeViewModel? CurrentTreeNode { get; set; }
+
+    /// <summary>The change Hybrid is currently showing, or null when nothing is selected.</summary>
+    public JsonChange? CurrentSemanticChange =>
+        CurrentSemanticChangeIndex >= 0 && CurrentSemanticChangeIndex < _semanticChanges.Count
+            ? _semanticChanges[CurrentSemanticChangeIndex]
+            : null;
+
+    /// <summary>Where to highlight on the left - the change's own span into <see cref="LeftRawText"/>.</summary>
+    public SourceSpan? LeftHighlightSpan => CurrentSemanticChange?.Left?.Span is { IsKnown: true } span ? span : null;
+
+    /// <summary>Where to highlight on the right.</summary>
+    public SourceSpan? RightHighlightSpan => CurrentSemanticChange?.Right?.Span is { IsKnown: true } span ? span : null;
+
+    /// <summary>Names the current change for the Hybrid toolbar - path, kind, and position in the list.</summary>
+    public string HybridCaption
+    {
+        get
+        {
+            var navigableCount = 0;
+            foreach (var change in _semanticChanges)
+            {
+                if (!change.IsIgnored)
+                {
+                    navigableCount++;
+                }
+            }
+
+            if (navigableCount == 0)
+            {
+                return "No differences";
+            }
+
+            if (CurrentSemanticChange is not { } current)
+            {
+                return $"{navigableCount} difference(s) - none selected";
+            }
+
+            var position = 0;
+            for (var i = 0; i <= CurrentSemanticChangeIndex; i++)
+            {
+                if (!_semanticChanges[i].IsIgnored)
+                {
+                    position++;
+                }
+            }
+
+            return $"{current.Path}   ·   {current.Kind}   ·   {position} of {navigableCount}";
+        }
+    }
+
+    [RelayCommand]
+    private void NextSemanticChange() => MoveToSemanticChange(SemanticChangeNavigator.Next(_semanticChanges, CurrentSemanticChangeIndex));
+
+    [RelayCommand]
+    private void PreviousSemanticChange() => MoveToSemanticChange(SemanticChangeNavigator.Previous(_semanticChanges, CurrentSemanticChangeIndex));
+
+    private void MoveToSemanticChange(int? index)
+    {
+        if (index is not { } value)
+        {
+            return;
+        }
+
+        CurrentSemanticChangeIndex = value;
+    }
+
+    partial void OnCurrentSemanticChangeIndexChanged(int value)
+    {
+        // Keeps the embedded tree's selection following Prev/Next. Guarded against feedback: setting
+        // CurrentTreeNode here raises ITS OWN changed handler below, which would otherwise call back
+        // into SetCurrentChangeIndex and re-enter this property's setter.
+        var node = CurrentSemanticChange is { } change && _treeNodesByPath.TryGetValue(change.Path.ToString(), out var found)
+            ? found
+            : null;
+
+        if (!ReferenceEquals(CurrentTreeNode, node))
+        {
+            CurrentTreeNode = node;
+        }
+
+        RaiseHybridDerived();
+    }
+
+    partial void OnCurrentTreeNodeChanged(JsonChangeNodeViewModel? value)
+    {
+        // The reverse direction: the user clicked a row in the tree. Only rows that ARE a change carry
+        // one - clicking a grouping row like `items` selects nothing, rather than jumping somewhere
+        // arbitrary within it.
+        if (value?.Change is not { } change)
+        {
+            return;
+        }
+
+        var index = IndexOf(change);
+        if (index >= 0 && index != CurrentSemanticChangeIndex)
+        {
+            CurrentSemanticChangeIndex = index;
+        }
+    }
+
+    /// <summary>
+    /// The change list's own natural equality (record value equality) is enough here: two entries at
+    /// the same path with the same before/after values are, for navigation purposes, the same change.
+    /// </summary>
+    private int IndexOf(JsonChange change)
+    {
+        for (var i = 0; i < _semanticChanges.Count; i++)
+        {
+            if (_semanticChanges[i].Equals(change))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private void RaiseHybridDerived()
+    {
+        OnPropertyChanged(nameof(CurrentSemanticChange));
+        OnPropertyChanged(nameof(LeftHighlightSpan));
+        OnPropertyChanged(nameof(RightHighlightSpan));
+        OnPropertyChanged(nameof(HybridCaption));
     }
 
     // ---- Loading --------------------------------------------------------------------------------
@@ -246,7 +406,9 @@ public partial class DiffPaneViewModel : ObservableObject
     public void Show(
         DiffResult result,
         bool isSemantic = false,
-        IReadOnlyList<JsonChange>? semanticChanges = null)
+        IReadOnlyList<JsonChange>? semanticChanges = null,
+        string? leftRawText = null,
+        string? rightRawText = null)
     {
         _result = result;
 
@@ -255,13 +417,23 @@ public partial class DiffPaneViewModel : ObservableObject
 
         IsSemantic = isSemantic;
         _changeIndex = JsonChangeIndex.Build(semanticChanges);
-        SemanticTree = JsonChangeNodeViewModel.Build(semanticChanges ?? []);
+
+        _semanticChanges = semanticChanges ?? [];
+        var (roots, byPath) = JsonChangeNodeViewModel.Build(_semanticChanges);
+        SemanticTree = roots;
+        _treeNodesByPath = byPath;
+
+        LeftRawText = leftRawText ?? string.Empty;
+        RightRawText = rightRawText ?? string.Empty;
 
         CurrentHunk = -1;
         ScrollToRow = -1;
+        CurrentSemanticChangeIndex = -1;
+        CurrentTreeNode = null;
 
         RebuildDetail();
         RaiseDerived();
+        RaiseHybridDerived();
     }
 
     /// <summary>Clears the pane back to empty.</summary>
@@ -301,6 +473,7 @@ public partial class DiffPaneViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsTextViewVisible));
         OnPropertyChanged(nameof(IsTreeViewVisible));
+        OnPropertyChanged(nameof(IsHybridViewVisible));
     }
 
     /// <summary>

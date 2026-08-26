@@ -177,7 +177,12 @@ public partial class DiffPreviewViewModel : ViewModelBase
                 .CompareTextAsync(_leftText, _rightText, options, LeftLabel, RightLabel)
                 .ConfigureAwait(true);
 
-            Pane.Show(result.Result, result.IsSemantic, result.SemanticChanges);
+            Pane.Show(
+                result.Result,
+                result.IsSemantic,
+                result.SemanticChanges,
+                string.Join('\n', result.Left.Lines),
+                string.Join('\n', result.Right.Lines));
 
             StatusMessage = Describe(result);
         }

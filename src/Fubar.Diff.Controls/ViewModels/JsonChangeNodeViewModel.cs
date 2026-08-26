@@ -83,8 +83,13 @@ public sealed class JsonChangeNodeViewModel
     ///
     /// Each change's path is walked from the root, creating grouping rows on the way down, so nothing
     /// depends on the changes arriving in any particular order.
+    ///
+    /// Also returns the path index used to build it, keyed the same way <see cref="Path"/> is - the
+    /// Hybrid view uses it to find the tree row for a given <see cref="JsonChange"/> without a second
+    /// walk of the tree.
     /// </summary>
-    public static IReadOnlyList<JsonChangeNodeViewModel> Build(IReadOnlyList<JsonChange> changes)
+    public static (IReadOnlyList<JsonChangeNodeViewModel> Roots, IReadOnlyDictionary<string, JsonChangeNodeViewModel> ByPath)
+        Build(IReadOnlyList<JsonChange> changes)
     {
         var root = new JsonChangeNodeViewModel("$");
         var index = new Dictionary<string, JsonChangeNodeViewModel> { ["$"] = root };
@@ -94,7 +99,7 @@ public sealed class JsonChangeNodeViewModel
             EnsureNode(change.Path, index, root).Change = change;
         }
 
-        return root._children;
+        return (root._children, index);
     }
 
     private static JsonChangeNodeViewModel EnsureNode(

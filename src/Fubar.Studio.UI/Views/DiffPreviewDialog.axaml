@@ -146,6 +146,7 @@
 
             <dv:DiffView DataContext="{Binding Pane}" IsVisible="{Binding IsTextViewVisible}" />
             <dv:JsonTreeView DataContext="{Binding Pane}" IsVisible="{Binding IsTreeViewVisible}" />
+            <dv:HybridView DataContext="{Binding Pane}" IsVisible="{Binding IsHybridViewVisible}" />
         </Panel>
     </DockPanel>
 </Window>

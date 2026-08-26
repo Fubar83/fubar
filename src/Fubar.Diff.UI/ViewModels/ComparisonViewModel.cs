@@ -416,7 +416,12 @@ public partial class ComparisonViewModel : ViewModelBase
         _mergeState = _mergeState.RemapTo(result.Hunks.Count);
         HasUnsavedMerge = _mergeState.HasResolutions;
 
-        Pane.Show(result, _comparison.IsSemantic, _comparison.SemanticChanges);
+        Pane.Show(
+            result,
+            _comparison.IsSemantic,
+            _comparison.SemanticChanges,
+            string.Join('\n', _comparison.Left.Lines),
+            string.Join('\n', _comparison.Right.Lines));
 
         // A skipped semantic pass is only worth mentioning when the user explicitly asked for JSON;
         // the service decides that and leaves the reason null otherwise.

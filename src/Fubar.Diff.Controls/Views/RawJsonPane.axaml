@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ae="using:AvaloniaEdit"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="400"
+             x:Class="Fubar.Diff.Controls.Views.RawJsonPane">
+
+    <!-- One side of the Hybrid view: the document exactly as the semantic pass parsed it, with no
+         alignment and no filler rows - unlike DiffEditorPane, this shows a plain document, so its own
+         line numbers ARE the numbers a JsonAstNode.Span refers to. That is what lets Hybrid navigation
+         work regardless of formatting or property order: it never needs the two sides' lines to
+         correspond to each other at all. -->
+    <ae:TextEditor x:Name="Editor"
+                   IsReadOnly="True"
+                   ShowLineNumbers="True"
+                   FontFamily="Cascadia Mono,Consolas,Menlo,DejaVu Sans Mono,monospace"
+                   FontSize="12.5"
+                   Background="Transparent"
+                   Foreground="{DynamicResource TextPrimary}"
+                   HorizontalScrollBarVisibility="Auto"
+                   VerticalScrollBarVisibility="Auto" />
+
+</UserControl>

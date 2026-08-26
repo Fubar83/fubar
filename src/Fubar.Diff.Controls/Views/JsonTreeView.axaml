@@ -39,7 +39,11 @@
                        Description="The two documents are the same once formatting and ordering are ignored."
                        IsVisible="{Binding !SemanticTree.Count}" />
 
+        <!-- SelectedItem is two-way so the Hybrid view's Prev/Next can drive the tree's selection
+             (DiffPaneViewModel.CurrentTreeNode) as well as read it when the user clicks a row - Text
+             and Tree mode never set CurrentTreeNode, so this binding is otherwise inert for them. -->
         <fc:TreeView ItemsSource="{Binding SemanticTree}"
+                     SelectedItem="{Binding CurrentTreeNode, Mode=TwoWay}"
                      Background="Transparent"
                      BorderThickness="0"
                      IsVisible="{Binding !!SemanticTree.Count}">
