@@ -24,4 +24,17 @@ public interface ILineNormalizer
     /// unchanged when the option is off or the content does not parse as a structured format.
     /// </summary>
     IReadOnlyList<string> Canonicalize(IReadOnlyList<string> lines, ComparisonOptions options);
+
+    /// <summary>
+    /// Pretty-prints <paramref name="lines"/> if they parse as JSON, unconditionally - independent of
+    /// <see cref="ComparisonOptions.NormalizeStructure"/>, which stays an XML-focused, opt-in toggle.
+    /// Returns the input unchanged when it is not valid JSON, exactly like <see cref="Canonicalize"/>.
+    ///
+    /// Exists so a semantic JSON comparison can put both sides into a common format before the text
+    /// differ ever sees them. The semantic pass already treats formatting as insignificant, but that
+    /// promise means nothing if alignment - which happens first, on the raw text - has nothing sane to
+    /// line up: a minified file diffed against a pretty one has almost no matching lines, so the text
+    /// differ marks nearly everything as one giant replacement before the semantic pass gets a say.
+    /// </summary>
+    IReadOnlyList<string> CanonicalizeJson(IReadOnlyList<string> lines);
 }

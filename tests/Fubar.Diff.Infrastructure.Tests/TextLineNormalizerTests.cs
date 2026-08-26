@@ -91,4 +91,111 @@ public class TextLineNormalizerTests
 
         Assert.Equal(prose, _normalizer.Canonicalize(prose, options));
     }
+
+    // ---- CanonicalizeJson ------------------------------------------------------------------------
+
+    [Fact]
+    public void CanonicalizeJson_runs_with_no_options_at_all()
+    {
+        // Unlike Canonicalize, there is no flag to check - this always tries, and only ever no-ops
+        // because the content is not JSON.
+        var pretty = _normalizer.CanonicalizeJson(["{\"a\":{\"b\":1}}"]);
+
+        Assert.Equal(["{", "  \"a\": {\"b\":1}", "}"], pretty);
+    }
+
+    [Fact]
+    public void CanonicalizeJson_leaves_non_json_content_untouched()
+    {
+        string[] prose = ["Just some text."];
+
+        Assert.Same(prose, _normalizer.CanonicalizeJson(prose));
+    }
+
+    /// <summary>
+    /// Minified JSON is the exact case that motivates this method: it starts as ONE line, and a text
+    /// differ given one line on one side and dozens on the other has nothing sane to align.
+    /// </summary>
+    [Fact]
+    public void CanonicalizeJson_expands_a_minified_document_across_multiple_lines()
+    {
+        var result = _normalizer.CanonicalizeJson(["{\"a\":{\"b\":1,\"c\":[1,2]}}"]);
+
+        Assert.True(result.Count > 1);
+    }
+
+    /// <summary>
+    /// The rule that keeps line-based diffing usable for arrays of objects: an object or array
+    /// holding only scalars stays on ONE line rather than expanding into boilerplate braces that
+    /// would be identical across every element and confuse a line-based text differ into matching
+    /// them to each other regardless of which element they belong to.
+    /// </summary>
+    [Fact]
+    public void A_container_of_only_scalars_stays_on_one_line()
+    {
+        var result = _normalizer.CanonicalizeJson(["{\"items\":[{\"id\":1},{\"id\":2}]}"]);
+
+        Assert.Equal(
+            ["{", "  \"items\": [", "    {\"id\":1},", "    {\"id\":2}", "  ]", "}"],
+            result);
+    }
+
+    /// <summary>A container holding a NESTED container still expands, so its structure is visible.</summary>
+    [Fact]
+    public void A_container_with_a_nested_container_still_expands()
+    {
+        var result = _normalizer.CanonicalizeJson(["{\"a\":{\"b\":{\"c\":1}}}"]);
+
+        Assert.Equal(["{", "  \"a\": {", "    \"b\": {\"c\":1}", "  }", "}"], result);
+    }
+
+    [Fact]
+    public void An_empty_object_and_array_render_compact()
+    {
+        Assert.Equal(["{}"], _normalizer.CanonicalizeJson(["{}"]));
+        Assert.Equal(["{", "  \"items\": []", "}"], _normalizer.CanonicalizeJson(["{\"items\":[]}"]));
+    }
+
+    /// <summary>Property order is source order, never sorted - reordering must stay visible as a diff.</summary>
+    [Fact]
+    public void CanonicalizeJson_preserves_property_order()
+    {
+        var result = _normalizer.CanonicalizeJson(["{\"outer\":{\"b\":2,\"a\":1}}"]);
+
+        Assert.Equal(["{", "  \"outer\": {\"b\":2,\"a\":1}", "}"], result);
+    }
+
+    /// <summary>
+    /// String escaping comes from the framework's own writer, not hand-rolled - so a value with an
+    /// embedded newline and a quote round-trips exactly, on the one line a simple object gets.
+    /// </summary>
+    [Fact]
+    public void CanonicalizeJson_preserves_string_escaping()
+    {
+        const string input = "{\"a\":\"line1\\nline2 \\\"quoted\\\"\"}";
+
+        Assert.Equal([input], _normalizer.CanonicalizeJson([input]));
+    }
+
+    /// <summary>Re-canonicalizing an already-canonical document must be a byte-for-byte no-op.</summary>
+    [Fact]
+    public void CanonicalizeJson_is_idempotent()
+    {
+        var once = _normalizer.CanonicalizeJson(["{\"items\":[{\"id\":1},{\"id\":2}]}"]);
+        var twice = _normalizer.CanonicalizeJson(once);
+
+        Assert.Equal(once, twice);
+    }
+
+    /// <summary>
+    /// System.Text.Json's own indented writer uses Environment.NewLine, which is CRLF on Windows - a
+    /// naive split on '\n' alone would leave a stray '\r' glued to every line.
+    /// </summary>
+    [Fact]
+    public void CanonicalizeJson_produces_no_carriage_returns()
+    {
+        var result = _normalizer.CanonicalizeJson(["{\"a\":{\"b\":1}}"]);
+
+        Assert.All(result, line => Assert.DoesNotContain('\r', line));
+    }
 }

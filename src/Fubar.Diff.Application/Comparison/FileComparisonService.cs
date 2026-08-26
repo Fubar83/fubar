@@ -107,8 +107,24 @@ public sealed class FileComparisonService : IFileComparisonService
     {
         // Canonicalisation can change the line count, so it happens first and produces the documents
         // that are both compared AND displayed. Everything after this works against these lines.
-        var leftDoc = left with { Lines = _normalizer.Canonicalize(left.Lines, options) };
-        var rightDoc = right with { Lines = _normalizer.Canonicalize(right.Lines, options) };
+        var leftLines = _normalizer.Canonicalize(left.Lines, options);
+        var rightLines = _normalizer.Canonicalize(right.Lines, options);
+
+        // A semantic JSON comparison treats formatting as insignificant - but that promise means
+        // nothing if ALIGNMENT, which happens next on raw text, has nothing sane to line up. A
+        // minified file diffed against a pretty one has almost no matching lines, so the text differ
+        // marks nearly everything as one giant replacement before the semantic pass gets a say, and
+        // the result renders as if one side had barely any content. Unconditional on Mode alone -
+        // independent of NormalizeStructure, which stays the XML-focused opt-in - and a safe no-op
+        // whenever the content is not JSON or Mode is Text (an explicit request for literal bytes).
+        if (options.Mode != ComparisonMode.Text)
+        {
+            leftLines = _normalizer.CanonicalizeJson(leftLines);
+            rightLines = _normalizer.CanonicalizeJson(rightLines);
+        }
+
+        var leftDoc = left with { Lines = leftLines };
+        var rightDoc = right with { Lines = rightLines };
 
         var rows = _engine.Align(
             ToKeys(leftDoc.Lines, options),

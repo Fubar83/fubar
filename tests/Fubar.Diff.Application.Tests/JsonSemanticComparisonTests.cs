@@ -188,13 +188,25 @@ public class JsonSemanticComparisonTests
     [Fact]
     public async Task Refinement_preserves_the_alignment_row_for_row()
     {
-        // The contract the renderers depend on: semantic refinement only downgrades change kinds, it
-        // never adds, removes or re-pairs rows.
+        // The contract the renderers depend on: GIVEN THE SAME TEXT TO ALIGN, semantic refinement only
+        // downgrades change kinds - it never adds, removes or re-pairs rows.
+        //
+        // "The same text" is not the ORIGINAL source here: semantic mode reformats JSON before
+        // aligning (see FileComparisonService.Compare and CanonicalizeJson's doc comment) precisely so
+        // a minified file diffed against a pretty one still lines up sanely, so its row count can
+        // legitimately differ from a literal-bytes Text-mode run of the un-reformatted source. What
+        // must still hold is that semantic mode does not itself reshape the alignment it computes from
+        // whatever text it ends up using - which this checks by re-running Text mode over THAT exact
+        // (already-canonicalized) text and comparing shapes.
         const string left = "{\n  \"a\": 1,\n  \"b\": 2\n}";
         const string right = "{\n  \"b\": 2,\n  \"a\": 1\n}";
 
         var semantic = await CompareAsync(left, right);
-        var text = await CompareAsync(left, right, ComparisonOptions.Default with { Mode = ComparisonMode.Text });
+
+        var canonicalLeft = string.Join('\n', semantic.Left.Lines);
+        var canonicalRight = string.Join('\n', semantic.Right.Lines);
+        var text = await Build(canonicalLeft, canonicalRight)
+            .CompareFilesAsync("left", "right", ComparisonOptions.Default with { Mode = ComparisonMode.Text }, Token);
 
         Assert.Equal(text.Result.Lines.Count, semantic.Result.Lines.Count);
 
@@ -237,5 +249,75 @@ public class JsonSemanticComparisonTests
 
         Assert.Empty(comparison.SemanticChanges);
         Assert.True(comparison.Result.AreIdentical);
+    }
+
+    // ---- Alignment when the two sides are formatted very differently ----------------------------
+
+    /// <summary>
+    /// The bug this pins: a minified file has ONE line, so a text differ aligning it against a
+    /// pretty-printed file of the same content has nothing sane to line up - it sees a single giant
+    /// line replacing dozens of short ones. The semantic pass would then mark almost the whole
+    /// document "unchanged" (correctly - it IS unchanged), but the rendered result looked like a
+    /// comparison failure: one pane showing real content, the other showing almost nothing opposite
+    /// it. Canonicalizing both sides before alignment (independent of NormalizeStructure - see
+    /// CanonicalizeJson) fixes this by giving the text differ a sane, comparable starting point.
+    /// </summary>
+    [Fact]
+    public async Task A_minified_file_compared_against_a_pretty_one_still_aligns_sanely()
+    {
+        const string pretty = """
+            {
+              "glossary": {
+                "title": "example glossary",
+                "GlossDiv": {
+                  "title": "S",
+                  "GlossList": {
+                    "GlossEntry": {
+                      "ID": "SGML",
+                      "GlossSee": "markup"
+                    }
+                  }
+                }
+              }
+            }
+            """;
+
+        const string minified =
+            "{\"glossary\":{\"title\":\"example glossary\",\"GlossDiv\":{\"title\":\"S\"," +
+            "\"GlossList\":{\"GlossEntry\":{\"ID\":\"SGML\",\"GlossSee\":\"gone\"}}}}}";
+
+        var comparison = await CompareAsync(pretty, minified);
+
+        Assert.True(comparison.IsSemantic);
+
+        // Both sides align to the SAME row count - the invariant every renderer depends on - and it
+        // is more than one, which is what "sane" means here: the minified side did not just become a
+        // single giant row opposite a mostly-empty pretty one.
+        Assert.True(comparison.Left.Lines.Count > 1);
+        Assert.Equal(comparison.Left.Lines.Count, comparison.Right.Lines.Count);
+
+        // The one real difference (GlossSee: "markup" -> "gone") is still found...
+        var change = Assert.Single(comparison.SemanticChanges);
+        Assert.Equal("$.glossary.GlossDiv.GlossList.GlossEntry.GlossSee", change.Path.ToString());
+
+        // ...and everything else - reformatting alone - is correctly NOT a difference.
+        Assert.Equal(1, comparison.Result.Modified);
+        Assert.Equal(0, comparison.Result.Inserted);
+        Assert.Equal(0, comparison.Result.Deleted);
+    }
+
+    /// <summary>
+    /// Mode=Text is the explicit escape hatch for "I want literal bytes compared" - the automatic
+    /// pre-alignment canonicalisation above must not apply there, or there would be no way left to
+    /// diff two JSON files exactly as they are on disk.
+    /// </summary>
+    [Fact]
+    public async Task Text_mode_does_not_canonicalize_for_alignment_either()
+    {
+        var options = ComparisonOptions.Default with { Mode = ComparisonMode.Text };
+
+        var comparison = await CompareAsync("{\"a\":1}", "{\"a\":1}", options);
+
+        Assert.Equal("{\"a\":1}", Assert.Single(comparison.Left.Lines));
     }
 }
