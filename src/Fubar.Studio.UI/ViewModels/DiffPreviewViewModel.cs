@@ -181,8 +181,9 @@ public partial class DiffPreviewViewModel : ViewModelBase
                 result.Result,
                 result.IsSemantic,
                 result.SemanticChanges,
-                string.Join('\n', result.Left.Lines),
-                string.Join('\n', result.Right.Lines));
+                result.OriginalLeftText,
+                result.OriginalRightText,
+                result.OriginalSemanticChanges);
 
             StatusMessage = Describe(result);
         }

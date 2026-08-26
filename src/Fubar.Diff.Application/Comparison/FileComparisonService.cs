@@ -98,13 +98,28 @@ public sealed class FileComparisonService : IFileComparisonService
         FileComparison comparison,
         ComparisonOptions options,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => Compare(comparison.Left, comparison.Right, options), cancellationToken);
+        Task.Run(
+            () => Compare(comparison.Left, comparison.Right, options, comparison.OriginalLeftText, comparison.OriginalRightText),
+            cancellationToken);
 
     public FileComparison Recompare(FileComparison comparison, ComparisonOptions options) =>
-        Compare(comparison.Left, comparison.Right, options);
+        Compare(comparison.Left, comparison.Right, options, comparison.OriginalLeftText, comparison.OriginalRightText);
 
-    private FileComparison Compare(TextDocument left, TextDocument right, ComparisonOptions options)
+    private FileComparison Compare(
+        TextDocument left,
+        TextDocument right,
+        ComparisonOptions options,
+        string? originalLeftText = null,
+        string? originalRightText = null)
     {
+        // A fresh compare has no prior result to carry the true original text forward from, so it
+        // comes from the documents just read; a recompare (an option changed, not the content) is
+        // passed its PREVIOUS result's original text explicitly - otherwise, since Left/Right below
+        // hold the CANONICALIZED text, "original" would silently become "canonicalized" the moment
+        // any option was toggled, one recompare after the file was actually loaded.
+        var trueOriginalLeftText = originalLeftText ?? string.Join('\n', left.Lines);
+        var trueOriginalRightText = originalRightText ?? string.Join('\n', right.Lines);
+
         // Canonicalisation can change the line count, so it happens first and produces the documents
         // that are both compared AND displayed. Everything after this works against these lines.
         var leftLines = _normalizer.Canonicalize(left.Lines, options);
@@ -142,11 +157,21 @@ public sealed class FileComparisonService : IFileComparisonService
             string.Join('\n', rightDoc.Lines),
             options);
 
+        // Original text parses whenever the canonicalized text did: canonicalization either changed
+        // nothing (same text, so the same parse result) or it succeeded, which requires the original
+        // to have parsed in the first place to produce that output. The ?? is defensive, not expected.
+        var originalSemanticChanges = semantic.Applied
+            ? _semanticPass.TryCompareOriginalText(trueOriginalLeftText, trueOriginalRightText, options) ?? semantic.Changes
+            : [];
+
         return new FileComparison(leftDoc, rightDoc, options, semantic.Result)
         {
             IsSemantic = semantic.Applied,
             SemanticChanges = semantic.Changes,
             SemanticFallbackReason = semantic.FallbackReason,
+            OriginalSemanticChanges = originalSemanticChanges,
+            OriginalLeftText = trueOriginalLeftText,
+            OriginalRightText = trueOriginalRightText,
         };
     }
 

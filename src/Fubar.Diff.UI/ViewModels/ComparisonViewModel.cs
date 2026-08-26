@@ -420,8 +420,9 @@ public partial class ComparisonViewModel : ViewModelBase
             result,
             _comparison.IsSemantic,
             _comparison.SemanticChanges,
-            string.Join('\n', _comparison.Left.Lines),
-            string.Join('\n', _comparison.Right.Lines));
+            _comparison.OriginalLeftText,
+            _comparison.OriginalRightText,
+            _comparison.OriginalSemanticChanges);
 
         // A skipped semantic pass is only worth mentioning when the user explicitly asked for JSON;
         // the service decides that and leaves the reason null otherwise.

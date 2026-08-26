@@ -66,6 +66,42 @@ public sealed class JsonSemanticPass
     }
 
     /// <summary>
+    /// Re-runs the comparison against text that was never canonicalized for alignment - the Json view
+    /// shows each side exactly as it was given, not reformatted, so it needs <see cref="JsonChange"/>
+    /// spans that address THAT text rather than the pretty-printed copy <see cref="Apply"/> works from.
+    ///
+    /// A second full diff rather than re-resolving the existing changes into a differently-formatted
+    /// tree: canonicalisation preserves property and array order exactly, so parsing and diffing the
+    /// original text produces the identical change list in the identical order - same paths, same
+    /// kinds, same count - differing only in which text each span points into. That guarantee is what
+    /// lets a caller pair this list up with <see cref="Apply"/>'s by position. Re-running the (already
+    /// trusted) differ is simpler and safer than writing a second way to map a path onto a fresh AST.
+    ///
+    /// Returns null wherever <see cref="Apply"/> would not have produced a semantic result either -
+    /// Text mode, or either side failing to parse - so a caller can tell "did not run" apart from
+    /// "ran and found nothing", exactly as with <see cref="JsonSemanticOutcome.Applied"/>.
+    /// </summary>
+    public IReadOnlyList<JsonChange>? TryCompareOriginalText(string leftText, string rightText, ComparisonOptions options)
+    {
+        if (options.Mode == ComparisonMode.Text)
+        {
+            return null;
+        }
+
+        if (!_parser.TryParse(leftText, out var left, out _) || left is null)
+        {
+            return null;
+        }
+
+        if (!_parser.TryParse(rightText, out var right, out _) || right is null)
+        {
+            return null;
+        }
+
+        return JsonSemanticDiffer.Compare(left, right, options.Json);
+    }
+
+    /// <summary>
     /// Falls back to the text result. In <see cref="ComparisonMode.Auto"/> this is unremarkable - most
     /// files are not JSON - so no reason is reported and the UI stays quiet. When the user explicitly
     /// asked for JSON, the parse error is worth surfacing.

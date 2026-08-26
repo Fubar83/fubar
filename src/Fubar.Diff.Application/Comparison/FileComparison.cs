@@ -35,6 +35,21 @@ public sealed record FileComparison(
     /// </summary>
     public string? SemanticFallbackReason { get; init; }
 
+    /// <summary>
+    /// The same changes as <see cref="SemanticChanges"/>, but with spans into each side's text exactly
+    /// as it was given - not the pretty-printed copy <see cref="Left"/>/<see cref="Right"/> hold for
+    /// alignment. This is what the Json view highlights from, since it shows each document unaligned
+    /// and untouched rather than reformatted to line up with the other side. Empty when semantic
+    /// comparison did not run.
+    /// </summary>
+    public IReadOnlyList<JsonChange> OriginalSemanticChanges { get; init; } = [];
+
+    /// <summary>The left side's text exactly as given, before any canonicalisation for alignment.</summary>
+    public string OriginalLeftText { get; init; } = string.Empty;
+
+    /// <summary>The right side's text exactly as given.</summary>
+    public string OriginalRightText { get; init; } = string.Empty;
+
     /// <summary>Nothing loaded yet - the app's initial state.</summary>
     public static FileComparison Empty { get; } = new(
         TextDocument.Empty,

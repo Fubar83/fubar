@@ -320,4 +320,82 @@ public class JsonSemanticComparisonTests
 
         Assert.Equal("{\"a\":1}", Assert.Single(comparison.Left.Lines));
     }
+
+    // ---- Original (unaligned) text, for the Json view ---------------------------------------------
+
+    /// <summary>
+    /// The whole reason OriginalLeftText/RightText exist: the Json view shows each document exactly
+    /// as it was given, not the pretty-printed copy Left/Right hold for alignment. A minified file
+    /// must stay minified there, or the view is not actually demonstrating anything different from
+    /// Text mode's own (already fixed) canonicalisation.
+    /// </summary>
+    [Fact]
+    public async Task Original_text_is_kept_exactly_as_given_even_though_Left_is_reformatted()
+    {
+        const string minified = "{\"a\":1,\"nested\":{\"b\":2}}";
+
+        var comparison = await CompareAsync("{\n  \"a\": 1,\n  \"nested\": {\n    \"b\": 2\n  }\n}", minified);
+
+        Assert.Equal(minified, comparison.OriginalRightText);
+        // Left canonicalizes to the same shape it started as ("nested" has a container child, so it
+        // is not compacted to one line) - the point being tested is the RIGHT side, which started
+        // minified and must not have been reformatted for this property.
+        Assert.NotEqual(1, comparison.Right.Lines.Count);
+    }
+
+    /// <summary>
+    /// Spans in OriginalSemanticChanges must address OriginalRightText/LeftText, not the canonicalized
+    /// Left/Right - otherwise the Json view would highlight the wrong characters entirely.
+    /// </summary>
+    [Fact]
+    public async Task Original_semantic_changes_have_spans_into_the_original_text()
+    {
+        const string minified = "{\"a\":1}";
+
+        var comparison = await CompareAsync("{\n  \"a\": 2\n}", minified);
+
+        var change = Assert.Single(comparison.OriginalSemanticChanges);
+        var span = Assert.NotNull(change.Right?.Span);
+
+        // The minified right side is one line; a span into the CANONICALIZED (multi-line) text would
+        // report a line number that does not exist in the one-line original.
+        Assert.Equal(1, span.StartLine);
+    }
+
+    /// <summary>
+    /// The path/kind/count must be identical between the two representations - same logical change,
+    /// only the span differs - which is what lets a caller pair them up by position (see
+    /// JsonSemanticPass.TryCompareOriginalText's doc comment for why that pairing is safe).
+    /// </summary>
+    [Fact]
+    public async Task Original_and_canonicalized_semantic_changes_agree_on_everything_but_span()
+    {
+        var comparison = await CompareAsync("{\"a\":1,\"b\":2}", "{\"a\":9,\"b\":2}");
+
+        var canonical = Assert.Single(comparison.SemanticChanges);
+        var original = Assert.Single(comparison.OriginalSemanticChanges);
+
+        Assert.Equal(canonical.Path.ToString(), original.Path.ToString());
+        Assert.Equal(canonical.Kind, original.Kind);
+    }
+
+    /// <summary>
+    /// The regression this pins: a naive implementation reads "original text" fresh from whatever
+    /// Left/Right happen to hold at recompare time - which, one recompare after the fresh load, IS
+    /// the canonicalized text, silently losing the true original the moment any option is toggled.
+    /// </summary>
+    [Fact]
+    public async Task Original_text_survives_a_recompare()
+    {
+        const string minified = "{\"a\":1}";
+        var service = Build("{\n  \"a\": 1\n}", minified);
+
+        var first = await service.CompareFilesAsync("left", "right", ComparisonOptions.Default, Token);
+        var recompared = await service.RecompareAsync(
+            first,
+            ComparisonOptions.Default with { IgnoreCase = true },
+            Token);
+
+        Assert.Equal(minified, recompared.OriginalRightText);
+    }
 }

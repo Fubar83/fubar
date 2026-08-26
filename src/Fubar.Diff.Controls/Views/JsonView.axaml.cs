@@ -8,7 +8,7 @@ namespace Fubar.Diff.Controls.Views;
 /// its own highlighted span independently, which is the whole point of not aligning the two documents
 /// at all.
 /// </summary>
-public partial class HybridView : UserControl
+public partial class JsonView : UserControl
 {
-    public HybridView() => InitializeComponent();
+    public JsonView() => InitializeComponent();
 }

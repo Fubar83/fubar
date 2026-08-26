@@ -197,11 +197,11 @@ public partial class DiffPaneViewModel : ObservableObject
 
     // ---- Semantic JSON --------------------------------------------------------------------------
 
-    /// <summary>True when the semantic JSON pass ran, which is what enables the tree view.</summary>
+    /// <summary>True when the semantic JSON pass ran, which is what enables the Json view.</summary>
     [ObservableProperty]
     public partial bool IsSemantic { get; set; }
 
-    /// <summary>The semantic changes as a tree, for the Tree and Hybrid views.</summary>
+    /// <summary>The semantic changes as a tree, embedded in the Json view.</summary>
     [ObservableProperty]
     public partial IReadOnlyList<JsonChangeNodeViewModel> SemanticTree { get; set; } = [];
 
@@ -209,24 +209,26 @@ public partial class DiffPaneViewModel : ObservableObject
     private IReadOnlyDictionary<string, JsonChangeNodeViewModel> _treeNodesByPath =
         new Dictionary<string, JsonChangeNodeViewModel>();
 
-    /// <summary>Which view the pane shows. Only meaningful once a semantic comparison has run.</summary>
+    /// <summary>
+    /// Which view the pane shows. Defaults to Text, but <see cref="Show"/> resets it on every
+    /// comparison - Json when semantic comparison ran, Text otherwise - so it is never left showing
+    /// Json for a document that turned out not to be JSON, and JSON always opens in the view built
+    /// for it rather than requiring a manual switch every time.
+    /// </summary>
     [ObservableProperty]
     public partial DiffViewMode ViewMode { get; set; } = DiffViewMode.Text;
 
-    /// <summary>The values offered by a view selector.</summary>
+    /// <summary>The values offered by a view selector - just Text and Json; there is nothing else to pick.</summary>
     public static IReadOnlyList<DiffViewMode> ViewModeOptions { get; } = Enum.GetValues<DiffViewMode>();
 
     /// <summary>Whether the side-by-side editors are the visible pane.</summary>
     public bool IsTextViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Text;
 
     /// <summary>
-    /// Whether the change tree is the visible pane. Requires a semantic comparison - the tree would
-    /// otherwise be permanently empty and look broken.
+    /// Whether the tree-plus-both-documents view is the visible pane. Requires a semantic comparison -
+    /// it would otherwise show an empty tree next to two documents with nothing to highlight.
     /// </summary>
-    public bool IsTreeViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Tree && IsSemantic;
-
-    /// <summary>Whether the tree-plus-both-documents view is the visible pane. Also semantic-only.</summary>
-    public bool IsHybridViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Hybrid && IsSemantic;
+    public bool IsJsonViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Json && IsSemantic;
 
     partial void OnViewModeChanged(DiffViewMode value) => RaiseViewVisibility();
 
@@ -234,9 +236,10 @@ public partial class DiffPaneViewModel : ObservableObject
 
     partial void OnIsSemanticChanged(bool value)
     {
-        // Leaving the tree or Hybrid view selected when the next comparison is plain text would show
-        // an empty pane, so fall back to the view that always works.
-        if (!value && ViewMode is DiffViewMode.Tree or DiffViewMode.Hybrid)
+        // Safety net for IsSemantic changing outside Show (it currently never does, but Show already
+        // sets ViewMode explicitly for every comparison, so this only matters if that ever changes):
+        // leaving Json selected for content that is not semantic would show an empty pane.
+        if (!value && ViewMode == DiffViewMode.Json)
         {
             ViewMode = DiffViewMode.Text;
         }
@@ -244,7 +247,7 @@ public partial class DiffPaneViewModel : ObservableObject
         RaiseViewVisibility();
     }
 
-    // ---- Hybrid view ----------------------------------------------------------------------------
+    // ---- Json view --------------------------------------------------------------------------------
 
     /// <summary>
     /// Each side's own document text, unaligned - exactly what the semantic pass parsed, so every
@@ -258,7 +261,7 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial string RightRawText { get; set; } = string.Empty;
 
-    /// <summary>The full, flat change list Hybrid navigation walks - document order, ignored included.</summary>
+    /// <summary>The full, flat change list Json-view navigation walks - document order, ignored included.</summary>
     private IReadOnlyList<JsonChange> _semanticChanges = [];
 
     /// <summary>Index into <see cref="_semanticChanges"/>, or -1 when nothing is selected.</summary>
@@ -267,13 +270,13 @@ public partial class DiffPaneViewModel : ObservableObject
 
     /// <summary>
     /// The tree row for the current change, bound two-way to the embedded tree's own selection - so
-    /// clicking a row in the tree navigates Hybrid exactly like Prev/Next does, and stepping with
+    /// clicking a row in the tree navigates the Json view exactly like Prev/Next does, and stepping with
     /// Prev/Next moves the tree's selection to match.
     /// </summary>
     [ObservableProperty]
     public partial JsonChangeNodeViewModel? CurrentTreeNode { get; set; }
 
-    /// <summary>The change Hybrid is currently showing, or null when nothing is selected.</summary>
+    /// <summary>The change the Json view is currently showing, or null when nothing is selected.</summary>
     public JsonChange? CurrentSemanticChange =>
         CurrentSemanticChangeIndex >= 0 && CurrentSemanticChangeIndex < _semanticChanges.Count
             ? _semanticChanges[CurrentSemanticChangeIndex]
@@ -285,8 +288,8 @@ public partial class DiffPaneViewModel : ObservableObject
     /// <summary>Where to highlight on the right.</summary>
     public SourceSpan? RightHighlightSpan => CurrentSemanticChange?.Right?.Span is { IsKnown: true } span ? span : null;
 
-    /// <summary>Names the current change for the Hybrid toolbar - path, kind, and position in the list.</summary>
-    public string HybridCaption
+    /// <summary>Names the current change for the Json view's toolbar - path, kind, and position in the list.</summary>
+    public string JsonCaption
     {
         get
         {
@@ -352,7 +355,7 @@ public partial class DiffPaneViewModel : ObservableObject
             CurrentTreeNode = node;
         }
 
-        RaiseHybridDerived();
+        RaiseJsonDerived();
     }
 
     partial void OnCurrentTreeNodeChanged(JsonChangeNodeViewModel? value)
@@ -365,7 +368,7 @@ public partial class DiffPaneViewModel : ObservableObject
             return;
         }
 
-        var index = IndexOf(change);
+        var index = IndexOfPath(change.Path);
         if (index >= 0 && index != CurrentSemanticChangeIndex)
         {
             CurrentSemanticChangeIndex = index;
@@ -373,14 +376,19 @@ public partial class DiffPaneViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The change list's own natural equality (record value equality) is enough here: two entries at
-    /// the same path with the same before/after values are, for navigation purposes, the same change.
+    /// Matched by PATH, not by the change object itself: the tree is built from the canonicalized
+    /// (aligned/display) change list, while <see cref="_semanticChanges"/> - what this searches - is
+    /// the ORIGINAL-text change list, so the two sides of this lookup carry different spans for what
+    /// is otherwise the same logical change. The path is the one thing guaranteed identical between
+    /// the two representations, since canonicalizing never reorders or renames anything.
     /// </summary>
-    private int IndexOf(JsonChange change)
+    private int IndexOfPath(JsonPath path)
     {
+        var key = path.ToString();
+
         for (var i = 0; i < _semanticChanges.Count; i++)
         {
-            if (_semanticChanges[i].Equals(change))
+            if (_semanticChanges[i].Path.ToString() == key)
             {
                 return i;
             }
@@ -389,12 +397,12 @@ public partial class DiffPaneViewModel : ObservableObject
         return -1;
     }
 
-    private void RaiseHybridDerived()
+    private void RaiseJsonDerived()
     {
         OnPropertyChanged(nameof(CurrentSemanticChange));
         OnPropertyChanged(nameof(LeftHighlightSpan));
         OnPropertyChanged(nameof(RightHighlightSpan));
-        OnPropertyChanged(nameof(HybridCaption));
+        OnPropertyChanged(nameof(JsonCaption));
     }
 
     // ---- Loading --------------------------------------------------------------------------------
@@ -403,12 +411,21 @@ public partial class DiffPaneViewModel : ObservableObject
     /// Shows a comparison. The only way content gets in, so every host - file-based or in-memory -
     /// goes through the same path.
     /// </summary>
+    /// <param name="originalSemanticChanges">
+    /// The same logical changes as <paramref name="semanticChanges"/>, but with spans into each side's
+    /// text exactly as given rather than the canonicalized copy used for alignment - what the Json
+    /// view highlights from. Defaults to <paramref name="semanticChanges"/> when not supplied, which
+    /// is only wrong for a host that canonicalizes before calling Show at all; every current host has
+    /// this available (the Application layer's <c>FileComparison.OriginalSemanticChanges</c>) and
+    /// passes it through.
+    /// </param>
     public void Show(
         DiffResult result,
         bool isSemantic = false,
         IReadOnlyList<JsonChange>? semanticChanges = null,
         string? leftRawText = null,
-        string? rightRawText = null)
+        string? rightRawText = null,
+        IReadOnlyList<JsonChange>? originalSemanticChanges = null)
     {
         _result = result;
 
@@ -418,10 +435,13 @@ public partial class DiffPaneViewModel : ObservableObject
         IsSemantic = isSemantic;
         _changeIndex = JsonChangeIndex.Build(semanticChanges);
 
-        _semanticChanges = semanticChanges ?? [];
-        var (roots, byPath) = JsonChangeNodeViewModel.Build(_semanticChanges);
+        // The tree (paths, kinds, ignore status) is identical either way, so it is built from the
+        // canonicalized list like everything else in Text mode; only navigation/highlighting needs
+        // spans into the ORIGINAL text.
+        var (roots, byPath) = JsonChangeNodeViewModel.Build(semanticChanges ?? []);
         SemanticTree = roots;
         _treeNodesByPath = byPath;
+        _semanticChanges = originalSemanticChanges ?? semanticChanges ?? [];
 
         LeftRawText = leftRawText ?? string.Empty;
         RightRawText = rightRawText ?? string.Empty;
@@ -431,9 +451,15 @@ public partial class DiffPaneViewModel : ObservableObject
         CurrentSemanticChangeIndex = -1;
         CurrentTreeNode = null;
 
+        // JSON opens in the view built for it rather than requiring a manual switch every time; a
+        // non-JSON comparison lands on the one view that always works. This runs on every comparison,
+        // not just the first, so re-comparing content that changed format (e.g. toggling Mode) cannot
+        // leave Json selected for a document that no longer parses as JSON.
+        ViewMode = isSemantic ? DiffViewMode.Json : DiffViewMode.Text;
+
         RebuildDetail();
         RaiseDerived();
-        RaiseHybridDerived();
+        RaiseJsonDerived();
     }
 
     /// <summary>Clears the pane back to empty.</summary>
@@ -472,8 +498,7 @@ public partial class DiffPaneViewModel : ObservableObject
     private void RaiseViewVisibility()
     {
         OnPropertyChanged(nameof(IsTextViewVisible));
-        OnPropertyChanged(nameof(IsTreeViewVisible));
-        OnPropertyChanged(nameof(IsHybridViewVisible));
+        OnPropertyChanged(nameof(IsJsonViewVisible));
     }
 
     /// <summary>

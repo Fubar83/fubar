@@ -3,15 +3,16 @@
              xmlns:fc="using:Fubar.Controls"
              xmlns:views="using:Fubar.Diff.Controls.Views"
              xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
-             x:Class="Fubar.Diff.Controls.Views.HybridView"
+             x:Class="Fubar.Diff.Controls.Views.JsonView"
              x:DataType="vm:DiffPaneViewModel">
 
     <!-- Tree, then both documents shown unaligned - each highlighting only its OWN change span. There
          is no cross-document line alignment here at all, which is what makes this immune to
          formatting and property-order differences: Text mode's usefulness rests on the two sides
          lining up as TEXT, and nothing forces that when one side is minified and the other is not
-         (see the alignment fix this view was built alongside). Hybrid sidesteps the question by
-         never needing an alignment in the first place. -->
+         (see the alignment fix this view was built alongside). This view sidesteps the question by
+         never needing an alignment in the first place - which is also why it is the default for JSON
+         (DiffPaneViewModel.Show), with Text as the one fallback for everything else. -->
     <DockPanel>
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource BgHeader}"
@@ -24,7 +25,7 @@
                 <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next difference"
                         Command="{Binding NextSemanticChangeCommand}" />
 
-                <TextBlock Text="{Binding HybridCaption}"
+                <TextBlock Text="{Binding JsonCaption}"
                            Foreground="{DynamicResource TextSecondary}"
                            VerticalAlignment="Center"
                            Margin="12,0,0,0" />
@@ -32,8 +33,8 @@
         </Border>
 
         <Grid ColumnDefinitions="280,4,*,1,*">
-            <!-- Reuses the exact same tree as Tree mode - same ignore affordances, same tinting -
-                 clicking a row here is a second way to navigate, alongside Prev/Next. -->
+            <!-- The same tree control the old standalone Tree mode used - same ignore affordances,
+                 same tinting - clicking a row here is a second way to navigate, alongside Prev/Next. -->
             <views:JsonTreeView Grid.Column="0" />
 
             <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource BorderSubtle}" />

@@ -145,8 +145,7 @@
                            IsVisible="{Binding Pane.LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
 
             <dv:DiffView DataContext="{Binding Pane}" IsVisible="{Binding IsTextViewVisible}" />
-            <dv:JsonTreeView DataContext="{Binding Pane}" IsVisible="{Binding IsTreeViewVisible}" />
-            <dv:HybridView DataContext="{Binding Pane}" IsVisible="{Binding IsHybridViewVisible}" />
+            <dv:JsonView DataContext="{Binding Pane}" IsVisible="{Binding IsJsonViewVisible}" />
         </Panel>
     </DockPanel>
 </Window>

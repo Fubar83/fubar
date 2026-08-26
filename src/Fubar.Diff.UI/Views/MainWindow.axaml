@@ -178,8 +178,9 @@
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
-                    <!-- Text / Tree. Only offered when a semantic comparison ran, since the tree has
-                         nothing to show for a plain text file. -->
+                    <!-- Text / Json. Only offered when a semantic comparison ran, since Json has
+                         nothing to show for a plain text file - Pane.Show already defaults ViewMode to
+                         whichever of the two applies. -->
                     <fc:SegmentedControl ItemsSource="{x:Static dvm:DiffPaneViewModel.ViewModeOptions}"
                                          SelectedItem="{Binding Pane.ViewMode}"
                                          IsVisible="{Binding Pane.IsSemantic}" />
@@ -223,11 +224,8 @@
                          DataContext="{Binding Pane}"
                          IsVisible="{Binding IsTextViewVisible}" />
 
-            <dv:JsonTreeView DataContext="{Binding Pane}"
-                             IsVisible="{Binding IsTreeViewVisible}" />
-
-            <dv:HybridView DataContext="{Binding Pane}"
-                           IsVisible="{Binding IsHybridViewVisible}" />
+            <dv:JsonView DataContext="{Binding Pane}"
+                         IsVisible="{Binding IsJsonViewVisible}" />
         </Panel>
         </DockPanel>
         </ContentControl>
