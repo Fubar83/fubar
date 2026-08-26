@@ -74,7 +74,15 @@ offset copy rather than a line-mapping scheme.
 
 **Semantic JSON is a refinement, not a second pipeline** (Diff). The text differ decides how lines
 line up; `JsonSemanticPass` decides which of them matter. One `DiffResult` shape means every renderer,
-the diff map, navigation and merge work in both modes.
+the diff map, navigation and merge work in both modes. This makes ALIGNMENT the load-bearing step: if
+the two sides are formatted so differently that raw-line alignment has nothing sane to match (a
+minified file against a pretty one), "which lines matter" cannot fix a starting alignment that never
+made sense. `FileComparisonService.Compare` pretty-prints both sides via
+`ILineNormalizer.CanonicalizeJson` before alignment whenever semantic comparison is possible, precisely
+so this refinement has something coherent to refine. That printer keeps all-scalar containers on one
+line on purpose - `System.Text.Json`'s generic indented writer expands even `{"id": 1}` across three
+lines, and an array of small objects then hands the line-based differ a wall of identical boilerplate
+braces it will match to each other across unrelated elements.
 
 **Ignore rules are applied where differences are DECIDED, not where they are drawn** (Diff).
 `JsonSemanticDiffer.Compare` marks changes through `JsonIgnoreRules` before returning, so the tree, the

@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A minified JSON file compared against a pretty one no longer renders as garbage.** The text differ
+  aligns on raw lines before the semantic pass runs, and a one-line minified file has nothing sane to
+  line up against a multi-line one - most of the pretty side rendered as if it had no counterpart at
+  all. Both sides are now pretty-printed before alignment whenever semantic comparison is possible,
+  independent of "Normalize XML". The pretty-printer is diff-aware: an object or array holding only
+  scalars stays on one line, so an array of small objects (`{"id": 1}`, `{"id": 2}`, ...) does not
+  explode into repeated boilerplate braces that would otherwise confuse the line-based alignment.
+
 ### Added
 
 - **Two-editor side-by-side view** built on AvaloniaEdit, replacing the row list. Line numbers show
