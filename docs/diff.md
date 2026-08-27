@@ -20,9 +20,10 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   editors scroll in lockstep, so the columns cannot drift apart.
 - **Character-level diff** inside modified lines, so a one-word change reads at a glance.
 - **Diff map** between the panes — one tick per change, coloured by kind, click or drag to jump.
-- **Diff pane** below the panes, showing just the current difference side by side, so you can read
-  both versions of one change without scrolling between two blocks a screen apart. Drag its edge to
-  resize, or turn it off from the toolbar.
+- **Diff pane** below the panes: the old line stacked directly above the new one, so you can read
+  both versions of one change without scrolling between two blocks a screen apart - and with the same
+  line right above its replacement, the character-level highlight is what catches the eye. Drag its
+  edge to resize, or turn it off from the toolbar.
 - **Change navigation** — next/previous with wrap-around (F7 / F8, or Alt+Up / Alt+Down). The current
   difference is marked with an accent bar and outline, so it stays findable among the other changes.
 - **Merge and save** — take the left or right version of a change (Alt+Left / Alt+Right), then save.

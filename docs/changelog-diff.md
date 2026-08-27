@@ -16,6 +16,14 @@ All notable changes to this project are documented here. The format is based on
   scalars stays on one line, so an array of small objects (`{"id": 1}`, `{"id": 2}`, ...) does not
   explode into repeated boilerplate braces that would otherwise confuse the line-based alignment.
 
+### Changed
+
+- **The Diff pane now stacks old above new instead of side by side.** The same line directly above its
+  replacement makes the character-level highlight - already the strongest signal it draws - readable
+  at a glance instead of asking the eye to jump a pane's width to compare two short strings. A pure
+  insertion or deletion now shows nothing at all on the side that has none, rather than a blank filler
+  line: side-by-side alignment needed matching row counts on both sides, but a stacked block does not.
+
 ### Added
 
 - **Json view**: replaces the old standalone Tree view as the second mode alongside Text, and is now

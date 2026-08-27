@@ -70,7 +70,10 @@ to character spans, which is why they are computed *after* projection.
 **Filler-line discipline** (Diff). Editor line `i` is always `DiffResult.Lines[i]`, on both sides.
 Never read the editors back to save — go through `MergedDocument`, or the filler blanks get written
 into the user's file. Both sides having equal line counts is also what makes scroll sync a plain
-offset copy rather than a line-mapping scheme.
+offset copy rather than a line-mapping scheme. **This invariant is deliberately NOT preserved by
+`AlignedText.BuildCompact`** — the stacked Diff pane shows each side as its own compact block with no
+filler at all, since a stacked layout has no row-count-parity requirement to protect. Only the
+side-by-side main panes (`AlignedText.Build`) need fillers; do not "fix" `BuildCompact` to add them.
 
 **Semantic JSON is a refinement, not a second pipeline** (Diff). The text differ decides how lines
 line up; `JsonSemanticPass` decides which of them matter. One `DiffResult` shape means every renderer,
