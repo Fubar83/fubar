@@ -51,16 +51,6 @@ public sealed class TextLineNormalizer : ILineNormalizer
             : lines;
     }
 
-    public IReadOnlyList<string> CanonicalizeJson(IReadOnlyList<string> lines)
-    {
-        if (lines.Count == 0)
-        {
-            return lines;
-        }
-
-        return TryCanonicalizeJson(string.Join('\n', lines), out var json) ? json : lines;
-    }
-
     private static bool TryCanonicalizeJson(string text, out IReadOnlyList<string> result)
     {
         result = [];

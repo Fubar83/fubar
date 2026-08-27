@@ -63,10 +63,6 @@ public class FileComparisonServiceTests
 
         public IReadOnlyList<string> Canonicalize(IReadOnlyList<string> lines, ComparisonOptions options) =>
             options.NormalizeStructure ? [.. lines.Select(l => l.Trim())] : lines;
-
-        // A no-op fake, mirroring the real normalizer's behaviour on non-JSON content: every fixture
-        // in this file is plain text, so there is nothing for it to reformat.
-        public IReadOnlyList<string> CanonicalizeJson(IReadOnlyList<string> lines) => lines;
     }
 
     /// <summary>

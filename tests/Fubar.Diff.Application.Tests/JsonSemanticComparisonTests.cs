@@ -252,18 +252,22 @@ public class JsonSemanticComparisonTests
     }
 
     // ---- Alignment when the two sides are formatted very differently ----------------------------
+    //
+    // Text mode used to pretty-print both sides before alignment automatically, specifically so a
+    // minified-vs-pretty pair still aligned sanely. That was removed: it silently rewrote the user's
+    // content to compensate for Text mode's own alignment limitation, solving the problem in the
+    // wrong view. The Json view exists precisely for this case - no alignment needed at all, and it
+    // is the default the moment semantic comparison applies - so Text mode is free to just show
+    // exactly what it was given, however badly that then lines up as text.
 
     /// <summary>
-    /// The bug this pins: a minified file has ONE line, so a text differ aligning it against a
-    /// pretty-printed file of the same content has nothing sane to line up - it sees a single giant
-    /// line replacing dozens of short ones. The semantic pass would then mark almost the whole
-    /// document "unchanged" (correctly - it IS unchanged), but the rendered result looked like a
-    /// comparison failure: one pane showing real content, the other showing almost nothing opposite
-    /// it. Canonicalizing both sides before alignment (independent of NormalizeStructure - see
-    /// CanonicalizeJson) fixes this by giving the text differ a sane, comparable starting point.
+    /// Neither side is reformatted, even though the pairing is exactly the case that used to trigger
+    /// automatic canonicalisation. The SEMANTIC comparison is unaffected either way - it parses and
+    /// diffs the AST directly, never the text alignment - so the one real difference is still found
+    /// precisely regardless of how the two sides look as text.
     /// </summary>
     [Fact]
-    public async Task A_minified_file_compared_against_a_pretty_one_still_aligns_sanely()
+    public async Task A_minified_file_compared_against_a_pretty_one_is_never_reformatted()
     {
         const string pretty = """
             {
@@ -290,27 +294,14 @@ public class JsonSemanticComparisonTests
 
         Assert.True(comparison.IsSemantic);
 
-        // Both sides align to the SAME row count - the invariant every renderer depends on - and it
-        // is more than one, which is what "sane" means here: the minified side did not just become a
-        // single giant row opposite a mostly-empty pretty one.
-        Assert.True(comparison.Left.Lines.Count > 1);
-        Assert.Equal(comparison.Left.Lines.Count, comparison.Right.Lines.Count);
+        Assert.Single(comparison.Right.Lines);
+        Assert.Equal(pretty.Split('\n').Length, comparison.Left.Lines.Count);
 
-        // The one real difference (GlossSee: "markup" -> "gone") is still found...
         var change = Assert.Single(comparison.SemanticChanges);
         Assert.Equal("$.glossary.GlossDiv.GlossList.GlossEntry.GlossSee", change.Path.ToString());
-
-        // ...and everything else - reformatting alone - is correctly NOT a difference.
-        Assert.Equal(1, comparison.Result.Modified);
-        Assert.Equal(0, comparison.Result.Inserted);
-        Assert.Equal(0, comparison.Result.Deleted);
     }
 
-    /// <summary>
-    /// Mode=Text is the explicit escape hatch for "I want literal bytes compared" - the automatic
-    /// pre-alignment canonicalisation above must not apply there, or there would be no way left to
-    /// diff two JSON files exactly as they are on disk.
-    /// </summary>
+    /// <summary>Mode=Text never reformatted for alignment either - this just confirms Auto now agrees.</summary>
     [Fact]
     public async Task Text_mode_does_not_canonicalize_for_alignment_either()
     {
@@ -324,23 +315,39 @@ public class JsonSemanticComparisonTests
     // ---- Original (unaligned) text, for the Json view ---------------------------------------------
 
     /// <summary>
-    /// The whole reason OriginalLeftText/RightText exist: the Json view shows each document exactly
-    /// as it was given, not the pretty-printed copy Left/Right hold for alignment. A minified file
-    /// must stay minified there, or the view is not actually demonstrating anything different from
-    /// Text mode's own (already fixed) canonicalisation.
+    /// The common case, and worth pinning explicitly now that nothing reformats JSON automatically:
+    /// OriginalLeftText/RightText and the displayed Left/Right are simply the SAME text by default.
+    /// They exist for the one case where that is no longer true - see the NormalizeStructure test
+    /// below - not because Text mode routinely rewrites what it shows.
     /// </summary>
     [Fact]
-    public async Task Original_text_is_kept_exactly_as_given_even_though_Left_is_reformatted()
+    public async Task Original_text_equals_the_displayed_text_by_default()
     {
         const string minified = "{\"a\":1,\"nested\":{\"b\":2}}";
 
-        var comparison = await CompareAsync("{\n  \"a\": 1,\n  \"nested\": {\n    \"b\": 2\n  }\n}", minified);
+        var comparison = await CompareAsync("{\"a\":1}", minified);
 
         Assert.Equal(minified, comparison.OriginalRightText);
-        // Left canonicalizes to the same shape it started as ("nested" has a container child, so it
-        // is not compacted to one line) - the point being tested is the RIGHT side, which started
-        // minified and must not have been reformatted for this property.
+        Assert.Equal(minified, string.Join('\n', comparison.Right.Lines));
+    }
+
+    /// <summary>
+    /// The one remaining way Left/Right can still diverge from the original: the user explicitly
+    /// turns on "Normalize XML" (NormalizeStructure) for a JSON file, which still reaches the JSON
+    /// branch of Canonicalize. Even then, the Json view's copy must stay the TRUE original - that
+    /// view's whole point is showing what is actually there, regardless of what Text mode is
+    /// currently configured to display.
+    /// </summary>
+    [Fact]
+    public async Task Original_text_stays_true_even_when_NormalizeStructure_reformats_the_displayed_copy()
+    {
+        const string minified = "{\"a\":1,\"nested\":{\"b\":2}}";
+        var options = ComparisonOptions.Default with { NormalizeStructure = true };
+
+        var comparison = await CompareAsync("{\n  \"a\": 1,\n  \"nested\": {\n    \"b\": 2\n  }\n}", minified, options);
+
         Assert.NotEqual(1, comparison.Right.Lines.Count);
+        Assert.Equal(minified, comparison.OriginalRightText);
     }
 
     /// <summary>
