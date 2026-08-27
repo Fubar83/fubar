@@ -6,17 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Fixed
-
-- **A minified JSON file compared against a pretty one no longer renders as garbage.** The text differ
-  aligns on raw lines before the semantic pass runs, and a one-line minified file has nothing sane to
-  line up against a multi-line one - most of the pretty side rendered as if it had no counterpart at
-  all. Both sides are now pretty-printed before alignment whenever semantic comparison is possible,
-  independent of "Normalize XML". The pretty-printer is diff-aware: an object or array holding only
-  scalars stays on one line, so an array of small objects (`{"id": 1}`, `{"id": 2}`, ...) does not
-  explode into repeated boilerplate braces that would otherwise confuse the line-based alignment.
-
 ### Changed
+
+- **Text mode never reformats a file, JSON included.** A minified file diffed against a pretty one
+  stays exactly as minified as it was on disk - Text mode shows literal content, full stop. Comparing
+  two very differently-formatted JSON files is what the **Json view** is for (below): it needs no line
+  alignment at all, so it has no reason to touch either side's formatting, and it is the default the
+  moment a comparison turns out to be JSON. The one remaining way to reformat JSON for display is the
+  existing, explicit "Normalize XML" toggle - opt-in, and unaffected by any of this.
 
 - **The Diff pane now stacks old above new instead of side by side.** The same line directly above its
   replacement makes the character-level highlight - already the strongest signal it draws - readable
@@ -34,8 +31,8 @@ All notable changes to this project are documented here. The format is based on
   construction - reformatting, minifying, or reordering keys on one side changes nothing about where
   the other side's matching field gets highlighted, since each side is addressed independently by its
   own parsed structure rather than by a shared line number. A minified file stays visibly minified
-  here even though Text mode now pretty-prints it for alignment (see the fix above) - the two views
-  serve different purposes, and only one of them needs to touch your file's formatting at all.
+  here too - neither view touches your file's formatting; Json just doesn't need to align in the
+  first place, which is what makes a wildly different pairing a non-issue instead of a special case.
 
 - **Two-editor side-by-side view** built on AvaloniaEdit, replacing the row list. Line numbers show
   each line's number in its own file rather than in the aligned view, so they still match what is on

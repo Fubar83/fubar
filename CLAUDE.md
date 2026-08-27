@@ -77,15 +77,25 @@ side-by-side main panes (`AlignedText.Build`) need fillers; do not "fix" `BuildC
 
 **Semantic JSON is a refinement, not a second pipeline** (Diff). The text differ decides how lines
 line up; `JsonSemanticPass` decides which of them matter. One `DiffResult` shape means every renderer,
-the diff map, navigation and merge work in both modes. This makes ALIGNMENT the load-bearing step: if
-the two sides are formatted so differently that raw-line alignment has nothing sane to match (a
-minified file against a pretty one), "which lines matter" cannot fix a starting alignment that never
-made sense. `FileComparisonService.Compare` pretty-prints both sides via
-`ILineNormalizer.CanonicalizeJson` before alignment whenever semantic comparison is possible, precisely
-so this refinement has something coherent to refine. That printer keeps all-scalar containers on one
-line on purpose - `System.Text.Json`'s generic indented writer expands even `{"id": 1}` across three
-lines, and an array of small objects then hands the line-based differ a wall of identical boilerplate
-braces it will match to each other across unrelated elements.
+the diff map, navigation and merge work in both modes. The trap here: `SemanticChanges` (from
+`JsonSemanticDiffer.Compare`) is unaffected by alignment quality - it parses and diffs the AST
+directly - but `Result.Modified`/`Inserted`/`Deleted` (the ROW-level counts) come from
+`SemanticLineFilter` acting on the raw text alignment, so those can look strange when the two sides
+are formatted very differently (a minified file against a pretty one). That is accepted, not a bug to
+chase: Text mode never reformats a file to fix its own alignment (see below), and the Json view is
+what handles that pairing properly.
+
+**Text mode never reformats a file - not even JSON, not even automatically** (Diff). It used to
+pretty-print both sides before alignment whenever semantic comparison applied, specifically so a
+minified-vs-pretty pair still lined up; that was removed because it silently rewrote the user's
+content to compensate for Text mode's own limitation. The Json view exists for exactly that pairing
+and needs no reformatting to handle it (see below), so Text mode is free to just show what it was
+given. The one surviving way to reformat JSON for display is the pre-existing, explicit "Normalize
+XML" toggle (`ComparisonOptions.NormalizeStructure`) - opt-in, and `TextLineNormalizer`'s diff-aware
+pretty-printer (`PrettyPrintJson`, keeping all-scalar containers on one line so an array of small
+objects like `{"id": 1}` does not explode into boilerplate braces a line differ then mismatches) still
+backs it. Do not reintroduce an unconditional "canonicalize before alignment" step - that is precisely
+what was removed, and why.
 
 **Ignore rules are applied where differences are DECIDED, not where they are drawn** (Diff).
 `JsonSemanticDiffer.Compare` marks changes through `JsonIgnoreRules` before returning, so the tree, the
@@ -95,22 +105,25 @@ that view disagree with the others about what changed.
 **The Json view has no alignment at all, on purpose** (Diff). `RawJsonPane` shows each side's raw,
 unaligned text and highlights the current change's own `JsonAstNode.Span` directly - no fillers, no
 line-for-line correspondence between the two sides. This is what makes it immune to the class of
-problem the alignment fix above patches around: there is no shared line numbering for a formatting or
-property-order difference to break. Do not "simplify" it by routing this view through `AlignedText` -
-that would reintroduce exactly the dependency it exists to avoid. There is no standalone Tree mode any
+problem noted above: there is no shared line numbering for a formatting or property-order difference
+to break. Do not "simplify" it by routing this view through `AlignedText` - that would reintroduce
+exactly the dependency it exists to avoid. There is no standalone Tree mode any
 more - `Text` and `Json` are the only two `DiffViewMode` values, and `DiffPaneViewModel.Show` picks
 between them itself (Json whenever semantic comparison ran) rather than leaving whatever was
 previously selected.
 
 **Two semantic change lists exist for a reason - do not collapse them** (Diff). `FileComparison`
-carries `SemanticChanges` (spans into the CANONICALIZED text, used by Text mode's line filter, ignore
-rules and the tree) and `OriginalSemanticChanges` (spans into each side's text exactly as given, used
-by the Json view's highlighting). They are guaranteed to agree on path, kind and count - canonicalizing
-never reorders or renames anything - which is what lets `DiffPaneViewModel` pair the tree (built from
-the first list) with navigation (walking the second) by matching `JsonPath` strings rather than the
-`JsonChange` objects, whose spans legitimately differ between the two. `RecompareAsync`/`Recompare`
-thread the original text through explicitly from the previous result - computing it fresh from
-`Left`/`Right` on a recompare would silently substitute the canonicalized text the moment any option
+carries `SemanticChanges` (spans into `Left`/`Right`, used by Text mode's line filter, ignore rules and
+the tree) and `OriginalSemanticChanges` (spans into `OriginalLeftText`/`OriginalRightText` - each
+side's text exactly as given - used by the Json view's highlighting). Now that Text mode no longer
+reformats JSON automatically, the two are usually IDENTICAL text; they can still diverge when the
+user explicitly turns on "Normalize XML" for a JSON file, and the pairing has to stay correct for that
+case too. They are guaranteed to agree on path, kind and count regardless - canonicalizing never
+reorders or renames anything - which is what lets `DiffPaneViewModel` pair the tree (built from the
+first list) with navigation (walking the second) by matching `JsonPath` strings rather than the
+`JsonChange` objects, whose spans can legitimately differ between the two. `RecompareAsync`/`Recompare`
+thread the original text through explicitly from the previous result rather than recomputing it from
+`Left`/`Right` - that would silently substitute the canonicalized text the moment NormalizeStructure
 was toggled after the first render.
 
 **An ignored row is `Unchanged` + `IsIgnored`, never its own `ChangeKind`** (Diff). That is what keeps
