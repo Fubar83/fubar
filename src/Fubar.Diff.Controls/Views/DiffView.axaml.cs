@@ -43,7 +43,7 @@ public partial class DiffView : UserControl
     }
 
     /// <summary>Row heights the splitter starts from, restored when the detail pane is shown again.</summary>
-    private GridLength _detailHeight = new(190);
+    private GridLength _detailHeight = new(260);
 
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
@@ -156,7 +156,7 @@ public partial class DiffView : UserControl
 
     /// <summary>
     /// Collapses or restores the detail pane. The splitter and the pane both need their ROW heights
-    /// zeroed, not just IsVisible: a hidden child still leaves its row occupying 190px, which would
+    /// zeroed, not just IsVisible: a hidden child still leaves its row occupying 260px, which would
     /// show as a blank band under the panes.
     /// </summary>
     private void ApplyDetailVisibility()

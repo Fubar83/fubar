@@ -67,6 +67,55 @@ public static class AlignedText
     }
 
     /// <summary>
+    /// Builds just the REAL rows a side has within the range, dropping filler entirely - for a
+    /// vertically stacked close-up (old block, then new block) rather than a side-by-side one.
+    ///
+    /// <see cref="Build(DiffResult,DiffSide,int,int)"/> keeps fillers because side-by-side alignment
+    /// depends on both columns having the same row count; stacking one side above the other has no
+    /// such dependency; keeping fillers there would only insert pointless blank lines into an
+    /// otherwise-compact block of text. A row missing on this side (an insertion has nothing on the
+    /// left, a deletion nothing on the right) is simply not part of this side's block at all.
+    /// </summary>
+    public static AlignedDocument BuildCompact(DiffResult result, DiffSide side, int startIndex, int count)
+    {
+        var lines = result.Lines;
+        var from = Math.Clamp(startIndex, 0, lines.Count);
+        var to = Math.Clamp(from + Math.Max(count, 0), from, lines.Count);
+
+        var builder = new StringBuilder();
+        var meta = new List<AlignedLine>();
+
+        for (var i = from; i < to; i++)
+        {
+            var row = lines[i];
+            var isLeft = side == DiffSide.Left;
+
+            var text = isLeft ? row.LeftText : row.RightText;
+            if (text is null)
+            {
+                continue;
+            }
+
+            var number = isLeft ? row.LeftNumber : row.RightNumber;
+            var spans = isLeft ? row.LeftSpans : row.RightSpans;
+
+            if (meta.Count > 0)
+            {
+                builder.Append('\n');
+            }
+
+            builder.Append(text);
+
+            // No KindFor remapping needed here: that exists purely to produce Filler on the side with
+            // no content, which this method skips instead of keeping. A row that reaches this point
+            // has real text on this side, so its own Kind is already correct as-is.
+            meta.Add(new AlignedLine(number, row.Kind, spans) { IsIgnored = row.IsIgnored });
+        }
+
+        return new AlignedDocument(builder.ToString(), meta);
+    }
+
+    /// <summary>
     /// How this row should be tinted on the given side. A row is styled per SIDE, not once: a deleted
     /// row is tinted on the left and shows an inert filler on the right, and vice versa.
     /// </summary>

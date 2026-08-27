@@ -10,7 +10,7 @@
          The bottom two collapse to zero height when the detail pane is off - code-behind sets the
          row heights, because a GridSplitter needs real definitions to resize and cannot be told to
          ignore a hidden one. -->
-    <Grid x:Name="Root" RowDefinitions="*,Auto,190">
+    <Grid x:Name="Root" RowDefinitions="*,Auto,260">
 
         <!-- Two independent editors, kept in step by DiffView.axaml.cs rather than by sharing a
              scroller. Both documents contain filler lines and therefore have the SAME line count,

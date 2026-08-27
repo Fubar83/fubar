@@ -12,6 +12,12 @@
          answer "where are the changes"; this answers "what exactly does this one say", without
          hunting for two blocks that may be a screen apart.
 
+         Stacked - left on top of right - rather than side by side. Side by side is what the main
+         panes already do, at full document width; putting the SAME two lines directly one above the
+         other instead is what lets the character-level highlight (already the strongest signal
+         DiffEditorPane draws) read at a glance, rather than asking the eye to jump a whole pane's
+         width to compare two short strings.
+
          Reuses DiffEditorPane, so the excerpt is tinted, character-highlighted and line-numbered by
          exactly the same renderers as the main view - a second rendering path here would be free to
          disagree with the one above it, which is the last thing a close-up should do. -->
@@ -26,10 +32,22 @@
                        FontSize="11"
                        Margin="8,4" />
 
-            <Grid ColumnDefinitions="*,1,*">
-                <views:DiffEditorPane Grid.Column="0" Document="{Binding DetailLeft}" />
-                <Border Grid.Column="1" Background="{DynamicResource BorderSubtle}" />
-                <views:DiffEditorPane Grid.Column="2" Document="{Binding DetailRight}" />
+            <Grid RowDefinitions="*,1,*">
+                <DockPanel Grid.Row="0">
+                    <TextBlock DockPanel.Dock="Top" Text="Left"
+                               Foreground="{DynamicResource TextSecondary}"
+                               FontSize="10" Margin="8,2" />
+                    <views:DiffEditorPane Document="{Binding DetailLeft}" />
+                </DockPanel>
+
+                <Border Grid.Row="1" Background="{DynamicResource BorderSubtle}" />
+
+                <DockPanel Grid.Row="2">
+                    <TextBlock DockPanel.Dock="Top" Text="Right"
+                               Foreground="{DynamicResource TextSecondary}"
+                               FontSize="10" Margin="8,2" />
+                    <views:DiffEditorPane Document="{Binding DetailRight}" />
+                </DockPanel>
             </Grid>
         </DockPanel>
     </Border>

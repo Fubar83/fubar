@@ -116,8 +116,11 @@ public partial class DiffPaneViewModel : ObservableObject
 
         var hunk = _result.Hunks[CurrentHunk];
 
-        DetailLeft = AlignedText.Build(_result, DiffSide.Left, hunk.StartIndex, hunk.Length);
-        DetailRight = AlignedText.Build(_result, DiffSide.Right, hunk.StartIndex, hunk.Length);
+        // Compact, not the fillers-included Build: the detail pane stacks old above new rather than
+        // side by side, so there is no row-count parity to preserve, and a filler would only insert
+        // a pointless blank line into what should read as one coherent block per side.
+        DetailLeft = AlignedText.BuildCompact(_result, DiffSide.Left, hunk.StartIndex, hunk.Length);
+        DetailRight = AlignedText.BuildCompact(_result, DiffSide.Right, hunk.StartIndex, hunk.Length);
 
         var range = HunkNavigator.RangeOf(_result.Lines, hunk);
         DetailCaption =
