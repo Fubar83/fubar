@@ -90,17 +90,30 @@ pretty-print both sides before alignment whenever semantic comparison applied, s
 minified-vs-pretty pair still lined up; that was removed because it silently rewrote the user's
 content to compensate for Text mode's own limitation. The Json view exists for exactly that pairing
 and needs no reformatting to handle it (see below), so Text mode is free to just show what it was
-given. The one surviving way to reformat JSON for display is the pre-existing, explicit "Normalize
-XML" toggle (`ComparisonOptions.NormalizeStructure`) - opt-in, and `TextLineNormalizer`'s diff-aware
-pretty-printer (`PrettyPrintJson`, keeping all-scalar containers on one line so an array of small
-objects like `{"id": 1}` does not explode into boilerplate braces a line differ then mismatches) still
-backs it. Do not reintroduce an unconditional "canonicalize before alignment" step - that is precisely
-what was removed, and why.
+given. The one surviving way to reformat for display is the pre-existing, explicit "Reformat" toggle
+(`ComparisonOptions.NormalizeStructure`, labeled "Normalize XML" until it was made visible for JSON
+too - see below) - opt-in, and `TextLineNormalizer`'s diff-aware pretty-printer (`PrettyPrintJson`,
+keeping all-scalar containers on one line so an array of small objects like `{"id": 1}` does not
+explode into boilerplate braces a line differ then mismatches) still backs it. Because canonicalised
+output IS what gets displayed (`FileComparisonServiceTests.Canonicalisation_output_IS_displayed`), a
+Take Left/Take Right + Save after turning this on saves the reformatted text - which is the point: the
+user opted in, so it is fine for it to stick if they then choose to save. Do not reintroduce an
+unconditional "canonicalize before alignment" step - that is precisely what was removed, and why.
 
 **Ignore rules are applied where differences are DECIDED, not where they are drawn** (Diff).
 `JsonSemanticDiffer.Compare` marks changes through `JsonIgnoreRules` before returning, so the tree, the
 text view's line filter, the diff map and navigation all agree. Filtering in a view instead would make
 that view disagree with the others about what changed.
+
+**Fubar Diff has no click-to-ignore affordance - `DiffPaneViewModel.IgnorePathCommand` is left null on
+purpose** (Diff). It exists for API Studio, where a comparison belongs to a request that can remember
+the rule; Fubar Diff's own way to set `IgnoredPaths` is the manual list in `SettingsWindow` instead.
+Before that window existed, `IgnoredPaths`, `IgnoreNullVsMissing` and `ArrayKeyOverrides` were fully
+built in Core (`JsonComparisonOptions`, `ArrayKeyResolver`) and even had persistence fields waiting in
+`AppSettings`, but `ComparisonViewModel.CurrentOptions()`/`ApplyDefaults`/`CaptureOptions` never
+actually read or wrote any of them - the feature was completely inert from the UI's side despite every
+other piece of it working. Check that a Core option is *read somewhere in `ComparisonViewModel`* before
+assuming a UI gap here means "not built yet" - it may mean "built, but never wired to a control."
 
 **The Json view has no alignment at all, on purpose** (Diff). `RawJsonPane` shows each side's raw,
 unaligned text and highlights the current change's own `JsonAstNode.Span` directly - no fillers, no
@@ -112,12 +125,25 @@ more - `Text` and `Json` are the only two `DiffViewMode` values, and `DiffPaneVi
 between them itself (Json whenever semantic comparison ran) rather than leaving whatever was
 previously selected.
 
+**The Json view has its own detail pane, built from spans rather than rows** (Diff). `DiffDetailPane`
+(Text mode) excerpts a hunk's aligned ROWS via `AlignedText.BuildCompact`, which only makes sense where
+rows are aligned in the first place. `JsonDetailPane` is the Json-mode counterpart: it excerpts a
+change's own lines directly from `LeftRawText`/`RightRawText` via `JsonSpanExcerpt.Build`, and reuses
+`RawJsonPane` (not `DiffEditorPane`) for the same reason the main Json panes do - no cross-side line
+correspondence to preserve. Both panes are toggled by the same "Diff pane" checkbox
+(`DiffPaneViewModel.IsDetailVisible`); `JsonView.axaml.cs` collapses its row heights identically to
+`DiffView.axaml.cs` (duplicated on purpose - the two views are otherwise independent, and the collapse
+logic is small enough that sharing it is not worth a base class). One consequence of the highlight
+being line-range-only (see above): for a minified, single-line file, the excerpt on that side is the
+*entire* line, since there is no column-level highlighting to narrow it further - not a bug, just what
+"the change's own lines" means when the whole document is one line.
+
 **Two semantic change lists exist for a reason - do not collapse them** (Diff). `FileComparison`
 carries `SemanticChanges` (spans into `Left`/`Right`, used by Text mode's line filter, ignore rules and
 the tree) and `OriginalSemanticChanges` (spans into `OriginalLeftText`/`OriginalRightText` - each
 side's text exactly as given - used by the Json view's highlighting). Now that Text mode no longer
 reformats JSON automatically, the two are usually IDENTICAL text; they can still diverge when the
-user explicitly turns on "Normalize XML" for a JSON file, and the pairing has to stay correct for that
+user explicitly turns on "Reformat" for a JSON file, and the pairing has to stay correct for that
 case too. They are guaranteed to agree on path, kind and count regardless - canonicalizing never
 reorders or renames anything - which is what lets `DiffPaneViewModel` pair the tree (built from the
 first list) with navigation (walking the second) by matching `JsonPath` strings rather than the
@@ -131,6 +157,29 @@ it out of `IsChange`, and therefore out of hunks, counts, the diff map and F7/F8
 a renderer draw a faint band. Promoting it to a `ChangeKind` would silently put every ignored row back
 into the hunk list and make navigation stop on the fields the user asked not to see.
 `IgnoredRowNavigationTests` pins this.
+
+**Comparison settings inherit PER SETTING, not per level** (Studio). `ComparisonSettings` has every
+member nullable precisely so a request overriding one option keeps inheriting the rest;
+`ComparisonSettingsResolver.Resolve` folds global → folder(s) → request and reports, for each setting,
+both the value and which level it came from. Layers are ordered root-most first (the same order
+`GetInheritanceChainAsync` already produces for headers), so "last one wins" means "closest wins". Two
+traps: (1) lists REPLACE rather than union - an empty non-null list is a real override meaning "ignore
+nothing here", which is what keeps a request's rules readable as the complete truth about that request;
+(2) `Studio.Core` must NOT reference `Fubar.Diff.*` (the architecture tests enforce it), which is why
+`ComparisonSettings` is a parallel shape rather than a reuse of `ComparisonOptions` -
+`ComparisonSettingsMapper` in `Studio.UI` is the single place the two vocabularies meet, and adding a
+setting to one side should break its compile until the other side has it too.
+
+**A format-only difference is a REAL difference, and the lines cannot show it** (Diff). The reader
+consumes the BOM as a preamble and splits on every terminator, so a UTF-8-with-BOM file and its
+BOM-less twin - or CRLF vs LF, or UTF-16 vs UTF-8 - produce byte-identical `Lines` and an empty
+`DiffResult`. `TextFormat` captured all of this from the start but nothing ever COMPARED two of them,
+so the tool said "the files are identical" about files that were not, which is the worst possible
+answer right after someone's version control told them otherwise. `TextFormatComparer` (Core) decides
+it, `FileComparison.FormatDifference` carries it, and the UI reports it in both the status line and a
+banner - the banner matters because when it is the ONLY difference there is nothing else on screen to
+notice. Do not fold this into `DiffResult.AreIdentical`: that is about content, and conflating the two
+would make every hunk-counting consumer wrong.
 
 **Ports live in Core, adapters in Infrastructure**, wired in each app's
 `Infrastructure/ServiceCollectionExtensions.cs` and `UI/Composition.cs`.
@@ -162,6 +211,37 @@ into the hunk list and make navigation stop on the fields the user asked not to 
 - **Background renderers paint in registration order** (Diff). `CurrentHunkRenderer` is added *after*
   `ChangeLineBackgroundRenderer` on the same layer so the current-difference marker lands on top of
   the change tint. Swap the order and it disappears under it.
+- **`DiffLineColors`' `DiffEmphasis` parameter is what makes the current difference read as CURRENT**
+  (Diff). Three levels, not a bool: `Faded` for a real change that is not the one just navigated to
+  (main panes only - a hunk outside `ChangeLineBackgroundRenderer`/`CharSpanColorizer`'s
+  `SetCurrentRange`), `Normal` for the current hunk in the main panes, `Emphasized` for the two "Diff
+  pane" close-ups (DiffDetailPane, JsonDetailPane - `DiffEditorPane.Emphasized` / `RawJsonPane.Emphasized`,
+  `false` by default, `True` only in those two close-ups' own XAML). `LineBackground` is never called
+  with `Emphasized` - `ChangeLineBackgroundRenderer.Draw` skips itself entirely when emphasized (see
+  below) - so only `SpanBackground` actually has three meaningfully different levels; `LineBackground`
+  only ever sees `Faded` or `Normal`.
+- **The two Diff pane close-ups have NO full-line tint at all, in either mode** (Diff). Text mode:
+  `ChangeLineBackgroundRenderer.Draw` returns immediately when `_emphasized`, so `DiffLineColors.LineBackground`
+  is dead code there regardless of `ChangeKind` - Modified rows already lost their line tint earlier
+  (only `SpanBackground` tints them, precisely, since a full-row wash competed with that rather than
+  helping), and Inserted/Deleted rows now lose it too. Since a whole inserted/deleted row normally
+  carries NO character spans at all (the full-line tint used to say "this whole row is the diff" on its
+  own - see `FileComparisonServiceTests.Only_modified_rows_get_inline_spans`), `CharSpanColorizer`
+  synthesizes one covering the row's entire text when `_emphasized` and `Spans.Count == 0`, so the
+  close-up still shows something. Json mode: `RawJsonPane.Emphasized` swaps `CurrentHunkRenderer` (a
+  full-width band, still used by the MAIN Json panes) for `SpanTextColorizer`, which highlights only the
+  exact characters a `SourceSpan` covers using its `StartColumn`/`EndColumn` - the first renderer to
+  actually use those columns; every other consumer of `SourceSpan` in this codebase only reads the line
+  range. Do not restore a full-line/full-width wash to either close-up "to make it easier to scan" -
+  that is precisely what both changes were replacing with something more precise.
+- **`TextEditor.ScrollToVerticalOffset` silently clamps to the CURRENTLY KNOWN extent, not the whole
+  document** (Diff). Calling it for a line AvaloniaEdit has never scrolled towards is a no-op - the
+  ScrollViewer only learns the document is that tall once something (`ScrollToLine`) asks it to make
+  that position visible first. `EditorScroll.CenterOnLine` calls `ScrollToLine` before
+  `ScrollToVerticalOffset` for exactly this reason; dropping the first call silently breaks centering
+  for any line far from wherever the pane last scrolled, with no exception and no warning - it just
+  quietly stays put. Confirmed by adding temporary logging, not by reading docs; do the same before
+  "simplifying" this away again.
 - **Collapsing a `Grid` row needs its `RowDefinition` height zeroed**, not just `IsVisible=false` on
   the child — `DiffView`'s detail pane would otherwise leave a 190px blank band.
 - **Settings never throw**: `Load` returns defaults, `SaveAsync` returns false. Losing a preference is
@@ -177,6 +257,19 @@ into the hunk list and make navigation stop on the fields the user asked not to 
 - **Avalonia 12 renamed drag-drop types**: `DragEventArgs.Data` is now `DataTransfer`, typed
   `IDataTransfer`, with files via `TryGetFiles()`.
 - **Test both theme variants.** A token defined only in Dark throws at runtime in Light.
+- **A control that cannot do anything right now should be HIDDEN, not disabled** (both apps). The
+  codebase argued this for one control ("Recent is hidden rather than disabled when empty: an
+  always-greyed control on first run is just clutter") and it is now the general rule: Fubar Diff's
+  merge group binds `IsVisible` to `Pane.HasCurrentHunk` and its save group to `HasUnsavedMerge`, so
+  neither occupies the toolbar during the many sessions that are only ever a read. The file pickers
+  collapse to a one-line summary after a successful compare (`ComparisonViewModel.IsFileRowExpanded`)
+  for the same reason. Do not "restore" these to always-visible-but-disabled - the row they cost is a
+  row of diff, which is the thing the app exists to show.
+- **The "Reformat" checkbox (`NormalizeStructure`) used to be labeled "Normalize XML" and hidden
+  whenever `Pane.IsSemantic` was true** - i.e. hidden exactly for JSON, the one format users most want
+  to reformat. It backs both XML and JSON already (`TextLineNormalizer.Canonicalize`); the bug was
+  purely the toolbar's `IsVisible` binding. It is now unconditionally visible, like "Ignore whitespace"
+  and "Ignore case" - it is a no-op on content that is neither, which is fine.
 
 ## Workflow notes
 

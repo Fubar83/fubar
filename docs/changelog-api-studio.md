@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Comparison settings now inherit from global → folder → request, each setting overridable on its
+  own.** Previously the only comparison setting that could be configured or remembered anywhere was the
+  ignore-path list, and only on a request; everything else (ignore whitespace, ignore case, reformat,
+  report key order, arrays by position, null-vs-missing, array identity keys) was pinned to its default
+  with no UI to change it even for one session. All of them are now settings you can set at any of the
+  three levels, and each resolves independently — overriding one on a request leaves the rest following
+  the folder or your global preference. Every control names where its value came from, and **Save**
+  offers the request, its folder, or your global defaults. Existing `request.json` files keep working:
+  a pre-hierarchy `responseDiffIgnorePaths` list is read as an ignore-path override and rewritten into
+  the new shape the next time that request's settings are saved.
+
+- **The diff window has comparison options at all.** Every setting sits behind a single **Settings ▾**
+  button, alongside a **Reset to inherited** — one control added to that toolbar rather than the six it
+  would have taken to lay them out flat, in a dialog already carrying navigation, the ignore action,
+  the detail-pane toggle and the view switch.
+
 ### Changed
 
 - **API Studio, Fubar Diff and `Fubar.Controls` now live in one repository.** They were briefly three,
