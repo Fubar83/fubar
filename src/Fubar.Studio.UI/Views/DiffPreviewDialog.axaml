@@ -6,6 +6,7 @@
         xmlns:dv="using:Fubar.Diff.Controls.Views"
         xmlns:dvm="using:Fubar.Diff.Controls.ViewModels"
         xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+        xmlns:cmp="using:Fubar.Studio.Core.Comparison"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
         x:Class="Fubar.Studio.UI.Views.DiffPreviewDialog"
         x:DataType="vm:DiffPreviewViewModel"
@@ -54,7 +55,51 @@
                             Command="{Binding Pane.IgnorePathCommand}"
                             CommandParameter="{Binding Pane.CurrentIgnorePath}" />
 
-                    <CheckBox Content="Diff pane" Margin="8,0,0,0"
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+
+                    <!-- Comparison options, matching what Fubar Diff's own toolbar offers - these were
+                         missing here entirely, so a Studio user had no way to loosen a comparison even
+                         for one session. All of them sit behind this one button rather than spilling
+                         two checkboxes into a dialog toolbar that is already carrying navigation, the
+                         ignore action, the detail pane and the view switch. Each edits the REQUEST
+                         level of the hierarchy, so ticking one overrides whatever the folder or global
+                         level said; each tooltip names where the current value came from. -->
+                    <Button Classes="toolbar-btn" Content="Settings ▾" Margin="8,0,0,0"
+                            ToolTip.Tip="Comparison options, and where each one comes from">
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                <StackPanel Spacing="10" MinWidth="300" Margin="2">
+                                    <TextBlock Text="COMPARISON SETTINGS" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextSecondary}" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondary}"
+                                               Text="Each setting is inherited from your global defaults, then any folder, then this request - and each can be overridden on its own." />
+
+                                    <CheckBox Content="Ignore leading/trailing whitespace" IsChecked="{Binding IgnoreWhitespace}"
+                                              ToolTip.Tip="{Binding IgnoreWhitespaceSource, StringFormat='Ignore leading/trailing whitespace ({0})'}" />
+                                    <CheckBox Content="Ignore case" IsChecked="{Binding IgnoreCase}"
+                                              ToolTip.Tip="{Binding IgnoreCaseSource, StringFormat='Ignore case ({0})'}" />
+                                    <CheckBox Content="Reformat for display" IsChecked="{Binding NormalizeStructure}"
+                                              ToolTip.Tip="{Binding NormalizeStructureSource, StringFormat='Pretty-print JSON/XML in the Text view ({0})'}" />
+                                    <CheckBox Content="Report key order" IsChecked="{Binding ReportPropertyOrder}"
+                                              ToolTip.Tip="{Binding ReportPropertyOrderSource, StringFormat='JSON objects are unordered, so reordering is not a difference by default ({0})'}" />
+                                    <CheckBox Content="Compare arrays by position" IsChecked="{Binding MatchArraysByPosition}"
+                                              ToolTip.Tip="{Binding MatchArraysByPositionSource, StringFormat='Match array elements by index instead of by an identity key ({0})'}" />
+                                    <CheckBox Content="Treat null and missing as the same" IsChecked="{Binding IgnoreNullVsMissing}"
+                                              ToolTip.Tip="{Binding IgnoreNullVsMissingSource, StringFormat='An explicit null and an absent property compare equal ({0})'}" />
+
+                                    <Button Classes="secondary-btn" Content="Reset to inherited"
+                                            ToolTip.Tip="Drop this request's overrides and go back to what it inherits"
+                                            IsEnabled="{Binding HasOverrides}"
+                                            Command="{Binding ResetOverridesCommand}" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+
+                    <CheckBox Content="Diff pane"
                               ToolTip.Tip="Show the current difference close up, below the panes"
                               IsChecked="{Binding Pane.IsDetailVisible}"
                               VerticalAlignment="Center" />
@@ -79,7 +124,7 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,0,0,1"
                 Padding="10,6"
-                IsVisible="{Binding ShowIgnoreRules}">
+                IsVisible="{Binding ShowSettings}">
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <TextBlock Grid.Column="0" Text="Ignoring" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0" />
@@ -116,13 +161,33 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Rules apply immediately but are session-only until this is pressed: ignoring is
-                     often exploratory, and rewriting request.json on every click would not be. -->
-                <Button Grid.Column="2" Classes="secondary-btn" Content="Save to request"
-                        ToolTip.Tip="Remember these rules on the request, so they always apply"
-                        IsVisible="{Binding CanSaveIgnoreRules}"
-                        IsEnabled="{Binding IgnoreRulesDirty}"
-                        Command="{Binding SaveIgnoreRulesCommand}" />
+                <!-- Changes apply immediately but are session-only until saved: adjusting a
+                     comparison is often exploratory, and rewriting request.json on every click would
+                     not be. WHERE to save is the user's choice, because the same three levels the
+                     settings are read from are the three they can be written back to - a rule about
+                     one endpoint belongs on the request, one about a whole service on its folder, and
+                     a personal reading preference globally. -->
+                <SplitButton Grid.Column="2" Content="Save to request"
+                             ToolTip.Tip="Remember these settings on the request, so they always apply"
+                             IsVisible="{Binding CanSaveSettings}"
+                             IsEnabled="{Binding SettingsDirty}"
+                             Command="{Binding SaveSettingsCommand}"
+                             CommandParameter="{x:Static cmp:ComparisonScope.Request}">
+                    <SplitButton.Flyout>
+                        <MenuFlyout>
+                            <MenuItem Header="Save to request"
+                                      Command="{Binding SaveSettingsCommand}"
+                                      CommandParameter="{x:Static cmp:ComparisonScope.Request}" />
+                            <MenuItem Header="{Binding SaveToFolderLabel}"
+                                      IsVisible="{Binding CanSaveToFolder}"
+                                      Command="{Binding SaveSettingsCommand}"
+                                      CommandParameter="{x:Static cmp:ComparisonScope.Folder}" />
+                            <MenuItem Header="Save as global defaults"
+                                      Command="{Binding SaveSettingsCommand}"
+                                      CommandParameter="{x:Static cmp:ComparisonScope.Global}" />
+                        </MenuFlyout>
+                    </SplitButton.Flyout>
+                </SplitButton>
             </Grid>
         </Border>
 

@@ -19,9 +19,10 @@ public interface IDiffPreviewService
     /// <param name="leftLabel">What the left side is, e.g. "In workspace".</param>
     /// <param name="rightLabel">What the right side is, e.g. "From spec".</param>
     /// <param name="title">Window title.</param>
-    /// <param name="ignore">
-    /// Ignore rules for this comparison, and optionally a way to persist them. Null when the
-    /// comparison has nowhere to remember a rule, which also hides the affordance.
+    /// <param name="settings">
+    /// The comparison-settings hierarchy this comparison belongs to, and optionally a way to persist a
+    /// change to it. Null when the comparison has nowhere to remember a setting, which also hides the
+    /// affordances.
     /// </param>
     Task ShowAsync(
         string leftText,
@@ -29,5 +30,5 @@ public interface IDiffPreviewService
         string leftLabel,
         string rightLabel,
         string title,
-        DiffIgnoreContext? ignore = null);
+        DiffSettingsContext? settings = null);
 }
