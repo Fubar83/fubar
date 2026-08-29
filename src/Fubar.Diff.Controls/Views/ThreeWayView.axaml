@@ -31,7 +31,8 @@
                                   Document="{Binding LeftDocument}"
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding SyntaxExtension}"
-                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  Folds="{Binding Folds}" />
         </DockPanel>
 
         <Border Grid.Column="1" Width="1" Background="{DynamicResource BorderSubtle}" />
@@ -44,7 +45,8 @@
                                   Document="{Binding BaseDocument}"
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding SyntaxExtension}"
-                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  Folds="{Binding Folds}" />
         </DockPanel>
 
         <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderSubtle}" />
@@ -57,7 +59,8 @@
                                   Document="{Binding RightDocument}"
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding SyntaxExtension}"
-                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  Folds="{Binding Folds}" />
         </DockPanel>
     </Grid>
 

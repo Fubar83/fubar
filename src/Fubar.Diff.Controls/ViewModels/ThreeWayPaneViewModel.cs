@@ -80,6 +80,29 @@ public partial class ThreeWayPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ConflictsOnly { get; set; } = true;
 
+    /// <summary>
+    /// Whether long stretches of unchanged context are hidden. On by default, and worth more here than
+    /// in a two-way diff: most of a merge's regions resolve themselves, so the reader is hunting the
+    /// few that do not through the same thousands of untouched lines.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CollapseUnchanged { get; set; } = true;
+
+    /// <summary>How many unchanged rows stay visible either side of a region.</summary>
+    [ObservableProperty]
+    public partial int ContextLines { get; set; } = 3;
+
+    /// <summary>The rows to fold. All three columns are given this same list, which keeps them aligned.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<FoldRange> Folds { get; set; } = [];
+
+    partial void OnCollapseUnchangedChanged(bool value) => RebuildFolds();
+
+    partial void OnContextLinesChanged(int value) => RebuildFolds();
+
+    private void RebuildFolds() =>
+        Folds = CollapseUnchanged ? CollapsedRegions.Compute(_result, ContextLines) : [];
+
     /// <summary>True when a specific region is selected, so a host can hide its resolution controls.</summary>
     public bool HasCurrentRegion => CurrentRegion >= 0 && CurrentRegion < _result.Regions.Count;
 
@@ -188,6 +211,10 @@ public partial class ThreeWayPaneViewModel : ObservableObject
     public void Show(ThreeWayResult result)
     {
         _result = result;
+
+        // Before the documents: the panes fold when the document arrives, so a list computed
+        // afterwards would leave the first frame unfolded.
+        RebuildFolds();
 
         BaseDocument = ThreeWayAlignedText.Build(result, MergeSide.Base);
         LeftDocument = ThreeWayAlignedText.Build(result, MergeSide.Left);

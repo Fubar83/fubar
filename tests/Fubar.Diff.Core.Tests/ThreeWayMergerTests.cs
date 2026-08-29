@@ -270,6 +270,62 @@ public class ThreeWayMergerTests
     }
 
     [Fact]
+    public void Taking_both_keeps_each_side_whole_and_in_order()
+    {
+        // The case that has no "right" side: two people added a different method at the same point.
+        // Neither edit is wrong and the answer is both of them.
+        var result = MergeChecked(
+            ["end"],
+            ["fromLeft()", "end"],
+            ["fromRight()", "end"]);
+
+        var state = ThreeWayMergeState.Empty.With(0, MergeChoice.TakeBoth);
+
+        Assert.Equal(["fromLeft()", "fromRight()", "end"], Merged(result, state));
+    }
+
+    [Fact]
+    public void Taking_both_keeps_multi_line_blocks_intact_rather_than_interleaving_them()
+    {
+        // Row-wise resolution would produce fromLeft/fromRight/{/{ - each block has to survive as a
+        // block, which is why "both" is the one choice decided per REGION rather than per row.
+        var result = MergeChecked(
+            ["end"],
+            ["void L()", "{", "    l();", "}", "end"],
+            ["void R()", "{", "    r();", "}", "end"]);
+
+        var state = ThreeWayMergeState.Empty.With(0, MergeChoice.TakeBoth);
+
+        Assert.Equal(
+            ["void L()", "{", "    l();", "}", "void R()", "{", "    r();", "}", "end"],
+            Merged(result, state));
+    }
+
+    [Fact]
+    public void Taking_both_where_one_side_deleted_keeps_only_the_other()
+    {
+        // "Both" of something and nothing is that something - not that something plus a blank line.
+        var result = MergeChecked(["a", "b", "c"], ["a", "c"], ["a", "B", "c"]);
+
+        var state = ThreeWayMergeState.Empty.With(0, MergeChoice.TakeBoth);
+
+        Assert.Equal(["a", "B", "c"], Merged(result, state));
+    }
+
+    [Fact]
+    public void Taking_both_leaves_the_surrounding_context_alone()
+    {
+        var result = MergeChecked(
+            ["head", "x", "tail"],
+            ["head", "L", "tail"],
+            ["head", "R", "tail"]);
+
+        var state = ThreeWayMergeState.Empty.With(0, MergeChoice.TakeBoth);
+
+        Assert.Equal(["head", "L", "R", "tail"], Merged(result, state));
+    }
+
+    [Fact]
     public void An_auto_merged_region_can_still_be_overridden()
     {
         // "Actually, keep what we started with" has to be reachable even where nothing was contested.

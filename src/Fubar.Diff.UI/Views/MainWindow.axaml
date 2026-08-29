@@ -218,6 +218,14 @@
                               IsChecked="{Binding Pane.IsDetailVisible}"
                               VerticalAlignment="Center" />
 
+                    <!-- Earns its place in the row rather than in Settings: on a file of any size this
+                         is the difference between two screens and two hundred, so it is reached for
+                         per-comparison rather than set once. -->
+                    <CheckBox Content="Collapse unchanged"
+                              ToolTip.Tip="Hide long stretches of identical context, keeping a few lines either side of each change. Click any fold to expand it."
+                              IsChecked="{Binding CollapseUnchanged}"
+                              VerticalAlignment="Center" />
+
                     <!-- Text / Json. Only offered when a semantic comparison ran, since Json has
                          nothing to show for a plain text file - Pane.Show already defaults ViewMode to
                          whichever of the two applies. Labelled for the same reason the Compare mode

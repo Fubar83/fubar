@@ -35,6 +35,9 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   and all are equally minimal — which is why a moved method so often shows up as a closing brace plus
   the start of the next one. Groups are slid toward blank lines and lower indentation, the same
   heuristic git uses, without changing what the diff says.
+- **Collapse unchanged** — long stretches both files agree on fold behind a placeholder, keeping a few
+  lines either side of each change. On by default; click any fold to expand it, or turn it off from the
+  toolbar. A file of three thousand lines with two changes reads as two changes.
 - **Diff map** between the panes — one tick per change, coloured by kind, click or drag to jump.
 - **Diff pane** below the panes: the old line stacked directly above the new one, so you can read
   both versions of one change without scrolling between two blocks a screen apart - and with the same
@@ -48,7 +51,8 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   touched, plus everything both sides changed identically, on its own. What is left is the set that
   genuinely disagrees. Three panes, the ancestor in the middle, all locked in step; conflicts are marked
   in amber, navigation stops only on them by default (F7 / F8), and each one is resolved by taking left,
-  base or right. Within a region each edit highlights the characters it altered relative to the
+  base, right, or **both** (Alt+B) — for when neither edit is wrong and the answer is to keep the two of
+  them, which is what two methods added at the same place actually needs. Within a region each edit highlights the characters it altered relative to the
   ancestor, so two conflicting versions of nearly the same line can be told apart at a glance. A
   **Diff pane** below stacks the three versions of the current region — left, base, right — so they can
   be read together rather than across three columns a screen apart. Save

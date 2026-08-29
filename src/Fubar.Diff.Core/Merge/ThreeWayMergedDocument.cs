@@ -27,11 +27,10 @@ public static class ThreeWayMergedDocument
         // Regions are ordered and non-overlapping, so one advancing cursor is enough - no search per
         // row. The same walk MergedDocument does.
         var cursor = 0;
+        var i = 0;
 
-        for (var i = 0; i < result.Lines.Count; i++)
+        while (i < result.Lines.Count)
         {
-            var row = result.Lines[i];
-
             while (cursor < result.Regions.Count && result.Regions[cursor].EndIndex < i)
             {
                 cursor++;
@@ -41,6 +40,20 @@ public static class ThreeWayMergedDocument
                            && i >= result.Regions[cursor].StartIndex
                            && i <= result.Regions[cursor].EndIndex;
 
+            // "Both" is the one resolution that cannot be decided per row: it emits one side's whole
+            // block and then the other's, so the region has to be handled as a unit and the row walk
+            // skipped past it. Every other choice picks a side, which is a per-row question.
+            if (inRegion && state.For(cursor) == MergeChoice.TakeBoth)
+            {
+                var region = result.Regions[cursor];
+
+                AppendSide(merged, result, region, MergeSide.Left);
+                AppendSide(merged, result, region, MergeSide.Right);
+
+                i = region.EndIndex + 1;
+                continue;
+            }
+
             var side = inRegion
                 ? SideFor(result.Regions[cursor].Kind, state.For(cursor))
                 : MergeSide.Base;
@@ -48,13 +61,30 @@ public static class ThreeWayMergedDocument
             // A row with no line on the chosen side means that side genuinely has nothing here, so the
             // merged file gets nothing - NOT a blank line. This is what makes taking the side that
             // deleted something actually delete it.
-            if (row.TextOn(side) is { } text)
+            if (result.Lines[i].TextOn(side) is { } text)
+            {
+                merged.Add(text);
+            }
+
+            i++;
+        }
+
+        return merged;
+    }
+
+    /// <summary>
+    /// Appends every line one side actually has within a region, fillers skipped - the same rule the
+    /// per-row path follows, applied to a whole block at once.
+    /// </summary>
+    private static void AppendSide(List<string> merged, ThreeWayResult result, MergeRegion region, MergeSide side)
+    {
+        for (var i = region.StartIndex; i <= region.EndIndex && i < result.Lines.Count; i++)
+        {
+            if (result.Lines[i].TextOn(side) is { } text)
             {
                 merged.Add(text);
             }
         }
-
-        return merged;
     }
 
     /// <summary>

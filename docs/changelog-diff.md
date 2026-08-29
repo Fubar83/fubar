@@ -8,6 +8,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Collapse unchanged context.** Long stretches both sides agree on fold behind a `42 unchanged lines`
+  placeholder, keeping three lines either side of every change. A three-thousand-line file with two
+  changes now reads as two changes instead of two screens of scrolling to find them. On by default, one
+  click to expand any fold, and a toolbar toggle that is remembered. Both panes fold identically —
+  which they do for free, since the folds are computed from row indices and both sides already have
+  identical row counts, so scroll sync stays the plain offset copy it always was. The three-way merge
+  gets it too, where it is worth more: most regions of a merge resolve themselves, so what you are
+  hunting is the few that do not, through the same thousands of untouched lines. An ignored row is
+  never folded away — its faint band is the only evidence that an ignore rule is doing anything.
+
+- **Take both** in the three-way merge (Alt+B). The resolution a merge needs more often than any other
+  and the only one that is not a choice between alternatives: two people added a different method at
+  the same point, a different import, a different case to the same switch. Neither edit is wrong and
+  the answer is both of them. Each side's block is kept whole and in order rather than interleaved,
+  which is why this is the one resolution decided per region rather than per row. Without it the user
+  had to take one side, save, and finish the job in a text editor.
+
 - **Three-way merge.** Give it a common ancestor and two edits and it settles, on its own, every region
   only one side touched — plus every region both sides changed to the same thing, which is what a
   cherry-pick, a shared reformatting or a rebase over someone else's landed change looks like. What is

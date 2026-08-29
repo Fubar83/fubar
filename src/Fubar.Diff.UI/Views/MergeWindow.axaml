@@ -29,7 +29,7 @@
         <KeyBinding Gesture="Alt+Up" Command="{Binding Pane.PreviousRegionCommand}" />
         <KeyBinding Gesture="Alt+Left" Command="{Binding TakeLeftCommand}" />
         <KeyBinding Gesture="Alt+Right" Command="{Binding TakeRightCommand}" />
-        <KeyBinding Gesture="Alt+Up" Command="{Binding Pane.PreviousRegionCommand}" />
+        <KeyBinding Gesture="Alt+B" Command="{Binding TakeBothCommand}" />
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
     </Window.KeyBindings>
 
@@ -99,6 +99,10 @@
                               IsChecked="{Binding Pane.IsDetailVisible}"
                               ToolTip.Tip="Show the three versions of the current region stacked below, so they can be read together instead of across three columns." />
 
+                    <CheckBox Content="Collapse unchanged"
+                              IsChecked="{Binding Pane.CollapseUnchanged}"
+                              ToolTip.Tip="Hide long stretches all three files agree on. Worth more in a merge than in a diff: most regions resolve themselves, so what you are hunting is the few that do not." />
+
                     <fc:Divider Orientation="Vertical" />
 
                     <!-- Hidden rather than disabled until a region is selected: an always-greyed row of
@@ -111,6 +115,8 @@
                                 ToolTip.Tip="Keep the ancestor's version, discarding both edits" />
                         <Button Classes="toolbar-btn" Content="Take right" Command="{Binding TakeRightCommand}"
                                 ToolTip.Tip="Use the right version for this region (Alt+Right)" />
+                        <Button Classes="toolbar-btn" Content="Take both" Command="{Binding TakeBothCommand}"
+                                ToolTip.Tip="Keep both versions, left first (Alt+B). For when neither edit is wrong - two methods added at the same place, two imports, two switch cases." />
                         <Button Classes="secondary-btn" Content="Reset" Command="{Binding ResetRegionCommand}"
                                 ToolTip.Tip="Undo this region's decision" />
                     </StackPanel>

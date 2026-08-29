@@ -92,6 +92,7 @@ public partial class ComparisonViewModel : ViewModelBase
             NormalizeStructure = settings.NormalizeStructure;
             NormalizeUnicode = settings.NormalizeUnicode;
             ShowInvisibles = settings.ShowInvisibles;
+            CollapseUnchanged = settings.CollapseUnchanged;
             IgnoreComments = settings.IgnoreComments;
             IgnoreBlankLines = settings.IgnoreBlankLines;
             SyntaxHighlighting = settings.SyntaxHighlighting;
@@ -126,6 +127,7 @@ public partial class ComparisonViewModel : ViewModelBase
         NormalizeStructure = NormalizeStructure,
         NormalizeUnicode = NormalizeUnicode,
         ShowInvisibles = ShowInvisibles,
+        CollapseUnchanged = CollapseUnchanged,
         IgnoreComments = IgnoreComments,
         IgnoreBlankLines = IgnoreBlankLines,
         SyntaxHighlighting = SyntaxHighlighting,
@@ -247,6 +249,19 @@ public partial class ComparisonViewModel : ViewModelBase
     partial void OnSyntaxHighlightingChanged(bool value)
     {
         Pane.SyntaxHighlighting = value;
+        DisplayOptionChanged();
+    }
+
+    /// <summary>
+    /// Hide long stretches of unchanged context. A display setting: it changes what is on SCREEN, never
+    /// what the comparison found, so it re-folds rather than re-comparing.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CollapseUnchanged { get; set; } = true;
+
+    partial void OnCollapseUnchangedChanged(bool value)
+    {
+        Pane.CollapseUnchanged = value;
         DisplayOptionChanged();
     }
 
@@ -639,6 +654,7 @@ public partial class ComparisonViewModel : ViewModelBase
         Pane.LeftSyntaxExtension = System.IO.Path.GetExtension(_comparison.Left.Path);
         Pane.RightSyntaxExtension = System.IO.Path.GetExtension(_comparison.Right.Path);
         Pane.SyntaxHighlighting = SyntaxHighlighting;
+        Pane.CollapseUnchanged = CollapseUnchanged;
 
         Pane.Show(
             result,

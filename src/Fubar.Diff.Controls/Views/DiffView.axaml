@@ -23,7 +23,8 @@
                                   Document="{Binding LeftDocument}"
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding LeftSyntaxExtension}"
-                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  Folds="{Binding Folds}" />
 
             <!-- The map sits between the panes so it reads as belonging to both. -->
             <controls:DiffMap x:Name="Map"
@@ -42,7 +43,8 @@
                                   Document="{Binding RightDocument}"
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding RightSyntaxExtension}"
-                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  Folds="{Binding Folds}" />
         </Grid>
 
         <GridSplitter x:Name="DetailSplitter"

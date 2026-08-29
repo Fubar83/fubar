@@ -39,6 +39,13 @@ public sealed record AppSettings
     /// </summary>
     public bool ShowInvisibles { get; init; }
 
+    /// <summary>
+    /// Hide long stretches of unchanged context behind a collapsed placeholder. On by default - see
+    /// <c>DiffPaneViewModel.CollapseUnchanged</c> for why that default is the opposite way round from
+    /// the "never change what the user is shown" rule that governs reformatting.
+    /// </summary>
+    public bool CollapseUnchanged { get; init; } = true;
+
     /// <summary>Treat comments as absent - see <c>CodeComparisonOptions.IgnoreComments</c>.</summary>
     public bool IgnoreComments { get; init; }
 

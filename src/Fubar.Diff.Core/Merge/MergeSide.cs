@@ -69,4 +69,20 @@ public enum MergeChoice
 
     /// <summary>Use the right side's version.</summary>
     TakeRight,
+
+    /// <summary>
+    /// Keep BOTH versions, left first then right.
+    ///
+    /// The resolution a three-way merge needs more often than any other and the only one that is not a
+    /// choice between alternatives: two people added a different method at the same point, or a
+    /// different import, or a different case to the same switch. Neither edit is wrong and the answer
+    /// is both of them, in some order. Without it the user has to take one side, save, and finish the
+    /// job in a text editor - which is where a merge tool loses the argument.
+    ///
+    /// Left first because that is the order the panes are in, so the result reads the way the screen
+    /// does. The reverse is a legitimate want and is deliberately NOT here: it would be a second enum
+    /// member, a second button and a second code path for a case that has not come up, and it stays
+    /// easy to add the day it does.
+    /// </summary>
+    TakeBoth,
 }

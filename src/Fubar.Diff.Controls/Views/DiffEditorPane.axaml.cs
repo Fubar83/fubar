@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Styling;
 using AvaloniaEdit;
+using AvaloniaEdit.Folding;
 using AvaloniaEdit.Rendering;
 using AvaloniaEdit.Search;
 using AvaloniaEdit.TextMate;
@@ -59,6 +60,17 @@ public partial class DiffEditorPane : UserControl
         AvaloniaProperty.Register<DiffEditorPane, bool>(nameof(SyntaxHighlighting), defaultValue: true);
 
     /// <summary>
+    /// Stretches of unchanged context to hide behind a collapsed placeholder, as ROW ranges - see
+    /// <see cref="CollapsedRegions"/>, which computes them.
+    ///
+    /// Both panes are given the SAME ranges, which is what keeps them aligned: identical folds over
+    /// documents that already have identical row counts means identical visual line counts, so scroll
+    /// sync stays the plain offset copy it has always been rather than becoming a mapping problem.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<FoldRange>?> FoldsProperty =
+        AvaloniaProperty.Register<DiffEditorPane, IReadOnlyList<FoldRange>?>(nameof(Folds));
+
+    /// <summary>
     /// The grammar and theme registry, shared by every pane in the process.
     ///
     /// One instance, deliberately: constructing it reads TextMateSharp's grammar and theme resources,
@@ -72,6 +84,9 @@ public partial class DiffEditorPane : UserControl
     private static RegistryOptions Registry => _registry ??= new RegistryOptions(ThemeName.DarkPlus);
 
     private TextMate.Installation? _textMate;
+
+    /// <summary>Installed the first time this pane is asked to fold anything. See <see cref="ApplyFolds"/>.</summary>
+    private FoldingManager? _foldings;
 
     /// <summary>The scope currently installed, so re-applying the same grammar is free.</summary>
     private string? _grammarScope;
@@ -144,6 +159,12 @@ public partial class DiffEditorPane : UserControl
         set => SetValue(SyntaxHighlightingProperty, value);
     }
 
+    public IReadOnlyList<FoldRange>? Folds
+    {
+        get => GetValue(FoldsProperty);
+        set => SetValue(FoldsProperty, value);
+    }
+
     /// <summary>The underlying editor, for the parent view to wire scroll sync and caret moves.</summary>
     internal TextEditor TextEditor => Editor;
 
@@ -197,6 +218,10 @@ public partial class DiffEditorPane : UserControl
         else if (change.Property == SyntaxExtensionProperty || change.Property == SyntaxHighlightingProperty)
         {
             ApplySyntax();
+        }
+        else if (change.Property == FoldsProperty)
+        {
+            ApplyFolds();
         }
         else if (change.Property == ForegroundProperty || change.Property == FontSizeProperty)
         {
@@ -322,9 +347,63 @@ public partial class DiffEditorPane : UserControl
 
         Editor.Document.Text = document?.Text ?? string.Empty;
 
+        // After the text, not before: a fold is a pair of document OFFSETS, and the offsets of the
+        // previous comparison's document mean nothing in this one.
+        ApplyFolds();
+
         // Scroll home: the previous offset means nothing in a document that has just been replaced.
         Editor.ScrollToHome();
         Editor.TextArea.TextView.Redraw();
+    }
+
+    /// <summary>
+    /// Collapses the given row ranges, or clears every fold when there are none.
+    ///
+    /// The folding manager is installed on FIRST USE, like the highlighter and for the same reason:
+    /// installing adds a margin to the editor, and a pane that is never asked to fold anything - the
+    /// two close-ups never are - should not grow one.
+    /// </summary>
+    private void ApplyFolds()
+    {
+        var ranges = Folds;
+
+        if (ranges is null || ranges.Count == 0)
+        {
+            _foldings?.Clear();
+            return;
+        }
+
+        _foldings ??= FoldingManager.Install(Editor.TextArea);
+
+        var document = Editor.Document;
+        var foldings = new List<NewFolding>(ranges.Count);
+
+        foreach (var range in ranges)
+        {
+            // Rows are 0-based and AvaloniaEdit's lines are 1-based. Clamped rather than trusted: a
+            // fold list can arrive a frame before the document it was computed for.
+            var first = range.StartRow + 1;
+            var last = range.EndRow + 1;
+
+            if (first < 1 || last > document.LineCount || last < first)
+            {
+                continue;
+            }
+
+            foldings.Add(new NewFolding(
+                document.GetLineByNumber(first).Offset,
+                document.GetLineByNumber(last).EndOffset)
+            {
+                // Closed on arrival - a fold that opens expanded has hidden nothing and saved no
+                // scrolling, which is the entire point of computing it.
+                DefaultClosed = true,
+                Name = range.Length == 1 ? " 1 unchanged line " : $" {range.Length} unchanged lines ",
+            });
+        }
+
+        // UpdateFoldings wants them ordered by offset, which CollapsedRegions already guarantees by
+        // walking the document once.
+        _foldings.UpdateFoldings(foldings, -1);
     }
 
     private void ApplyGutterStyle()

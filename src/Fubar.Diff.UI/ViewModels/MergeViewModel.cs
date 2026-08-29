@@ -241,6 +241,10 @@ public partial class MergeViewModel : ViewModelBase
     [RelayCommand]
     private void TakeRight() => Resolve(MergeChoice.TakeRight);
 
+    /// <summary>Keeps both versions, left first - see <see cref="MergeChoice.TakeBoth"/>.</summary>
+    [RelayCommand]
+    private void TakeBoth() => Resolve(MergeChoice.TakeBoth);
+
     /// <summary>Undoes the decision on the current region, putting it back to whatever the merge implies.</summary>
     [RelayCommand]
     private void ResetRegion() => Resolve(MergeChoice.Unresolved);
@@ -291,6 +295,7 @@ public partial class MergeViewModel : ViewModelBase
             MergeChoice.TakeBase => $"Region {Pane.CurrentRegion + 1} resolved: base.",
             MergeChoice.TakeLeft => $"Region {Pane.CurrentRegion + 1} resolved: left.",
             MergeChoice.TakeRight => $"Region {Pane.CurrentRegion + 1} resolved: right.",
+            MergeChoice.TakeBoth => $"Region {Pane.CurrentRegion + 1} resolved: both, left first.",
             _ => $"Region {Pane.CurrentRegion + 1} reset.",
         };
 

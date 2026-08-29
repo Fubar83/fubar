@@ -123,6 +123,36 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial bool SyntaxHighlighting { get; set; } = true;
 
+    /// <summary>
+    /// Whether long stretches of unchanged context are hidden behind a collapsed placeholder.
+    ///
+    /// On by default, which is what every review tool does and the reason they are pleasant to read: a
+    /// 3,000-line file with two changes is otherwise 3,000 lines of scrolling to see two. Nothing is
+    /// hidden irrecoverably - each fold is one click, and the setting is remembered - so the usual
+    /// argument against changing what the user is shown does not apply here the way it does to
+    /// reformatting their content.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CollapseUnchanged { get; set; } = true;
+
+    /// <summary>How many unchanged rows stay visible either side of a change.</summary>
+    [ObservableProperty]
+    public partial int ContextLines { get; set; } = 3;
+
+    /// <summary>
+    /// The rows to fold, or empty when collapsing is off. Both panes are given this SAME list, which
+    /// is what keeps them aligned - see <c>DiffEditorPane.FoldsProperty</c>.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<FoldRange> Folds { get; set; } = [];
+
+    partial void OnCollapseUnchangedChanged(bool value) => RebuildFolds();
+
+    partial void OnContextLinesChanged(int value) => RebuildFolds();
+
+    private void RebuildFolds() =>
+        Folds = CollapseUnchanged ? CollapsedRegions.Compute(_result.Lines, ContextLines) : [];
+
     /// <summary>The current hunk's rows, left side, or null when no hunk is selected.</summary>
     [ObservableProperty]
     public partial AlignedDocument? DetailLeft { get; set; }
@@ -511,6 +541,10 @@ public partial class DiffPaneViewModel : ObservableObject
         IReadOnlyList<JsonChange>? originalSemanticChanges = null)
     {
         _result = result;
+
+        // Before the documents: the panes apply their folds when the document arrives, so a list
+        // computed afterwards would leave the first frame unfolded.
+        RebuildFolds();
 
         LeftDocument = AlignedText.Build(result, DiffSide.Left);
         RightDocument = AlignedText.Build(result, DiffSide.Right);

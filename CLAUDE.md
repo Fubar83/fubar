@@ -198,6 +198,23 @@ banner before (`HasUnresolvedConflicts`) and names the count in the status line 
 this by throwing in the service, and do not drop the warnings - the fallback is only acceptable while
 it cannot be a surprise.
 
+**Collapsing is a VIEW state, and folding must never remove a row** (Diff). `CollapsedRegions` returns
+ROW ranges and `DiffEditorPane` turns them into AvaloniaEdit folds, so the document still contains
+every line and editor line `i` is still `DiffResult.Lines[i]`. Filtering rows out of the document
+instead would look equivalent and would break the diff map, navigation, the gutter and the merge at
+once. Both panes are handed the SAME list, which is what keeps them aligned - identical folds over
+documents that already have identical row counts means identical visual lines, so scroll sync stays an
+offset copy. Two smaller rules: an ignored row is not collapsible (its faint band is the only evidence
+an ignore rule is doing anything, and folding it hides exactly what the user added the rule to check),
+and folds are applied AFTER the document text, because a fold is a pair of offsets and the previous
+comparison's offsets mean nothing in this one.
+
+**"Take both" is the one merge resolution decided per REGION, not per row** (Diff). Every other choice
+picks a side, which is a per-row question; both has to emit one side's whole block and then the
+other's, so `ThreeWayMergedDocument.Build` skips the row walk past that region. Resolving it row-wise
+would interleave the two blocks - `void L() { void R() { l(); r(); ...` - which is never what anyone
+means by keeping both.
+
 **Sliding a change group is a PRESENTATION pass, and its safety comes from one rule** (Diff).
 `ChangeGroupSlider` moves a run of added or removed lines to the placement that reads best, and it is
 allowed to because the diff is genuinely AMBIGUOUS there: when a group is bounded by lines identical to
