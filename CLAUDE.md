@@ -198,6 +198,17 @@ banner before (`HasUnresolvedConflicts`) and names the count in the status line 
 this by throwing in the service, and do not drop the warnings - the fallback is only acceptable while
 it cannot be a surprise.
 
+**Auto-refresh must never discard a merge decision** (Diff). Decisions are keyed by hunk INDEX and a
+fresh comparison renumbers the hunks, so reloading over unsaved ones would either drop them or apply
+them to different changes - silently, and not noticed until the save. `ComparisonViewModel` therefore
+refuses to auto-reload while `HasUnsavedMerge`, raising `FilesChangedOnDisk` for a banner with a manual
+Reload instead. Two implementation details are load-bearing rather than incidental: the watcher watches
+the containing DIRECTORY, not the file, because editors save by writing a temporary file and renaming
+it over the target and a file-bound watcher goes deaf at exactly that moment; and our own writes are
+recognised by TIMESTAMP rather than by a flag held across the save, because the watcher only speaks
+after a quiet period, by which time a flag cleared in a `finally` is long gone and our own save arrives
+looking external.
+
 **A user-supplied regex is hostile input, and `LinePatternMask` treats it that way** (Diff). Two
 failure modes, both handled and neither optional. A MALFORMED pattern is dropped rather than thrown -
 these come from a settings file a user can hand-edit, and refusing to compare anything because one rule

@@ -28,6 +28,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IJsonParser, JsonAstParser>();
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
 
+        // NOT a singleton, unlike everything above: a watcher owns OS handles and is bound to one
+        // comparison's files, so each tab and each merge window needs its own to dispose when it closes.
+        services.AddTransient<IFileChangeWatcher, FileSystemChangeWatcher>();
+
         return services;
     }
 }

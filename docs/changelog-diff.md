@@ -18,6 +18,20 @@ All notable changes to this project are documented here. The format is based on
   hunting is the few that do not, through the same thousands of untouched lines. An ignored row is
   never folded away — its faint band is the only evidence that an ignore rule is doing anything.
 
+- **Reload when files change on disk.** Keep the diff open beside the editor doing the editing and it
+  follows along. On by default, switchable in Settings → Appearance.
+
+  It refuses in exactly one case: **unsaved merge decisions.** Those are keyed by hunk index, and a
+  fresh comparison renumbers the hunks — so reloading would either discard the decisions or, worse,
+  apply them to different changes. Instead a banner appears with a Reload button, and the choice stays
+  the user's. Nothing about a file-system event should be able to lose work.
+
+  Two details that decide whether this works in practice rather than in a demo: the watcher listens to
+  the containing **directory**, because most editors save by writing a temporary file and renaming it
+  over the target, and a watcher bound to the file itself stops seeing anything at that moment; and
+  events are coalesced behind a short quiet period, because one save arrives as several. The app also
+  recognises its own writes, so saving a merge does not report itself as an external change.
+
 - **A unified (inline) view.** The whole comparison as one patch-style document — removals, then
   additions, with shared context between them — switchable from the **View** selector, which now offers
   *Side by side / Unified / Json* and no longer hides itself for non-JSON files. No second column, so it

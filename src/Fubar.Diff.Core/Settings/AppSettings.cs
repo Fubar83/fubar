@@ -47,6 +47,12 @@ public sealed record AppSettings
     public bool CollapseUnchanged { get; init; } = true;
 
     /// <summary>
+    /// Re-run a comparison when its files change on disk. On by default - see
+    /// <c>ComparisonViewModel.AutoRefresh</c>.
+    /// </summary>
+    public bool AutoRefresh { get; init; } = true;
+
+    /// <summary>
     /// Regular expressions whose matches are ignored when comparing - a build timestamp, a generated
     /// GUID, a version stamp. See <c>LinePatternMask</c>.
     /// </summary>

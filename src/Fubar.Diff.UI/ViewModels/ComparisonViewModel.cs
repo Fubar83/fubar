@@ -30,14 +30,33 @@ namespace Fubar.Diff.UI.ViewModels;
 /// the next/previous rules to <see cref="HunkNavigator"/>, and what gets written to
 /// <see cref="MergedDocument"/>, all in Core. What lives here is the UI state those produce.
 /// </summary>
-public partial class ComparisonViewModel : ViewModelBase
+public partial class ComparisonViewModel : ViewModelBase, IDisposable
 {
     private readonly IFileComparisonService _comparisonService;
     private readonly IMergeService _mergeService;
     private readonly IFilePickerService _filePicker;
+    private readonly IFileChangeWatcher _watcher;
 
     private FileComparison _comparison = FileComparison.Empty;
     private MergeState _mergeState = MergeState.Empty;
+
+    /// <summary>
+    /// When this tab last wrote to one of its own files, so the watcher can tell our save from
+    /// somebody else's edit.
+    ///
+    /// A timestamp rather than a flag held across the save, because the watcher announces changes only
+    /// after a quiet period: by the time it speaks, a flag cleared in a `finally` is long gone and our
+    /// own write arrives looking exactly like an external one. Saving already re-reads the file
+    /// deliberately, so acting on it again would be a wasted comparison at best and a "changed on disk"
+    /// banner about the user's own save at worst.
+    /// </summary>
+    private DateTime _lastSelfWrite = DateTime.MinValue;
+
+    /// <summary>
+    /// How long after our own write a change is assumed to be ours. Comfortably longer than the
+    /// watcher's quiet period, and far shorter than anyone can save twice.
+    /// </summary>
+    private static readonly TimeSpan SelfWriteWindow = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Suppresses persistence while defaults are being applied - otherwise each property assignment
@@ -49,14 +68,24 @@ public partial class ComparisonViewModel : ViewModelBase
         IFileComparisonService comparisonService,
         IMergeService mergeService,
         IFilePickerService filePicker,
+        IFileChangeWatcher watcher,
         ThemeManagerViewModel themeManager)
     {
         _comparisonService = comparisonService;
         _mergeService = mergeService;
         _filePicker = filePicker;
+        _watcher = watcher;
         ThemeManager = themeManager;
 
         Pane.Navigated += OnPaneNavigated;
+        _watcher.Changed += OnFilesChangedOnDisk;
+    }
+
+    /// <summary>Stops watching. Called when the tab closes; a watcher holds OS handles.</summary>
+    public void Dispose()
+    {
+        _watcher.Changed -= OnFilesChangedOnDisk;
+        _watcher.Dispose();
     }
 
     /// <summary>
@@ -93,6 +122,7 @@ public partial class ComparisonViewModel : ViewModelBase
             NormalizeUnicode = settings.NormalizeUnicode;
             ShowInvisibles = settings.ShowInvisibles;
             CollapseUnchanged = settings.CollapseUnchanged;
+            AutoRefresh = settings.AutoRefresh;
             IgnoreComments = settings.IgnoreComments;
             IgnoreBlankLines = settings.IgnoreBlankLines;
             SyntaxHighlighting = settings.SyntaxHighlighting;
@@ -134,6 +164,7 @@ public partial class ComparisonViewModel : ViewModelBase
         NormalizeUnicode = NormalizeUnicode,
         ShowInvisibles = ShowInvisibles,
         CollapseUnchanged = CollapseUnchanged,
+        AutoRefresh = AutoRefresh,
         IgnoreComments = IgnoreComments,
         IgnoreBlankLines = IgnoreBlankLines,
         SyntaxHighlighting = SyntaxHighlighting,
@@ -211,6 +242,44 @@ public partial class ComparisonViewModel : ViewModelBase
     /// <summary>True while a comparison or save is running, so the view can disable the toolbar.</summary>
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Re-run the comparison when the files change on disk.
+    ///
+    /// On by default. The workflow it serves is the ordinary one - the diff open beside the editor
+    /// doing the editing - and a stale diff that looks current is the one state in which the tool
+    /// actively misleads.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool AutoRefresh { get; set; } = true;
+
+    partial void OnAutoRefreshChanged(bool value)
+    {
+        if (!value)
+        {
+            FilesChangedOnDisk = false;
+        }
+
+        ApplyWatch();
+        DisplayOptionChanged();
+    }
+
+    /// <summary>
+    /// Set when the files changed but the comparison was NOT re-run, so the view can offer a Reload
+    /// button. That happens for one reason: unsaved merge decisions. Refreshing would silently discard
+    /// them, since decisions are keyed by hunk index and a new comparison renumbers the hunks - so the
+    /// choice belongs to the user, not to a file-system event.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool FilesChangedOnDisk { get; set; }
+
+    /// <summary>Re-runs the comparison after an on-disk change, discarding any pending decisions.</summary>
+    [RelayCommand]
+    private async Task ReloadAsync()
+    {
+        FilesChangedOnDisk = false;
+        await CompareAsync().ConfigureAwait(true);
+    }
 
     /// <summary>Set when the last attempt failed; the view shows it as an error banner.</summary>
     [ObservableProperty]
@@ -530,7 +599,10 @@ public partial class ComparisonViewModel : ViewModelBase
 
             // A fresh pair of files invalidates any decisions made about the previous one.
             _mergeState = MergeState.Empty;
+            FilesChangedOnDisk = false;
             Refresh();
+
+            ApplyWatch();
 
             // The pickers have done their job - give the row back to the diff.
             IsFileRowExpanded = false;
@@ -659,6 +731,7 @@ public partial class ComparisonViewModel : ViewModelBase
 
         IsBusy = true;
         ErrorMessage = null;
+        _lastSelfWrite = DateTime.UtcNow;
 
         try
         {
@@ -685,6 +758,10 @@ public partial class ComparisonViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+
+            // Stamped again on the way out: the re-read above can take longer than the watcher's quiet
+            // period, and the window has to still be open when the event finally arrives.
+            _lastSelfWrite = DateTime.UtcNow;
         }
     }
 
@@ -831,4 +908,64 @@ public partial class ComparisonViewModel : ViewModelBase
     /// <summary>Reports the position after the pane navigates. Navigation itself lives on the pane.</summary>
     private void OnPaneNavigated(object? sender, EventArgs e) =>
         StatusMessage = $"Change {Pane.CurrentHunk + 1} of {Pane.Hunks.Count}";
+
+    /// <summary>Starts or stops watching, to match the current files and the setting.</summary>
+    private void ApplyWatch()
+    {
+        if (AutoRefresh && _comparison.HasBothSides)
+        {
+            _watcher.Watch([_comparison.Left.Path, _comparison.Right.Path]);
+        }
+        else
+        {
+            _watcher.Stop();
+        }
+    }
+
+    /// <summary>
+    /// The files changed underneath us.
+    ///
+    /// Arrives on a background thread, so everything real happens back on the UI one. With unsaved
+    /// decisions we refuse to reload and raise a banner instead: a new comparison renumbers the hunks
+    /// those decisions are keyed by, so refreshing would either discard them or, worse, apply them to
+    /// different changes.
+    /// </summary>
+    private void OnFilesChangedOnDisk(object? sender, EventArgs e) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (!AutoRefresh
+                || !_comparison.HasBothSides
+                || DateTime.UtcNow - _lastSelfWrite < SelfWriteWindow)
+            {
+                return;
+            }
+
+            if (HasUnsavedMerge)
+            {
+                FilesChangedOnDisk = true;
+                return;
+            }
+
+            _ = RefreshFromDiskAsync();
+        });
+
+    /// <summary>
+    /// Re-runs the comparison against the files as they are now.
+    ///
+    /// A read failure is swallowed rather than shown, because this was not asked for: an editor that
+    /// saves by replacing the file leaves it missing for a moment, and turning that instant into an
+    /// error banner over a diff that was fine would be worse than waiting for the next event. The
+    /// banner offers a manual reload if the file really has gone.
+    /// </summary>
+    private async Task RefreshFromDiskAsync()
+    {
+        try
+        {
+            await CompareAsync().ConfigureAwait(true);
+        }
+        catch (TextFileReadException)
+        {
+            FilesChangedOnDisk = true;
+        }
+    }
 }

@@ -260,6 +260,21 @@
                    Message="{Binding ErrorMessage}"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
+        <!-- Raised only when a refresh was DECLINED - which happens for one reason, unsaved merge
+             decisions, since a new comparison renumbers the hunks those are keyed by. Everything else
+             reloads silently. -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHover}"
+                Padding="10,6"
+                IsVisible="{Binding FilesChangedOnDisk}">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="The files changed on disk. Reloading will discard your unsaved merge decisions."
+                           Foreground="{DynamicResource PostmanAmberBrush}"
+                           FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" />
+                <Button Classes="toolbar-btn" Content="Reload" Command="{Binding ReloadCommand}" />
+            </StackPanel>
+        </Border>
+
         <!-- Encodings, BOMs and line endings never reach the panes - the reader consumes them - so a
              file pair that differs only in those shows two identical-looking documents and no rows.
              This is the only place that difference can be reported at all. -->

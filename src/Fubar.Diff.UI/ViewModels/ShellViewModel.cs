@@ -108,6 +108,10 @@ public partial class ShellViewModel : ViewModelBase
 
         tab.ComparisonSucceeded -= OnComparisonSucceeded;
 
+        // A tab owns a file-system watcher, which owns OS handles. Closing without this leaks one per
+        // comparison for as long as the window is open.
+        tab.Dispose();
+
         if (Tabs.Count == 1)
         {
             Tabs.Clear();

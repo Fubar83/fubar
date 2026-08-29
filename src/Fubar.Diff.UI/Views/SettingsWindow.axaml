@@ -41,6 +41,9 @@
                                   ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
                                   SelectedItem="{Binding ThemeManager.CurrentTheme}" />
                     </Grid>
+                    <CheckBox Content="Reload when files change on disk"
+                              IsChecked="{Binding AutoRefresh}"
+                              ToolTip.Tip="Re-run the comparison when either file is saved elsewhere - for a diff kept open beside the editor doing the editing. Never discards unsaved merge decisions: if you have any, it offers a Reload button instead." />
                     <CheckBox Content="Syntax highlighting"
                               IsChecked="{Binding SyntaxHighlighting}"
                               ToolTip.Tip="Colour each pane by the file's own grammar, for every language a grammar ships for - not only the ones the code options below can compare. Purely visual: it never changes what the comparison found, and never re-runs it." />
