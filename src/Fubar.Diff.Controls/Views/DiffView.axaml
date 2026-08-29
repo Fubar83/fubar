@@ -21,7 +21,9 @@
             <views:DiffEditorPane x:Name="LeftPane"
                                   Grid.Column="0"
                                   Document="{Binding LeftDocument}"
-                                  ShowInvisibles="{Binding ShowInvisibles}" />
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding LeftSyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
 
             <!-- The map sits between the panes so it reads as belonging to both. -->
             <controls:DiffMap x:Name="Map"
@@ -38,7 +40,9 @@
             <views:DiffEditorPane x:Name="RightPane"
                                   Grid.Column="3"
                                   Document="{Binding RightDocument}"
-                                  ShowInvisibles="{Binding ShowInvisibles}" />
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding RightSyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
         </Grid>
 
         <GridSplitter x:Name="DetailSplitter"

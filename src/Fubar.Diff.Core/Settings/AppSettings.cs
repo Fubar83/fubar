@@ -39,6 +39,19 @@ public sealed record AppSettings
     /// </summary>
     public bool ShowInvisibles { get; init; }
 
+    /// <summary>Treat comments as absent - see <c>CodeComparisonOptions.IgnoreComments</c>.</summary>
+    public bool IgnoreComments { get; init; }
+
+    /// <summary>Treat added or removed blank lines as noise - see <c>CodeComparisonOptions.IgnoreBlankLines</c>.</summary>
+    public bool IgnoreBlankLines { get; init; }
+
+    /// <summary>
+    /// Colour the panes by the file's own grammar. On by default - it is the difference between
+    /// reading a diff of code and reading a diff of text that happens to be code - and persisted like
+    /// the theme, since it is a preference about how someone reads rather than about one comparison.
+    /// </summary>
+    public bool SyntaxHighlighting { get; init; } = true;
+
     public bool ReportPropertyOrder { get; init; }
 
     public bool MatchArraysByPosition { get; init; }

@@ -41,6 +41,9 @@
                                   ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
                                   SelectedItem="{Binding ThemeManager.CurrentTheme}" />
                     </Grid>
+                    <CheckBox Content="Syntax highlighting"
+                              IsChecked="{Binding SyntaxHighlighting}"
+                              ToolTip.Tip="Colour each pane by the file's own grammar, for every language a grammar ships for - not only the ones the code options below can compare. Purely visual: it never changes what the comparison found, and never re-runs it." />
                 </StackPanel>
 
                 <fc:Divider />
@@ -60,6 +63,25 @@
                     <CheckBox Content="Reformat for display"
                               IsChecked="{Binding NormalizeStructure}"
                               ToolTip.Tip="Pretty-print JSON or XML in the Text view for display - off by default, and the file on disk is never touched unless you then save. The Json view always shows both sides exactly as given, regardless of this." />
+                </StackPanel>
+
+                <fc:Divider />
+
+                <!-- Its own section rather than two more boxes under TEXT COMPARE: these two need a
+                     language to mean anything, and the caption below is what stops a user ticking
+                     "Ignore comments" on a log file and concluding the app is broken. -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="CODE COMPARE" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="{Binding CodeLanguageDescription}"
+                               Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap" />
+
+                    <CheckBox Content="Ignore comments"
+                              IsChecked="{Binding IgnoreComments}"
+                              ToolTip.Tip="A line whose only change is inside a comment stops being a difference, and a comment-only line that was added or removed is shown faintly rather than counted. The code on a line still compares normally." />
+                    <CheckBox Content="Ignore blank lines"
+                              IsChecked="{Binding IgnoreBlankLines}"
+                              ToolTip.Tip="Added or removed blank lines are shown faintly rather than counted - for a file whose vertical spacing was reformatted and nothing else." />
                 </StackPanel>
 
                 <fc:Divider />

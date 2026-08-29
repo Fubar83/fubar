@@ -62,4 +62,11 @@ public sealed record ComparisonOptions
 
     /// <summary>Settings for the semantic JSON pass, used when it runs.</summary>
     public JsonComparisonOptions Json { get; init; } = JsonComparisonOptions.Default;
+
+    /// <summary>
+    /// Settings that apply when the files are source code in a language the scanner knows. Inert for
+    /// everything else - the language comes from the file extension, so a pair the scanner cannot read
+    /// simply never consults these.
+    /// </summary>
+    public CodeComparisonOptions Code { get; init; } = CodeComparisonOptions.Default;
 }

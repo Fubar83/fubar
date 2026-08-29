@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
+using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Application.Comparison;
@@ -135,13 +136,37 @@ public sealed class FileComparisonService : IFileComparisonService
         var leftDoc = left with { Lines = leftLines };
         var rightDoc = right with { Lines = rightLines };
 
-        var rows = _engine.Align(
-            ToKeys(leftDoc.Lines, options),
-            ToKeys(rightDoc.Lines, options),
-            options);
+        // From the file extensions, not the content: see LanguageDetector for why guessing is worse
+        // than not knowing. None for anything unrecognised, which turns every code rule below into a
+        // no-op rather than into a wrong answer.
+        var language = LanguageDetector.ForPair(leftDoc.Path, rightDoc.Path);
+
+        // Null unless a code rule is actually switched on, so an ordinary comparison never pays for
+        // a scan it will not consult.
+        var leftCode = CodeLines.Analyze(leftDoc.Lines, language, options.Code);
+        var rightCode = CodeLines.Analyze(rightDoc.Lines, language, options.Code);
+
+        // Keys again, not display text: ComparisonLines is the document with its comments stripped
+        // when the user asked for that, and it is never shown to anyone - the projection below puts
+        // the real lines back, comments included.
+        var leftKeys = ToKeys(leftCode?.ComparisonLines ?? leftDoc.Lines, options);
+        var rightKeys = ToKeys(rightCode?.ComparisonLines ?? rightDoc.Lines, options);
+
+        var rows = _engine.Align(leftKeys, rightKeys, options);
+
+        // Before projection, so the slider judges "are these two lines interchangeable" on the same
+        // keys the engine just matched on. It never changes what the diff SAYS - only where an
+        // ambiguous run of added or removed lines sits among the identical lines around it.
+        rows = ChangeGroupSlider.Compact(rows, leftKeys, leftDoc.Lines, rightKeys, rightDoc.Lines);
 
         var projected = ProjectOntoDocuments(rows, leftDoc.Lines, rightDoc.Lines);
-        var textResult = DiffResult.Create(WithInlineSpans(projected));
+
+        // Filtered AFTER the rows exist, because a comment that was ADDED has nothing on the other
+        // side for a key to match it against - see CodeLineFilter.
+        var textResult = CodeLineFilter.Apply(
+            DiffResult.Create(WithInlineSpans(projected, language)),
+            leftCode,
+            rightCode);
 
         // Semantic refinement runs last, over the finished alignment: it only decides which rows COUNT
         // as changes, so everything downstream sees the same shape either way.
@@ -160,6 +185,7 @@ public sealed class FileComparisonService : IFileComparisonService
 
         return new FileComparison(leftDoc, rightDoc, options, semantic.Result)
         {
+            Language = language,
             IsSemantic = semantic.Applied,
             SemanticChanges = semantic.Changes,
             SemanticFallbackReason = semantic.FallbackReason,
@@ -213,7 +239,7 @@ public sealed class FileComparisonService : IFileComparisonService
     /// entire row is already the change, so picking out words within it would be noise. Rows are
     /// mutated in place in the list to avoid a second full copy of what can be a very long document.
     /// </summary>
-    private List<DiffLine> WithInlineSpans(List<DiffLine> rows)
+    private List<DiffLine> WithInlineSpans(List<DiffLine> rows, SourceLanguage language)
     {
         for (var i = 0; i < rows.Count; i++)
         {
@@ -223,7 +249,7 @@ public sealed class FileComparisonService : IFileComparisonService
                 continue;
             }
 
-            var (leftSpans, rightSpans) = _inlineEngine.DiffWithinLine(left, right);
+            var (leftSpans, rightSpans) = _inlineEngine.DiffWithinLine(left, right, language);
             rows[i] = row with { LeftSpans = leftSpans, RightSpans = rightSpans };
         }
 

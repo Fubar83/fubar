@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using DiffPlex;
 using DiffPlex.Model;
 using Fubar.Diff.Core.Comparison;
+using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Infrastructure.Comparison;
@@ -18,7 +19,10 @@ public sealed class DiffPlexInlineDiffEngine : IInlineDiffEngine
 {
     private readonly IDiffer _differ = new Differ();
 
-    public (IReadOnlyList<CharSpan> Left, IReadOnlyList<CharSpan> Right) DiffWithinLine(string left, string right)
+    public (IReadOnlyList<CharSpan> Left, IReadOnlyList<CharSpan> Right) DiffWithinLine(
+        string left,
+        string right,
+        SourceLanguage language = SourceLanguage.None)
     {
         // Identical lines should not have been routed here (only Modified rows are), but an empty side
         // has no characters to point at either way - bail before allocating anything.
@@ -34,11 +38,111 @@ public sealed class DiffPlexInlineDiffEngine : IInlineDiffEngine
             right,
             ignoreWhiteSpace: false,
             ignoreCase: false,
-            PunctuationChunker.Instance);
+            ChunkerFor(language));
 
         return (
             ToSpans(result.PiecesOld, result.DiffBlocks, isLeft: true),
             ToSpans(result.PiecesNew, result.DiffBlocks, isLeft: false));
+    }
+
+    /// <summary>
+    /// The chunker for a language: the real tokeniser where there is one, and the generic punctuation
+    /// split everywhere else. Cached per language rather than built per line - this runs once for every
+    /// modified row in the document.
+    /// </summary>
+    private static IChunker ChunkerFor(SourceLanguage language) => language switch
+    {
+        SourceLanguage.CSharp => CSharpChunker,
+        SourceLanguage.JavaScript => JavaScriptChunker,
+        SourceLanguage.TypeScript => TypeScriptChunker,
+        _ => PunctuationChunker.Instance,
+    };
+
+    private static readonly SourceTokenChunker CSharpChunker = new(SourceLanguage.CSharp);
+    private static readonly SourceTokenChunker JavaScriptChunker = new(SourceLanguage.JavaScript);
+    private static readonly SourceTokenChunker TypeScriptChunker = new(SourceLanguage.TypeScript);
+
+    /// <summary>
+    /// Splits a line on the language's own token boundaries.
+    ///
+    /// What this buys over the punctuation chunker below is entirely in the operators. Splitting on
+    /// every punctuation character makes <c>=&gt;</c> two chunks, so a lambda whose arrow moved
+    /// highlights as two unrelated fragments; worse, changing <c>==</c> to <c>===</c> highlights only
+    /// the third character, because the first two matched as separate chunks - a comparison operator
+    /// changing meaning is exactly the edit a reviewer must not miss.
+    ///
+    /// Strings and comments are deliberately broken down FURTHER, into words. They are single tokens to
+    /// the scanner, and rightly so, but a sentence in a message string is not one indivisible thing to
+    /// a reader - highlighting an entire error message because one word in it changed is the noise this
+    /// whole feature exists to remove.
+    /// </summary>
+    private sealed class SourceTokenChunker : IChunker
+    {
+        private readonly SourceLanguage _language;
+
+        public SourceTokenChunker(SourceLanguage language) => _language = language;
+
+        public IReadOnlyList<string> Chunk(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return [];
+            }
+
+            var tokens = SourceScanner.ScanLine(text, _language);
+            var chunks = new List<string>(tokens.Count);
+
+            foreach (var token in tokens)
+            {
+                if (token.Kind is SourceTokenKind.String or SourceTokenKind.Comment)
+                {
+                    AppendWords(text, token, chunks);
+                    continue;
+                }
+
+                chunks.Add(token.TextIn(text));
+            }
+
+            return chunks;
+        }
+
+        /// <summary>
+        /// Adds a token's text split on whitespace runs, each run kept as its own chunk so the
+        /// concatenation still equals the input - the offsets downstream are computed from chunk
+        /// lengths, so losing a character here would shift every span after it.
+        /// </summary>
+        private static void AppendWords(string text, SourceToken token, List<string> chunks)
+        {
+            var start = token.Start;
+
+            for (var i = token.Start; i < token.End; i++)
+            {
+                if (!char.IsWhiteSpace(text[i]))
+                {
+                    continue;
+                }
+
+                if (i > start)
+                {
+                    chunks.Add(text[start..i]);
+                }
+
+                var space = i;
+                while (space < token.End && char.IsWhiteSpace(text[space]))
+                {
+                    space++;
+                }
+
+                chunks.Add(text[i..space]);
+                start = space;
+                i = space - 1;
+            }
+
+            if (start < token.End)
+            {
+                chunks.Add(text[start..token.End]);
+            }
+        }
     }
 
     /// <summary>

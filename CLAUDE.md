@@ -55,7 +55,9 @@ Infrastructure ── *.Infrastructure  Adapters implementing the ports
   an allowlist for this, and it matters MORE here than it did across repositories: with everything a
   project reference away, a stray `using Fubar.Studio.Core` in the library would compile fine and
   nothing else would object.
-- **DiffPlex is confined to `Fubar.Diff.Infrastructure`**, behind `IDiffEngine`.
+- **DiffPlex is confined to `Fubar.Diff.Infrastructure`**, behind `IDiffEngine`. The *language*
+  scanner is not an engine and lives in `Fubar.Diff.Core/Languages` - it is hand-written, BCL-only
+  domain policy (what a comment is), not an adapter over anything.
 
 `tests/Fubar.Studio.Architecture.Tests` and `tests/Fubar.Diff.Architecture.Tests` fail the build on any
 of this.
@@ -151,6 +153,55 @@ first list) with navigation (walking the second) by matching `JsonPath` strings 
 thread the original text through explicitly from the previous result rather than recomputing it from
 `Left`/`Right` - that would silently substitute the canonicalized text the moment NormalizeStructure
 was toggled after the first render.
+
+**Sliding a change group is a PRESENTATION pass, and its safety comes from one rule** (Diff).
+`ChangeGroupSlider` moves a run of added or removed lines to the placement that reads best, and it is
+allowed to because the diff is genuinely AMBIGUOUS there: when a group is bounded by lines identical to
+the ones just inside it, several placements describe the same two documents and every one is equally
+minimal, so the aligner had no grounds to prefer one. It only ever moves a group across a line
+IDENTICAL (under the comparison keys) to the one leaving it, which is what makes both documents, the
+counts and the hunk count provably unchanged - only the pairing of equal lines moves. Two things follow.
+It runs BEFORE projection, so it compares keys rather than display text (with "ignore case" on, two
+lines the user can see differ were matched as equal, and the slider has to agree with the diff that
+already made that call) - but it SCORES on the display lines, because indentation is the whole signal
+and trimming it is exactly what a key may have done. And an ignored row is deliberately not slideable
+context: it is drawn faintly precisely so the reader can see where it is.
+
+**Do not reach for a cleverer alignment algorithm before measuring** (Diff). Patience diffing was built
+here, behind `IDiffEngine`, decorating `DiffPlexDiffEngine` - and then removed, because on measurement
+it produced an answer identical to DiffPlex's on every realistic C#/TS/JSON case tried (a method
+inserted between two others, a nested block added, a switch case added, an appended arrow function, a
+JSON object appended), and on the one case where it differed - a moved method - it was not better,
+merely differently shredded. DiffPlex is not a naive LCS and does not have the brace-matching failure
+patience is famous for fixing. The thing that DID fix the moved-method case is the slider above, which
+is a post-pass over ANY aligner's output. If a diff reads badly, check whether the alignment is wrong
+or merely badly PLACED before replacing the engine - they need different fixes, and only one of them
+was actually the problem here.
+
+**Comment stripping produces a KEY, and keys are not display text** (Diff). The same rule as the
+normalizer, and the one most likely to be broken by a "helpful" change: with "ignore comments" on,
+`CodeLines.ComparisonLines` is the document with its comments removed, and `FileComparisonService`
+projects the real lines back over every row before anyone sees them. The stripping also takes the
+whitespace immediately BEFORE a comment - without that, `foo(); // note` reduces to `foo(); ` and still
+fails to match the same line written without the comment, which is the entire point of the option.
+
+**Scanning a line for comments needs the whole document** (Diff). `SourceScanner.Scan` threads state
+across lines because a line cannot be classified on its own: the middle of a `/* … */`, of a C#
+verbatim string or of a JS template literal reads as ordinary code in isolation. `ScanLine`'s
+single-line overload exists ONLY for the inline differ, which is handed two already-matched lines with
+no document around them and where being wrong costs a slightly worse highlight rather than a wrong
+answer. Anything deciding what a line MEANS must use `Scan`.
+
+**Highlighting is keyed by file EXTENSION, comparison by `SourceLanguage`, and they know different
+amounts** (Diff). The scanner claims a language only where it has real rules (C#, JS, TS); TextMate
+colours anything it ships a grammar for. A Python file gets nothing from the code rules and is still
+far easier to read coloured, so `DiffEditorPane.SyntaxExtension` takes an extension rather than a
+language. Tying them together would mean either colouring nothing outside the short list or claiming to
+compare languages we cannot scan. `DiffEditorPane` installs TextMate on FIRST USE, not in its
+constructor, and swallows grammar failures - highlighting is a reading aid layered over the thing the
+user actually opened the app for, so it must degrade to plain text rather than take the pane down. That
+silence is why `Fubar.Diff.Controls.Tests` asserts the grammars resolve at all: a missing one would
+look exactly like a `.log` file, forever.
 
 **An ignored row is `Unchanged` + `IsIgnored`, never its own `ChangeKind`** (Diff). That is what keeps
 it out of `IsChange`, and therefore out of hunks, counts, the diff map and F7/F8 — while still letting

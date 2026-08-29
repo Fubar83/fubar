@@ -96,6 +96,33 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowInvisibles { get; set; }
 
+    /// <summary>
+    /// The file extension each side should be syntax-highlighted with (<c>.cs</c>, <c>.ts</c>), or
+    /// null for none.
+    ///
+    /// Per side rather than one for the comparison: comparing a file against its rewrite in another
+    /// language is a real thing people do, and it is precisely the case where colouring both halves
+    /// with one grammar would be most misleading.
+    ///
+    /// Supplied by the host, like <see cref="LeftRawText"/>, because this view model deliberately knows
+    /// nothing about where its content came from - a host comparing two in-memory strings has no
+    /// extension to offer and simply leaves these null.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? LeftSyntaxExtension { get; set; }
+
+    /// <summary>The right side's extension for highlighting - see <see cref="LeftSyntaxExtension"/>.</summary>
+    [ObservableProperty]
+    public partial string? RightSyntaxExtension { get; set; }
+
+    /// <summary>
+    /// Whether the panes colour their content at all. On by default, and a DISPLAY setting like
+    /// <see cref="ShowInvisibles"/> - it changes nothing about what the comparison found, so toggling
+    /// it never re-runs a diff.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool SyntaxHighlighting { get; set; } = true;
+
     /// <summary>The current hunk's rows, left side, or null when no hunk is selected.</summary>
     [ObservableProperty]
     public partial AlignedDocument? DetailLeft { get; set; }

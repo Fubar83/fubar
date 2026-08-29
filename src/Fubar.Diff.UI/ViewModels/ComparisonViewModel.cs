@@ -10,6 +10,7 @@ using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Json;
+using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Merge;
 using Fubar.Diff.Core.Models;
 using Fubar.Diff.Controls.ViewModels;
@@ -91,6 +92,9 @@ public partial class ComparisonViewModel : ViewModelBase
             NormalizeStructure = settings.NormalizeStructure;
             NormalizeUnicode = settings.NormalizeUnicode;
             ShowInvisibles = settings.ShowInvisibles;
+            IgnoreComments = settings.IgnoreComments;
+            IgnoreBlankLines = settings.IgnoreBlankLines;
+            SyntaxHighlighting = settings.SyntaxHighlighting;
             ReportPropertyOrder = settings.ReportPropertyOrder;
             MatchArraysByPosition = settings.MatchArraysByPosition;
             IgnoreNullVsMissing = settings.IgnoreNullVsMissing;
@@ -122,6 +126,9 @@ public partial class ComparisonViewModel : ViewModelBase
         NormalizeStructure = NormalizeStructure,
         NormalizeUnicode = NormalizeUnicode,
         ShowInvisibles = ShowInvisibles,
+        IgnoreComments = IgnoreComments,
+        IgnoreBlankLines = IgnoreBlankLines,
+        SyntaxHighlighting = SyntaxHighlighting,
         ReportPropertyOrder = ReportPropertyOrder,
         MatchArraysByPosition = MatchArraysByPosition,
         IgnoreNullVsMissing = IgnoreNullVsMissing,
@@ -223,7 +230,52 @@ public partial class ComparisonViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool ShowInvisibles { get; set; }
 
-    partial void OnShowInvisiblesChanged(bool value) => Pane.ShowInvisibles = value;
+    partial void OnShowInvisiblesChanged(bool value)
+    {
+        Pane.ShowInvisibles = value;
+        DisplayOptionChanged();
+    }
+
+    /// <summary>
+    /// Colour the panes by the file's own grammar. A DISPLAY setting like <see cref="ShowInvisibles"/>,
+    /// so it is pushed to the pane and remembered, but never re-runs the comparison - the diff is the
+    /// same diff either way.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool SyntaxHighlighting { get; set; } = true;
+
+    partial void OnSyntaxHighlightingChanged(bool value)
+    {
+        Pane.SyntaxHighlighting = value;
+        DisplayOptionChanged();
+    }
+
+    /// <summary>
+    /// Treat comments as absent. Only has an effect for files in a language the scanner knows - see
+    /// <see cref="CodeLanguageDescription"/>, which says so on screen rather than leaving the user to
+    /// wonder why a box did nothing.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IgnoreComments { get; set; }
+
+    /// <summary>Treat added or removed blank lines as noise. Same language caveat as <see cref="IgnoreComments"/>.</summary>
+    [ObservableProperty]
+    public partial bool IgnoreBlankLines { get; set; }
+
+    /// <summary>
+    /// Names the language the code rules are being read with, for the settings window.
+    ///
+    /// Worth saying out loud: both code options are silently inert for a pair the scanner cannot read,
+    /// and a checkbox that does nothing with no explanation is indistinguishable from a broken one.
+    /// </summary>
+    public string CodeLanguageDescription => _comparison.Language switch
+    {
+        SourceLanguage.CSharp => "Detected language: C#",
+        SourceLanguage.JavaScript => "Detected language: JavaScript",
+        SourceLanguage.TypeScript => "Detected language: TypeScript",
+        _ when !_comparison.HasBothSides => "These apply to C#, JavaScript and TypeScript files.",
+        _ => "No source language detected for this pair - these have no effect here.",
+    };
 
     /// <summary>
     /// Report a property that only moved. Off by default because JSON objects are unordered, so
@@ -328,6 +380,10 @@ public partial class ComparisonViewModel : ViewModelBase
 
     partial void OnModeChanged(ComparisonMode value) => OptionChanged();
 
+    partial void OnIgnoreCommentsChanged(bool value) => OptionChanged();
+
+    partial void OnIgnoreBlankLinesChanged(bool value) => OptionChanged();
+
     /// <summary>
     /// An option was toggled: re-run the comparison and remember the choice. Both are skipped while
     /// settings are being applied at startup, which would otherwise re-save what was just loaded.
@@ -341,6 +397,19 @@ public partial class ComparisonViewModel : ViewModelBase
 
         Recompare();
         OptionsChanged?.Invoke(this, System.EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// A DISPLAY setting was toggled: remember it, but do not re-run anything. These change how the
+    /// result is drawn, not what it is, and re-comparing a large pair to change a colour would be a
+    /// visible pause for no reason.
+    /// </summary>
+    private void DisplayOptionChanged()
+    {
+        if (!_loadingSettings)
+        {
+            OptionsChanged?.Invoke(this, System.EventArgs.Empty);
+        }
     }
 
     // ---- Merge --------------------------------------------------------------------------------
@@ -484,6 +553,11 @@ public partial class ComparisonViewModel : ViewModelBase
         NormalizeStructure = NormalizeStructure,
         NormalizeUnicode = NormalizeUnicode,
         Mode = Mode,
+        Code = new CodeComparisonOptions
+        {
+            IgnoreComments = IgnoreComments,
+            IgnoreBlankLines = IgnoreBlankLines,
+        },
         Json = new JsonComparisonOptions
         {
             ReportPropertyOrder = ReportPropertyOrder,
@@ -559,6 +633,13 @@ public partial class ComparisonViewModel : ViewModelBase
         _mergeState = _mergeState.RemapTo(result.Hunks.Count);
         HasUnsavedMerge = _mergeState.HasResolutions;
 
+        // Before Show, like the renderer metadata it resembles: Show replaces both documents, and a
+        // pane that learned its grammar afterwards would repaint the new content with the previous
+        // comparison's colours for a frame.
+        Pane.LeftSyntaxExtension = System.IO.Path.GetExtension(_comparison.Left.Path);
+        Pane.RightSyntaxExtension = System.IO.Path.GetExtension(_comparison.Right.Path);
+        Pane.SyntaxHighlighting = SyntaxHighlighting;
+
         Pane.Show(
             result,
             _comparison.IsSemantic,
@@ -575,6 +656,7 @@ public partial class ComparisonViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(HasFormatDifference));
         OnPropertyChanged(nameof(FormatDifferenceDetail));
+        OnPropertyChanged(nameof(CodeLanguageDescription));
 
         StatusMessage = BuildStatus(result);
     }

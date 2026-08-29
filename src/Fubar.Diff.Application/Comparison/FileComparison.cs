@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Json;
+using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Application.Comparison;
@@ -21,6 +22,16 @@ public sealed record FileComparison(
     ComparisonOptions Options,
     DiffResult Result)
 {
+    /// <summary>
+    /// The source language the pair was compared as, from their file extensions.
+    ///
+    /// <see cref="SourceLanguage.None"/> for everything the scanner does not know, which is most files
+    /// and is not a failure - it just means the code rules had nothing to apply and the comparison ran
+    /// as plain text. Carried on the result so the UI can say which rules were in play without
+    /// re-deriving it from the paths and risking a different answer.
+    /// </summary>
+    public SourceLanguage Language { get; init; } = SourceLanguage.None;
+
     /// <summary>Whether the semantic JSON pass ran, as opposed to a plain text comparison.</summary>
     public bool IsSemantic { get; init; }
 

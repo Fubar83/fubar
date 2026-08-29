@@ -28,6 +28,7 @@
   </Folder>
   <Folder Name="/tests/diff/">
     <Project Path="tests/Fubar.Diff.Core.Tests/Fubar.Diff.Core.Tests.csproj" />
+    <Project Path="tests/Fubar.Diff.Controls.Tests/Fubar.Diff.Controls.Tests.csproj" />
     <Project Path="tests/Fubar.Diff.Application.Tests/Fubar.Diff.Application.Tests.csproj" />
     <Project Path="tests/Fubar.Diff.Infrastructure.Tests/Fubar.Diff.Infrastructure.Tests.csproj" />
     <Project Path="tests/Fubar.Diff.Architecture.Tests/Fubar.Diff.Architecture.Tests.csproj" />

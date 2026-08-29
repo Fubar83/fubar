@@ -6,7 +6,43 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Syntax highlighting in the panes**, for every language a TextMate grammar ships for — not only the
+  ones the code options below understand. It follows the app's theme, and it is on by default with a
+  switch in Settings → Appearance. Purely visual: it never changes what the comparison found and never
+  re-runs it.
+
+- **Source-code comparison for C#, JavaScript and TypeScript.** The language comes from the file
+  extension, and it changes three things:
+
+  - **Ignore comments** (Settings → Code compare): a line whose only change is inside a comment stops
+    being a difference, and a comment-only line that was added or removed is drawn faintly rather than
+    counted. The code on a line still compares normally — `foo(); // note` matches `foo();`, but not
+    `bar(); // note`. Block comments and multi-line strings are tracked across lines, so the middle of
+    a `/* … */` is treated as a comment even though, read on its own, it looks like code.
+  - **Ignore blank lines** (Settings → Code compare), for a file whose vertical spacing was reformatted
+    and nothing else.
+  - **Character-level highlighting on token boundaries.** `==` becoming `===` now highlights the whole
+    operator instead of a lone third `=`, `>` becoming `>=` highlights `>=`, and a changed word inside
+    a long message string highlights that word rather than the entire string.
+
+  Both options are off by default — a changed comment *is* a change until you say otherwise — and both
+  say so on screen when the pair is not a language they apply to, rather than silently doing nothing.
+
 ### Changed
+
+- **A moved block now reads as the block, not as a brace and half of the next one.** When a run of
+  added or removed lines is bounded by lines identical to the ones just inside it, the diff is
+  genuinely ambiguous — several placements describe the same two files, and every one of them is
+  equally minimal, so no aligner has grounds to prefer one. Source code hits this constantly, because
+  the lines at a block's edges (`}`, `});`, blank lines) are its least distinctive. Move a method and
+  the removal was as likely to come back as `}` + the *next* method's opening as it was the method you
+  actually moved. Change groups are now slid to the placement that reads best — preferring boundaries
+  at blank lines and at lower indentation — which is what git's own compaction heuristic does, and for
+  the same reason. Provably content-neutral: a group only moves across a line identical to the one
+  leaving it, so both documents, the counts and the hunks are unchanged; only the pairing of equal
+  lines moves.
 
 - **The window is mostly diff now: five rows of chrome became two.** The file pickers collapse to a
   one-line `before.json ↔ after.json` summary the moment a comparison succeeds (click it to get them

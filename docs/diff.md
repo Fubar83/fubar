@@ -9,8 +9,9 @@ side by side, with the panes locked in alignment and changes highlighted line by
 It is a sibling of [Fubar API Studio](https://github.com/Fubar83/fubar) and shares its
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 
-> **Status: early.** Two-way file comparison, semantic JSON, merge and save work end to end. Folder
-> comparison, free-form editing and the other formats are not built yet — see [Roadmap](#roadmap).
+> **Status: early.** Two-way file comparison, semantic JSON, source-code comparison, merge and save
+> work end to end. Folder comparison, free-form editing and the other formats are not built yet — see
+> [Roadmap](#roadmap).
 
 ## Features
 
@@ -18,7 +19,22 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   numbers still match what is on disk across insertions.
 - **Aligned panes.** Insertions and deletions get a placeholder row opposite them, and the two
   editors scroll in lockstep, so the columns cannot drift apart.
-- **Character-level diff** inside modified lines, so a one-word change reads at a glance.
+- **Character-level diff** inside modified lines, so a one-word change reads at a glance. In a language
+  the tool knows, the split follows the language's own tokens: `==` becoming `===` highlights the whole
+  operator rather than a lone third `=`.
+- **Syntax highlighting**, for every language a TextMate grammar ships for, following the app theme.
+  On by default; switch it off in Settings → Appearance.
+- **Source-code comparison** for **C#, JavaScript and TypeScript**, picked from the file extension:
+  optionally ignore comments (a changed comment stops being a difference; a comment-only line that was
+  added is drawn faintly rather than counted — the code on the line still compares normally) and ignore
+  blank lines. Block comments, verbatim and raw strings, and template literals are tracked across lines,
+  so the inside of a multi-line comment is treated as a comment even where it reads like code. Both
+  options are off by default and say so on screen when the pair is not a language they apply to.
+- **Ambiguous change groups are placed where they read best.** When a run of added or removed lines is
+  bounded by lines identical to the ones just inside it, several placements describe the same two files
+  and all are equally minimal — which is why a moved method so often shows up as a closing brace plus
+  the start of the next one. Groups are slid toward blank lines and lower indentation, the same
+  heuristic git uses, without changing what the diff says.
 - **Diff map** between the panes — one tick per change, coloured by kind, click or drag to jump.
 - **Diff pane** below the panes: the old line stacked directly above the new one, so you can read
   both versions of one change without scrolling between two blocks a screen apart - and with the same
@@ -40,10 +56,10 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   does not parse as JSON.
 - **Comparison options**: ignore leading/trailing whitespace, ignore case, or reformat (pretty-print
   JSON/XML in the Text view - opt-in, never automatic; the Json view always shows both sides exactly as
-  given regardless of this) from the toolbar; a **Settings…** window holds the rest in two sections -
-  Text compare, and JSON compare (report key order, match arrays by position, treat `null` and a
-  missing property as equal, per-path array identity key overrides, and a list of JSON paths whose
-  differences are never reported).
+  given regardless of this) from the toolbar; a **Settings…** window holds the rest in three sections -
+  Text compare; Code compare (ignore comments, ignore blank lines); and JSON compare (report key order,
+  match arrays by position, treat `null` and a missing property as equal, per-path array identity key
+  overrides, and a list of JSON paths whose differences are never reported).
 - **Format differences are reported, not hidden** — two files whose content matches but whose
   encoding, byte order mark, line endings or trailing newline do not are called out explicitly, since
   none of those reach the panes and "identical" would be wrong.
@@ -100,7 +116,7 @@ Clean, layered, and enforced by tests — dependencies point inward only.
 | Project | Role |
 | --- | --- |
 | `Fubar.Controls` *(package)* | The shared design system and control library. Lives in [fubar-components](https://github.com/Fubar83/fubar). |
-| `src/Fubar.Diff.Core` | Domain models, policy, and ports — `DiffLine`, `DiffResult`, `ComparisonOptions`, `HunkNavigator`, `IDiffEngine`, `ITextFileReader`. BCL only. |
+| `src/Fubar.Diff.Core` | Domain models, policy, and ports — `DiffLine`, `DiffResult`, `ComparisonOptions`, `HunkNavigator`, `ChangeGroupSlider`, the `Languages` scanner, `IDiffEngine`, `ITextFileReader`. BCL only. |
 | `src/Fubar.Diff.Application` | Use cases — `FileComparisonService` orchestrates read → normalize → align → project. |
 | `src/Fubar.Diff.Infrastructure` | Adapters — the DiffPlex-backed engine, text/JSON/XML normalization, and file access. |
 | `src/Fubar.Diff.UI` | The desktop app (Avalonia + MVVM). Ships as `FubarDiff`. |
@@ -116,10 +132,14 @@ contain filler lines, and typing needs a bidirectional editor↔source offset ma
 search/**replace** (find works today). Virtualised diffing for very large files is the other gap: the
 whole aligned document is currently materialised per side, under a 64 MB reader cap.
 
-**Cut.** A CLI with exit codes, git integration and patch export; semantic XML, YAML, CSV, directory
-comparison and 3-way merge. Dropped deliberately rather than forgotten — `MergedDocument` already
-produces the line model a patch would need, and `MergeState` was designed so a third side is additive,
-if any of it is ever revived.
+**Next.** 3-way merge — base, theirs and mine side by side, non-conflicting changes merged
+automatically and conflicts resolved per hunk into the base. `MergeState` and `MergedDocument` already
+model decisions in a way a third side extends rather than replaces; `DiffResult`, `AlignedText` and
+every renderer are two-sided and are where the real work is.
+
+**Cut.** A CLI with exit codes, git integration and patch export; semantic XML, YAML, CSV and directory
+comparison. Dropped deliberately rather than forgotten — `MergedDocument` already produces the line
+model a patch would need.
 
 ## Contributing
 

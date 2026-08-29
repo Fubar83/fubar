@@ -42,7 +42,10 @@
                     <TextBlock DockPanel.Dock="Top" Text="Left"
                                Foreground="{DynamicResource TextSecondary}"
                                FontSize="10" Margin="8,2" />
-                    <views:DiffEditorPane Document="{Binding DetailLeft}" Emphasized="True" ShowInvisibles="{Binding ShowInvisibles}" />
+                    <views:DiffEditorPane Document="{Binding DetailLeft}" Emphasized="True"
+                                          ShowInvisibles="{Binding ShowInvisibles}"
+                                          SyntaxExtension="{Binding LeftSyntaxExtension}"
+                                          SyntaxHighlighting="{Binding SyntaxHighlighting}" />
                 </DockPanel>
 
                 <Border Grid.Row="1" Background="{DynamicResource BorderSubtle}" />
@@ -51,7 +54,10 @@
                     <TextBlock DockPanel.Dock="Top" Text="Right"
                                Foreground="{DynamicResource TextSecondary}"
                                FontSize="10" Margin="8,2" />
-                    <views:DiffEditorPane Document="{Binding DetailRight}" Emphasized="True" ShowInvisibles="{Binding ShowInvisibles}" />
+                    <views:DiffEditorPane Document="{Binding DetailRight}" Emphasized="True"
+                                          ShowInvisibles="{Binding ShowInvisibles}"
+                                          SyntaxExtension="{Binding RightSyntaxExtension}"
+                                          SyntaxHighlighting="{Binding SyntaxHighlighting}" />
                 </DockPanel>
             </Grid>
         </DockPanel>
