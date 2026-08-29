@@ -46,6 +46,17 @@ public sealed record ComparisonOptions
     /// </summary>
     public bool NormalizeStructure { get; init; }
 
+    /// <summary>
+    /// Compare text in Unicode normal form C, so sequences that render identically compare equal.
+    ///
+    /// The case this exists for: <c>é</c> is either U+00E9 or <c>e</c> followed by U+0301, and both
+    /// draw the same glyph. macOS decomposes where Windows and Linux compose, so the same edit made on
+    /// two machines can produce files that differ in every accented word and look identical in every
+    /// editor. Off by default - it IS a real difference in the bytes, and a tool whose job is showing
+    /// what changed should not hide one until asked.
+    /// </summary>
+    public bool NormalizeUnicode { get; init; }
+
     /// <summary>Text or semantic comparison. See <see cref="ComparisonMode"/>.</summary>
     public ComparisonMode Mode { get; init; } = ComparisonMode.Auto;
 
