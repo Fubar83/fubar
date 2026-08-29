@@ -18,6 +18,22 @@ All notable changes to this project are documented here. The format is based on
   hunting is the few that do not, through the same thousands of untouched lines. An ignored row is
   never folded away — its faint band is the only evidence that an ignore rule is doing anything.
 
+- **Folder comparison.** Two directory trees walked together and reported as a tree — changed, left
+  only, right only — opened from **Folders…** in the toolbar. Double-click any changed pair and it opens
+  as an ordinary comparison tab in the main window, which is the point: a folder comparison that could
+  not open a file would be a listing, not a diff tool.
+
+  Three defaults do most of the work of making it usable rather than merely correct. **Identical files
+  are hidden**, because on two real checkouts they are most of the tree and the answer to "what
+  differs" should not arrive buried inside them — the count of what is hidden stays in the status line,
+  so nothing goes missing quietly. **`.git`, `bin`, `obj`, `node_modules`** and friends are excluded out
+  of the box, editable, with `*` and `?` wildcards. And files are compared **by contents**: two files of
+  the same length are routinely different, and reporting them identical is the one mistake that costs a
+  comparison tool its credibility for good.
+
+  An unreadable folder is skipped rather than fatal — any tree of size contains something the current
+  user cannot open — but an unreadable *file* is reported as a difference, never as a match.
+
 - **Reload when files change on disk.** Keep the diff open beside the editor doing the editing and it
   follows along. On by default, switchable in Settings → Appearance.
 

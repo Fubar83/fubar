@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
+using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 using Fubar.Diff.UI.Tests;
 
@@ -19,7 +21,22 @@ namespace Fubar.Diff.UI.Tests;
 /// the type - the collision CLAUDE.md documents, and a using-alias cannot fix it, since a namespace
 /// member outranks one.
 /// </remarks>
-public sealed class TestApp : Avalonia.Application;
+public sealed class TestApp : Avalonia.Application
+{
+    /// <summary>
+    /// Loads the design system, so a test that constructs a real WINDOW gets the same control themes
+    /// the app does. Without them the Fubar.Controls types resolve but render untemplated, which is a
+    /// different thing from what ships and would hide a template-level mistake.
+    /// </summary>
+    public override void Initialize()
+    {
+        Resources.MergedDictionaries.Add(
+            new ResourceInclude((System.Uri?)null) { Source = new System.Uri("avares://Fubar.Controls/Themes/Palette.axaml") });
+
+        Styles.Add(new FluentTheme());
+        Styles.Add(new StyleInclude((System.Uri?)null) { Source = new System.Uri("avares://Fubar.Controls/Themes/Fubar.Controls.axaml") });
+    }
+}
 
 public static class TestAppBuilder
 {

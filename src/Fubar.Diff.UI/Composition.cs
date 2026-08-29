@@ -1,5 +1,6 @@
 using System;
 using Fubar.Diff.Application.Comparison;
+using Fubar.Diff.Application.Folders;
 using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Infrastructure;
 using Fubar.Diff.UI.Services;
@@ -27,6 +28,7 @@ internal static class Composition
                 // Application-layer use cases.
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();
                 services.AddSingleton<IThreeWayComparisonService, ThreeWayComparisonService>();
+                services.AddSingleton<IFolderComparisonService, FolderComparisonService>();
                 services.AddSingleton<JsonSemanticPass>();
                 services.AddSingleton<IMergeService, MergeService>();
 
@@ -50,6 +52,10 @@ internal static class Composition
                 services.AddTransient<MergeViewModel>();
                 services.AddSingleton<Func<MergeViewModel>>(provider =>
                     provider.GetRequiredService<MergeViewModel>);
+
+                services.AddTransient<FolderViewModel>();
+                services.AddSingleton<Func<FolderViewModel>>(provider =>
+                    provider.GetRequiredService<FolderViewModel>);
 
                 services.AddSingleton<ShellViewModel>();
             })

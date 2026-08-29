@@ -1,0 +1,312 @@
+using Avalonia.Headless.XUnit;
+using Fubar.Diff.Application.Folders;
+using Fubar.Diff.Core.Folders;
+using Fubar.Diff.Core.Settings;
+using Fubar.Diff.UI.Services;
+using Fubar.Diff.UI.ViewModels;
+
+namespace Fubar.Diff.UI.Tests;
+
+/// <summary>
+/// The folder comparison window's own behaviour: filtering, and leading somewhere.
+///
+/// The filtering is the part that decides whether the feature is usable at all. On two real checkouts
+/// the identical files are most of the tree, and an answer to "what differs" delivered inside ten
+/// thousand files that do not is not an answer.
+/// </summary>
+public class FolderViewModelTests
+{
+    private sealed class StubService(FolderComparison result) : IFolderComparisonService
+    {
+        public int Calls { get; private set; }
+
+        public Task<FolderComparison> CompareAsync(
+            string leftRoot, string rightRoot, FolderComparisonOptions options,
+            IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            Options = options;
+
+            return Task.FromResult(result);
+        }
+
+        public FolderComparisonOptions? Options { get; private set; }
+    }
+
+    private sealed class NoPicker : IFilePickerService
+    {
+        public Task<string?> PickFileAsync(string title) => Task.FromResult<string?>(null);
+
+        public Task<string?> PickSaveFileAsync(string title) => Task.FromResult<string?>(null);
+
+        public Task<string?> PickFolderAsync(string title) => Task.FromResult<string?>(null);
+    }
+
+    private static FolderEntry File(string name, FolderEntryStatus status) =>
+        new(name, name, false, status, 1, 1, [])
+        {
+            LeftRelativePath = status == FolderEntryStatus.RightOnly ? null : name,
+            RightRelativePath = status == FolderEntryStatus.LeftOnly ? null : name,
+        };
+
+    private static FolderEntry Directory(string name, params FolderEntry[] children) =>
+        new(name, name, true,
+            children.Any(c => c.Status != FolderEntryStatus.Same)
+                ? FolderEntryStatus.Different
+                : FolderEntryStatus.Same,
+            FolderEntry.NoSize, FolderEntry.NoSize, children);
+
+    private static (FolderViewModel Folders, StubService Service) Build(params FolderEntry[] entries)
+    {
+        var service = new StubService(FolderComparison.Create(@"C:\left", @"C:\right", entries));
+
+        var folders = new FolderViewModel(service, new NoPicker(), new ThemeManagerViewModel())
+        {
+            LeftPath = @"C:\left",
+            RightPath = @"C:\right",
+        };
+
+        return (folders, service);
+    }
+
+    private static IEnumerable<FolderEntryViewModel> Flatten(IReadOnlyList<FolderEntryViewModel> rows)
+    {
+        foreach (var row in rows)
+        {
+            yield return row;
+
+            foreach (var child in Flatten(row.Children))
+            {
+                yield return child;
+            }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Identical_files_are_hidden_by_default()
+    {
+        var (folders, _) = Build(
+            File("same.txt", FolderEntryStatus.Same),
+            File("changed.txt", FolderEntryStatus.Different));
+
+        await folders.CompareAsync();
+
+        Assert.Equal(["changed.txt"], Flatten(folders.Entries).Select(r => r.Name));
+    }
+
+    [AvaloniaFact]
+    public async Task Showing_identical_files_reveals_them()
+    {
+        var (folders, _) = Build(
+            File("same.txt", FolderEntryStatus.Same),
+            File("changed.txt", FolderEntryStatus.Different));
+
+        await folders.CompareAsync();
+        folders.ShowIdentical = true;
+
+        Assert.Equal(2, Flatten(folders.Entries).Count());
+    }
+
+    [AvaloniaFact]
+    public async Task A_folder_holding_only_identical_files_is_hidden_too()
+    {
+        // Whether a folder is worth showing is a fact about its CONTENTS, which is why the tree is
+        // rebuilt bottom-up rather than filtered per row.
+        var (folders, _) = Build(
+            Directory("quiet", File("a.txt", FolderEntryStatus.Same)),
+            Directory("noisy", File("b.txt", FolderEntryStatus.Different)));
+
+        await folders.CompareAsync();
+
+        Assert.Equal(["noisy", "b.txt"], Flatten(folders.Entries).Select(r => r.Name));
+    }
+
+    [AvaloniaFact]
+    public async Task A_folder_survives_when_anything_inside_it_differs_however_deep()
+    {
+        var (folders, _) = Build(
+            Directory("a", Directory("b", Directory("c", File("deep.txt", FolderEntryStatus.LeftOnly)))));
+
+        await folders.CompareAsync();
+
+        Assert.Equal(["a", "b", "c", "deep.txt"], Flatten(folders.Entries).Select(r => r.Name));
+    }
+
+    [AvaloniaFact]
+    public async Task The_status_line_says_how_many_identical_files_were_hidden()
+    {
+        // Nothing may go missing silently: the filter is aggressive, so the count of what it removed
+        // has to be on screen.
+        var (folders, _) = Build(
+            File("same.txt", FolderEntryStatus.Same),
+            File("changed.txt", FolderEntryStatus.Different));
+
+        await folders.CompareAsync();
+
+        Assert.Contains("1 identical file(s) hidden", folders.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public async Task Matching_folders_say_so_rather_than_showing_an_empty_tree()
+    {
+        var (folders, _) = Build(File("same.txt", FolderEntryStatus.Same));
+
+        await folders.CompareAsync();
+
+        Assert.True(folders.AreIdentical);
+        Assert.Contains("match", folders.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [AvaloniaFact]
+    public async Task Nothing_happens_until_both_folders_are_chosen()
+    {
+        var service = new StubService(FolderComparison.Empty);
+        var folders = new FolderViewModel(service, new NoPicker(), new ThemeManagerViewModel())
+        {
+            LeftPath = @"C:\left",
+        };
+
+        await folders.CompareAsync();
+
+        Assert.Equal(0, service.Calls);
+    }
+
+    // ---- Opening a pair -------------------------------------------------------------------------
+
+    [AvaloniaFact]
+    public async Task Opening_a_pair_asks_for_absolute_paths_on_both_sides()
+    {
+        // The event the shell turns into a tab. A folder comparison that could not open a file would
+        // be a listing rather than a diff tool.
+        var (folders, _) = Build(Directory("src", File("app.cs", FolderEntryStatus.Different)));
+
+        await folders.CompareAsync();
+
+        FileComparisonRequest? request = null;
+        folders.CompareRequested += (_, r) => request = r;
+
+        folders.SelectedEntry = Flatten(folders.Entries).Single(r => r.CanCompare);
+        folders.OpenCommand.Execute(null);
+
+        Assert.NotNull(request);
+        Assert.Equal(Path.Combine(@"C:\left", "app.cs"), request!.LeftPath);
+        Assert.Equal(Path.Combine(@"C:\right", "app.cs"), request.RightPath);
+    }
+
+    [AvaloniaFact]
+    public async Task A_file_only_one_side_has_cannot_be_opened()
+    {
+        var (folders, _) = Build(File("only-left.txt", FolderEntryStatus.LeftOnly));
+
+        await folders.CompareAsync();
+
+        var raised = false;
+        folders.CompareRequested += (_, _) => raised = true;
+
+        folders.SelectedEntry = Flatten(folders.Entries).Single();
+        folders.OpenCommand.Execute(null);
+
+        Assert.False(folders.SelectedEntry.CanCompare);
+        Assert.False(raised);
+    }
+
+    [AvaloniaFact]
+    public async Task A_directory_cannot_be_opened_as_a_file_diff()
+    {
+        var (folders, _) = Build(Directory("src", File("a.cs", FolderEntryStatus.Different)));
+
+        await folders.CompareAsync();
+
+        var raised = false;
+        folders.CompareRequested += (_, _) => raised = true;
+
+        folders.SelectedEntry = Flatten(folders.Entries).First(r => r.IsDirectory);
+        folders.OpenCommand.Execute(null);
+
+        Assert.False(raised);
+    }
+
+    [AvaloniaFact]
+    public void Opening_with_nothing_selected_does_nothing()
+    {
+        var (folders, _) = Build();
+
+        var raised = false;
+        folders.CompareRequested += (_, _) => raised = true;
+
+        folders.OpenCommand.Execute(null);
+
+        Assert.False(raised);
+    }
+
+    // ---- Options --------------------------------------------------------------------------------
+
+    [AvaloniaFact]
+    public async Task Exclusions_are_split_on_commas_and_whitespace()
+    {
+        var (folders, service) = Build();
+        folders.ExcludeList = "bin, obj  *.dll;.git";
+
+        await folders.CompareAsync();
+
+        Assert.Equal(["bin", "obj", "*.dll", ".git"], service.Options!.Exclude);
+    }
+
+    [AvaloniaFact]
+    public async Task An_empty_exclusion_entry_is_dropped()
+    {
+        // A stray comma would otherwise become a pattern that matches nothing and puzzles the reader.
+        var (folders, service) = Build();
+        folders.ExcludeList = "bin,,  ,obj";
+
+        await folders.CompareAsync();
+
+        Assert.Equal(["bin", "obj"], service.Options!.Exclude);
+    }
+
+    [AvaloniaFact]
+    public async Task The_toggles_reach_the_comparison()
+    {
+        var (folders, service) = Build();
+        folders.Recursive = false;
+        folders.CompareContents = false;
+
+        await folders.CompareAsync();
+
+        Assert.False(service.Options!.Recursive);
+        Assert.False(service.Options.CompareContents);
+    }
+
+    [AvaloniaFact]
+    public void Settings_are_restored_and_captured()
+    {
+        var (folders, _) = Build();
+
+        folders.ApplyDefaults(AppSettings.Default with
+        {
+            FolderShowIdentical = true,
+            FolderExclude = ["one", "two"],
+        });
+
+        Assert.True(folders.ShowIdentical);
+        Assert.Equal("one, two", folders.ExcludeList);
+
+        var captured = folders.CaptureOptions(AppSettings.Default);
+        Assert.True(captured.FolderShowIdentical);
+        Assert.Equal(["one", "two"], captured.FolderExclude);
+    }
+
+    [AvaloniaFact]
+    public void An_empty_stored_exclusion_list_keeps_the_defaults()
+    {
+        // A settings file written before folder comparison existed must not silently turn off the
+        // exclusions that make the feature usable.
+        var (folders, _) = Build();
+        var before = folders.ExcludeList;
+
+        folders.ApplyDefaults(AppSettings.Default);
+
+        Assert.Equal(before, folders.ExcludeList);
+        Assert.Contains(".git", folders.ExcludeList, StringComparison.Ordinal);
+    }
+}

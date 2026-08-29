@@ -43,6 +43,22 @@ public sealed class FilePickerService : IFilePickerService
         return file?.TryGetLocalPath();
     }
 
+    public async Task<string?> PickFolderAsync(string title)
+    {
+        if (MainWindow is not { } window)
+        {
+            return null;
+        }
+
+        var folders = await window.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+        }).ConfigureAwait(true);
+
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+    }
+
     private static Window? MainWindow =>
         Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
             ? desktop.MainWindow

@@ -20,6 +20,7 @@ public partial class ShellViewModel : ViewModelBase
 {
     private readonly Func<ComparisonViewModel> _newTab;
     private readonly Func<MergeViewModel> _newMerge;
+    private readonly Func<FolderViewModel> _newFolders;
     private readonly ISettingsStore _settingsStore;
 
     private AppSettings _settings = AppSettings.Default;
@@ -27,11 +28,13 @@ public partial class ShellViewModel : ViewModelBase
     public ShellViewModel(
         Func<ComparisonViewModel> newTab,
         Func<MergeViewModel> newMerge,
+        Func<FolderViewModel> newFolders,
         ISettingsStore settingsStore,
         ThemeManagerViewModel themeManager)
     {
         _newTab = newTab;
         _newMerge = newMerge;
+        _newFolders = newFolders;
         _settingsStore = settingsStore;
         ThemeManager = themeManager;
 
@@ -159,6 +162,31 @@ public partial class ShellViewModel : ViewModelBase
         merge.ApplyDefaults(_settings);
 
         return merge;
+    }
+
+    /// <summary>
+    /// Builds a folder comparison, seeded with the persisted defaults, and wires its "open this pair"
+    /// event to a new tab.
+    ///
+    /// That wiring is the whole reason a folder comparison belongs to the shell rather than standing
+    /// alone: it exists to lead somewhere. A folder comparison that could not open a file would be a
+    /// listing, not a diff tool.
+    /// </summary>
+    public FolderViewModel CreateFolderComparison()
+    {
+        var folders = _newFolders();
+        folders.ApplyDefaults(_settings);
+
+        folders.CompareRequested += (_, request) =>
+            _ = AddTab().InitializeAsync(request.LeftPath, request.RightPath);
+
+        folders.OptionsChanged += (_, _) =>
+        {
+            _settings = folders.CaptureOptions(_settings);
+            _ = _settingsStore.SaveAsync(_settings);
+        };
+
+        return folders;
     }
 
     /// <summary>Loads dropped files into the current tab, opening one if there is none.</summary>

@@ -13,4 +13,7 @@ public interface IFilePickerService
 
     /// <summary>Prompts for a destination to write to. Returns null if the user cancels.</summary>
     Task<string?> PickSaveFileAsync(string title);
+
+    /// <summary>Prompts for an existing folder, for a folder comparison. Returns null if cancelled.</summary>
+    Task<string?> PickFolderAsync(string title);
 }

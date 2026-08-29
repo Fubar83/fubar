@@ -92,6 +92,23 @@ public partial class MainWindow : Window
         new MergeWindow { DataContext = shell.CreateMerge() }.Show(this);
     }
 
+    /// <summary>
+    /// Opens a folder comparison in its own window.
+    ///
+    /// Shown rather than modal, and deliberately: opening a file pair from it creates a TAB in this
+    /// window, so the two are used together - blocking this one would make the feature's entire point
+    /// unreachable.
+    /// </summary>
+    private void OnFoldersClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel shell)
+        {
+            return;
+        }
+
+        new FolderWindow { DataContext = shell.CreateFolderComparison() }.Show(this);
+    }
+
     private static void OnDragOver(object? sender, DragEventArgs e)
     {
         // Advertise Copy only when the payload actually contains files; otherwise the cursor promises

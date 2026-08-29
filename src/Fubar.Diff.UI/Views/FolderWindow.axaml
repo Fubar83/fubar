@@ -1,0 +1,167 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+        x:Class="Fubar.Diff.UI.Views.FolderWindow"
+        x:DataType="vm:FolderViewModel"
+        Title="Compare folders"
+        Width="1000" Height="700"
+        MinWidth="700" MinHeight="400"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgEditorCanvas}">
+
+    <Window.Styles>
+        <!-- Status is carried by a bool per class, since Avalonia's Classes is not bindable. The
+             colours are the ones the diff panes already use, so "green means added on the right" means
+             the same thing in both places. -->
+        <Style Selector="TextBlock.status-different">
+            <Setter Property="Foreground" Value="{DynamicResource PostmanAmberBrush}" />
+        </Style>
+        <Style Selector="TextBlock.status-left">
+            <Setter Property="Foreground" Value="{DynamicResource MethodDeleteBrush}" />
+        </Style>
+        <Style Selector="TextBlock.status-right">
+            <Setter Property="Foreground" Value="{DynamicResource MethodPostBrush}" />
+        </Style>
+        <Style Selector="TextBlock.status-same">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <!-- Directories open by default. A folder comparison is opened to find what differs, and a tree
+             that has to be unfolded before it says anything has answered nothing - especially with
+             identical files hidden, when what is left IS the answer. -->
+        <Style Selector="TreeViewItem" x:DataType="vm:FolderEntryViewModel">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded}" />
+        </Style>
+    </Window.Styles>
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Return" Command="{Binding OpenCommand}" />
+        <KeyBinding Gesture="F5" Command="{Binding CompareCommand}" />
+    </Window.KeyBindings>
+
+    <DockPanel>
+
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="10,8">
+            <StackPanel Spacing="8">
+
+                <Grid ColumnDefinitions="*,Auto,*">
+                    <fc:LabeledField Grid.Column="0" Header="Left folder" Margin="0,0,8,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding LeftPath}" PlaceholderText="Choose a folder…" />
+                            <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                    Margin="6,0,0,0" Command="{Binding BrowseLeftCommand}" />
+                        </Grid>
+                    </fc:LabeledField>
+
+                    <fc:Divider Grid.Column="1" Orientation="Vertical" Margin="4,0" />
+
+                    <fc:LabeledField Grid.Column="2" Header="Right folder" Margin="8,0,0,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding RightPath}" PlaceholderText="Choose a folder…" />
+                            <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                    Margin="6,0,0,0" Command="{Binding BrowseRightCommand}" />
+                        </Grid>
+                    </fc:LabeledField>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="primary-btn" Content="Compare"
+                            Command="{Binding CompareCommand}" IsVisible="{Binding !IsBusy}"
+                            ToolTip.Tip="Walk both folders (F5)" />
+                    <Button Classes="toolbar-btn" Content="Cancel"
+                            Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" />
+
+                    <fc:Divider Orientation="Vertical" />
+
+                    <!-- Off by default. The answer to "what differs" should not arrive buried in ten
+                         thousand files that do not - and the count of what is hidden is in the status
+                         line, so nothing goes missing silently. -->
+                    <CheckBox Content="Show identical" IsChecked="{Binding ShowIdentical}"
+                              ToolTip.Tip="Include files that are the same on both sides. Off by default: on two real checkouts they are most of the tree." />
+                    <CheckBox Content="Subfolders" IsChecked="{Binding Recursive}" />
+                    <CheckBox Content="Compare contents" IsChecked="{Binding CompareContents}"
+                              ToolTip.Tip="Read both files rather than trusting their size. Two files of the same length are routinely different." />
+
+                    <fc:Divider Orientation="Vertical" />
+
+                    <TextBlock Text="Exclude" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondary}" FontSize="11" />
+                    <TextBox Text="{Binding ExcludeList}" MinWidth="240"
+                             ToolTip.Tip="Names never compared or descended into. Wildcards * and ? are allowed; separate with commas." />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                           Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap" />
+                <TextBlock Grid.Column="1" Text="{Binding ProgressText}"
+                           Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                           TextTrimming="CharacterEllipsis" MaxWidth="420"
+                           IsVisible="{Binding IsBusy}" />
+            </Grid>
+        </Border>
+
+        <fc:Banner DockPanel.Dock="Top"
+                   Severity="Error"
+                   Message="{Binding ErrorMessage}"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+        <Panel>
+            <fc:EmptyState Title="Nothing compared yet"
+                           Description="Pick a folder on each side. Identical files are hidden by default; tick Show identical to see everything."
+                           IsVisible="{Binding !HasResults}" />
+
+            <fc:EmptyState Title="The folders match"
+                           Description="Every file is present on both sides with identical contents."
+                           IsVisible="{Binding AreIdentical}" />
+
+            <!-- A tree rather than a flat list: the question is "what changed in this project", and the
+                 answer is shaped like the project. Double-click or Enter opens a file pair as an
+                 ordinary comparison in the main window. -->
+            <TreeView x:Name="Tree"
+                      ItemsSource="{Binding Entries}"
+                      SelectedItem="{Binding SelectedEntry}"
+                      IsVisible="{Binding HasResults}"
+                      DoubleTapped="OnRowActivated">
+                <TreeView.ItemTemplate>
+                    <TreeDataTemplate x:DataType="vm:FolderEntryViewModel" ItemsSource="{Binding Children}">
+                        <Grid ColumnDefinitions="*,90,90,90" Margin="0,1">
+                            <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                       FontWeight="{Binding NameWeight}"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Column="1" Text="{Binding StatusText}"
+                                       FontSize="11" VerticalAlignment="Center"
+                                       Classes.status-same="{Binding IsSame}"
+                                       Classes.status-different="{Binding IsDifferent}"
+                                       Classes.status-left="{Binding IsLeftOnly}"
+                                       Classes.status-right="{Binding IsRightOnly}" />
+
+                            <TextBlock Grid.Column="2" Text="{Binding LeftSizeText}"
+                                       FontSize="11" HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Column="3" Text="{Binding RightSizeText}"
+                                       FontSize="11" HorizontalAlignment="Right"
+                                       Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                        </Grid>
+                    </TreeDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+        </Panel>
+    </DockPanel>
+</Window>

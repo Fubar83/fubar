@@ -10,8 +10,8 @@ It is a sibling of [Fubar API Studio](https://github.com/Fubar83/fubar) and shar
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 
 > **Status: early.** Two-way file comparison, semantic JSON, source-code comparison, three-way merge,
-> and save all work end to end. Folder comparison, free-form editing and the other formats are not
-> built yet — see [Roadmap](#roadmap).
+> folder comparison and save all work end to end. Free-form editing and the other formats are not built
+> yet — see [Roadmap](#roadmap).
 
 ## Features
 
@@ -51,6 +51,12 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   difference is marked with an accent bar and outline, so it stays findable among the other changes.
 - **Merge and save** — take the left or right version of a change (Alt+Left / Alt+Right), then save.
   The file's encoding, BOM, line endings and trailing newline are preserved byte-for-byte.
+- **Folder comparison** — two directory trees walked together and reported as a tree: changed, left
+  only, right only. Identical files are **hidden by default** (the count is in the status line), since
+  on two real checkouts they are most of what is there. `.git`, `bin`, `obj`, `node_modules` and
+  friends are excluded out of the box and the list is editable, with `*` and `?` wildcards. Files are
+  compared by **contents**, not size — two files of the same length are routinely different. Double-click
+  any changed pair to open it as an ordinary comparison tab.
 - **Three-way merge** — give it a common ancestor and two edits and it settles everything only one side
   touched, plus everything both sides changed identically, on its own. What is left is the set that
   genuinely disagrees. Three panes, the ancestor in the middle, all locked in step; conflicts are marked
@@ -188,10 +194,15 @@ rather than "where are the changes", which the conflict count and next/previous 
 map would have to colour its ticks from one of three columns with no right answer for the other two.
 Merging more than two edits, and merging directories, are not built.
 
-**Cut.** A CLI with exit codes and patch export; semantic XML, YAML, CSV and directory comparison.
-Dropped deliberately rather than forgotten — `MergedDocument` already produces the line model a patch
-would need. Git integration is now partly there: `--merge $BASE $LOCAL $REMOTE` is the argument order
-`git mergetool` passes, so it can be configured as one.
+Folder comparison compares and opens, but does not COPY: there is no "make this side match that one".
+That is the other half of what people use Beyond Compare for, and it is deliberately not built yet -
+a diff tool that deletes the wrong file once is never trusted again, so it wants care rather than
+speed.
+
+**Cut.** A CLI with exit codes and patch export; semantic XML, YAML and CSV. Dropped deliberately
+rather than forgotten — `MergedDocument` already produces the line model a patch would need. Git
+integration is now partly there: `--merge $BASE $LOCAL $REMOTE` is the argument order `git mergetool`
+passes, so it can be configured as one.
 
 ## Contributing
 

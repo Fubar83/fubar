@@ -105,6 +105,8 @@ public class MergeViewModelTests
         public Task<string?> PickFileAsync(string title) => Task.FromResult(file);
 
         public Task<string?> PickSaveFileAsync(string title) => Task.FromResult(save);
+
+        public Task<string?> PickFolderAsync(string title) => Task.FromResult<string?>(null);
     }
 
     /// <summary>One auto-merged region, then a conflict, separated by a line all three agree on.</summary>

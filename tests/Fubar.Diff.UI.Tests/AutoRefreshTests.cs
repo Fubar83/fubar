@@ -127,6 +127,8 @@ public class AutoRefreshTests
         public Task<string?> PickFileAsync(string title) => Task.FromResult<string?>(null);
 
         public Task<string?> PickSaveFileAsync(string title) => Task.FromResult<string?>(null);
+
+        public Task<string?> PickFolderAsync(string title) => Task.FromResult<string?>(null);
     }
 
     private static (ComparisonViewModel Tab, FakeWatcher Watcher, StubComparisonService Service) Build()

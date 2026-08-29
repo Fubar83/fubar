@@ -95,6 +95,18 @@ public sealed record AppSettings
     /// </summary>
     public IReadOnlyList<string> IgnoredPaths { get; init; } = [];
 
+    /// <summary>
+    /// Show identical files in a folder comparison. Off by default - see
+    /// <c>FolderViewModel.ShowIdentical</c> for why that default is what makes the feature usable.
+    /// </summary>
+    public bool FolderShowIdentical { get; init; }
+
+    /// <summary>
+    /// Names a folder comparison never descends into or compares. Empty means "use the defaults", which
+    /// is how a settings file written before this existed keeps working.
+    /// </summary>
+    public IReadOnlyList<string> FolderExclude { get; init; } = [];
+
     /// <summary>How many entries <see cref="Recent"/> keeps.</summary>
     public const int MaxRecent = 10;
 }

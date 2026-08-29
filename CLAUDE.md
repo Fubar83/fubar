@@ -198,6 +198,20 @@ banner before (`HasUnresolvedConflicts`) and names the count in the status line 
 this by throwing in the service, and do not drop the warnings - the fallback is only acceptable while
 it cannot be a surprise.
 
+**A folder comparison's leniency stops at file CONTENT** (Diff). Every listing in
+`FileSystemFolderScanner` swallows its exceptions and returns empty, because a tree of any size holds
+something the current user cannot open and refusing to compare two checkouts over one locked folder is
+a worse answer than comparing the rest. `ContentsEqual` does the opposite: an unreadable file is
+reported as a DIFFERENCE, never as a match, because "these are identical" about a file that could not
+be opened is the one answer a comparison must never give. Do not make these consistent with each other
+- they are deliberately opposite.
+
+**Each side of a folder comparison keeps its OWN relative path** (Diff). Names pair case-insensitively
+by default, so `README.md` on one side is the same entry as `readme.md` on the other - and building
+both absolute paths from one spelling works on a case-insensitive filesystem and fails to open the file
+on a case-sensitive one. `FolderEntry.LeftRelativePath`/`RightRelativePath` exist for that, and are
+what the UI must use when opening a pair; `RelativePath` is for display and identity only.
+
 **Auto-refresh must never discard a merge decision** (Diff). Decisions are keyed by hunk INDEX and a
 fresh comparison renumbers the hunks, so reloading over unsaved ones would either drop them or apply
 them to different changes - silently, and not noticed until the save. `ComparisonViewModel` therefore

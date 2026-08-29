@@ -126,6 +126,10 @@
                         <Button Classes="toolbar-btn" Content="3-way merge…"
                                 ToolTip.Tip="Merge two edits of a common ancestor"
                                 Click="OnMergeClick" />
+
+                        <Button Classes="toolbar-btn" Content="Folders…"
+                                ToolTip.Tip="Compare two directory trees, and open the files that differ"
+                                Click="OnFoldersClick" />
                     </StackPanel>
                 </Grid>
 
