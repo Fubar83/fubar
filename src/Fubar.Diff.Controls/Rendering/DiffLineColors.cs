@@ -64,6 +64,22 @@ internal static class DiffLineColors
     public static IBrush? IgnoredBackground(StyledElement host) => Tinted(host, "TextSecondary", 0.07);
 
     /// <summary>
+    /// The band behind a row both sides of a three-way merge changed differently.
+    ///
+    /// Amber rather than one of the change colours, and checked BEFORE them: green and red already
+    /// mean "added" and "removed", and every column of a conflict is one of those - so reusing them
+    /// would leave the one thing that needs a decision looking exactly like the many that do not.
+    /// Stronger than an ordinary change tint too, because a conflict is the only row in the window that
+    /// will not resolve itself if ignored.
+    ///
+    /// Distinct from <see cref="CurrentHunkAccent"/>'s orange by SHAPE as much as hue: that is a bar
+    /// down the edge and a hairline box, this is a full-width wash, so the two read as different things
+    /// even where the colours are neighbours.
+    /// </summary>
+    public static IBrush? ConflictBackground(StyledElement host, DiffEmphasis emphasis = DiffEmphasis.Normal) =>
+        Tinted(host, "PostmanAmberBrush", emphasis == DiffEmphasis.Faded ? 0.12 : 0.30);
+
+    /// <summary>
     /// The tint for the characters that actually changed within a modified line - now the PRIMARY
     /// signal for a modified row, since <see cref="LineBackground"/> no longer washes the row itself.
     /// At <see cref="DiffEmphasis.Emphasized"/> (the close-up panes) it is also the ONLY signal for a

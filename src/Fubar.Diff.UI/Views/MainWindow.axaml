@@ -118,6 +118,14 @@
 
                         <Button Classes="toolbar-btn" Content="+ Tab" ToolTip.Tip="Open another comparison (Ctrl+T)"
                                 Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).NewTabCommand}" />
+
+                        <!-- A merge needs three files and resolves per region rather than per hunk, so
+                             it opens its own window rather than becoming a second mode of this one.
+                             The button sits with the file pickers because it answers the same question
+                             they do: what am I looking at. -->
+                        <Button Classes="toolbar-btn" Content="3-way merge…"
+                                ToolTip.Tip="Merge two edits of a common ancestor"
+                                Click="OnMergeClick" />
                     </StackPanel>
                 </Grid>
 

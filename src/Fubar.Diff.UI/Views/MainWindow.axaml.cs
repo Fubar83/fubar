@@ -59,6 +59,23 @@ public partial class MainWindow : Window
         new SettingsWindow { DataContext = tab }.ShowDialog(this);
     }
 
+    /// <summary>
+    /// Opens a three-way merge in its own window.
+    ///
+    /// Shown rather than shown-as-dialog: resolving a merge is a long task, and blocking the
+    /// comparison window for its duration would take away the one thing most likely to be wanted
+    /// alongside it - a two-way diff of the same files.
+    /// </summary>
+    private void OnMergeClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel shell)
+        {
+            return;
+        }
+
+        new MergeWindow { DataContext = shell.CreateMerge() }.Show(this);
+    }
+
     private static void OnDragOver(object? sender, DragEventArgs e)
     {
         // Advertise Copy only when the payload actually contains files; otherwise the cursor promises

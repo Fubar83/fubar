@@ -1,0 +1,173 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+        xmlns:dv="using:Fubar.Diff.Controls.Views"
+        mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="800"
+        x:Class="Fubar.Diff.UI.Views.MergeWindow"
+        x:DataType="vm:MergeViewModel"
+        Title="Three-way merge"
+        Width="1400" Height="820"
+        MinWidth="900" MinHeight="500"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgEditorCanvas}"
+        DragDrop.AllowDrop="True">
+
+    <!-- Its own window rather than a tab in the main one. A merge has three files, resolves per region
+         rather than per hunk, and writes to a destination the user picks - none of which the main
+         window's toolbar or its ComparisonViewModel-typed bindings can express without becoming a
+         two-mode window throughout. -->
+
+    <Window.KeyBindings>
+        <!-- The same gestures the two-way window uses, pointed at regions instead of hunks, so the
+             muscle memory carries over. -->
+        <KeyBinding Gesture="F8" Command="{Binding Pane.NextRegionCommand}" />
+        <KeyBinding Gesture="F7" Command="{Binding Pane.PreviousRegionCommand}" />
+        <KeyBinding Gesture="Alt+Down" Command="{Binding Pane.NextRegionCommand}" />
+        <KeyBinding Gesture="Alt+Up" Command="{Binding Pane.PreviousRegionCommand}" />
+        <KeyBinding Gesture="Alt+Left" Command="{Binding TakeLeftCommand}" />
+        <KeyBinding Gesture="Alt+Right" Command="{Binding TakeRightCommand}" />
+        <KeyBinding Gesture="Alt+Up" Command="{Binding Pane.PreviousRegionCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}" />
+    </Window.KeyBindings>
+
+    <DockPanel>
+
+        <!-- Toolbar: which three files, then what to do about them. -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="10,8">
+            <StackPanel Spacing="8">
+
+                <!-- The three pickers, expanded. Left and right either side of the ancestor, matching
+                     the column order below - a picker row that disagreed with the panes it fills
+                     would be a small, constant source of wrong clicks. -->
+                <Grid ColumnDefinitions="*,Auto,*,Auto,*"
+                      IsVisible="{Binding IsFileRowExpanded}">
+                    <fc:LabeledField Grid.Column="0" Header="Left (theirs)" Margin="0,0,8,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding LeftPath}" PlaceholderText="Choose a file…" />
+                            <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                    Margin="6,0,0,0" Command="{Binding BrowseLeftCommand}" />
+                        </Grid>
+                    </fc:LabeledField>
+
+                    <fc:LabeledField Grid.Column="2" Header="Base (common ancestor)" Margin="0,0,8,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding BasePath}" PlaceholderText="Choose a file…" />
+                            <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                    Margin="6,0,0,0" Command="{Binding BrowseBaseCommand}" />
+                        </Grid>
+                    </fc:LabeledField>
+
+                    <fc:LabeledField Grid.Column="4" Header="Right (mine)">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding RightPath}" PlaceholderText="Choose a file…" />
+                            <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                    Margin="6,0,0,0" Command="{Binding BrowseRightCommand}" />
+                        </Grid>
+                    </fc:LabeledField>
+                </Grid>
+
+                <!-- ...and collapsed to a summary once a merge is on screen, since the row it costs is
+                     a row of the thing the window exists to show. -->
+                <Button Classes="link-btn"
+                        HorizontalAlignment="Left"
+                        IsVisible="{Binding !IsFileRowExpanded}"
+                        Command="{Binding ToggleFileRowCommand}"
+                        Content="{Binding FileSummary}" />
+
+                <!-- Actions: navigate, resolve, save. -->
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="toolbar-btn" Content="Merge" Command="{Binding MergeCommand}"
+                            IsVisible="{Binding IsFileRowExpanded}" />
+
+                    <Button Classes="toolbar-btn" Content="‹ Prev" Command="{Binding Pane.PreviousRegionCommand}"
+                            ToolTip.Tip="Previous region (F7)" />
+                    <Button Classes="toolbar-btn" Content="Next ›" Command="{Binding Pane.NextRegionCommand}"
+                            ToolTip.Tip="Next region (F8)" />
+
+                    <CheckBox Content="Conflicts only"
+                              IsChecked="{Binding Pane.ConflictsOnly}"
+                              ToolTip.Tip="Stop only on regions both sides changed. A merge of any size is mostly regions only one side touched, and those are already decided." />
+
+                    <fc:Divider Orientation="Vertical" />
+
+                    <!-- Hidden rather than disabled until a region is selected: an always-greyed row of
+                         buttons on first run is clutter, and the row it costs is a row of merge. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                IsVisible="{Binding Pane.HasCurrentRegion}">
+                        <Button Classes="toolbar-btn" Content="Take left" Command="{Binding TakeLeftCommand}"
+                                ToolTip.Tip="Use the left version for this region (Alt+Left)" />
+                        <Button Classes="toolbar-btn" Content="Take base" Command="{Binding TakeBaseCommand}"
+                                ToolTip.Tip="Keep the ancestor's version, discarding both edits" />
+                        <Button Classes="toolbar-btn" Content="Take right" Command="{Binding TakeRightCommand}"
+                                ToolTip.Tip="Use the right version for this region (Alt+Right)" />
+                        <Button Classes="secondary-btn" Content="Reset" Command="{Binding ResetRegionCommand}"
+                                ToolTip.Tip="Undo this region's decision" />
+                    </StackPanel>
+
+                    <fc:Divider Orientation="Vertical" IsVisible="{Binding CanSave}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding CanSave}">
+                        <TextBlock Text="Save to" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="11" />
+                        <ComboBox MinWidth="90"
+                                  ItemsSource="{x:Static vm:MergeViewModel.DestinationOptions}"
+                                  SelectedItem="{Binding MergeDestination}"
+                                  ToolTip.Tip="Whose path and file format the merged result takes. The content is the merge either way." />
+                        <Button Classes="primary-btn" Content="Save" Command="{Binding SaveCommand}"
+                                ToolTip.Tip="Write the merged result (Ctrl+S)" />
+                        <Button Classes="secondary-btn" Content="Save as…" Command="{Binding SaveAsCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Status line. -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <TextBlock Text="{Binding StatusMessage}"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="11" TextWrapping="Wrap" />
+        </Border>
+
+        <!-- Errors, and the unresolved-conflict warning. The warning is a banner rather than a blocked
+             Save: stopping half way through a long merge to save what you have is legitimate, and the
+             domain has a defined answer for a region nobody decided. What is not acceptable is that
+             answer arriving as a surprise. -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHover}"
+                Padding="10,6"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="{DynamicResource PostmanRedBrush}"
+                       FontSize="11" TextWrapping="Wrap" />
+        </Border>
+
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHover}"
+                Padding="10,6"
+                IsVisible="{Binding HasUnresolvedConflicts}">
+            <TextBlock Text="{Binding UnresolvedDetail}"
+                       Foreground="{DynamicResource PostmanAmberBrush}"
+                       FontSize="11" TextWrapping="Wrap" />
+        </Border>
+
+        <!-- The caption for the selected region, directly above the columns it describes. -->
+        <Border DockPanel.Dock="Top" Padding="10,4">
+            <TextBlock Text="{Binding Pane.RegionCaption}"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="11" TextWrapping="NoWrap" />
+        </Border>
+
+        <dv:ThreeWayView x:Name="Merge" DataContext="{Binding Pane}" />
+    </DockPanel>
+</Window>

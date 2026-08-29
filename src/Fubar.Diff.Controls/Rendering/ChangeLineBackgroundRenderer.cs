@@ -72,13 +72,17 @@ internal sealed class ChangeLineBackgroundRenderer : IBackgroundRenderer
                 continue;
             }
 
-            // An ignored row's Kind is Unchanged - it was downgraded so it forms no hunk - so the
-            // flag has to be checked before falling through to the by-kind lookup, which would
-            // otherwise return no tint at all.
+            // Both flags are checked BEFORE the by-kind lookup, and for opposite reasons. An ignored
+            // row's Kind is Unchanged - it was downgraded so it forms no hunk - so falling through
+            // would return no tint at all. A conflicting row's Kind is a perfectly ordinary
+            // Inserted/Deleted, so falling through would tint it exactly like the changes that need
+            // no decision, which is the one thing a merge view must not do.
             var line = _lines[index];
-            var brushOrNull = line.IsIgnored
-                ? DiffLineColors.IgnoredBackground(_host)
-                : DiffLineColors.LineBackground(_host, line.Kind, Emphasis(index));
+            var brushOrNull = line.IsConflict
+                ? DiffLineColors.ConflictBackground(_host, Emphasis(index))
+                : line.IsIgnored
+                    ? DiffLineColors.IgnoredBackground(_host)
+                    : DiffLineColors.LineBackground(_host, line.Kind, Emphasis(index));
 
             if (brushOrNull is not { } brush)
             {

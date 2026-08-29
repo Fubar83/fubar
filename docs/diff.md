@@ -9,9 +9,9 @@ side by side, with the panes locked in alignment and changes highlighted line by
 It is a sibling of [Fubar API Studio](https://github.com/Fubar83/fubar) and shares its
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 
-> **Status: early.** Two-way file comparison, semantic JSON, source-code comparison, merge and save
-> work end to end. Folder comparison, free-form editing and the other formats are not built yet — see
-> [Roadmap](#roadmap).
+> **Status: early.** Two-way file comparison, semantic JSON, source-code comparison, three-way merge,
+> and save all work end to end. Folder comparison, free-form editing and the other formats are not
+> built yet — see [Roadmap](#roadmap).
 
 ## Features
 
@@ -44,6 +44,13 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   difference is marked with an accent bar and outline, so it stays findable among the other changes.
 - **Merge and save** — take the left or right version of a change (Alt+Left / Alt+Right), then save.
   The file's encoding, BOM, line endings and trailing newline are preserved byte-for-byte.
+- **Three-way merge** — give it a common ancestor and two edits and it settles everything only one side
+  touched, plus everything both sides changed identically, on its own. What is left is the set that
+  genuinely disagrees. Three panes, the ancestor in the middle, all locked in step; conflicts are marked
+  in amber, navigation stops only on them by default (F7 / F8), and each one is resolved by taking left,
+  base or right. Save writes the merged file to whichever of the three you choose, in that file's own
+  encoding and line endings. An unresolved conflict keeps the ancestor's text and says so, both in a
+  banner before saving and in the status line after.
 - **Semantic JSON**: compares structure, not text. Reordered properties and reformatting are not
   differences; array elements are matched by an auto-detected identity key, so an element inserted
   mid-array marks only itself. JSON opens in the **Json** view by default - the change tree plus both
@@ -95,6 +102,12 @@ Two files can be named on the command line to compare them immediately:
 dotnet run --project src/Fubar.Diff.UI -- old.json new.json
 ```
 
+Three open a merge instead, in the argument order `git mergetool` uses — `$BASE $LOCAL $REMOTE`:
+
+```bash
+dotnet run --project src/Fubar.Diff.UI -- --merge base.cs mine.cs theirs.cs
+```
+
 The shared UI components live alongside this app in `src/Fubar.Controls`, referenced directly - a
 change to a control and a change to the app that uses it go in one build and one commit.
 
@@ -132,14 +145,17 @@ contain filler lines, and typing needs a bidirectional editor↔source offset ma
 search/**replace** (find works today). Virtualised diffing for very large files is the other gap: the
 whole aligned document is currently materialised per side, under a 64 MB reader cap.
 
-**Next.** 3-way merge — base, theirs and mine side by side, non-conflicting changes merged
-automatically and conflicts resolved per hunk into the base. `MergeState` and `MergedDocument` already
-model decisions in a way a third side extends rather than replaces; `DiffResult`, `AlignedText` and
-every renderer are two-sided and are where the real work is.
+In the three-way view: no close-up pane and no diff map, which the two-way view both have — a merge
+answers "which of these needs me" rather than "where are the changes", and the conflict count plus
+next/previous answers that directly, but a close-up of one conflict would earn its place. Nor does it
+show intra-line character spans inside a conflict, so two nearly-identical conflicting lines have to be
+read side by side rather than at a glance. Merging more than two edits, and merging directories, are
+not built.
 
-**Cut.** A CLI with exit codes, git integration and patch export; semantic XML, YAML, CSV and directory
-comparison. Dropped deliberately rather than forgotten — `MergedDocument` already produces the line
-model a patch would need.
+**Cut.** A CLI with exit codes and patch export; semantic XML, YAML, CSV and directory comparison.
+Dropped deliberately rather than forgotten — `MergedDocument` already produces the line model a patch
+would need. Git integration is now partly there: `--merge $BASE $LOCAL $REMOTE` is the argument order
+`git mergetool` passes, so it can be configured as one.
 
 ## Contributing
 

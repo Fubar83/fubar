@@ -146,4 +146,15 @@ public sealed record AlignedLine(int? SourceNumber, ChangeKind Kind, IReadOnlyLi
 {
     /// <summary>True when this row differs only at ignored paths - drawn as a faint band, nothing more.</summary>
     public bool IsIgnored { get; init; }
+
+    /// <summary>
+    /// True when this row belongs to a three-way merge region both sides changed differently.
+    ///
+    /// A flag rather than a <see cref="ChangeKind"/> of its own, for the same reason
+    /// <see cref="IsIgnored"/> is one: a conflicting row is still an ordinary changed row to every
+    /// renderer, hunk-grouper and navigator in the two-way path, and adding a fifth kind would land it
+    /// in every exhaustive switch over the four that exist. What it needs is one more thing DRAWN over
+    /// it, which is exactly what a flag buys.
+    /// </summary>
+    public bool IsConflict { get; init; }
 }

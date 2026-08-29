@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Fubar.Diff.Controls.Views"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             x:Class="Fubar.Diff.Controls.Views.ThreeWayView"
+             x:DataType="vm:ThreeWayPaneViewModel">
+
+    <!-- Three columns: the two edits either side of what they both started from.
+
+         The ancestor sits in the MIDDLE rather than at the left, which is the layout every merge tool
+         converges on for one reason: a conflict is read by comparing each edit against the ancestor,
+         and putting it between them makes both of those comparisons a glance at an adjacent column
+         instead of one glance and one jump across the window.
+
+         No diff map here, unlike DiffView. The map answers "where are the changes in this file", and a
+         merge asks a different question - "which of these needs me" - which the conflict count and
+         next/previous answer directly. A map of three columns would also have to pick one column's
+         rows to colour by, and any choice would be wrong for the other two. -->
+    <Grid ColumnDefinitions="*,Auto,*,Auto,*">
+
+        <DockPanel Grid.Column="0">
+            <TextBlock DockPanel.Dock="Top" Text="Left (theirs)"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="10" Margin="8,3" />
+            <views:DiffEditorPane x:Name="LeftPane"
+                                  Document="{Binding LeftDocument}"
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding SyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+        </DockPanel>
+
+        <Border Grid.Column="1" Width="1" Background="{DynamicResource BorderSubtle}" />
+
+        <DockPanel Grid.Column="2">
+            <TextBlock DockPanel.Dock="Top" Text="Base (common ancestor)"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="10" Margin="8,3" />
+            <views:DiffEditorPane x:Name="BasePane"
+                                  Document="{Binding BaseDocument}"
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding SyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+        </DockPanel>
+
+        <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderSubtle}" />
+
+        <DockPanel Grid.Column="4">
+            <TextBlock DockPanel.Dock="Top" Text="Right (mine)"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="10" Margin="8,3" />
+            <views:DiffEditorPane x:Name="RightPane"
+                                  Document="{Binding RightDocument}"
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding SyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+        </DockPanel>
+    </Grid>
+</UserControl>

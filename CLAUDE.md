@@ -154,6 +154,45 @@ thread the original text through explicitly from the previous result rather than
 `Left`/`Right` - that would silently substitute the canonicalized text the moment NormalizeStructure
 was toggled after the first render.
 
+**A three-way merge REUSES the two-way aligner rather than aligning three documents** (Diff).
+`ThreeWayMerger` is handed two ordinary `IDiffEngine` alignments - ancestor against each edit - and
+reads only their `Unchanged` rows. Wherever both agree a line survived, all three documents are
+synchronised; everything between two such points is one region to classify. This is not just less code
+than a three-way alignment: it is what makes a merge agree with the two-way diff of the same files,
+because every comparison option, every code rule and the slider are already baked into the keys and
+rows before the merge looks at them. Two consequences that read as bugs and are not. (1) A `Modified`
+row is NOT a match - the aligner paired two lines that differ, and taking that as "survived" would
+merge one side's edit away silently. (2) Two edits with no surviving line between them are ONE region,
+so adjacent changes from both sides become a single conflict rather than two decisions whose answers
+would have to agree with each other; git resolves it the same way.
+
+**Three-way rows produce the same `AlignedDocument` the two-way view uses, and that is the whole
+budget** (Diff). `ThreeWayAlignedText.Build` emits exactly what `AlignedText.Build` does, so
+`DiffEditorPane`, `CharSpanColorizer`, `SourceLineNumberMargin` and `ChangeLineBackgroundRenderer`
+needed no knowledge of merging at all - a third pane cost one view and one view model. The filler
+discipline extends with it: row `i` is `ThreeWayResult.Lines[i]` in ALL THREE editors, which is what
+keeps scroll sync a plain offset copy and makes a region one horizontal band. The tint mapping is
+deliberate and worth not "fixing": the ancestor column is tinted as removed, a side that MOVED is
+tinted as added, and a side that did not move is left untinted even inside a region. Tinting all three
+columns everywhere would hand the single question a merge asks - who moved? - straight back to the
+reader.
+
+**`IsConflict` is a flag on `AlignedLine`, not a fifth `ChangeKind`** (Diff). Same reasoning as
+`IsIgnored`, which it sits beside: a conflicting row is an ordinary `Inserted`/`Deleted` row to every
+renderer, hunk-grouper and navigator, and a fifth kind would land in every exhaustive switch over the
+four that exist. `ChangeLineBackgroundRenderer` checks both flags BEFORE the by-kind lookup, for
+opposite reasons - an ignored row would otherwise get no tint (its Kind is `Unchanged`), and a
+conflicting row would otherwise get the SAME tint as the changes that need no decision, which is the
+one thing a merge view must not do.
+
+**An unresolved conflict saves the ANCESTOR, and the UI must say so** (Diff).
+`ThreeWayMergedDocument` has a defined answer for a region nobody decided, and `MergeService` does not
+refuse to write one - stopping half way through a long merge to save what you have is legitimate, and
+a service that threw would make it impossible. That makes it the UI's job: `MergeViewModel` shows a
+banner before (`HasUnresolvedConflicts`) and names the count in the status line after. Do not "fix"
+this by throwing in the service, and do not drop the warnings - the fallback is only acceptable while
+it cannot be a surprise.
+
 **Sliding a change group is a PRESENTATION pass, and its safety comes from one rule** (Diff).
 `ChangeGroupSlider` moves a run of added or removed lines to the placement that reads best, and it is
 allowed to because the diff is genuinely AMBIGUOUS there: when a group is bounded by lines identical to
@@ -295,6 +334,11 @@ would make every hunk-counting consumer wrong.
   "simplifying" this away again.
 - **Collapsing a `Grid` row needs its `RowDefinition` height zeroed**, not just `IsVisible=false` on
   the child — `DiffView`'s detail pane would otherwise leave a 190px blank band.
+- **An owned window cannot be shown before its owner is** (Diff). `Window.Show(owner)` throws "Cannot
+  show window with non-visible owner" from `OnFrameworkInitializationCompleted`, where `MainWindow` has
+  been constructed but not yet displayed — which is exactly where opening `--merge`'s window belongs.
+  `App` defers it to the main window's `Opened` event for this reason; the exception is immediate and
+  fatal, not a silent misbehaviour, so it will find you.
 - **Settings never throw**: `Load` returns defaults, `SaveAsync` returns false. Losing a preference is
   a nuisance; refusing to start over a corrupt settings file is not acceptable.
 - **`ExecutionSnapshot.ResponseBody` is optional and must stay that way** — null for an empty body, one

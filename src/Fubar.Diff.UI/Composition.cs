@@ -26,6 +26,7 @@ internal static class Composition
 
                 // Application-layer use cases.
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();
+                services.AddSingleton<IThreeWayComparisonService, ThreeWayComparisonService>();
                 services.AddSingleton<JsonSemanticPass>();
                 services.AddSingleton<IMergeService, MergeService>();
 
@@ -43,6 +44,12 @@ internal static class Composition
                 services.AddTransient<ComparisonViewModel>();
                 services.AddSingleton<Func<ComparisonViewModel>>(provider =>
                     provider.GetRequiredService<ComparisonViewModel>);
+
+                // Per merge WINDOW rather than per tab - a three-way merge is its own window (see
+                // MergeViewModel), so the shell hands one out rather than keeping a list of them.
+                services.AddTransient<MergeViewModel>();
+                services.AddSingleton<Func<MergeViewModel>>(provider =>
+                    provider.GetRequiredService<MergeViewModel>);
 
                 services.AddSingleton<ShellViewModel>();
             })

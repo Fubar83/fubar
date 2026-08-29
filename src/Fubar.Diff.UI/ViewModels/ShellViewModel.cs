@@ -19,16 +19,19 @@ namespace Fubar.Diff.UI.ViewModels;
 public partial class ShellViewModel : ViewModelBase
 {
     private readonly Func<ComparisonViewModel> _newTab;
+    private readonly Func<MergeViewModel> _newMerge;
     private readonly ISettingsStore _settingsStore;
 
     private AppSettings _settings = AppSettings.Default;
 
     public ShellViewModel(
         Func<ComparisonViewModel> newTab,
+        Func<MergeViewModel> newMerge,
         ISettingsStore settingsStore,
         ThemeManagerViewModel themeManager)
     {
         _newTab = newTab;
+        _newMerge = newMerge;
         _settingsStore = settingsStore;
         ThemeManager = themeManager;
 
@@ -138,6 +141,21 @@ public partial class ShellViewModel : ViewModelBase
     /// <summary>Opens an empty tab, for the toolbar button.</summary>
     [RelayCommand]
     private void NewTab() => AddTab();
+
+    /// <summary>
+    /// Builds a three-way merge, seeded with the persisted comparison and display preferences.
+    ///
+    /// Not a tab and not tracked here: a merge lives in its own window, has its own lifetime, and the
+    /// shell's only stake in it is handing over the settings it should start from. The window itself
+    /// owns it from then on.
+    /// </summary>
+    public MergeViewModel CreateMerge()
+    {
+        var merge = _newMerge();
+        merge.ApplyDefaults(_settings);
+
+        return merge;
+    }
 
     /// <summary>Loads dropped files into the current tab, opening one if there is none.</summary>
     public Task OpenFilesAsync(IReadOnlyList<string> paths) =>

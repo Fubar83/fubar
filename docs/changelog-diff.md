@@ -8,6 +8,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Three-way merge.** Give it a common ancestor and two edits and it settles, on its own, every region
+  only one side touched — plus every region both sides changed to the same thing, which is what a
+  cherry-pick, a shared reformatting or a rebase over someone else's landed change looks like. What is
+  left is the set that genuinely disagrees, and only that set is put to you.
+
+  Three panes with the ancestor in the **middle**, because a conflict is read by comparing each edit
+  against the ancestor, and putting it between them makes both comparisons a glance at the adjacent
+  column. All three scroll as one. Conflicts are tinted amber — not the green and red the other rows
+  already use, since every column of a conflict is an addition or a removal. Navigation stops only on
+  conflicts by default (F7 / F8, Alt+Up / Alt+Down); resolving one with Take left / Take base / Take
+  right moves straight to the next.
+
+  Saving writes the merged file to whichever of the three you pick, in that file's own encoding, line
+  endings and trailing newline. A still-unresolved conflict keeps the ancestor's text — the conservative
+  answer, since the alternatives are inventing a merge nobody approved or writing conflict markers into
+  a file someone asked to save — and says so twice: a banner before, and the count in the status line
+  after.
+
+  Open it from **3-way merge…** in the toolbar, or from the command line as
+  `FubarDiff --merge $BASE $LOCAL $REMOTE`, which is the argument order `git mergetool` passes.
+
 - **Syntax highlighting in the panes**, for every language a TextMate grammar ships for — not only the
   ones the code options below understand. It follows the app's theme, and it is on by default with a
   switch in Settings → Appearance. Purely visual: it never changes what the comparison found and never
