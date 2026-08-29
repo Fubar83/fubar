@@ -40,6 +40,16 @@ public static class LanguageDetector
             "cs" or "csx" => SourceLanguage.CSharp,
             "js" or "jsx" or "mjs" or "cjs" => SourceLanguage.JavaScript,
             "ts" or "tsx" or "mts" or "cts" => SourceLanguage.TypeScript,
+            "java" => SourceLanguage.Java,
+            "go" => SourceLanguage.Go,
+            "py" or "pyi" or "pyw" => SourceLanguage.Python,
+
+            // .h is ambiguous between C and C++ and always has been. It resolves to C because the
+            // scanning rules are identical either way - the only thing the choice affects is the name
+            // shown in Settings, and "C" is the less wrong guess for a bare header.
+            "c" or "h" => SourceLanguage.C,
+            "cpp" or "cc" or "cxx" or "hpp" or "hh" or "hxx" or "ipp" => SourceLanguage.Cpp,
+
             _ => SourceLanguage.None,
         };
     }

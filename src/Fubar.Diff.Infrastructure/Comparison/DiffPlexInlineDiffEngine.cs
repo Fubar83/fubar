@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using DiffPlex;
 using DiffPlex.Model;
 using Fubar.Diff.Core.Comparison;
@@ -50,17 +51,16 @@ public sealed class DiffPlexInlineDiffEngine : IInlineDiffEngine
     /// split everywhere else. Cached per language rather than built per line - this runs once for every
     /// modified row in the document.
     /// </summary>
-    private static IChunker ChunkerFor(SourceLanguage language) => language switch
-    {
-        SourceLanguage.CSharp => CSharpChunker,
-        SourceLanguage.JavaScript => JavaScriptChunker,
-        SourceLanguage.TypeScript => TypeScriptChunker,
-        _ => PunctuationChunker.Instance,
-    };
+    private static IChunker ChunkerFor(SourceLanguage language) =>
+        language == SourceLanguage.None ? PunctuationChunker.Instance : Chunkers[(int)language];
 
-    private static readonly SourceTokenChunker CSharpChunker = new(SourceLanguage.CSharp);
-    private static readonly SourceTokenChunker JavaScriptChunker = new(SourceLanguage.JavaScript);
-    private static readonly SourceTokenChunker TypeScriptChunker = new(SourceLanguage.TypeScript);
+    /// <summary>
+    /// One chunker per language, indexed by the enum rather than switched on it, so adding a language
+    /// to <see cref="SourceLanguage"/> needs no change here at all. Built once - this runs for every
+    /// modified row in a document.
+    /// </summary>
+    private static readonly SourceTokenChunker[] Chunkers =
+        [.. System.Enum.GetValues<SourceLanguage>().Select(language => new SourceTokenChunker(language))];
 
     /// <summary>
     /// Splits a line on the language's own token boundaries.

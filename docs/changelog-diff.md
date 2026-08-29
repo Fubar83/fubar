@@ -18,6 +18,22 @@ All notable changes to this project are documented here. The format is based on
   hunting is the few that do not, through the same thousands of untouched lines. An ignored row is
   never folded away — its faint band is the only evidence that an ignore rule is doing anything.
 
+- **Java, Go, C, C++ and Python** join C#, JavaScript and TypeScript in the code-aware comparison, so
+  "ignore comments" and token-level highlighting now cover most of what developers actually open. The
+  scanner became rules-driven rather than a set of branches, so each language is a line of data plus
+  its own tests: Java text blocks, Go's raw backtick strings (where a backslash is a backslash, not an
+  escape — treating it as one would swallow the closing delimiter), Python's `#` comments, both kinds
+  of triple-quoted string, and its `f`/`r`/`b`/`u` string prefixes. A Python docstring is treated as
+  the string it is, not as a comment, so "ignore comments" cannot delete a real value.
+
+  Rust is deliberately still absent: a lifetime (`&'a str`) is indistinguishable from an unterminated
+  character literal without parsing, and its block comments nest. Both would make the scanner
+  confidently wrong about where a string or comment ends, which is worse than treating the file as
+  plain text.
+
+- **Documented git integration.** `difftool` and `mergetool` config that works, in the README — the
+  argument shapes already matched what git passes, but nothing said so.
+
 - **Take both** in the three-way merge (Alt+B). The resolution a merge needs more often than any other
   and the only one that is not a choice between alternatives: two people added a different method at
   the same point, a different import, a different case to the same switch. Neither edit is wrong and

@@ -31,11 +31,57 @@ public enum ScanMode
 /// For <see cref="ScanMode.RawString"/>, how many quotes close it - a C# raw string is closed by a run
 /// at least as long as the one that opened it, which is the whole point of the form.
 /// </param>
-public readonly record struct ScanState(ScanMode Mode, int Delimiter)
+/// <param name="Quote">
+/// Which quote character closes a <see cref="ScanMode.RawString"/>. Python's triple-quoted strings come
+/// in both, and a <c>'''</c> block is not closed by <c>"""</c>.
+/// </param>
+public readonly record struct ScanState(ScanMode Mode, int Delimiter, char Quote = '"')
 {
     /// <summary>Ordinary code - what the first line of a document starts in.</summary>
     public static ScanState Normal { get; } = new(ScanMode.Normal, 0);
 }
+
+/// <summary>How a language treats backtick-delimited text.</summary>
+internal enum BacktickKind
+{
+    /// <summary>Not special - an ordinary character.</summary>
+    None,
+
+    /// <summary>A template literal: spans lines, and a backslash escapes the next character (JS/TS).</summary>
+    Escaped,
+
+    /// <summary>A raw string: spans lines, and a backslash is just a backslash (Go).</summary>
+    Raw,
+}
+
+/// <summary>
+/// What one language does differently, as data rather than as branches through the scanner.
+///
+/// The scanner's shape is the same for every C-family language and most of Python; what varies is a
+/// handful of yes/no questions. Expressing those as a record means adding a language is a line in
+/// <see cref="SourceScanner.RulesFor"/> plus tests, rather than another special case threaded through
+/// the scanning loop - which is how a lexer becomes unmaintainable.
+/// </summary>
+/// <param name="LineComment">The token that comments out the rest of the line.</param>
+/// <param name="BlockComments">Whether <c>/* ... */</c> exists.</param>
+/// <param name="SingleQuotes">Whether <c>'...'</c> is a literal (a char in C-family, a string in Python).</param>
+/// <param name="Backticks">See <see cref="BacktickKind"/>.</param>
+/// <param name="TripleDoubleQuotes">Whether <c>"""</c> opens a multi-line literal closed by a run at least as long.</param>
+/// <param name="TripleSingleQuotes">The same for <c>'''</c> - Python only.</param>
+/// <param name="StringPrefixes">
+/// Characters that may appear immediately before a quote and belong to the literal: <c>@$</c> in C#,
+/// the f/r/b/u string prefixes in Python. A run of these NOT followed by a quote is an identifier.
+/// </param>
+/// <param name="VerbatimStrings">Whether <c>@"..."</c> exists, where a doubled quote escapes a quote and there are no backslash escapes.</param>
+internal readonly record struct LanguageRules(
+    string LineComment,
+    bool BlockComments,
+    bool SingleQuotes,
+    BacktickKind Backticks,
+    bool TripleDoubleQuotes,
+    bool TripleSingleQuotes,
+    string StringPrefixes,
+    bool VerbatimStrings);
 
 /// <summary>
 /// A hand-written lexer for the C family, covering exactly what a DIFF needs to know: where comments
@@ -117,6 +163,7 @@ public static class SourceScanner
             return [new SourceToken(0, line.Length, SourceTokenKind.Identifier)];
         }
 
+        var rules = RulesFor(language);
         var tokens = new List<SourceToken>();
         var i = 0;
 
@@ -155,13 +202,13 @@ public static class SourceScanner
                 continue;
             }
 
-            if (c == '/' && i + 1 < line.Length && line[i + 1] == '/')
+            if (StartsWith(line, i, rules.LineComment))
             {
                 tokens.Add(new SourceToken(i, line.Length - i, SourceTokenKind.Comment));
                 return tokens;
             }
 
-            if (c == '/' && i + 1 < line.Length && line[i + 1] == '*')
+            if (rules.BlockComments && c == '/' && i + 1 < line.Length && line[i + 1] == '*')
             {
                 var (end, closed) = FindBlockCommentEnd(line, i + 2);
                 tokens.Add(new SourceToken(i, end - i, SourceTokenKind.Comment));
@@ -176,7 +223,7 @@ public static class SourceScanner
                 continue;
             }
 
-            if (TryScanString(line, i, language, out var stringEnd, out var carry))
+            if (TryScanString(line, i, rules, out var stringEnd, out var carry))
             {
                 tokens.Add(new SourceToken(i, stringEnd - i, SourceTokenKind.String));
 
@@ -231,8 +278,8 @@ public static class SourceScanner
     {
         ScanMode.BlockComment => FindBlockCommentEnd(line, 0),
         ScanMode.VerbatimString => FindVerbatimEnd(line, 0),
-        ScanMode.TemplateString => FindTemplateEnd(line, 0),
-        ScanMode.RawString => FindRawEnd(line, 0, state.Delimiter),
+        ScanMode.TemplateString => FindBacktickEnd(line, 0, state.Quote == 'r' ? BacktickKind.Raw : BacktickKind.Escaped),
+        ScanMode.RawString => FindRawEnd(line, 0, state.Delimiter, state.Quote),
         _ => (0, true),
     };
 
@@ -272,13 +319,19 @@ public static class SourceScanner
         return (line.Length, false);
     }
 
-    private static (int End, bool Closed) FindTemplateEnd(string line, int start)
+    /// <summary>
+    /// Finds the end of a backtick-delimited literal. Whether a backslash escapes the next character
+    /// is the whole difference between JavaScript's template literals and Go's raw strings: in Go a
+    /// trailing <c>\</c> before the closing backtick is content, and treating it as an escape would
+    /// swallow the terminator and run the string on into the rest of the file.
+    /// </summary>
+    private static (int End, bool Closed) FindBacktickEnd(string line, int start, BacktickKind kind)
     {
         var i = start;
 
         while (i < line.Length)
         {
-            if (line[i] == '\\')
+            if (kind == BacktickKind.Escaped && line[i] == '\\')
             {
                 i += 2;
                 continue;
@@ -299,19 +352,19 @@ public static class SourceScanner
     /// Finds the end of a C# raw string: a run of at least <paramref name="delimiter"/> quotes. A
     /// SHORTER run is content, which is exactly why the form exists.
     /// </summary>
-    private static (int End, bool Closed) FindRawEnd(string line, int start, int delimiter)
+    private static (int End, bool Closed) FindRawEnd(string line, int start, int delimiter, char quote)
     {
         var i = start;
 
         while (i < line.Length)
         {
-            if (line[i] != '"')
+            if (line[i] != quote)
             {
                 i++;
                 continue;
             }
 
-            var run = QuoteRunLength(line, i);
+            var run = QuoteRunLength(line, i, quote);
             if (run >= delimiter)
             {
                 return (i + run, true);
@@ -332,79 +385,122 @@ public static class SourceScanner
     private static bool TryScanString(
         string line,
         int start,
-        SourceLanguage language,
+        LanguageRules rules,
         out int end,
         out ScanState? carry)
     {
         end = start;
         carry = null;
 
-        var c = line[start];
+        // A run of prefix characters counts as part of the literal only when a quote actually follows.
+        // Otherwise it is an identifier that happens to begin with those letters - Python's `buffer`
+        // starts with three of its own string prefixes, and C#'s `@class` with one of its.
+        var quote = start;
+        var verbatim = false;
 
-        if (language == SourceLanguage.CSharp && (c == '@' || c == '$'))
+        while (quote < line.Length && rules.StringPrefixes.IndexOf(line[quote]) >= 0)
         {
-            var verbatim = false;
-            var quote = start;
+            verbatim |= rules.VerbatimStrings && line[quote] == '@';
+            quote++;
+        }
 
-            while (quote < line.Length && (line[quote] == '@' || line[quote] == '$'))
-            {
-                verbatim |= line[quote] == '@';
-                quote++;
-            }
+        if (quote >= line.Length)
+        {
+            return false;
+        }
 
-            if (quote >= line.Length || line[quote] != '"')
-            {
-                return false;
-            }
+        var opener = line[quote];
+        var isDouble = opener == '"';
+        var isSingle = opener == '\'' && rules.SingleQuotes;
 
-            var prefixed = QuoteRunLength(line, quote);
-            if (prefixed >= 3)
+        if (isDouble || isSingle)
+        {
+            var triple = isDouble ? rules.TripleDoubleQuotes : rules.TripleSingleQuotes;
+            var run = QuoteRunLength(line, quote, opener);
+
+            if (triple && run >= 3)
             {
-                (end, var rawClosed) = FindRawEnd(line, quote + prefixed, prefixed);
-                carry = rawClosed ? null : new ScanState(ScanMode.RawString, prefixed);
+                (end, var rawClosed) = FindRawEnd(line, quote + run, run, opener);
+                carry = rawClosed ? null : new ScanState(ScanMode.RawString, run, opener);
                 return true;
             }
 
-            if (verbatim)
+            if (verbatim && isDouble)
             {
                 (end, var verbatimClosed) = FindVerbatimEnd(line, quote + 1);
                 carry = verbatimClosed ? null : new ScanState(ScanMode.VerbatimString, 0);
                 return true;
             }
 
-            end = FindQuotedEnd(line, quote + 1, '"');
+            end = FindQuotedEnd(line, quote + 1, opener);
             return true;
         }
 
-        if (c == '"')
+        // A prefix run that led nowhere is not a literal; let the identifier scanner have it.
+        if (quote != start)
         {
-            var run = QuoteRunLength(line, start);
-
-            if (language == SourceLanguage.CSharp && run >= 3)
-            {
-                (end, var rawClosed) = FindRawEnd(line, start + run, run);
-                carry = rawClosed ? null : new ScanState(ScanMode.RawString, run);
-                return true;
-            }
-
-            end = FindQuotedEnd(line, start + 1, '"');
-            return true;
+            return false;
         }
 
-        if (c == '\'')
+        if (opener == '`' && rules.Backticks != BacktickKind.None)
         {
-            end = FindQuotedEnd(line, start + 1, '\'');
-            return true;
-        }
-
-        if (c == '`' && language != SourceLanguage.CSharp)
-        {
-            (end, var templateClosed) = FindTemplateEnd(line, start + 1);
-            carry = templateClosed ? null : new ScanState(ScanMode.TemplateString, 0);
+            (end, var closed) = FindBacktickEnd(line, start + 1, rules.Backticks);
+            carry = closed ? null : new ScanState(ScanMode.TemplateString, 0, GetBacktickQuote(rules.Backticks));
             return true;
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Remembers whether a carried-over backtick string processes escapes, since Go's does not and
+    /// JavaScript's does. Stored in the state's quote slot, which a backtick string has no other use
+    /// for.
+    /// </summary>
+    private static char GetBacktickQuote(BacktickKind kind) => kind == BacktickKind.Raw ? 'r' : '`';
+
+    /// <summary>The scanning rules for one language. See <see cref="LanguageRules"/>.</summary>
+    private static LanguageRules RulesFor(SourceLanguage language) => language switch
+    {
+        SourceLanguage.CSharp => new LanguageRules(
+            "//", BlockComments: true, SingleQuotes: true, BacktickKind.None,
+            TripleDoubleQuotes: true, TripleSingleQuotes: false, StringPrefixes: "@$", VerbatimStrings: true),
+
+        SourceLanguage.JavaScript or SourceLanguage.TypeScript => new LanguageRules(
+            "//", BlockComments: true, SingleQuotes: true, BacktickKind.Escaped,
+            TripleDoubleQuotes: false, TripleSingleQuotes: false, StringPrefixes: "", VerbatimStrings: false),
+
+        // Java text blocks use the same """ form C# raw strings do.
+        SourceLanguage.Java => new LanguageRules(
+            "//", BlockComments: true, SingleQuotes: true, BacktickKind.None,
+            TripleDoubleQuotes: true, TripleSingleQuotes: false, StringPrefixes: "", VerbatimStrings: false),
+
+        // Go's backtick literals are RAW: a backslash inside one is a backslash, not an escape.
+        SourceLanguage.Go => new LanguageRules(
+            "//", BlockComments: true, SingleQuotes: true, BacktickKind.Raw,
+            TripleDoubleQuotes: false, TripleSingleQuotes: false, StringPrefixes: "", VerbatimStrings: false),
+
+        SourceLanguage.C or SourceLanguage.Cpp => new LanguageRules(
+            "//", BlockComments: true, SingleQuotes: true, BacktickKind.None,
+            TripleDoubleQuotes: false, TripleSingleQuotes: false, StringPrefixes: "", VerbatimStrings: false),
+
+        // Python has no block comments at all - a triple-quoted string used as a docstring is a
+        // STRING, and treating it as a comment would let "ignore comments" delete real values.
+        SourceLanguage.Python => new LanguageRules(
+            "#", BlockComments: false, SingleQuotes: true, BacktickKind.None,
+            TripleDoubleQuotes: true, TripleSingleQuotes: true, StringPrefixes: "fFrRbBuU", VerbatimStrings: false),
+
+        _ => default,
+    };
+
+    private static bool StartsWith(string line, int index, string token)
+    {
+        if (token.Length == 0 || index + token.Length > line.Length)
+        {
+            return false;
+        }
+
+        return line.AsSpan(index, token.Length).SequenceEqual(token);
     }
 
     /// <summary>
@@ -435,10 +531,10 @@ public static class SourceScanner
         return line.Length;
     }
 
-    private static int QuoteRunLength(string line, int start)
+    private static int QuoteRunLength(string line, int start, char quote)
     {
         var end = start;
-        while (end < line.Length && line[end] == '"')
+        while (end < line.Length && line[end] == quote)
         {
             end++;
         }

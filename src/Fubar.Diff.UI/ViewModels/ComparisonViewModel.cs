@@ -288,7 +288,13 @@ public partial class ComparisonViewModel : ViewModelBase
         SourceLanguage.CSharp => "Detected language: C#",
         SourceLanguage.JavaScript => "Detected language: JavaScript",
         SourceLanguage.TypeScript => "Detected language: TypeScript",
-        _ when !_comparison.HasBothSides => "These apply to C#, JavaScript and TypeScript files.",
+        SourceLanguage.Java => "Detected language: Java",
+        SourceLanguage.Go => "Detected language: Go",
+        SourceLanguage.C => "Detected language: C",
+        SourceLanguage.Cpp => "Detected language: C++",
+        SourceLanguage.Python => "Detected language: Python",
+        _ when !_comparison.HasBothSides =>
+            "These apply to C#, JavaScript, TypeScript, Java, Go, C, C++ and Python files.",
         _ => "No source language detected for this pair - these have no effect here.",
     };
 

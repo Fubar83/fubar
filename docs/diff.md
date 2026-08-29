@@ -24,7 +24,8 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   operator rather than a lone third `=`.
 - **Syntax highlighting**, for every language a TextMate grammar ships for, following the app theme.
   On by default; switch it off in Settings → Appearance.
-- **Source-code comparison** for **C#, JavaScript and TypeScript**, picked from the file extension:
+- **Source-code comparison** for **C#, JavaScript, TypeScript, Java, Go, C, C++ and Python**, picked
+  from the file extension:
   optionally ignore comments (a changed comment stops being a difference; a comment-only line that was
   added is drawn faintly rather than counted — the code on the line still compares normally) and ignore
   blank lines. Block comments, verbatim and raw strings, and template literals are tracked across lines,
@@ -115,6 +116,26 @@ Three open a merge instead, in the argument order `git mergetool` uses — `$BAS
 ```bash
 dotnet run --project src/Fubar.Diff.UI -- --merge base.cs mine.cs theirs.cs
 ```
+
+### Using it with git
+
+Those two argument shapes are exactly what git passes its diff and merge tools, so it can be wired up
+directly. Point `FubarDiff` at wherever you published it:
+
+```bash
+git config --global difftool.fubar.cmd 'FubarDiff "$LOCAL" "$REMOTE"'
+git config --global mergetool.fubar.cmd 'FubarDiff --merge "$BASE" "$LOCAL" "$REMOTE"'
+git config --global mergetool.fubar.trustExitCode false
+git config --global diff.tool fubar
+git config --global merge.tool fubar
+```
+
+Then `git difftool` opens a comparison per changed file, and `git mergetool` opens a three-way merge
+per conflict. Save into **Right (mine)**, which is the working-tree file git is expecting you to
+resolve — that is why `$LOCAL` lands on the right and it is the default destination.
+
+`trustExitCode false` is deliberate: the app does not yet report resolution success through its exit
+code, so git asks you whether the merge went well rather than assuming.
 
 The shared UI components live alongside this app in `src/Fubar.Controls`, referenced directly - a
 change to a control and a change to the app that uses it go in one build and one commit.
