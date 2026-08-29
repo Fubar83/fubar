@@ -20,6 +20,12 @@ All notable changes to this project are documented here. The format is based on
   conflicts by default (F7 / F8, Alt+Up / Alt+Down); resolving one with Take left / Take base / Take
   right moves straight to the next.
 
+  Within a region, each edit highlights the characters it altered relative to the ancestor — so two
+  conflicting versions of nearly the same line are told apart by the two words that differ rather than
+  by reading both in full. A row that has an ancestor line opposite it gives up its full-row tint to
+  those spans, the same bargain the two-way view already makes for a modified line; a row the ancestor
+  has nothing opposite keeps the tint, since the whole row is the change.
+
   Saving writes the merged file to whichever of the three you pick, in that file's own encoding, line
   endings and trailing newline. A still-unresolved conflict keeps the ancestor's text — the conservative
   answer, since the alternatives are inventing a merge nobody approved or writing conflict markers into

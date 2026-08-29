@@ -114,6 +114,69 @@ public class ThreeWayAlignedTextTests
     }
 
     [Fact]
+    public void An_edit_with_character_spans_loses_its_full_line_tint()
+    {
+        // The same bargain the two-way view makes for a modified line: Modified draws no line
+        // background (see DiffLineColors.LineBackground), leaving the spans as the whole signal, which
+        // is more precise than washing the row they sit on.
+        var result = Result(
+            new ThreeWayLine(1, "value = 1", 1, "value = 2", 1, "value = 1", MergeKind.LeftOnly, 0)
+            {
+                LeftSpans = [new CharSpan(8, 1, ChangeKind.Inserted)],
+            });
+
+        var left = ThreeWayAlignedText.Build(result, MergeSide.Left);
+
+        Assert.Equal(ChangeKind.Modified, left.Lines[0].Kind);
+        Assert.Equal(8, Assert.Single(left.Lines[0].Spans).Start);
+    }
+
+    [Fact]
+    public void An_edit_with_no_ancestor_line_keeps_its_full_line_tint()
+    {
+        // Nothing to compare against means no spans to defer to, so the whole row has to say it.
+        var result = Result(
+            new ThreeWayLine(null, null, 1, "brand new", null, null, MergeKind.LeftOnly, 0));
+
+        var left = ThreeWayAlignedText.Build(result, MergeSide.Left);
+
+        Assert.Equal(ChangeKind.Inserted, left.Lines[0].Kind);
+        Assert.Empty(left.Lines[0].Spans);
+    }
+
+    [Fact]
+    public void The_ancestor_column_carries_no_spans_of_its_own()
+    {
+        // It is already tinted whole as the text being replaced; spanning it too would ask the reader
+        // to compare three sets of highlights to answer one question.
+        var result = Result(
+            new ThreeWayLine(1, "value = 1", 1, "value = 2", 1, "value = 3", MergeKind.Conflict, 0)
+            {
+                LeftSpans = [new CharSpan(8, 1, ChangeKind.Inserted)],
+                RightSpans = [new CharSpan(8, 1, ChangeKind.Inserted)],
+            });
+
+        var ancestor = ThreeWayAlignedText.Build(result, MergeSide.Base);
+
+        Assert.Empty(ancestor.Lines[0].Spans);
+        Assert.Equal(ChangeKind.Deleted, ancestor.Lines[0].Kind);
+    }
+
+    [Fact]
+    public void Both_edits_carry_their_own_spans_in_a_conflict()
+    {
+        var result = Result(
+            new ThreeWayLine(1, "a", 1, "b", 1, "c", MergeKind.Conflict, 0)
+            {
+                LeftSpans = [new CharSpan(0, 1, ChangeKind.Inserted)],
+                RightSpans = [new CharSpan(0, 1, ChangeKind.Inserted)],
+            });
+
+        Assert.Single(ThreeWayAlignedText.Build(result, MergeSide.Left).Lines[0].Spans);
+        Assert.Single(ThreeWayAlignedText.Build(result, MergeSide.Right).Lines[0].Spans);
+    }
+
+    [Fact]
     public void An_empty_result_produces_an_empty_document()
     {
         var document = ThreeWayAlignedText.Build(ThreeWayResult.Empty, MergeSide.Base);

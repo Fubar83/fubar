@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using Fubar.Diff.Core.Merge;
 using Fubar.Diff.Core.Models;
@@ -39,7 +38,7 @@ public static class ThreeWayAlignedText
 
             builder.Append(row.TextOn(side) ?? string.Empty);
 
-            meta[i] = new AlignedLine(row.NumberOn(side), KindFor(row, side), [])
+            meta[i] = new AlignedLine(row.NumberOn(side), KindFor(row, side), row.SpansOn(side))
             {
                 IsConflict = row.Kind == MergeKind.Conflict,
             };
@@ -57,6 +56,12 @@ public static class ThreeWayAlignedText
     /// side touched, the other side is untinted, because it still agrees with the ancestor and has
     /// nothing to answer for. Tinting all three columns of every region would turn the single question
     /// a merge asks - who moved? - back into something the reader has to work out for themselves.
+    ///
+    /// The one refinement: a changed row that HAS an ancestor line opposite it is reported as
+    /// <see cref="ChangeKind.Modified"/> rather than Inserted, which drops its full-line tint (see
+    /// <c>DiffLineColors.LineBackground</c>) and leaves its character spans as the whole signal -
+    /// precisely the bargain the two-way view already makes for a modified line. A row with no
+    /// ancestor line has no spans to defer to, so it keeps the full tint.
     /// </summary>
     private static ChangeKind KindFor(ThreeWayLine row, MergeSide side)
     {
@@ -70,16 +75,16 @@ public static class ThreeWayAlignedText
             return ChangeKind.Unchanged;
         }
 
-        return side == MergeSide.Base
-            ? ChangeKind.Deleted
-            : ChangedOn(row.Kind, side) ? ChangeKind.Inserted : ChangeKind.Unchanged;
-    }
+        if (side == MergeSide.Base)
+        {
+            return ChangeKind.Deleted;
+        }
 
-    /// <summary>Whether one side is among those that changed a region.</summary>
-    private static bool ChangedOn(MergeKind kind, MergeSide side) => side switch
-    {
-        MergeSide.Left => kind is MergeKind.LeftOnly or MergeKind.BothSame or MergeKind.Conflict,
-        MergeSide.Right => kind is MergeKind.RightOnly or MergeKind.BothSame or MergeKind.Conflict,
-        _ => throw new ArgumentOutOfRangeException(nameof(side), side, "the ancestor is not an edit"),
-    };
+        if (!row.ChangedOn(side))
+        {
+            return ChangeKind.Unchanged;
+        }
+
+        return row.SpansOn(side).Count > 0 ? ChangeKind.Modified : ChangeKind.Inserted;
+    }
 }

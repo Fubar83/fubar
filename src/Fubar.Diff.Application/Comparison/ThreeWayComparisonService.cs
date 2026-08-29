@@ -23,12 +23,18 @@ public sealed class ThreeWayComparisonService : IThreeWayComparisonService
 {
     private readonly ITextFileReader _reader;
     private readonly IDiffEngine _engine;
+    private readonly IInlineDiffEngine _inlineEngine;
     private readonly ILineNormalizer _normalizer;
 
-    public ThreeWayComparisonService(ITextFileReader reader, IDiffEngine engine, ILineNormalizer normalizer)
+    public ThreeWayComparisonService(
+        ITextFileReader reader,
+        IDiffEngine engine,
+        IInlineDiffEngine inlineEngine,
+        ILineNormalizer normalizer)
     {
         _reader = reader;
         _engine = engine;
+        _inlineEngine = inlineEngine;
         _normalizer = normalizer;
     }
 
@@ -94,10 +100,82 @@ public sealed class ThreeWayComparisonService : IThreeWayComparisonService
             toLeft,
             toRight);
 
-        return new ThreeWayComparison(ancestorDoc, leftDoc, rightDoc, options, result)
+        return new ThreeWayComparison(ancestorDoc, leftDoc, rightDoc, options, WithInlineSpans(result, language))
         {
             Language = language,
         };
+    }
+
+    /// <summary>
+    /// Adds the character ranges each edit altered, computed against the ancestor's text on the same
+    /// row and on the DISPLAY text, so the offsets address what the user can actually see.
+    ///
+    /// Here rather than in <see cref="ThreeWayMerger"/> for the reason the two-way pipeline puts its
+    /// equivalent step here: this is the layer that owns an <see cref="IInlineDiffEngine"/>, and the
+    /// merge itself is a decision about WHICH lines belong together, not about what within them moved.
+    ///
+    /// Only rows with an ancestor line opposite them get spans. Where the ancestor has nothing, the
+    /// whole row is the change and picking out characters within it would be noise - the same rule as
+    /// <c>FileComparisonService.WithInlineSpans</c>, which only ever spans a Modified row.
+    /// </summary>
+    private ThreeWayResult WithInlineSpans(ThreeWayResult result, SourceLanguage language)
+    {
+        List<ThreeWayLine>? rows = null;
+
+        for (var i = 0; i < result.Lines.Count; i++)
+        {
+            var row = result.Lines[i];
+
+            if (!row.IsChange || row.BaseText is not { } ancestorText)
+            {
+                rows?.Add(row);
+                continue;
+            }
+
+            var left = SpansAgainst(ancestorText, row, MergeSide.Left, language);
+            var right = SpansAgainst(ancestorText, row, MergeSide.Right, language);
+
+            if (left.Count == 0 && right.Count == 0)
+            {
+                rows?.Add(row);
+                continue;
+            }
+
+            // First row worth changing: copy what came before it, so a merge with nothing to span
+            // keeps its original rows rather than paying for a full copy to produce the same ones back.
+            if (rows is null)
+            {
+                rows = new List<ThreeWayLine>(result.Lines.Count);
+                for (var j = 0; j < i; j++)
+                {
+                    rows.Add(result.Lines[j]);
+                }
+            }
+
+            rows.Add(row with { LeftSpans = left, RightSpans = right });
+        }
+
+        return rows is null ? result : ThreeWayResult.Create(rows);
+    }
+
+    /// <summary>
+    /// What one edit altered on this row, or nothing when that side did not change this region or has
+    /// no line here.
+    /// </summary>
+    private IReadOnlyList<Core.Models.CharSpan> SpansAgainst(
+        string ancestorText,
+        ThreeWayLine row,
+        MergeSide side,
+        SourceLanguage language)
+    {
+        if (!row.ChangedOn(side) || row.TextOn(side) is not { } text)
+        {
+            return [];
+        }
+
+        // The engine reports both sides; only the EDIT's offsets are wanted, since the ancestor column
+        // carries no spans of its own - it is already tinted whole as the text being replaced.
+        return _inlineEngine.DiffWithinLine(ancestorText, text, language).Right;
     }
 
     /// <summary>

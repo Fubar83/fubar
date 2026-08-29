@@ -175,7 +175,12 @@ keeps scroll sync a plain offset copy and makes a region one horizontal band. Th
 deliberate and worth not "fixing": the ancestor column is tinted as removed, a side that MOVED is
 tinted as added, and a side that did not move is left untinted even inside a region. Tinting all three
 columns everywhere would hand the single question a merge asks - who moved? - straight back to the
-reader.
+reader. Character spans are computed against the ANCESTOR for both edits, never left-against-right: a
+merge IS two independent sets of changes to one starting point, and in a conflict "what did each of
+them do" is the question, where a left-vs-right span would show the disagreement while hiding that both
+may have rewritten the line. The ancestor column carries no spans of its own - it is already tinted
+whole as the text being replaced, and a third set of highlights would ask the reader to cross-reference
+three things to answer one question.
 
 **`IsConflict` is a flag on `AlignedLine`, not a fifth `ChangeKind`** (Diff). Same reasoning as
 `IsIgnored`, which it sits beside: a conflicting row is an ordinary `Inserted`/`Deleted` row to every
@@ -334,6 +339,12 @@ would make every hunk-counting consumer wrong.
   "simplifying" this away again.
 - **Collapsing a `Grid` row needs its `RowDefinition` height zeroed**, not just `IsVisible=false` on
   the child — `DiffView`'s detail pane would otherwise leave a 190px blank band.
+- **`git mergetool` passes `$BASE $LOCAL $REMOTE`, and LOCAL is the RIGHT-hand side** (Diff). LOCAL is
+  "mine" - the file being merged into - which is the right-hand column by the convention the two-way
+  window already set; REMOTE is "theirs" and goes left. `StartupFiles.FromArgs` therefore does NOT
+  pass its arguments through in order, and the swap is invisible to any test whose left and right
+  files are interchangeable — it shipped wrong once and a smoke test with a symmetric argument order
+  did not notice. `StartupFilesTests` pins it with three distinguishable names.
 - **An owned window cannot be shown before its owner is** (Diff). `Window.Show(owner)` throws "Cannot
   show window with non-visible owner" from `OnFrameworkInitializationCompleted`, where `MainWindow` has
   been constructed but not yet displayed — which is exactly where opening `--merge`'s window belongs.

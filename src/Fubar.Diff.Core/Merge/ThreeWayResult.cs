@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Core.Merge;
 
@@ -29,8 +30,43 @@ public sealed record ThreeWayLine(
     MergeKind Kind,
     int RegionIndex)
 {
+    /// <summary>
+    /// Character ranges within <see cref="LeftText"/> that differ from the ANCESTOR's text on this
+    /// row - what the left side actually altered.
+    ///
+    /// Against the ancestor rather than against the other edit, uniformly, because that is what a
+    /// merge is made of: two independent sets of changes to one starting point. In a conflict it also
+    /// answers the question the reader has - "what did each of them do?" - where a left-versus-right
+    /// comparison would show the disagreement while hiding that both may have rewritten the line
+    /// entirely. Empty where the ancestor has no line here: the whole row is then the change, and
+    /// picking out characters within it would be noise, exactly as in the two-way view.
+    /// </summary>
+    public IReadOnlyList<CharSpan> LeftSpans { get; init; } = [];
+
+    /// <summary>Character ranges within <see cref="RightText"/> that differ from the ancestor's.</summary>
+    public IReadOnlyList<CharSpan> RightSpans { get; init; } = [];
+
     /// <summary>True when this row is part of a region rather than stable context.</summary>
     public bool IsChange => Kind != MergeKind.Unchanged;
+
+    /// <summary>
+    /// Whether one side is among those that changed this row's region. The ancestor is never an edit,
+    /// so it is never "changed".
+    /// </summary>
+    public bool ChangedOn(MergeSide side) => side switch
+    {
+        MergeSide.Left => Kind is MergeKind.LeftOnly or MergeKind.BothSame or MergeKind.Conflict,
+        MergeSide.Right => Kind is MergeKind.RightOnly or MergeKind.BothSame or MergeKind.Conflict,
+        _ => false,
+    };
+
+    /// <summary>The character ranges to highlight on one side. The ancestor column carries none - see <see cref="LeftSpans"/>.</summary>
+    public IReadOnlyList<CharSpan> SpansOn(MergeSide side) => side switch
+    {
+        MergeSide.Left => LeftSpans,
+        MergeSide.Right => RightSpans,
+        _ => [],
+    };
 
     /// <summary>The text on one side, or null when that side has no line here.</summary>
     public string? TextOn(MergeSide side) => side switch

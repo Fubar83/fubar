@@ -31,10 +31,13 @@ public sealed record StartupFiles(string? Left, string? Right, string? Base = nu
     {
         if (args.Length > 0 && IsMergeFlag(args[0]))
         {
-            // LOCAL is "mine" and lands on the right, matching the two-way window's convention that
-            // the right-hand side is the one being merged INTO.
+            // args are BASE, LOCAL, REMOTE. LOCAL is "mine" and lands on the RIGHT, matching the
+            // two-way window's convention that the right-hand side is the one being merged INTO;
+            // REMOTE is "theirs" and lands on the left. Written out positionally rather than passed
+            // through in argument order, because the two orders are NOT the same and the difference is
+            // invisible in any test whose left and right files are interchangeable.
             return args.Length >= 4
-                ? new StartupFiles(args[2], args[3], args[1])
+                ? new StartupFiles(Left: args[3], Right: args[2], Base: args[1])
                 : None;
         }
 

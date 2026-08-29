@@ -64,6 +64,7 @@ public class ThreeWayComparisonServiceTests
         var service = new ThreeWayComparisonService(
             new StubReader(files),
             new DiffPlexDiffEngine(),
+            new DiffPlexInlineDiffEngine(),
             new TextLineNormalizer());
 
         return service.CompareFilesAsync(
@@ -257,6 +258,7 @@ public class ThreeWayComparisonServiceTests
         var service = new ThreeWayComparisonService(
             new StubReader(files),
             new DiffPlexDiffEngine(),
+            new DiffPlexInlineDiffEngine(),
             new TextLineNormalizer());
 
         var first = await service.CompareFilesAsync("base.txt", "left.txt", "right.txt", ComparisonOptions.Default, Token);
@@ -267,6 +269,80 @@ public class ThreeWayComparisonServiceTests
         var second = await service.RecompareAsync(first, new ComparisonOptions { IgnoreCase = true }, Token);
         Assert.Equal(0, second.Result.ConflictCount);
     }
+
+    // ---- Character spans ------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Each_edit_reports_what_it_altered_within_the_line()
+    {
+        // The gap this closes: two nearly-identical conflicting lines used to have to be read side by
+        // side, because the only signal was a full-row tint on both.
+        var comparison = await Merge(
+            ["timeout = 30;"],
+            ["timeout = 45;"],
+            ["timeout = 60;"],
+            extension: ".cs");
+
+        var row = Assert.Single(comparison.Result.Lines);
+
+        Assert.Equal(["45"], Selected(row.LeftText!, row.LeftSpans));
+        Assert.Equal(["60"], Selected(row.RightText!, row.RightSpans));
+    }
+
+    [Fact]
+    public async Task The_side_that_did_not_change_reports_nothing()
+    {
+        var comparison = await Merge(["a = 1;"], ["a = 2;"], ["a = 1;"], extension: ".cs");
+
+        var row = Assert.Single(comparison.Result.Lines);
+
+        Assert.NotEmpty(row.LeftSpans);
+        Assert.Empty(row.RightSpans);
+    }
+
+    [Fact]
+    public async Task A_line_with_no_ancestor_counterpart_gets_no_spans()
+    {
+        // The whole row is the change; picking out characters within it would be noise.
+        var comparison = await Merge(["a"], ["a", "brand new"], ["a"]);
+
+        var added = Assert.Single(comparison.Result.Lines, l => l.LeftText == "brand new");
+
+        Assert.Empty(added.LeftSpans);
+    }
+
+    [Fact]
+    public async Task Unchanged_rows_get_no_spans()
+    {
+        var comparison = await Merge(["keep", "a"], ["keep", "b"], ["keep", "a"]);
+
+        var kept = comparison.Result.Lines[0];
+
+        Assert.Equal(MergeKind.Unchanged, kept.Kind);
+        Assert.Empty(kept.LeftSpans);
+        Assert.Empty(kept.RightSpans);
+    }
+
+    [Fact]
+    public async Task Spans_address_the_display_text_even_when_the_keys_were_folded()
+    {
+        // Offsets computed against a normalised key would point at the wrong characters, silently.
+        var comparison = await Merge(
+            ["  value = 1;"],
+            ["  value = 2;"],
+            ["  value = 1;"],
+            new ComparisonOptions { IgnoreWhitespace = true },
+            ".cs");
+
+        var row = Assert.Single(comparison.Result.Lines);
+
+        Assert.All(row.LeftSpans, span =>
+            Assert.True(span.Start >= 0 && span.End <= row.LeftText!.Length, "a span must address the display text"));
+        Assert.Equal(["2"], Selected(row.LeftText!, row.LeftSpans));
+    }
+
+    private static string[] Selected(string text, IReadOnlyList<Core.Models.CharSpan> spans) =>
+        [.. spans.Select(s => text.Substring(s.Start, s.Length))];
 
     // ---- Saving ---------------------------------------------------------------------------------
 
