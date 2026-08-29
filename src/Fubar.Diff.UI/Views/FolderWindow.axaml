@@ -53,7 +53,7 @@
             <StackPanel Spacing="8">
 
                 <Grid ColumnDefinitions="*,Auto,*">
-                    <fc:LabeledField Grid.Column="0" Header="Left folder" Margin="0,0,8,0">
+                    <fc:LabeledField Grid.Column="0" Header="{Binding LeftFolderHeader}" Margin="0,0,8,0">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBox Grid.Column="0" Text="{Binding LeftPath}" PlaceholderText="Choose a folder…" />
                             <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
@@ -61,14 +61,29 @@
                         </Grid>
                     </fc:LabeledField>
 
-                    <fc:Divider Grid.Column="1" Orientation="Vertical" Margin="4,0" />
+                    <fc:Divider Grid.Column="1" Orientation="Vertical" Margin="4,0"
+                                IsVisible="{Binding IsTwoFolderMode}" />
 
-                    <fc:LabeledField Grid.Column="2" Header="Right folder" Margin="8,0,0,0">
+                    <!-- There is no second folder in linked mode, so the picker for it goes away
+                         entirely rather than sitting there greyed out inviting a click. -->
+                    <fc:LabeledField Grid.Column="2" Header="Right folder" Margin="8,0,0,0"
+                                     IsVisible="{Binding IsTwoFolderMode}">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBox Grid.Column="0" Text="{Binding RightPath}" PlaceholderText="Choose a folder…" />
                             <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
                                     Margin="6,0,0,0" Command="{Binding BrowseRightCommand}" />
                         </Grid>
+                    </fc:LabeledField>
+
+                    <!-- ...and the rules take its place, since that is what pairing depends on here. -->
+                    <fc:LabeledField Grid.Column="2" Header="Link rules (left = right)" Margin="8,0,0,0"
+                                     IsVisible="{Binding LinkedMode}">
+                        <TextBox Text="{Binding LinkRuleText}"
+                                 AcceptsReturn="True"
+                                 Height="58"
+                                 FontFamily="Cascadia Mono,Consolas,monospace"
+                                 FontSize="12"
+                                 ToolTip.Tip="One rule per line. Each names the two markers that pair a file with its twin, so a.verified.json is compared with a.received.json." />
                     </fc:LabeledField>
                 </Grid>
 
@@ -78,6 +93,13 @@
                             ToolTip.Tip="Walk both folders (F5)" />
                     <Button Classes="toolbar-btn" Content="Cancel"
                             Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" />
+
+                    <fc:Divider Orientation="Vertical" />
+
+                    <!-- A mode rather than an option: linked mode has one folder, not two, so it
+                         changes what the window is asking for. -->
+                    <CheckBox Content="One folder, linked by name" IsChecked="{Binding LinkedMode}"
+                              ToolTip.Tip="Pair files against each other inside a single folder - for snapshot tests, where a run leaves Thing.received.json beside Thing.verified.json." />
 
                     <fc:Divider Orientation="Vertical" />
 

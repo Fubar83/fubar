@@ -56,7 +56,13 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   on two real checkouts they are most of what is there. `.git`, `bin`, `obj`, `node_modules` and
   friends are excluded out of the box and the list is editable, with `*` and `?` wildcards. Files are
   compared by **contents**, not size — two files of the same length are routinely different. Double-click
-  any changed pair to open it as an ordinary comparison tab.
+  any changed pair to open it as an ordinary comparison tab. Select any two files and compare **those**
+  against each other, for a file that was renamed and so appears once on each side.
+- **Snapshot review** — tick *One folder, linked by name* and it pairs files against each other inside a
+  single folder: `Thing.verified.json` against `Thing.received.json`, which is what
+  [Verify](https://github.com/VerifyTests/Verify) and ApprovalTests leave behind. New snapshots and
+  baselines nothing produces any more are called out separately from changed ones. The rules are just
+  markers (`.verified = .received`), editable, so any convention works.
 - **Three-way merge** — give it a common ancestor and two edits and it settles everything only one side
   touched, plus everything both sides changed identically, on its own. What is left is the set that
   genuinely disagrees. Three panes, the ancestor in the middle, all locked in step; conflicts are marked

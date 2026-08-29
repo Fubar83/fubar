@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Fubar.Diff.Core.Folders;
@@ -32,6 +33,24 @@ public interface IFolderComparisonService
         string leftRoot,
         string rightRoot,
         FolderComparisonOptions options,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Walks ONE tree, pairing files against each other by name - see <see cref="LinkedFolderComparer"/>.
+    ///
+    /// Returns the same shape as <see cref="CompareAsync"/>, with both roots set to the one folder, so
+    /// every consumer of a folder comparison works on it unchanged.
+    /// </summary>
+    /// <param name="root">The folder to look in.</param>
+    /// <param name="options">Recursion, exclusions, and whether to read contents.</param>
+    /// <param name="rules">The name markers that pair two files.</param>
+    /// <param name="progress">Names each pair as it is compared.</param>
+    /// <param name="cancellationToken">Cancels the walk.</param>
+    Task<FolderComparison> CompareLinkedAsync(
+        string root,
+        FolderComparisonOptions options,
+        IReadOnlyList<LinkRule> rules,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default);
 }

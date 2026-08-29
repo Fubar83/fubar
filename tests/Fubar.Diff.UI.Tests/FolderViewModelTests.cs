@@ -31,6 +31,22 @@ public class FolderViewModelTests
         }
 
         public FolderComparisonOptions? Options { get; private set; }
+
+        public string? LinkedRoot { get; private set; }
+
+        public IReadOnlyList<LinkRule>? Rules { get; private set; }
+
+        public Task<FolderComparison> CompareLinkedAsync(
+            string root, FolderComparisonOptions options, IReadOnlyList<LinkRule> rules,
+            IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            Options = options;
+            LinkedRoot = root;
+            Rules = rules;
+
+            return Task.FromResult(result);
+        }
     }
 
     private sealed class NoPicker : IFilePickerService
@@ -396,6 +412,122 @@ public class FolderViewModelTests
         folders.SetSelection([Row(folders, "old-name.cs")]);
 
         Assert.Same(Row(folders, "old-name.cs"), folders.SelectedEntry);
+    }
+
+    // ---- One folder, linked by name -------------------------------------------------------------
+
+    [AvaloniaFact]
+    public async Task Linked_mode_walks_one_folder_with_the_rules()
+    {
+        var (folders, service) = Build();
+        folders.LinkedMode = true;
+        folders.RightPath = string.Empty;
+
+        await folders.CompareAsync();
+
+        Assert.Equal(@"C:\left", service.LinkedRoot);
+        Assert.Contains(service.Rules!, r => r.Left == ".verified" && r.Right == ".received");
+    }
+
+    [AvaloniaFact]
+    public async Task Linked_mode_needs_only_one_folder()
+    {
+        // The right-hand picker is not just hidden - it is genuinely not required.
+        var (folders, service) = Build();
+        folders.RightPath = string.Empty;
+
+        await folders.CompareAsync();
+        Assert.Equal(0, service.Calls);
+
+        folders.LinkedMode = true;
+        await folders.CompareAsync();
+
+        Assert.Equal(1, service.Calls);
+    }
+
+    [AvaloniaFact]
+    public async Task Edited_rules_reach_the_comparison()
+    {
+        var (folders, service) = Build();
+        folders.LinkedMode = true;
+        folders.LinkRuleText = ".baseline = .current";
+
+        await folders.CompareAsync();
+
+        var rule = Assert.Single(service.Rules!);
+        Assert.Equal(".baseline", rule.Left);
+        Assert.Equal(".current", rule.Right);
+    }
+
+    [AvaloniaFact]
+    public void The_right_hand_picker_disappears_in_linked_mode()
+    {
+        var (folders, _) = Build();
+
+        Assert.True(folders.IsTwoFolderMode);
+        Assert.Equal("Left folder", folders.LeftFolderHeader);
+
+        folders.LinkedMode = true;
+
+        Assert.False(folders.IsTwoFolderMode);
+        Assert.Equal("Folder", folders.LeftFolderHeader);
+    }
+
+    [AvaloniaFact]
+    public async Task The_status_line_is_phrased_for_one_folder()
+    {
+        // "Only on the left" is meaningless when there is one folder. What those counts mean here is a
+        // new snapshot and a snapshot nothing produces any more.
+        var (folders, _) = Build(
+            File("new.json", FolderEntryStatus.RightOnly),
+            File("stale.json", FolderEntryStatus.LeftOnly));
+
+        folders.LinkedMode = true;
+        await folders.CompareAsync();
+
+        Assert.Contains("1 new", folders.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("no new output", folders.StatusMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("only on the left", folders.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [AvaloniaFact]
+    public async Task A_clean_linked_run_says_there_is_nothing_to_review()
+    {
+        var (folders, _) = Build(File("a.json", FolderEntryStatus.Same));
+        folders.LinkedMode = true;
+
+        await folders.CompareAsync();
+
+        Assert.Contains("Nothing to review", folders.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public void The_mode_and_rules_are_remembered()
+    {
+        var (folders, _) = Build();
+
+        folders.ApplyDefaults(AppSettings.Default with
+        {
+            FolderLinkedMode = true,
+            FolderLinkRules = [".a = .b"],
+        });
+
+        Assert.True(folders.LinkedMode);
+        Assert.Equal(".a = .b", folders.LinkRuleText);
+
+        var captured = folders.CaptureOptions(AppSettings.Default);
+        Assert.True(captured.FolderLinkedMode);
+        Assert.Equal([".a = .b"], captured.FolderLinkRules);
+    }
+
+    [AvaloniaFact]
+    public void An_empty_stored_rule_list_keeps_the_built_in_conventions()
+    {
+        var (folders, _) = Build();
+
+        folders.ApplyDefaults(AppSettings.Default);
+
+        Assert.Contains(".verified", folders.LinkRuleText, StringComparison.Ordinal);
     }
 
     // ---- Options --------------------------------------------------------------------------------

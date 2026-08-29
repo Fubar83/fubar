@@ -25,6 +25,11 @@ public class FolderWindowTests
             string leftRoot, string rightRoot, FolderComparisonOptions options,
             IProgress<string>? progress = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(result);
+
+        public Task<FolderComparison> CompareLinkedAsync(
+            string root, FolderComparisonOptions options, IReadOnlyList<LinkRule> rules,
+            IProgress<string>? progress = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(result);
     }
 
     private sealed class NoPicker : IFilePickerService

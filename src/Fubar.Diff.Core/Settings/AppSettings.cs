@@ -107,6 +107,15 @@ public sealed record AppSettings
     /// </summary>
     public IReadOnlyList<string> FolderExclude { get; init; } = [];
 
+    /// <summary>Pair files within ONE folder by name, rather than comparing two folders.</summary>
+    public bool FolderLinkedMode { get; init; }
+
+    /// <summary>
+    /// The name markers that pair two files in one folder, each written <c>left = right</c>. Empty
+    /// means "never customised" and keeps the built-in conventions - see <c>LinkRule.Defaults</c>.
+    /// </summary>
+    public IReadOnlyList<string> FolderLinkRules { get; init; } = [];
+
     /// <summary>How many entries <see cref="Recent"/> keeps.</summary>
     public const int MaxRecent = 10;
 }

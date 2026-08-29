@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -172,6 +173,48 @@ public partial class FolderViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool Recursive { get; set; } = true;
 
+    /// <summary>
+    /// Pair files against each other inside ONE folder, by name, instead of comparing two folders.
+    ///
+    /// For snapshot testing: a run leaves <c>Thing.received.json</c> beside <c>Thing.verified.json</c>
+    /// in the same directory, and reviewing it means diffing the two halves of every such pair. There
+    /// is no second folder involved at all, which is why this is a mode rather than an option.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool LinkedMode { get; set; }
+
+    partial void OnLinkedModeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsTwoFolderMode));
+        OnPropertyChanged(nameof(LeftFolderHeader));
+        OnPropertyChanged(nameof(CanCompare));
+        OptionsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The right-hand picker only means something when there are two folders.</summary>
+    public bool IsTwoFolderMode => !LinkedMode;
+
+    /// <summary>The left picker's label, since in linked mode it is not the "left" of anything.</summary>
+    public string LeftFolderHeader => LinkedMode ? "Folder" : "Left folder";
+
+    /// <summary>
+    /// The link rules, one per line, as <c>left = right</c>. Editable because conventions vary - a
+    /// codebase using something other than Verify or ApprovalTests should not need a new build.
+    /// </summary>
+    [ObservableProperty]
+    public partial string LinkRuleText { get; set; } =
+        string.Join(Environment.NewLine, LinkRule.Defaults);
+
+    partial void OnLinkRuleTextChanged(string value) => OptionsChanged?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Whether a comparison can run at all - one folder in linked mode, two otherwise.</summary>
+    public bool CanCompare => !string.IsNullOrWhiteSpace(LeftPath)
+                              && (LinkedMode || !string.IsNullOrWhiteSpace(RightPath));
+
+    partial void OnLeftPathChanged(string value) => OnPropertyChanged(nameof(CanCompare));
+
+    partial void OnRightPathChanged(string value) => OnPropertyChanged(nameof(CanCompare));
+
     /// <summary>Names never compared or descended into, as a comma-separated list for editing.</summary>
     [ObservableProperty]
     public partial string ExcludeList { get; set; } =
@@ -204,7 +247,7 @@ public partial class FolderViewModel : ViewModelBase
     [RelayCommand]
     public async Task CompareAsync()
     {
-        if (string.IsNullOrWhiteSpace(LeftPath) || string.IsNullOrWhiteSpace(RightPath))
+        if (!CanCompare)
         {
             return;
         }
@@ -226,9 +269,13 @@ public partial class FolderViewModel : ViewModelBase
         {
             var progress = new Progress<string>(path => ProgressText = path);
 
-            _comparison = await _service
-                .CompareAsync(LeftPath, RightPath, CurrentOptions(), progress, cancellation.Token)
-                .ConfigureAwait(true);
+            _comparison = LinkedMode
+                ? await _service
+                    .CompareLinkedAsync(LeftPath, CurrentOptions(), FileLinker.Parse(LinkRuleText), progress, cancellation.Token)
+                    .ConfigureAwait(true)
+                : await _service
+                    .CompareAsync(LeftPath, RightPath, CurrentOptions(), progress, cancellation.Token)
+                    .ConfigureAwait(true);
 
             RebuildTree();
             StatusMessage = Describe();
@@ -306,10 +353,18 @@ public partial class FolderViewModel : ViewModelBase
     public void ApplyDefaults(AppSettings settings)
     {
         ShowIdentical = settings.FolderShowIdentical;
+        LinkedMode = settings.FolderLinkedMode;
 
         if (settings.FolderExclude.Count > 0)
         {
             ExcludeList = string.Join(", ", settings.FolderExclude);
+        }
+
+        // Empty means "never customised", which keeps the built-in conventions rather than leaving a
+        // settings file written before this existed with no rules at all.
+        if (settings.FolderLinkRules.Count > 0)
+        {
+            LinkRuleText = string.Join(Environment.NewLine, settings.FolderLinkRules);
         }
     }
 
@@ -317,7 +372,9 @@ public partial class FolderViewModel : ViewModelBase
     public AppSettings CaptureOptions(AppSettings settings) => settings with
     {
         FolderShowIdentical = ShowIdentical,
+        FolderLinkedMode = LinkedMode,
         FolderExclude = ParseExclusions(),
+        FolderLinkRules = [.. FileLinker.Parse(LinkRuleText).Select(rule => rule.ToString())],
     };
 
     // ---- Internals ------------------------------------------------------------------------------
@@ -344,19 +401,32 @@ public partial class FolderViewModel : ViewModelBase
         OnPropertyChanged(nameof(AreIdentical));
     }
 
+    /// <summary>
+    /// The status line, phrased for the mode.
+    ///
+    /// "Only on the left" is meaningless in linked mode - there is one folder. What those counts mean
+    /// there is worth saying plainly instead: a baseline with no output beside it is a snapshot nothing
+    /// produces any more, and output with no baseline is a new one waiting to be accepted. Those are
+    /// the two things a reviewer is looking for, and neither is "a file that is only on one side".
+    /// </summary>
     private string Describe()
     {
         if (_comparison.AreIdentical)
         {
-            return $"The folders match - {_comparison.SameCount} file(s), all identical.";
+            return LinkedMode
+                ? $"Nothing to review - {_comparison.SameCount} pair(s), all matching."
+                : $"The folders match - {_comparison.SameCount} file(s), all identical.";
         }
 
         var hidden = ShowIdentical || _comparison.SameCount == 0
             ? string.Empty
-            : $"   ·   {_comparison.SameCount} identical file(s) hidden";
+            : $"   ·   {_comparison.SameCount} {(LinkedMode ? "matching pair(s)" : "identical file(s)")} hidden";
 
-        return $"{_comparison.DifferentCount} changed   ·   {_comparison.LeftOnlyCount} only on the left"
-               + $"   ·   {_comparison.RightOnlyCount} only on the right{hidden}";
+        return LinkedMode
+            ? $"{_comparison.DifferentCount} changed   ·   {_comparison.RightOnlyCount} new"
+              + $"   ·   {_comparison.LeftOnlyCount} with no new output{hidden}"
+            : $"{_comparison.DifferentCount} changed   ·   {_comparison.LeftOnlyCount} only on the left"
+              + $"   ·   {_comparison.RightOnlyCount} only on the right{hidden}";
     }
 }
 

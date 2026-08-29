@@ -198,6 +198,16 @@ banner before (`HasUnresolvedConflicts`) and names the count in the status line 
 this by throwing in the service, and do not drop the warnings - the fallback is only acceptable while
 it cannot be a surprise.
 
+**Linked (one-folder) comparison reuses `FolderComparison` with BOTH roots the same** (Diff). That is
+not a shortcut - it is what makes the entire folder window, its filtering and its "open this pair" work
+unchanged for snapshot review. The two halves of a linked pair differ by FILE NAME, not by root, which
+is precisely what `FolderEntry.LeftRelativePath`/`RightRelativePath` already carry (they were added for
+case-insensitive pairing and turned out to be exactly the right shape for this). Do not give linked
+mode its own result type. Two behaviours differ from the two-tree walk on purpose: a file no rule
+matches is OMITTED rather than reported as one-sided - with one folder there is no "other side", and an
+ordinary source file beside some snapshots is not a difference - and a folder containing no pairs at all
+is dropped rather than shown empty.
+
 **A folder comparison's leniency stops at file CONTENT** (Diff). Every listing in
 `FileSystemFolderScanner` swallows its exceptions and returns empty, because a tree of any size holds
 something the current user cannot open and refusing to compare two checkouts over one locked folder is

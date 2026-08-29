@@ -18,6 +18,31 @@ All notable changes to this project are documented here. The format is based on
   hunting is the few that do not, through the same thousands of untouched lines. An ignored row is
   never folded away — its faint band is the only evidence that an ignore rule is doing anything.
 
+- **Snapshot review: one folder, linked by name.** Tick *One folder, linked by name* and the comparison
+  pairs files against each other inside a single directory — `Thing.verified.json` against
+  `Thing.received.json`. That is what Verify and ApprovalTests leave behind after a run, and reviewing
+  it previously meant picking two files out of a folder by hand, one pair at a time, with the names
+  differing by one word in the middle.
+
+  The rules are markers, not globs — `.verified = .received` — because the shape is always the same:
+  one name is the other with a word inserted before the extension, so removing it gives the key the two
+  share and works for any file type without a rule per extension. `.approved`/`.received` and
+  `.expected`/`.actual` ship too, and the list is editable.
+
+  The counts are phrased for the job: a `.received` with no baseline is a **new** snapshot waiting to be
+  accepted, and a `.verified` with nothing beside it is one **nothing produces any more** — which is how
+  a dead test goes unnoticed. Files no rule matches are simply not in the answer; an ordinary source
+  file next to some snapshots is not a difference.
+
+  It reuses the folder comparison's own result shape with both roots set to the one folder, so the
+  window, the filtering and opening a pair all work unchanged — the two halves differ by file name
+  rather than by root, which is exactly what the per-side paths already carried.
+
+- **Compare any two selected files.** A file renamed between two trees appears as one left-only row and
+  one right-only row, neither openable on its own. Select both and the button opens them against each
+  other, naming the pair it will open. The pairing is not guessed: a similarity heuristic would be
+  wrong precisely on the cases that matter, so the user says so instead.
+
 - **Folder comparison.** Two directory trees walked together and reported as a tree — changed, left
   only, right only — opened from **Folders…** in the toolbar. Double-click any changed pair and it opens
   as an ordinary comparison tab in the main window, which is the point: a folder comparison that could
