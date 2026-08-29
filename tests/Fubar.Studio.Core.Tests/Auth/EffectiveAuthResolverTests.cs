@@ -31,7 +31,7 @@ public class EffectiveAuthResolverTests
     [Fact]
     public void Inherit_resolves_through_the_folder_chain()
     {
-        var chain = new InheritanceChain([], Prod.Id, "Folder: api");
+        var chain = new InheritanceChain([], Prod.Id, "Folder: api", []);
         var result = Resolve(AuthType.Inherit, chain: chain);
         Assert.Same(Prod.Config, result.Config);
         Assert.Equal("Folder: api", result.Source);
@@ -40,7 +40,7 @@ public class EffectiveAuthResolverTests
     [Fact]
     public void Inherit_without_a_matching_profile_yields_nothing()
     {
-        var chain = new InheritanceChain([], "unknown", "Folder: api");
+        var chain = new InheritanceChain([], "unknown", "Folder: api", []);
         var result = Resolve(AuthType.Inherit, chain: chain);
         Assert.Null(result.Config);
     }

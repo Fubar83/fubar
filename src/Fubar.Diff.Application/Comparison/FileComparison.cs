@@ -50,6 +50,23 @@ public sealed record FileComparison(
     /// <summary>The right side's text exactly as given.</summary>
     public string OriginalRightText { get; init; } = string.Empty;
 
+    /// <summary>
+    /// How the two files' encodings, byte order marks, line endings and trailing newlines differ.
+    ///
+    /// Computed rather than derived from <see cref="Result"/> because it CANNOT be: the reader strips
+    /// the BOM and splits on every terminator, so two files differing only in these ways produce
+    /// identical lines and an empty diff. Without this the tool would report "identical" about files
+    /// that are not - see <see cref="TextFormatComparer"/>.
+    /// </summary>
+    public TextFormatDifference FormatDifference { get; init; } = TextFormatDifference.None;
+
+    /// <summary>
+    /// True when the content matches line for line but the files still differ on disk. The distinction
+    /// the status line needs: "identical" would be wrong, and showing a diff with no rows would be
+    /// unhelpful, so this case gets said out loud instead.
+    /// </summary>
+    public bool DiffersOnlyByFormat => Result.AreIdentical && FormatDifference.Any;
+
     /// <summary>Nothing loaded yet - the app's initial state.</summary>
     public static FileComparison Empty { get; } = new(
         TextDocument.Empty,

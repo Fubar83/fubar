@@ -18,9 +18,14 @@
          DiffEditorPane draws) read at a glance, rather than asking the eye to jump a whole pane's
          width to compare two short strings.
 
-         Reuses DiffEditorPane, so the excerpt is tinted, character-highlighted and line-numbered by
-         exactly the same renderers as the main view - a second rendering path here would be free to
-         disagree with the one above it, which is the last thing a close-up should do. -->
+         Reuses DiffEditorPane, so the excerpt is character-highlighted and line-numbered by exactly the
+         same renderers as the main view - a second rendering path here would be free to disagree with
+         the one above it, which is the last thing a close-up should do. Emphasized="True" does two
+         things (see DiffLineColors and ChangeLineBackgroundRenderer): it skips the main view's
+         full-line wash entirely - a page showing nothing but the current difference has no "where" left
+         for a whole-row band to answer - and turns the character-level highlight up to a stronger
+         intensity, since it is now the ONLY signal here rather than one layered on top of a tint. -->
+
     <Border Background="{DynamicResource BgHeader}"
             BorderBrush="{DynamicResource BorderSubtle}"
             BorderThickness="0,1,0,0">
@@ -37,7 +42,7 @@
                     <TextBlock DockPanel.Dock="Top" Text="Left"
                                Foreground="{DynamicResource TextSecondary}"
                                FontSize="10" Margin="8,2" />
-                    <views:DiffEditorPane Document="{Binding DetailLeft}" />
+                    <views:DiffEditorPane Document="{Binding DetailLeft}" Emphasized="True" ShowInvisibles="{Binding ShowInvisibles}" />
                 </DockPanel>
 
                 <Border Grid.Row="1" Background="{DynamicResource BorderSubtle}" />
@@ -46,7 +51,7 @@
                     <TextBlock DockPanel.Dock="Top" Text="Right"
                                Foreground="{DynamicResource TextSecondary}"
                                FontSize="10" Margin="8,2" />
-                    <views:DiffEditorPane Document="{Binding DetailRight}" />
+                    <views:DiffEditorPane Document="{Binding DetailRight}" Emphasized="True" ShowInvisibles="{Binding ShowInvisibles}" />
                 </DockPanel>
             </Grid>
         </DockPanel>

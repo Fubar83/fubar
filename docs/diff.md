@@ -32,12 +32,25 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   differences; array elements are matched by an auto-detected identity key, so an element inserted
   mid-array marks only itself. JSON opens in the **Json** view by default - the change tree plus both
   documents, each shown exactly as given (a minified file stays minified, not reformatted) - where
-  stepping through changes highlights each one directly in both, immune to formatting or
-  property-order differences since neither side depends on lining up with the other. **Text** remains
-  available for the aligned side-by-side view, and is the only mode for anything that does not parse
-  as JSON.
-- **Comparison options**: ignore leading/trailing whitespace, ignore case, report key order, match
-  arrays by position, or normalize XML.
+  stepping through changes (Prev/Next, or a click in the tree) highlights each one directly in both,
+  immune to formatting or property-order differences since neither side depends on lining up with the
+  other. It has its own **Diff pane** too, the same close-up shown below the aligned Text view but
+  built from the change's own location in each side's raw text rather than an aligned row range.
+  **Text** remains available for the aligned side-by-side view, and is the only mode for anything that
+  does not parse as JSON.
+- **Comparison options**: ignore leading/trailing whitespace, ignore case, or reformat (pretty-print
+  JSON/XML in the Text view - opt-in, never automatic; the Json view always shows both sides exactly as
+  given regardless of this) from the toolbar; a **Settings…** window holds the rest in two sections -
+  Text compare, and JSON compare (report key order, match arrays by position, treat `null` and a
+  missing property as equal, per-path array identity key overrides, and a list of JSON paths whose
+  differences are never reported).
+- **Format differences are reported, not hidden** — two files whose content matches but whose
+  encoding, byte order mark, line endings or trailing newline do not are called out explicitly, since
+  none of those reach the panes and "identical" would be wrong.
+- **Reveal invisible characters** — non-breaking spaces, zero-width characters and bidirectional
+  controls marked where they occur, for when the diff is right and looks wrong.
+- **Normalize Unicode (NFC)** — optional, for text that renders identically but is encoded differently
+  (macOS decomposes where Windows and Linux compose).
 - **Encoding aware** — detects UTF-8/UTF-16 BOMs and CRLF/LF/CR line endings, and declines binary
   files rather than rendering a screen of mojibake.
 - **Search** inside either pane with Ctrl+F.

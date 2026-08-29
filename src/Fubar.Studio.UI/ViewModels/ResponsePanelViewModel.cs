@@ -293,13 +293,13 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Supplies the ignore rules for a response comparison, set by the request editor that owns this
-    /// pane. Null in any host that has no request behind it, which hides the affordance.
+    /// Supplies the comparison-settings hierarchy for a response comparison, set by the request editor
+    /// that owns this pane. Null in any host that has no request behind it, which hides the affordances.
     ///
-    /// A factory rather than a value: the rules can be edited and saved from inside the diff window,
-    /// so a snapshot taken when the pane was built would be stale by the second comparison.
+    /// A factory rather than a value: settings can be edited and saved from inside the diff window, so a
+    /// snapshot taken when the pane was built would be stale by the second comparison.
     /// </summary>
-    public Func<DiffIgnoreContext>? IgnoreContextProvider { get; set; }
+    public Func<DiffSettingsContext>? SettingsContextProvider { get; set; }
 
     /// <summary>
     /// Diffs the pinned response (left, older) against this one (right, current).
@@ -321,7 +321,7 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
             pinned.Label,
             SourceLabel,
             "Compare responses",
-            IgnoreContextProvider?.Invoke());
+            SettingsContextProvider?.Invoke());
     }
 
     private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };

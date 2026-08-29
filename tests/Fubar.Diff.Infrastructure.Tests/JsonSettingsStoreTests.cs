@@ -69,6 +69,16 @@ public class JsonSettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Ignored_paths_round_trip()
+    {
+        var settings = AppSettings.Default with { IgnoredPaths = ["$.requestId", "$.items[*].timestamp"] };
+
+        await _store.SaveAsync(settings, Token);
+
+        Assert.Equal(["$.requestId", "$.items[*].timestamp"], _store.Load().IgnoredPaths);
+    }
+
+    [Fact]
     public async Task Saving_creates_the_directory()
     {
         Assert.False(Directory.Exists(_directory));

@@ -22,6 +22,9 @@ internal sealed class ChangeLineBackgroundRenderer : IBackgroundRenderer
 {
     private readonly Avalonia.StyledElement _host;
     private IReadOnlyList<AlignedLine> _lines = [];
+    private bool _emphasized;
+    private int _currentStart = -1;
+    private int _currentEnd = -1;
 
     public ChangeLineBackgroundRenderer(Avalonia.StyledElement host) => _host = host;
 
@@ -30,9 +33,28 @@ internal sealed class ChangeLineBackgroundRenderer : IBackgroundRenderer
     /// <summary>Swaps in the metadata for a new comparison. The caller must redraw the text view.</summary>
     public void SetLines(IReadOnlyList<AlignedLine> lines) => _lines = lines;
 
+    /// <summary>Whether this pane is a close-up (DiffDetailPane), where the tint should carry more weight.</summary>
+    public void SetEmphasized(bool value) => _emphasized = value;
+
+    /// <summary>
+    /// The current hunk's row range, so rows OUTSIDE it can fade - a difference elsewhere in the file
+    /// should read as "there, but not what you're looking at" rather than compete equally with the one
+    /// just navigated to. A negative start (nothing selected yet, or this is a close-up pane that never
+    /// calls this) means nothing fades - everything shows at normal strength.
+    /// </summary>
+    public void SetCurrentRange(int startIndex, int endIndex)
+    {
+        _currentStart = startIndex;
+        _currentEnd = endIndex;
+    }
+
     public void Draw(TextView textView, DrawingContext drawingContext)
     {
-        if (_lines.Count == 0)
+        // The close-up panes (DiffDetailPane) skip the full-width band entirely: it is a page full of
+        // nothing BUT the current difference, so a band across the whole pane width says nothing a
+        // border around the pane does not already say. CharSpanColorizer carries the whole signal
+        // there instead, precisely over the characters that changed rather than the row they sit on.
+        if (_emphasized || _lines.Count == 0)
         {
             return;
         }
@@ -56,7 +78,7 @@ internal sealed class ChangeLineBackgroundRenderer : IBackgroundRenderer
             var line = _lines[index];
             var brushOrNull = line.IsIgnored
                 ? DiffLineColors.IgnoredBackground(_host)
-                : DiffLineColors.LineBackground(_host, line.Kind);
+                : DiffLineColors.LineBackground(_host, line.Kind, Emphasis(index));
 
             if (brushOrNull is not { } brush)
             {
@@ -71,4 +93,9 @@ internal sealed class ChangeLineBackgroundRenderer : IBackgroundRenderer
                 new Rect(0, top, textView.Bounds.Width, visualLine.Height));
         }
     }
+
+    private DiffEmphasis Emphasis(int index) =>
+        _currentStart >= 0 && (index < _currentStart || index > _currentEnd)
+            ? DiffEmphasis.Faded
+            : DiffEmphasis.Normal;
 }

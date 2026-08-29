@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -86,9 +88,25 @@ public partial class ComparisonViewModel : ViewModelBase
         {
             IgnoreWhitespace = settings.IgnoreWhitespace;
             IgnoreCase = settings.IgnoreCase;
+            NormalizeStructure = settings.NormalizeStructure;
+            NormalizeUnicode = settings.NormalizeUnicode;
+            ShowInvisibles = settings.ShowInvisibles;
             ReportPropertyOrder = settings.ReportPropertyOrder;
             MatchArraysByPosition = settings.MatchArraysByPosition;
+            IgnoreNullVsMissing = settings.IgnoreNullVsMissing;
             Mode = settings.Mode;
+
+            ArrayKeyOverrides.Clear();
+            foreach (var (path, key) in settings.ArrayKeyOverrides)
+            {
+                ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(path, key));
+            }
+
+            IgnoredPaths.Clear();
+            foreach (var path in settings.IgnoredPaths)
+            {
+                IgnoredPaths.Add(path);
+            }
         }
         finally
         {
@@ -101,9 +119,15 @@ public partial class ComparisonViewModel : ViewModelBase
     {
         IgnoreWhitespace = IgnoreWhitespace,
         IgnoreCase = IgnoreCase,
+        NormalizeStructure = NormalizeStructure,
+        NormalizeUnicode = NormalizeUnicode,
+        ShowInvisibles = ShowInvisibles,
         ReportPropertyOrder = ReportPropertyOrder,
         MatchArraysByPosition = MatchArraysByPosition,
+        IgnoreNullVsMissing = IgnoreNullVsMissing,
         Mode = Mode,
+        ArrayKeyOverrides = ArrayKeyOverrides.ToDictionary(e => e.Path, e => e.Key),
+        IgnoredPaths = [.. IgnoredPaths],
     };
 
     public ThemeManagerViewModel ThemeManager { get; }
@@ -143,6 +167,31 @@ public partial class ComparisonViewModel : ViewModelBase
     [ObservableProperty]
     public partial string StatusMessage { get; set; } = "Choose two files to compare.";
 
+    /// <summary>
+    /// Whether the two file pickers are shown in full, or collapsed to a one-line summary.
+    ///
+    /// Collapses itself after a successful comparison: the pickers are how you START a comparison, but
+    /// once one is on screen they are four controls and a whole row of chrome standing between the
+    /// user and the thing they opened the app to look at. The summary line stays clickable, so getting
+    /// them back is one click and nothing is hidden for good.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsFileRowExpanded { get; set; } = true;
+
+    /// <summary>
+    /// Names how the two files' encodings/BOM/line endings differ, or empty when they do not.
+    ///
+    /// Shown as a banner as well as in the status line, because when it is the ONLY difference the
+    /// panes are identical and there is nothing else on screen to notice.
+    /// </summary>
+    public string FormatDifferenceDetail =>
+        TextFormatComparer.Describe(_comparison.Left.Format, _comparison.Right.Format);
+
+    public bool HasFormatDifference => _comparison.FormatDifference.Any;
+
+    [RelayCommand]
+    private void ToggleFileRow() => IsFileRowExpanded = !IsFileRowExpanded;
+
     /// <summary>True while a comparison or save is running, so the view can disable the toolbar.</summary>
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
@@ -162,6 +211,20 @@ public partial class ComparisonViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool NormalizeStructure { get; set; }
 
+    /// <summary>Compare in Unicode normal form C - see <see cref="ComparisonOptions.NormalizeUnicode"/>.</summary>
+    [ObservableProperty]
+    public partial bool NormalizeUnicode { get; set; }
+
+    /// <summary>
+    /// Reveal invisible characters in the panes. A DISPLAY setting, not a comparison one - it changes
+    /// nothing about the result, so it does not re-run the diff, it just stops the answer looking
+    /// wrong.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowInvisibles { get; set; }
+
+    partial void OnShowInvisiblesChanged(bool value) => Pane.ShowInvisibles = value;
+
     /// <summary>
     /// Report a property that only moved. Off by default because JSON objects are unordered, so
     /// reporting order produces noise on files nobody meaningfully edited.
@@ -173,6 +236,10 @@ public partial class ComparisonViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool MatchArraysByPosition { get; set; }
 
+    /// <summary>Treat an explicit JSON <c>null</c> and an absent property as the same thing.</summary>
+    [ObservableProperty]
+    public partial bool IgnoreNullVsMissing { get; set; }
+
     /// <summary>Text or semantic comparison; <see cref="ComparisonMode.Auto"/> decides per file.</summary>
     [ObservableProperty]
     public partial ComparisonMode Mode { get; set; } = ComparisonMode.Auto;
@@ -180,15 +247,84 @@ public partial class ComparisonViewModel : ViewModelBase
     /// <summary>The values offered by the mode selector.</summary>
     public static IReadOnlyList<ComparisonMode> ModeOptions { get; } = Enum.GetValues<ComparisonMode>();
 
+    /// <summary>
+    /// Identity-key overrides for specific arrays, shown and edited as a list rather than the
+    /// dictionary <see cref="JsonComparisonOptions"/> actually wants - see <see cref="CurrentOptions"/>
+    /// for the conversion. Entries are replaced wholesale (remove then re-add), never edited in place,
+    /// which is why <see cref="ArrayKeyOverrideEntry"/> is a plain immutable record.
+    /// </summary>
+    public ObservableCollection<ArrayKeyOverrideEntry> ArrayKeyOverrides { get; } = [];
+
+    [ObservableProperty]
+    public partial string NewOverridePath { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string NewOverrideKey { get; set; } = string.Empty;
+
+    [RelayCommand(CanExecute = nameof(CanAddArrayKeyOverride))]
+    private void AddArrayKeyOverride()
+    {
+        ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(NewOverridePath.Trim(), NewOverrideKey.Trim()));
+        NewOverridePath = string.Empty;
+        NewOverrideKey = string.Empty;
+        OptionChanged();
+    }
+
+    private bool CanAddArrayKeyOverride() =>
+        !string.IsNullOrWhiteSpace(NewOverridePath) && !string.IsNullOrWhiteSpace(NewOverrideKey);
+
+    partial void OnNewOverridePathChanged(string value) => AddArrayKeyOverrideCommand.NotifyCanExecuteChanged();
+
+    partial void OnNewOverrideKeyChanged(string value) => AddArrayKeyOverrideCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand]
+    private void RemoveArrayKeyOverride(ArrayKeyOverrideEntry entry)
+    {
+        ArrayKeyOverrides.Remove(entry);
+        OptionChanged();
+    }
+
+    /// <summary>
+    /// JSON paths whose differences are never reported - see <see cref="JsonPathPattern"/> for the
+    /// syntax. Same add/remove-only shape as <see cref="ArrayKeyOverrides"/>, for the same reason.
+    /// </summary>
+    public ObservableCollection<string> IgnoredPaths { get; } = [];
+
+    [ObservableProperty]
+    public partial string NewIgnoredPath { get; set; } = string.Empty;
+
+    [RelayCommand(CanExecute = nameof(CanAddIgnoredPath))]
+    private void AddIgnoredPath()
+    {
+        IgnoredPaths.Add(NewIgnoredPath.Trim());
+        NewIgnoredPath = string.Empty;
+        OptionChanged();
+    }
+
+    private bool CanAddIgnoredPath() => !string.IsNullOrWhiteSpace(NewIgnoredPath);
+
+    partial void OnNewIgnoredPathChanged(string value) => AddIgnoredPathCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand]
+    private void RemoveIgnoredPath(string path)
+    {
+        IgnoredPaths.Remove(path);
+        OptionChanged();
+    }
+
     partial void OnIgnoreWhitespaceChanged(bool value) => OptionChanged();
 
     partial void OnIgnoreCaseChanged(bool value) => OptionChanged();
 
     partial void OnNormalizeStructureChanged(bool value) => OptionChanged();
 
+    partial void OnNormalizeUnicodeChanged(bool value) => OptionChanged();
+
     partial void OnReportPropertyOrderChanged(bool value) => OptionChanged();
 
     partial void OnMatchArraysByPositionChanged(bool value) => OptionChanged();
+
+    partial void OnIgnoreNullVsMissingChanged(bool value) => OptionChanged();
 
     partial void OnModeChanged(ComparisonMode value) => OptionChanged();
 
@@ -263,6 +399,9 @@ public partial class ComparisonViewModel : ViewModelBase
             // A fresh pair of files invalidates any decisions made about the previous one.
             _mergeState = MergeState.Empty;
             Refresh();
+
+            // The pickers have done their job - give the row back to the diff.
+            IsFileRowExpanded = false;
 
             // Announced only after a successful read - a path that could not be opened is not
             // something worth offering to reopen. The shell owns the recent list, since it is shared
@@ -343,11 +482,15 @@ public partial class ComparisonViewModel : ViewModelBase
         IgnoreWhitespace = IgnoreWhitespace,
         IgnoreCase = IgnoreCase,
         NormalizeStructure = NormalizeStructure,
+        NormalizeUnicode = NormalizeUnicode,
         Mode = Mode,
         Json = new JsonComparisonOptions
         {
             ReportPropertyOrder = ReportPropertyOrder,
             MatchArraysByPosition = MatchArraysByPosition,
+            IgnoreNullVsMissing = IgnoreNullVsMissing,
+            ArrayKeyOverrides = ArrayKeyOverrides.ToDictionary(e => e.Path, e => e.Key),
+            IgnoredPaths = [.. IgnoredPaths],
         },
     };
 
@@ -430,6 +573,9 @@ public partial class ComparisonViewModel : ViewModelBase
 
         RaiseTitle();
 
+        OnPropertyChanged(nameof(HasFormatDifference));
+        OnPropertyChanged(nameof(FormatDifferenceDetail));
+
         StatusMessage = BuildStatus(result);
     }
 
@@ -442,6 +588,14 @@ public partial class ComparisonViewModel : ViewModelBase
     {
         if (result.AreIdentical)
         {
+            // A format-only difference is still a difference: these two files are not interchangeable
+            // on disk, and saying "identical" about them is how a diff tool loses someone's trust
+            // right after their version control told them otherwise.
+            if (_comparison.FormatDifference.Any)
+            {
+                return $"Same content, different file format - {FormatDifferenceDetail}";
+            }
+
             return Pane.IsSemantic
                 ? "No semantic differences - the files differ only in formatting or ordering."
                 : "The files are identical.";

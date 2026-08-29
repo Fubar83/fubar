@@ -26,9 +26,25 @@ public sealed record AppSettings
 
     public bool IgnoreCase { get; init; }
 
+    /// <summary>Pretty-print JSON/XML for display in the Text view - see the "Reformat" toggle.</summary>
+    public bool NormalizeStructure { get; init; }
+
+    /// <summary>Compare in Unicode normal form C - see <c>ComparisonOptions.NormalizeUnicode</c>.</summary>
+    public bool NormalizeUnicode { get; init; }
+
+    /// <summary>
+    /// Reveal invisible characters in the panes. A display preference rather than a comparison one,
+    /// persisted for the same reason the theme is: someone who wants to see NBSPs wants to see them
+    /// every session, not to re-tick a box each time.
+    /// </summary>
+    public bool ShowInvisibles { get; init; }
+
     public bool ReportPropertyOrder { get; init; }
 
     public bool MatchArraysByPosition { get; init; }
+
+    /// <summary>Treat an explicit JSON <c>null</c> and an absent property as the same thing.</summary>
+    public bool IgnoreNullVsMissing { get; init; }
 
     /// <summary>Text or semantic comparison.</summary>
     public ComparisonMode Mode { get; init; } = ComparisonMode.Auto;
@@ -40,6 +56,12 @@ public sealed record AppSettings
     /// </summary>
     public IReadOnlyDictionary<string, string> ArrayKeyOverrides { get; init; } =
         new Dictionary<string, string>();
+
+    /// <summary>
+    /// JSON paths whose differences are never reported, in <see cref="Json.JsonPathPattern"/> syntax -
+    /// e.g. a <c>requestId</c> or <c>timestamp</c> field that changes on every call.
+    /// </summary>
+    public IReadOnlyList<string> IgnoredPaths { get; init; } = [];
 
     /// <summary>How many entries <see cref="Recent"/> keeps.</summary>
     public const int MaxRecent = 10;

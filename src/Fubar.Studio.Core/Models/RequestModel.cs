@@ -59,7 +59,45 @@ public sealed class RequestModel
     /// same field name can be meaningful on one response and a timestamp on another. Committed with
     /// the request, so a team shares the rules rather than each rediscovering them.
     /// </summary>
+    /// <remarks>
+    /// SUPERSEDED by <see cref="Comparison"/>'s <c>IgnoredPaths</c>, which sits in a hierarchy the
+    /// global and folder levels can also contribute to. Kept so request.json files written before that
+    /// existed still load: <see cref="EffectiveComparison"/> folds this into the new shape when the new
+    /// section is absent, and <see cref="MigrateLegacyIgnorePaths"/> rewrites it on the next save. Do
+    /// not read this field directly - read <see cref="EffectiveComparison"/>.
+    /// </remarks>
     public List<string> ResponseDiffIgnorePaths { get; set; } = [];
+
+    /// <summary>
+    /// This request's comparison overrides - the innermost level of the hierarchy, beating the folder
+    /// and global levels for whichever individual settings it sets. Null means it overrides nothing.
+    /// </summary>
+    public ComparisonSettings? Comparison { get; set; }
+
+    /// <summary>
+    /// <see cref="Comparison"/>, or a stand-in built from the legacy
+    /// <see cref="ResponseDiffIgnorePaths"/> when this file predates it. Every reader should go through
+    /// here so an un-migrated request keeps behaving exactly as it did.
+    /// </summary>
+    public ComparisonSettings? EffectiveComparison =>
+        Comparison ?? (ResponseDiffIgnorePaths.Count > 0
+            ? new ComparisonSettings { IgnoredPaths = [.. ResponseDiffIgnorePaths] }
+            : null);
+
+    /// <summary>
+    /// Folds the legacy field into <see cref="Comparison"/> and clears it, so the next save writes only
+    /// the new shape. A no-op once migrated, and never loses rules: it only runs while the new section
+    /// is absent, and copies before clearing.
+    /// </summary>
+    public void MigrateLegacyIgnorePaths()
+    {
+        if (Comparison is null && ResponseDiffIgnorePaths.Count > 0)
+        {
+            Comparison = new ComparisonSettings { IgnoredPaths = [.. ResponseDiffIgnorePaths] };
+        }
+
+        ResponseDiffIgnorePaths = [];
+    }
 
     /// <summary>
     /// Obsolete: variables now resolve strictly from the active <see cref="WorkspaceEnvironment"/>

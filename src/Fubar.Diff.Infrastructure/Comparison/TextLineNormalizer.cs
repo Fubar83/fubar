@@ -34,6 +34,17 @@ public sealed class TextLineNormalizer : ILineNormalizer
             key = key.ToUpperInvariant();
         }
 
+        if (options.NormalizeUnicode)
+        {
+            // Guarded by IsNormalized: the check is cheap and true for essentially all real input, so
+            // the allocating path only runs for lines that genuinely need it. Form C (compose) rather
+            // than D, because it is what the web, Windows and Linux already produce - normalising
+            // toward the majority keeps the KEY closest to the text on screen.
+            key = key.IsNormalized(NormalizationForm.FormC)
+                ? key
+                : key.Normalize(NormalizationForm.FormC);
+        }
+
         return key;
     }
 

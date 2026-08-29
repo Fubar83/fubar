@@ -15,6 +15,9 @@ namespace Fubar.Diff.Controls.Rendering;
 ///
 /// Registered AFTER <see cref="ChangeLineBackgroundRenderer"/> on the same layer: background
 /// renderers paint in registration order, so this lands on top of the change tint and under the text.
+///
+/// Used only by the MAIN Json panes now - the Json close-up (<c>JsonDetailPane</c>) highlights via
+/// <see cref="SpanTextColorizer"/> instead, so there is no "emphasized" variant of this one to hold.
 /// </summary>
 internal sealed class CurrentHunkRenderer : IBackgroundRenderer
 {

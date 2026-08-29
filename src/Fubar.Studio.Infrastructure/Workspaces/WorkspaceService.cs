@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Workspaces;
 using Fubar.Studio.Infrastructure.Json;
@@ -370,6 +371,7 @@ public sealed class WorkspaceService : IWorkspaceService
         ancestors.Reverse();
 
         var headers = new List<InheritedHeader>();
+        var comparisonLayers = new List<ComparisonSettingsLayer>();
         string? authProfileId = null;
         string? authSourceName = null;
 
@@ -388,8 +390,19 @@ public sealed class WorkspaceService : IWorkspaceService
                 authProfileId = config.AuthProfileId;
                 authSourceName = $"Folder: {sourceName}";
             }
+
+            // Kept in walk order (root-most first) rather than collapsed here: the resolver picks a
+            // winner per SETTING, so a nearer folder overriding one option must not discard a further
+            // one's contribution to the others.
+            if (config.Comparison is not null)
+            {
+                comparisonLayers.Add(new ComparisonSettingsLayer(
+                    config.Comparison,
+                    ComparisonScope.Folder,
+                    $"Folder: {sourceName}"));
+            }
         }
 
-        return new InheritanceChain(headers, authProfileId, authSourceName);
+        return new InheritanceChain(headers, authProfileId, authSourceName, comparisonLayers);
     }
 }

@@ -6,12 +6,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fubar.Studio.Application.Requests;
 using Fubar.Studio.Core.Auth;
+using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.History;
 using Fubar.Studio.Core.Http;
 using Fubar.Studio.Core.Import;
 using Fubar.Studio.Core.Json;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
+using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Testing;
 using Fubar.Studio.Core.Variables;
 using Fubar.Studio.Core.Workspaces;
@@ -62,8 +64,16 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     /// <see cref="RequestModel"/> never itself flags a freshly-opened request as unsaved.</summary>
     private bool _populating = true;
 
-    /// <summary>Response-diff ignore rules as last loaded or saved - see BuildIgnoreContext.</summary>
-    private List<string> _responseDiffIgnorePaths = [];
+    /// <summary>
+    /// This request's comparison overrides as last loaded or saved - the innermost level of the
+    /// hierarchy. See <see cref="BuildSettingsContext"/>.
+    /// </summary>
+    private ComparisonSettings? _comparisonOverrides;
+
+    private ComparisonSettings? _globalComparison;
+
+    private readonly IAppSettingsService _appSettings;
+    private readonly IFolderConfigStore _folderConfigStore;
 
     public RequestEditorViewModel(
         RequestModel request,
@@ -85,8 +95,12 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         IFilePickerService filePickerService,
         StatusLogViewModel statusLog,
         IDiffPreviewService diffPreview,
-        IResponseBaselineService responseBaseline)
+        IResponseBaselineService responseBaseline,
+        IAppSettingsService appSettings,
+        IFolderConfigStore folderConfigStore)
     {
+        _appSettings = appSettings;
+        _folderConfigStore = folderConfigStore;
         _original = request;
         _workspace = workspace;
         _environmentManager = environmentManager;
@@ -136,8 +150,8 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
 
         // The response pane owns Pin/Compare but knows nothing about requests, so it asks for the
         // rules when it needs them rather than being handed a snapshot that would go stale on save.
-        _responseDiffIgnorePaths = [.. request.ResponseDiffIgnorePaths];
-        Response.IgnoreContextProvider = BuildIgnoreContext;
+        _comparisonOverrides = request.EffectiveComparison?.Clone();
+        Response.SettingsContextProvider = BuildSettingsContext;
 
         Method = request.Method;
         Url = request.Url;
@@ -425,36 +439,102 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
             entry.CompareLabel,
             "Current response",
             $"{Method} {Name} — response vs history",
-            BuildIgnoreContext());
+            BuildSettingsContext());
     }
 
     /// <summary>
-    /// The response-diff ignore rules, plus how to persist them.
+    /// The comparison-settings hierarchy for this request, plus how to persist a change at any level
+    /// of it.
     ///
-    /// Saving writes the version ON DISK with only this field changed, rather than the editor's
-    /// current state. Pressing "Save to request" inside a diff window must not also commit whatever
-    /// half-finished URL or header edit happens to be open behind it.
+    /// The inherited layers are global-then-folders, root-most first, exactly the order
+    /// <see cref="ComparisonSettingsResolver"/> expects; the request's own overrides are passed
+    /// separately because the diff window edits them live.
+    ///
+    /// Saving a REQUEST-level change writes the version ON DISK with only the comparison section
+    /// changed, rather than the editor's current state. Pressing Save inside a diff window must not
+    /// also commit whatever half-finished URL or header edit happens to be open behind it.
     /// </summary>
-    private DiffIgnoreContext BuildIgnoreContext() => new(
-        [.. _responseDiffIgnorePaths],
-        async paths =>
-        {
-            _responseDiffIgnorePaths = [.. paths];
+    private DiffSettingsContext BuildSettingsContext()
+    {
+        var layers = new List<ComparisonSettingsLayer>();
 
-            try
+        // The global level is read fresh rather than cached: another window may have changed it, and
+        // this runs once per comparison, not per keystroke.
+        if (_globalComparison is not null)
+        {
+            layers.Add(new ComparisonSettingsLayer(_globalComparison, ComparisonScope.Global, "Global"));
+        }
+
+        layers.AddRange(_inheritanceChain?.ComparisonLayers ?? []);
+
+        return new DiffSettingsContext(
+            layers,
+            _comparisonOverrides,
+            NearestFolderName(),
+            SaveComparisonSettingsAsync);
+    }
+
+    /// <summary>The folder a "save to folder" would write into, or null at the collections root.</summary>
+    private string? NearestFolderPath()
+    {
+        var folder = Path.GetDirectoryName(Path.GetFullPath(FilePath));
+        var collectionsRoot = Path.GetFullPath(Path.Combine(_workspace.RootPath, "collections"));
+
+        return folder is not null
+            && folder.StartsWith(collectionsRoot, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(folder, collectionsRoot, StringComparison.OrdinalIgnoreCase)
+                ? folder
+                : null;
+    }
+
+    private string? NearestFolderName() =>
+        NearestFolderPath() is { } path ? Path.GetFileName(path) : null;
+
+    /// <summary>
+    /// Writes one level's comparison overrides. Every level fails soft the same way: the settings
+    /// still apply for this session, and a diff window is the wrong place to lose a comparison over a
+    /// failed write.
+    /// </summary>
+    private async Task SaveComparisonSettingsAsync(ComparisonScope scope, ComparisonSettings? settings)
+    {
+        try
+        {
+            switch (scope)
             {
-                var persisted = await _requestStore.LoadRequestAsync(FilePath);
-                persisted.ResponseDiffIgnorePaths = [.. paths];
-                await _requestStore.SaveRequestAsync(FilePath, persisted);
-                _statusLog.Log($"Saved {paths.Count} response-diff ignore rule(s) to {Name}");
+                case ComparisonScope.Global:
+                    var app = await _appSettings.LoadAsync();
+                    app.Comparison = settings;
+                    await _appSettings.SaveAsync(app);
+                    _globalComparison = settings;
+                    _statusLog.Log("Saved global comparison defaults");
+                    break;
+
+                case ComparisonScope.Folder when NearestFolderPath() is { } folderPath:
+                    var config = await _folderConfigStore.LoadFolderConfigAsync(folderPath);
+                    config.Comparison = settings;
+                    await _folderConfigStore.SaveFolderConfigAsync(folderPath, config);
+                    await LoadWorkspaceContextAsync();
+                    _statusLog.Log($"Saved comparison settings to folder {Path.GetFileName(folderPath)}");
+                    break;
+
+                case ComparisonScope.Request:
+                    _comparisonOverrides = settings?.Clone();
+                    var persisted = await _requestStore.LoadRequestAsync(FilePath);
+                    persisted.Comparison = settings;
+
+                    // Drops the pre-hierarchy field on the way past, so a request touched once stops
+                    // carrying both shapes.
+                    persisted.ResponseDiffIgnorePaths = [];
+                    await _requestStore.SaveRequestAsync(FilePath, persisted);
+                    _statusLog.Log($"Saved comparison settings to {Name}");
+                    break;
             }
-            catch (Exception ex)
-            {
-                // The rules still apply for this session; only persistence failed, and the diff
-                // window is the wrong place to lose a comparison over it.
-                _statusLog.Log($"Could not save ignore rules: {ex.Message}");
-            }
-        });
+        }
+        catch (Exception ex)
+        {
+            _statusLog.Log($"Could not save comparison settings: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// Re-sends exactly what <paramref name="entry"/> captured (method/URL/headers/body), but
@@ -511,6 +591,10 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         {
             _inheritanceChain = await _inheritanceResolver.GetInheritanceChainAsync(_workspace.RootPath, FilePath);
             _authProfiles = [.. await _authProfileStore.LoadAuthProfilesAsync(_workspace.RootPath)];
+
+            // The outermost comparison layer. Read here rather than in the constructor so it picks up
+            // a change another window made, and so a failure to read it cannot stop a request opening.
+            _globalComparison = (await _appSettings.LoadAsync()).Comparison;
 
             foreach (var profile in _authProfiles)
             {
@@ -724,11 +808,10 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
             Body = Body.ToModel(),
             Auth = auth,
             AuthProfileId = auth.Type == AuthType.Profile ? Auth.SelectedProfile?.Id : null,
-            TimeoutSeconds = Tests.TimeoutSeconds,
+            Comparison = _comparisonOverrides,
             Captures = Tests.CapturesToModel(),
             Assertions = Tests.AssertionsToModel(),
             SuppressedInheritedHeaderKeys = Headers.SuppressedInheritedKeys(),
-            ResponseDiffIgnorePaths = [.. _responseDiffIgnorePaths],
             // Local variables are obsolete (RequestModel.LocalVariables doc comment) - no UI edits
             // them anymore, so just carry the original value through unchanged on save.
             LocalVariables = _original.LocalVariables,

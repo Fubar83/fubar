@@ -38,11 +38,20 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
 - **Ignore rules** for the fields that differ on every call — `requestId`, `generatedAt`, a `syncedAt`
   per array element — which otherwise bury the one field that actually changed. Select a difference
   and press **⊘ Ignore this field**, which keeps both responses on screen while you walk the noise
-  out, or click **ignore** beside a change in the Tree view. The comparison updates immediately, and
-  **Save to request** writes the rules to `request.json` so they always apply. Ignoring a field inside
-  an array covers every element (`$.items[*].syncedAt`), and ignoring an object covers everything
-  under it. Ignored differences stay visible as a faint band, but are not counted and are skipped by
-  next/previous.
+  out, or click **ignore** beside a change in the Tree view. The comparison updates immediately.
+  Ignoring a field inside an array covers every element (`$.items[*].syncedAt`), and ignoring an object
+  covers everything under it. Ignored differences stay visible as a faint band, but are not counted and
+  are skipped by next/previous.
+- **Comparison settings, inherited and individually overridable.** Ignore whitespace, ignore case,
+  reformat for display, report key order, compare arrays by position, treat `null` and missing as equal,
+  ignore rules, and array identity keys all resolve through a hierarchy: your **global** defaults, then
+  any **folder** between the workspace root and the request, then the **request** itself. Each setting
+  is inherited independently — overriding one on a request leaves the others still following the folder
+  or your global preference — and every control's tooltip names where its current value came from
+  (`default`, `from Folder: users`, `set here`). Adjustments apply immediately but stay session-only
+  until you save, and **Save** lets you pick the level: the request, its folder, or your global defaults.
+  A rule about one endpoint belongs on the request; one about a whole service on its folder; a personal
+  reading preference globally.
 - **JSON schema intelligence** — when a body schema is known (e.g. from an import), you get validation,
   inline autocomplete, and a readable schema view. Header and query-parameter **names** are suggested
   too (schema-declared names plus common HTTP headers).

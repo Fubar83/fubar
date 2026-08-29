@@ -17,4 +17,15 @@ public sealed class AppSettings
 
     /// <summary>Which of <see cref="OpenWorkspacePaths"/> was the active tab, if any.</summary>
     public string? ActiveWorkspacePath { get; set; }
+
+    /// <summary>
+    /// The root of the comparison-settings hierarchy: defaults every workspace, folder and request
+    /// inherits unless it overrides them. Null (the common case) means "no global opinion - use the
+    /// built-in defaults". See <c>ComparisonSettingsResolver</c>.
+    ///
+    /// Global rather than per-workspace on purpose: preferences like "ignore whitespace" describe how
+    /// the USER likes to read a diff, not anything about a particular workspace's content - the
+    /// content-specific rules (ignore paths, array keys) are the ones that belong further down.
+    /// </summary>
+    public ComparisonSettings? Comparison { get; set; }
 }

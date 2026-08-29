@@ -8,12 +8,37 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The window is mostly diff now: five rows of chrome became two.** The file pickers collapse to a
+  one-line `before.json ↔ after.json` summary the moment a comparison succeeds (click it to get them
+  back), the two toolbar rows merged into one, and the controls that only work sometimes now only
+  appear then — the merge buttons when a difference is selected, Save once a decision has been made.
+  Recent and + Tab moved up beside the file pickers (they answer the same question: what am I
+  comparing), the theme picker moved into Settings, and Prev/Next became icons since the diff map,
+  F7/F8 and the status line were already saying it. In the Json view the toolbar's own Prev/Next now
+  hides, because that view brings its own — one walks hunks, the other walks semantic changes, and two
+  "next" buttons that disagree is worse than one.
+
+- **The toolbar is decluttered, detailed options moved to a Settings window, and its two "Text/Json"
+  controls are labelled apart.** "Ignore whitespace" stays on the toolbar - it's the one developers
+  reach for constantly reviewing a diff - and everything else opens from a single "Settings…" button:
+  a two-section window, **Text compare** and **JSON compare**, replacing six checkboxes that used to
+  fight for space in one row. Separately, the comparison-mode dropdown (Auto/Text/Json - how to
+  compare) and the view switch (Text/Json - what to show right now) render the exact same two words for
+  two different questions; both now carry an inline "Compare:"/"View:" label instead of leaving the
+  distinction to a tooltip. The action row's dividers were also regrouped around what they actually
+  separate (navigation | merge | save | display | appearance) instead of one divider per control, and
+  the previously-unlabelled theme picker got a tooltip.
+
 - **Text mode never reformats a file, JSON included.** A minified file diffed against a pretty one
   stays exactly as minified as it was on disk - Text mode shows literal content, full stop. Comparing
   two very differently-formatted JSON files is what the **Json view** is for (below): it needs no line
   alignment at all, so it has no reason to touch either side's formatting, and it is the default the
-  moment a comparison turns out to be JSON. The one remaining way to reformat JSON for display is the
-  existing, explicit "Normalize XML" toggle - opt-in, and unaffected by any of this.
+  moment a comparison turns out to be JSON. The one remaining way to reformat for display is the
+  existing, explicit "Reformat" toggle (renamed from "Normalize XML", and now shown for JSON too - it
+  was previously hidden whenever a comparison turned out to be JSON, which made it unreachable for the
+  one format most worth reformatting) - opt-in, and unaffected by any of this. Turning it on affects
+  only the Text view; if you then take a side and save, the reformatted text is what gets written,
+  which is the point of it being an explicit opt-in rather than automatic.
 
 - **The Diff pane now stacks old above new instead of side by side.** The same line directly above its
   replacement makes the character-level highlight - already the strongest signal it draws - readable
@@ -22,6 +47,37 @@ All notable changes to this project are documented here. The format is based on
   line: side-by-side alignment needed matching row counts on both sides, but a stacked block does not.
 
 ### Added
+
+- **Files that differ only in encoding, BOM or line endings are now reported as different.** They were
+  previously reported as *identical*, which is the worst possible answer right after your version
+  control said otherwise: the reader consumes the byte order mark and splits on every terminator, so
+  the two documents genuinely are identical by the time anything can see them. The difference is now
+  detected alongside the lines and named in full — `byte order mark (present vs absent), line endings
+  (CRLF vs LF)` — in the status line and a banner, since when it is the only difference there is
+  nothing else on screen to notice.
+
+- **Reveal invisible characters** (Settings): marks non-breaking spaces, zero-width characters, soft
+  hyphens and bidirectional controls with a visible tag — `NBSP`, `ZWSP`, `RLO` — where they occur.
+  This is for the case where the diff is right and *looks* wrong: two lines differing only by a
+  non-breaking space are flagged as changed and appear identical, with nothing to explain why. The
+  bidi controls are included because a run of them can make source read in one order and compile in
+  another. Curly quotes and dashes are deliberately not marked — they are visibly different already,
+  and flagging them would cry wolf on ordinary prose.
+
+- **Normalize Unicode (NFC)** (Settings): treats text that renders identically as equal — `é` written
+  as one character and as `e` plus a combining accent. macOS decomposes where Windows and Linux
+  compose, so the same edit made on two machines can differ in every accented word and look identical
+  in every editor. Off by default: it *is* a real difference in the bytes, and a tool whose job is
+  showing what changed should not hide one until asked.
+
+- **Two JSON comparison options that were built but never reachable: "treat null and missing as the
+  same", and array key overrides** (which field identifies an array's elements, for the arrays where
+  auto-detection guesses wrong). Both existed fully in Core - and, for array key overrides, even had a
+  persisted settings field - but nothing in the UI ever read or set them; the new Settings window is
+  the first place either has actually been usable.
+- **A manual "ignored paths" list**, also in the Settings window: JSON paths whose differences are
+  never reported, for a field that changes on every run (a `requestId`, a timestamp). The click-to-
+  ignore affordance in the tree is API Studio-only; this is Fubar Diff's own way to set one.
 
 - **Json view**: replaces the old standalone Tree view as the second mode alongside Text, and is now
   the **default** whenever a comparison turns out to be JSON - the change tree, plus BOTH documents
@@ -33,6 +89,31 @@ All notable changes to this project are documented here. The format is based on
   own parsed structure rather than by a shared line number. A minified file stays visibly minified
   here too - neither view touches your file's formatting; Json just doesn't need to align in the
   first place, which is what makes a wildly different pairing a non-issue instead of a special case.
+  It now has its own **Diff pane** too (below), stepping in lockstep with the tree and the highlight
+  above it.
+
+- **Diff pane, now also in the Json view.** Text mode's close-up - the current difference shown large,
+  old above new - now has a Json-mode counterpart: the current change's own lines, isolated from the
+  rest of each document. Since Json changes have no aligned rows to excerpt from, it isolates by the
+  change's own source location instead, so it works the same regardless of how differently the two
+  sides are formatted. The same "Diff pane" toggle shows or hides both.
+
+- **A modified line no longer washes the whole row.** Only the actual changed word(s) are tinted now -
+  the full-row amber background was competing with that more precise highlight rather than helping it.
+
+- **The Diff pane highlights just the difference, not the line it's on - and stronger than the main
+  panes do, in both modes.** It has no full-line or full-width tint at all now, for any kind of change:
+  a page showing nothing but the current difference has no "where" left for a whole-row band to answer,
+  so it shows exactly the changed text instead, at a bolder intensity than the main view's tints ever
+  run at. In Json mode this is the first place that highlights down to the exact column, not just the
+  line, of a change.
+
+- **The hunk you just navigated to now stands out from every other change in the file**, not just from
+  unchanged text: every OTHER hunk's tint fades once you have a current one selected, so the one you
+  are looking at does not have to compete for attention with the rest of the file's changes.
+
+- **Navigating to a difference now centres it in the viewport**, in both Text and Json mode, instead of
+  merely scrolling it into view at whichever edge it happened to approach from.
 
 - **Two-editor side-by-side view** built on AvaloniaEdit, replacing the row list. Line numbers show
   each line's number in its own file rather than in the aligned view, so they still match what is on
