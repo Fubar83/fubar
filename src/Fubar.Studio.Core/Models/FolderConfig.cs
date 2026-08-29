@@ -11,4 +11,16 @@ public sealed class FolderConfig
     public List<KeyValueItem> Headers { get; set; } = [];
 
     public string? AuthProfileId { get; set; }
+
+    /// <summary>
+    /// Comparison options for every request beneath this folder, unless one of them overrides a
+    /// setting itself. Null means this folder has no opinion and inherits whatever is above it.
+    ///
+    /// This is the "per project" level: a folder of endpoints from the same service usually shares the
+    /// same noise (a <c>traceId</c> on every response, the same array identity key), and putting the
+    /// rule here rather than on each request is the difference between writing it once and writing it
+    /// twenty times. Cascades exactly like <see cref="Headers"/> - see
+    /// <c>IInheritanceResolver.GetInheritanceChainAsync</c>, where a closer folder wins.
+    /// </summary>
+    public ComparisonSettings? Comparison { get; set; }
 }
