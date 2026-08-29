@@ -32,6 +32,11 @@ All notable changes to this project are documented here. The format is based on
   a file someone asked to save — and says so twice: a banner before, and the count in the status line
   after.
 
+  A **Diff pane** below the columns stacks the three versions of the current region — left, base,
+  right — for the reason the two-way view has one: once a file is any size, the three versions of one
+  conflict are a screen apart, and reading them together is the hard part. Three columns makes that two
+  eye-jumps rather than one, so it matters more here.
+
   Open it from **3-way merge…** in the toolbar, or from the command line as
   `FubarDiff --merge $BASE $LOCAL $REMOTE`, which is the argument order `git mergetool` passes.
 

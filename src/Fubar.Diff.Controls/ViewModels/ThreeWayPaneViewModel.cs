@@ -94,6 +94,50 @@ public partial class ThreeWayPaneViewModel : ObservableObject
         OnPropertyChanged(nameof(HasCurrentRegion));
         OnPropertyChanged(nameof(SelectedRegion));
         OnPropertyChanged(nameof(RegionCaption));
+        RebuildDetail();
+    }
+
+    // ---- Close-up ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether the close-up of the current region is shown below the columns. On by default, for the
+    /// reason its two-way counterpart is: the three versions of one conflict are usually a screen
+    /// apart vertically once a file is any size, and reading them together is the hard part.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsDetailVisible { get; set; } = true;
+
+    /// <summary>The current region's rows on the left, with fillers dropped.</summary>
+    [ObservableProperty]
+    public partial AlignedDocument? DetailLeft { get; set; }
+
+    /// <summary>The current region's rows in the ancestor.</summary>
+    [ObservableProperty]
+    public partial AlignedDocument? DetailBase { get; set; }
+
+    /// <summary>The current region's rows on the right.</summary>
+    [ObservableProperty]
+    public partial AlignedDocument? DetailRight { get; set; }
+
+    /// <summary>True once there is something to show, so the host can swap in an empty state.</summary>
+    public bool HasDetail => DetailBase is not null || DetailLeft is not null || DetailRight is not null;
+
+    private void RebuildDetail()
+    {
+        if (SelectedRegion is not { } region)
+        {
+            DetailLeft = null;
+            DetailBase = null;
+            DetailRight = null;
+            OnPropertyChanged(nameof(HasDetail));
+            return;
+        }
+
+        DetailLeft = ThreeWayAlignedText.BuildCompact(_result, MergeSide.Left, region.StartIndex, region.Length);
+        DetailBase = ThreeWayAlignedText.BuildCompact(_result, MergeSide.Base, region.StartIndex, region.Length);
+        DetailRight = ThreeWayAlignedText.BuildCompact(_result, MergeSide.Right, region.StartIndex, region.Length);
+
+        OnPropertyChanged(nameof(HasDetail));
     }
 
     /// <summary>
@@ -152,6 +196,7 @@ public partial class ThreeWayPaneViewModel : ObservableObject
         CurrentRegion = -1;
         ScrollToRow = -1;
 
+        RebuildDetail();
         RaiseDerived();
     }
 

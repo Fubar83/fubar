@@ -276,6 +276,15 @@ banner - the banner matters because when it is the ONLY difference there is noth
 notice. Do not fold this into `DiffResult.AreIdentical`: that is about content, and conflating the two
 would make every hunk-counting consumer wrong.
 
+**The comparison pipeline is fast; measure before "optimising" it** (Diff). A 60,000-line source
+comparison takes about 90 ms end to end, of which ~65 ms is DiffPlex's own aligner and ~15 ms is
+everything this codebase adds (scanner, code rules, slider, projection). The JSON path costs ~2 ms on
+a file that is not JSON, which is where the obvious-looking waste is - four whole-document
+`string.Join`s and two parse attempts - and it is not worth removing. `PipelineScaleTests` guards the
+thing that WOULD matter: the budgets there are absurdly generous on purpose, because they exist to
+catch an accidentally quadratic scan (60 ms becomes minutes) rather than a 20% regression, and a
+timing assertion tight enough to catch the latter fails on a loaded CI agent instead.
+
 **Ports live in Core, adapters in Infrastructure**, wired in each app's
 `Infrastructure/ServiceCollectionExtensions.cs` and `UI/Composition.cs`.
 

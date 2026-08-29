@@ -176,6 +176,69 @@ public class ThreeWayAlignedTextTests
         Assert.Single(ThreeWayAlignedText.Build(result, MergeSide.Right).Lines[0].Spans);
     }
 
+    // ---- The close-up ---------------------------------------------------------------------------
+
+    [Fact]
+    public void The_close_up_drops_fillers_rather_than_padding_with_blanks()
+    {
+        // Stacking has no row-count parity to preserve, so a filler here would only insert a blank
+        // line that exists in none of the three files.
+        var result = Result(
+            new ThreeWayLine(1, "base", 1, "one", null, null, MergeKind.Conflict, 0),
+            new ThreeWayLine(null, null, 2, "two", null, null, MergeKind.Conflict, 0));
+
+        var left = ThreeWayAlignedText.BuildCompact(result, MergeSide.Left, 0, 2);
+        var right = ThreeWayAlignedText.BuildCompact(result, MergeSide.Right, 0, 2);
+
+        Assert.Equal("one\ntwo", left.Text);
+        Assert.Equal(2, left.Lines.Count);
+
+        // The right side contributes nothing at all here, and says so by being empty rather than by
+        // being two blank lines.
+        Assert.Equal(string.Empty, right.Text);
+        Assert.Empty(right.Lines);
+    }
+
+    [Fact]
+    public void The_close_up_covers_only_the_requested_range()
+    {
+        var result = Result(
+            new ThreeWayLine(1, "before", 1, "before", 1, "before", MergeKind.Unchanged, -1),
+            new ThreeWayLine(2, "b", 2, "L", 2, "R", MergeKind.Conflict, 0),
+            new ThreeWayLine(3, "after", 3, "after", 3, "after", MergeKind.Unchanged, -1));
+
+        var excerpt = ThreeWayAlignedText.BuildCompact(result, MergeSide.Base, 1, 1);
+
+        Assert.Equal("b", excerpt.Text);
+    }
+
+    [Fact]
+    public void The_close_up_keeps_the_line_numbers_and_spans_of_the_full_view()
+    {
+        var result = Result(
+            new ThreeWayLine(7, "value = 1", 9, "value = 2", 7, "value = 1", MergeKind.LeftOnly, 0)
+            {
+                LeftSpans = [new CharSpan(8, 1, ChangeKind.Inserted)],
+            });
+
+        var excerpt = ThreeWayAlignedText.BuildCompact(result, MergeSide.Left, 0, 1);
+
+        Assert.Equal(9, excerpt.Lines[0].SourceNumber);
+        Assert.Equal(8, Assert.Single(excerpt.Lines[0].Spans).Start);
+    }
+
+    [Fact]
+    public void A_close_up_range_beyond_the_document_is_clamped_rather_than_throwing()
+    {
+        // A region can outlive the result it was computed from for a frame while a new merge is
+        // applied, so this must degrade rather than take the window down inside a render pass.
+        var result = Result(new ThreeWayLine(1, "a", 1, "a", 1, "a", MergeKind.Unchanged, -1));
+
+        Assert.Equal(string.Empty, ThreeWayAlignedText.BuildCompact(result, MergeSide.Base, 5, 3).Text);
+        Assert.Equal("a", ThreeWayAlignedText.BuildCompact(result, MergeSide.Base, 0, 99).Text);
+        Assert.Equal(string.Empty, ThreeWayAlignedText.BuildCompact(result, MergeSide.Base, -4, 0).Text);
+    }
+
     [Fact]
     public void An_empty_result_produces_an_empty_document()
     {

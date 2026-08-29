@@ -49,7 +49,9 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   genuinely disagrees. Three panes, the ancestor in the middle, all locked in step; conflicts are marked
   in amber, navigation stops only on them by default (F7 / F8), and each one is resolved by taking left,
   base or right. Within a region each edit highlights the characters it altered relative to the
-  ancestor, so two conflicting versions of nearly the same line can be told apart at a glance. Save
+  ancestor, so two conflicting versions of nearly the same line can be told apart at a glance. A
+  **Diff pane** below stacks the three versions of the current region — left, base, right — so they can
+  be read together rather than across three columns a screen apart. Save
   writes the merged file to whichever of the three you choose, in that file's own encoding and line
   endings. An unresolved conflict keeps the ancestor's text and says so, both in a banner before saving
   and in the status line after.
@@ -147,10 +149,10 @@ contain filler lines, and typing needs a bidirectional editor↔source offset ma
 search/**replace** (find works today). Virtualised diffing for very large files is the other gap: the
 whole aligned document is currently materialised per side, under a 64 MB reader cap.
 
-In the three-way view: no close-up pane and no diff map, which the two-way view both have — a merge
-answers "which of these needs me" rather than "where are the changes", and the conflict count plus
-next/previous answers that directly, but a close-up of one conflict would earn its place. Merging more
-than two edits, and merging directories, are not built.
+The three-way view has no diff map, unlike the two-way one — a merge asks "which of these needs me"
+rather than "where are the changes", which the conflict count and next/previous answer directly, and a
+map would have to colour its ticks from one of three columns with no right answer for the other two.
+Merging more than two edits, and merging directories, are not built.
 
 **Cut.** A CLI with exit codes and patch export; semantic XML, YAML, CSV and directory comparison.
 Dropped deliberately rather than forgotten — `MergedDocument` already produces the line model a patch

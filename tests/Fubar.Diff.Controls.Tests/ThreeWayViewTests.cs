@@ -46,15 +46,32 @@ public class ThreeWayViewTests
         return (window, view);
     }
 
-    private static IReadOnlyList<DiffEditorPane> Panes(ThreeWayView view) =>
-        [.. view.GetVisualDescendants().OfType<DiffEditorPane>()];
+    /// <summary>
+    /// The three COLUMN editors. Since the close-up arrived there are six panes in the tree, and the
+    /// two sets answer different questions - the columns show the whole document, the close-up shows
+    /// one region - so a test has to say which it means.
+    /// </summary>
+    private static IReadOnlyList<DiffEditorPane> Columns(ThreeWayView view) =>
+    [
+        .. view.GetVisualDescendants()
+            .OfType<DiffEditorPane>()
+            .Where(pane => !pane.GetVisualAncestors().OfType<MergeDetailPane>().Any()),
+    ];
+
+    /// <summary>The three stacked editors inside the close-up.</summary>
+    private static IReadOnlyList<DiffEditorPane> DetailPanes(ThreeWayView view) =>
+    [
+        .. view.GetVisualDescendants()
+            .OfType<DiffEditorPane>()
+            .Where(pane => pane.GetVisualAncestors().OfType<MergeDetailPane>().Any()),
+    ];
 
     [AvaloniaFact]
     public void The_view_has_exactly_three_panes()
     {
         var (_, view) = Show(Populated());
 
-        Assert.Equal(3, Panes(view).Count);
+        Assert.Equal(3, Columns(view).Count);
     }
 
     [AvaloniaFact]
@@ -63,7 +80,7 @@ public class ThreeWayViewTests
         // The binding test proper: three different documents have to reach three different editors, in
         // the order the column headers claim.
         var (_, view) = Show(Populated());
-        var panes = Panes(view);
+        var panes = Columns(view);
 
         var texts = panes.Select(p => p.Document?.Text).ToList();
 
@@ -79,7 +96,7 @@ public class ThreeWayViewTests
         // usually still satisfy this, but a missing one would not.
         var (_, view) = Show(Populated());
 
-        Assert.All(Panes(view), pane => Assert.Equal(3, pane.Document?.Lines.Count));
+        Assert.All(Columns(view), pane => Assert.Equal(3, pane.Document?.Lines.Count));
     }
 
     [AvaloniaFact]
@@ -87,7 +104,7 @@ public class ThreeWayViewTests
     {
         var (_, view) = Show(Populated());
 
-        Assert.All(Panes(view), pane => Assert.True(pane.Document!.Lines[2].IsConflict));
+        Assert.All(Columns(view), pane => Assert.True(pane.Document!.Lines[2].IsConflict));
     }
 
     [AvaloniaFact]
@@ -97,7 +114,7 @@ public class ThreeWayViewTests
         // throw on a null document.
         var (_, view) = Show(new ThreeWayPaneViewModel());
 
-        Assert.All(Panes(view), pane => Assert.True(string.IsNullOrEmpty(pane.Document?.Text)));
+        Assert.All(Columns(view), pane => Assert.True(string.IsNullOrEmpty(pane.Document?.Text)));
     }
 
     [AvaloniaFact]
@@ -109,12 +126,85 @@ public class ThreeWayViewTests
 
         var (_, view) = Show(pane);
 
-        Assert.All(Panes(view), p =>
+        Assert.All(Columns(view), p =>
         {
             Assert.True(p.ShowInvisibles);
             Assert.Equal(".cs", p.SyntaxExtension);
             Assert.True(p.SyntaxHighlighting);
         });
+    }
+
+    [AvaloniaFact]
+    public void The_close_up_shows_the_selected_region_in_all_three_versions()
+    {
+        var pane = Populated();
+        var (_, view) = Show(pane);
+
+        pane.CurrentRegion = 1; // the conflict
+
+        Assert.Equal("cl", pane.DetailLeft!.Text);
+        Assert.Equal("c", pane.DetailBase!.Text);
+        Assert.Equal("cr", pane.DetailRight!.Text);
+        Assert.True(pane.HasDetail);
+
+        // Six editors in total: three columns, plus the three stacked in the close-up. Its own
+        // bindings are separate from the columns' and can be wrong independently, so they get their
+        // own assertion rather than riding on the view model's properties.
+        Assert.Equal(3, Columns(view).Count);
+
+        var detail = DetailPanes(view);
+        Assert.Equal(3, detail.Count);
+        Assert.Contains("cl", detail.Select(p => p.Document?.Text));
+        Assert.Contains("c", detail.Select(p => p.Document?.Text));
+        Assert.Contains("cr", detail.Select(p => p.Document?.Text));
+    }
+
+    [AvaloniaFact]
+    public void The_close_up_empties_when_nothing_is_selected()
+    {
+        var pane = Populated();
+        Show(pane);
+
+        pane.CurrentRegion = 1;
+        Assert.True(pane.HasDetail);
+
+        pane.CurrentRegion = -1;
+
+        Assert.False(pane.HasDetail);
+        Assert.Null(pane.DetailBase);
+    }
+
+    [AvaloniaFact]
+    public void Hiding_the_close_up_collapses_its_row_rather_than_leaving_a_blank_band()
+    {
+        // IsVisible alone would leave the row occupying its height - the gotcha DiffView already
+        // documents, and the reason both need their RowDefinition zeroed.
+        var pane = Populated();
+        var (window, view) = Show(pane);
+
+        pane.IsDetailVisible = false;
+        window.UpdateLayout();
+
+        var root = view.GetVisualDescendants().OfType<Grid>().First(g => g.RowDefinitions.Count == 3);
+
+        Assert.Equal(0, root.RowDefinitions[1].Height.Value);
+        Assert.Equal(0, root.RowDefinitions[2].Height.Value);
+    }
+
+    [AvaloniaFact]
+    public void Showing_the_close_up_again_restores_its_height()
+    {
+        var pane = Populated();
+        var (window, view) = Show(pane);
+
+        pane.IsDetailVisible = false;
+        window.UpdateLayout();
+        pane.IsDetailVisible = true;
+        window.UpdateLayout();
+
+        var root = view.GetVisualDescendants().OfType<Grid>().First(g => g.RowDefinitions.Count == 3);
+
+        Assert.True(root.RowDefinitions[2].Height.Value > 0);
     }
 
     [AvaloniaFact]

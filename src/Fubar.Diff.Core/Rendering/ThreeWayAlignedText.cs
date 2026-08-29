@@ -48,6 +48,52 @@ public static class ThreeWayAlignedText
     }
 
     /// <summary>
+    /// Builds just the rows one column actually HAS within a range, dropping fillers entirely - for a
+    /// close-up that stacks the three versions rather than showing them side by side.
+    ///
+    /// The same split <see cref="AlignedText.BuildCompact"/> makes, for the same reason: side-by-side
+    /// alignment depends on all three columns having the same row count, and stacking has no such
+    /// requirement. Keeping the fillers here would only pad each block with blank lines that exist in
+    /// none of the three files - which is exactly the noise a close-up is meant to remove.
+    ///
+    /// The range is clamped rather than validated: it comes from a region, and a region can outlive
+    /// the result it was computed from for a frame while a new merge is being applied.
+    /// </summary>
+    public static AlignedDocument BuildCompact(ThreeWayResult result, MergeSide side, int startIndex, int count)
+    {
+        var lines = result.Lines;
+        var from = startIndex < 0 ? 0 : startIndex > lines.Count ? lines.Count : startIndex;
+        var to = count <= 0 ? from : from + count > lines.Count ? lines.Count : from + count;
+
+        var builder = new StringBuilder();
+        var meta = new List<AlignedLine>();
+
+        for (var i = from; i < to; i++)
+        {
+            var row = lines[i];
+
+            if (row.TextOn(side) is not { } text)
+            {
+                continue;
+            }
+
+            if (meta.Count > 0)
+            {
+                builder.Append('\n');
+            }
+
+            builder.Append(text);
+
+            meta.Add(new AlignedLine(row.NumberOn(side), KindFor(row, side), row.SpansOn(side))
+            {
+                IsConflict = row.Kind == MergeKind.Conflict,
+            });
+        }
+
+        return new AlignedDocument(builder.ToString(), meta);
+    }
+
+    /// <summary>
     /// How a row should be tinted in one column.
     ///
     /// The reading this encodes: the ancestor column shows what a region WAS, and each edit column

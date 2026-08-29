@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
 using Fubar.Diff.Controls.Rendering;
 using Fubar.Diff.Controls.ViewModels;
@@ -47,8 +48,12 @@ public partial class ThreeWayView : UserControl
         {
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             ApplyCurrentRegion();
+            ApplyDetailVisibility();
         }
     }
+
+    /// <summary>Row height the splitter starts from, restored when the close-up is shown again.</summary>
+    private GridLength _detailHeight = new(240);
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -66,7 +71,44 @@ public partial class ThreeWayView : UserControl
             case nameof(ThreeWayPaneViewModel.CurrentRegion):
                 ApplyCurrentRegion();
                 break;
+
+            case nameof(ThreeWayPaneViewModel.IsDetailVisible):
+                ApplyDetailVisibility();
+                break;
         }
+    }
+
+    /// <summary>
+    /// Collapses or restores the close-up. The splitter and the pane both need their ROW heights
+    /// zeroed, not just IsVisible on the child: a hidden child still leaves its row occupying 240px,
+    /// which would show as a blank band under the columns.
+    /// </summary>
+    private void ApplyDetailVisibility()
+    {
+        var visible = _viewModel?.IsDetailVisible ?? true;
+
+        var splitterRow = Root.RowDefinitions[1];
+        var detailRow = Root.RowDefinitions[2];
+
+        if (visible)
+        {
+            splitterRow.Height = GridLength.Auto;
+            detailRow.Height = _detailHeight;
+        }
+        else
+        {
+            // Remember whatever the user dragged it to, so re-showing does not reset their layout.
+            if (detailRow.Height.Value > 0)
+            {
+                _detailHeight = detailRow.Height;
+            }
+
+            splitterRow.Height = new GridLength(0);
+            detailRow.Height = new GridLength(0);
+        }
+
+        DetailSplitter.IsVisible = visible;
+        Detail.IsVisible = visible;
     }
 
     /// <summary>Copies one pane's vertical offset to the other two.</summary>
