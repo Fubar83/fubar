@@ -65,131 +65,163 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,0,0,1"
                 Padding="10,8">
-            <Grid ColumnDefinitions="*,Auto,*" RowDefinitions="Auto,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto,*" RowDefinitions="Auto,Auto">
 
-                <fc:LabeledField Grid.Row="0" Grid.Column="0" Header="Left" Margin="0,0,8,0">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBox Grid.Column="0" Text="{Binding LeftPath}" PlaceholderText="Choose a file…" />
-                        <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
-                                Margin="6,0,0,0" Command="{Binding BrowseLeftCommand}" />
-                    </Grid>
-                </fc:LabeledField>
+                <!-- The file row, expanded. Everything about WHICH files are being compared lives here
+                     (including Recent and + Tab, which are the same question asked differently);
+                     everything about how to view or merge them lives in the toolbar below. -->
+                <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                      ColumnDefinitions="*,Auto,*,Auto"
+                      IsVisible="{Binding IsFileRowExpanded}">
+                    <fc:LabeledField Grid.Column="0" Header="Left" Margin="0,0,8,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding LeftPath}" PlaceholderText="Choose a file…" />
+                            <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                    Margin="6,0,0,0" Command="{Binding BrowseLeftCommand}" />
+                        </Grid>
+                    </fc:LabeledField>
 
-                <fc:Divider Grid.Row="0" Grid.Column="1" Orientation="Vertical" Margin="4,0" />
+                    <fc:Divider Grid.Column="1" Orientation="Vertical" Margin="4,0" />
 
-                <fc:LabeledField Grid.Row="0" Grid.Column="2" Header="Right" Margin="8,0,0,0">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBox Grid.Column="0" Text="{Binding RightPath}" PlaceholderText="Choose a file…" />
-                        <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
-                                Margin="6,0,0,0" Command="{Binding BrowseRightCommand}" />
-                    </Grid>
-                </fc:LabeledField>
+                    <fc:LabeledField Grid.Column="2" Header="Right" Margin="8,0,0,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding RightPath}" PlaceholderText="Choose a file…" />
+                            <Button Grid.Column="1" Classes="secondary-btn" Content="Browse…"
+                                    Margin="6,0,0,0" Command="{Binding BrowseRightCommand}" />
+                        </Grid>
+                    </fc:LabeledField>
 
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6"
+                                VerticalAlignment="Bottom" Margin="10,0,0,0">
+                        <Button Classes="primary-btn" Content="Compare"
+                                Command="{Binding CompareCommand}" IsEnabled="{Binding !IsBusy}" />
+
+                        <!-- Recent and New tab belong to the SHELL, not this tab, so they reach back up
+                             to the window's DataContext. Recent is hidden rather than disabled when
+                             empty: an always-greyed control on first run is just clutter. -->
+                        <Button Classes="toolbar-btn" Content="Recent ▾"
+                                IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Recent.Count}">
+                            <Button.Flyout>
+                                <MenuFlyout ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Recent}">
+                                    <MenuFlyout.ItemContainerTheme>
+                                        <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                                      x:DataType="settings:RecentComparison">
+                                            <Setter Property="Header" Value="{Binding DisplayName}" />
+                                            <Setter Property="Command"
+                                                    Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenRecentCommand}" />
+                                            <Setter Property="CommandParameter" Value="{Binding}" />
+                                        </ControlTheme>
+                                    </MenuFlyout.ItemContainerTheme>
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+
+                        <Button Classes="toolbar-btn" Content="+ Tab" ToolTip.Tip="Open another comparison (Ctrl+T)"
+                                Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).NewTabCommand}" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- …and collapsed, which is what it becomes the moment a comparison succeeds. One
+                     line naming both files, clickable to get the pickers back. -->
+                <Button Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                        Classes="toolbar-btn"
+                        HorizontalAlignment="Left"
+                        IsVisible="{Binding !IsFileRowExpanded}"
+                        ToolTip.Tip="Change the files being compared"
+                        Command="{Binding ToggleFileRowCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                        <TextBlock Text="▾" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <!-- One row, not two. It fits now because the things that were padding it out have
+                     moved to where they belong: Recent/+ Tab to the file row above, the theme picker
+                     into Settings, and the merge buttons behind the state that makes them usable. -->
                 <fc:Toolbar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,8,0,0">
-                    <Button Classes="primary-btn" Content="Compare"
-                            Command="{Binding CompareCommand}" IsEnabled="{Binding !IsBusy}" />
 
-                    <!-- Recent and New tab belong to the SHELL, not this tab, so they reach back up to
-                         the window's DataContext. Recent is hidden rather than disabled when empty: an
-                         always-greyed control on first run is just clutter. -->
-                    <Button Classes="toolbar-btn" Content="Recent ▾"
-                            Margin="6,0,0,0"
-                            IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Recent.Count}">
-                        <Button.Flyout>
-                            <MenuFlyout ItemsSource="{Binding $parent[Window].((vm:ShellViewModel)DataContext).Recent}">
-                                <MenuFlyout.ItemContainerTheme>
-                                    <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
-                                                  x:DataType="settings:RecentComparison">
-                                        <Setter Property="Header" Value="{Binding DisplayName}" />
-                                        <Setter Property="Command"
-                                                Value="{Binding $parent[Window].((vm:ShellViewModel)DataContext).OpenRecentCommand}" />
-                                        <Setter Property="CommandParameter" Value="{Binding}" />
-                                    </ControlTheme>
-                                </MenuFlyout.ItemContainerTheme>
-                            </MenuFlyout>
-                        </Button.Flyout>
-                    </Button>
+                    <!-- Icon-only: F7/F8, the diff map and the "Difference 1 of 3" status line all say
+                         the same thing already, so the words were the third copy.
+                         Hidden in Json mode, where JsonView carries its own Prev/Next: these walk
+                         HUNKS (a text-alignment idea) and those walk semantic CHANGES, so showing both
+                         at once offers two next buttons that disagree about what "next" means. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                IsVisible="{Binding !Pane.IsJsonViewVisible}">
+                        <Button Classes="toolbar-btn" Content="◀" ToolTip.Tip="Previous change (F7 or Alt+Up)"
+                                Command="{Binding Pane.PreviousChangeCommand}" IsEnabled="{Binding Pane.HasChanges}" />
+                        <Button Classes="toolbar-btn" Content="▶" ToolTip.Tip="Next change (F8 or Alt+Down)"
+                                Command="{Binding Pane.NextChangeCommand}" IsEnabled="{Binding Pane.HasChanges}" />
+                    </StackPanel>
 
-                    <Button Classes="toolbar-btn" Content="+ Tab" ToolTip.Tip="Open another comparison (Ctrl+T)"
-                            Margin="6,0,0,0"
-                            Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).NewTabCommand}" />
+                    <!-- Merge acts on the CURRENT change, so the whole group APPEARS with one rather
+                         than sitting greyed out for the entire time nobody is merging - which, for
+                         someone only reading a diff, is the whole session. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0,0,0"
+                                IsVisible="{Binding Pane.HasCurrentHunk}">
+                        <fc:Divider Orientation="Vertical" Margin="0,0,2,0" />
+                        <Button Classes="toolbar-btn" Content="← Take left" ToolTip.Tip="Use the left version of this change (Alt+Left)"
+                                Command="{Binding TakeLeftCommand}" />
+                        <Button Classes="toolbar-btn" Content="Take right →" ToolTip.Tip="Use the right version of this change (Alt+Right)"
+                                Command="{Binding TakeRightCommand}" />
+                        <Button Classes="toolbar-btn" Content="Reset" ToolTip.Tip="Undo the decision on this change"
+                                Command="{Binding ResetHunkCommand}" />
+                    </StackPanel>
+
+                    <!-- Likewise: nothing to save until a decision has been made, so nothing is shown. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0,0,0"
+                                IsVisible="{Binding HasUnsavedMerge}">
+                        <fc:Divider Orientation="Vertical" Margin="0,0,2,0" />
+                        <Button Classes="primary-btn" Content="Save" ToolTip.Tip="Write the merged result (Ctrl+S)"
+                                Command="{Binding SaveCommand}" />
+                        <Button Classes="toolbar-btn" Content="Save as…" ToolTip.Tip="Write the merged result to a new file"
+                                Command="{Binding SaveAsCommand}" />
+                    </StackPanel>
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
+                    <!-- Labelled inline rather than left to the tooltip alone: "Text"/"Json" show up
+                         again below as the VIEW toggle, and the two are easy to conflate at a glance
+                         without something distinguishing "how to compare" from "what to show". -->
+                    <TextBlock Text="Compare:" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondary}" Margin="0,0,4,0" />
                     <ComboBox ItemsSource="{x:Static vm:ComparisonViewModel.ModeOptions}"
                               SelectedItem="{Binding Mode}"
                               MinWidth="76"
-                              ToolTip.Tip="Auto compares JSON semantically and everything else as text" />
+                              ToolTip.Tip="Auto compares JSON semantically and everything else as text; Text/Json force one or the other" />
 
+                    <!-- The one comparison option worth a click of its own: reviewing code, this is the
+                         toggle developers reach for constantly, unlike the rest below (set once per
+                         session, if ever). -->
                     <CheckBox Content="Ignore whitespace" IsChecked="{Binding IgnoreWhitespace}" Margin="8,0,0,0" />
-                    <CheckBox Content="Ignore case" IsChecked="{Binding IgnoreCase}" Margin="12,0,0,0" />
 
-                    <!-- JSON-only options: shown only once a semantic comparison has actually run, so
-                         they are not offered where they would do nothing. -->
-                    <CheckBox Content="Report key order"
-                              IsChecked="{Binding ReportPropertyOrder}"
-                              IsVisible="{Binding Pane.IsSemantic}"
-                              Margin="12,0,0,0"
-                              ToolTip.Tip="JSON objects are unordered, so reordering is not a difference by default" />
-                    <CheckBox Content="Arrays by position"
-                              IsChecked="{Binding MatchArraysByPosition}"
-                              IsVisible="{Binding Pane.IsSemantic}"
-                              Margin="12,0,0,0"
-                              ToolTip.Tip="Match array elements by index instead of by an identity key" />
-                    <CheckBox Content="Normalize XML"
-                              IsChecked="{Binding NormalizeStructure}"
-                              IsVisible="{Binding !Pane.IsSemantic}"
-                              Margin="12,0,0,0" />
-
-                </fc:Toolbar>
-
-                <!-- Actions on their own row. One row cannot hold everything at a usable window
-                     width - it clips the rightmost controls, and a toolbar that hides Save is worse
-                     than one that takes an extra 30px. -->
-                <fc:Toolbar Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,6,0,0">
-                    <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous change (F7 or Alt+Up)"
-                            Command="{Binding Pane.PreviousChangeCommand}" IsEnabled="{Binding Pane.HasChanges}" />
-                    <Button Classes="toolbar-btn" Content="Next ▶" ToolTip.Tip="Next change (F8 or Alt+Down)"
-                            Command="{Binding Pane.NextChangeCommand}" IsEnabled="{Binding Pane.HasChanges}" />
+                    <!-- Everything else opens the detailed settings window instead of fighting for
+                         space in this row - a modal rather than a flyout now that it also covers
+                         array key overrides and ignore rules, which need more room than a popover
+                         comfortably gives them (see SettingsWindow). -->
+                    <Button Classes="toolbar-btn" Content="Settings…" Margin="8,0,0,0"
+                            ToolTip.Tip="More comparison options, and the theme" Click="OnSettingsClick" />
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
-                    <!-- Merge acts on the CURRENT change, so these stay disabled until one is selected. -->
-                    <Button Classes="toolbar-btn" Content="← Take left" ToolTip.Tip="Use the left version of this change (Alt+Left)"
-                            Command="{Binding TakeLeftCommand}" IsEnabled="{Binding Pane.HasCurrentHunk}" />
-                    <Button Classes="toolbar-btn" Content="Take right →" ToolTip.Tip="Use the right version of this change (Alt+Right)"
-                            Command="{Binding TakeRightCommand}" IsEnabled="{Binding Pane.HasCurrentHunk}" />
-                    <Button Classes="toolbar-btn" Content="Reset" ToolTip.Tip="Undo the decision on this change"
-                            Command="{Binding ResetHunkCommand}" IsEnabled="{Binding Pane.HasCurrentHunk}" />
-
-                    <fc:Divider Orientation="Vertical" Margin="8,0" />
-
-                    <Button Classes="primary-btn" Content="Save" ToolTip.Tip="Write the merged result (Ctrl+S)"
-                            Command="{Binding SaveCommand}" IsEnabled="{Binding HasUnsavedMerge}" />
-                    <Button Classes="toolbar-btn" Content="Save as…"
-                            Command="{Binding SaveAsCommand}" IsEnabled="{Binding Pane.HasChanges}" />
-
-                    <fc:Divider Orientation="Vertical" Margin="8,0" />
-
+                    <!-- One "how it's displayed" group: the Diff pane toggle and the View switch are
+                         both about that, not two separate ideas needing a divider between them. -->
                     <CheckBox Content="Diff pane"
                               ToolTip.Tip="Show the current difference close up, below the panes"
                               IsChecked="{Binding Pane.IsDetailVisible}"
                               VerticalAlignment="Center" />
 
-                    <fc:Divider Orientation="Vertical" Margin="8,0" />
-
                     <!-- Text / Json. Only offered when a semantic comparison ran, since Json has
                          nothing to show for a plain text file - Pane.Show already defaults ViewMode to
-                         whichever of the two applies. -->
+                         whichever of the two applies. Labelled for the same reason the Compare mode
+                         above is - same two words, different question ("how to compare" vs. "what to
+                         show right now"). -->
+                    <TextBlock Text="View:" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondary}" Margin="12,0,4,0"
+                               IsVisible="{Binding Pane.IsSemantic}" />
                     <fc:SegmentedControl ItemsSource="{x:Static dvm:DiffPaneViewModel.ViewModeOptions}"
                                          SelectedItem="{Binding Pane.ViewMode}"
                                          IsVisible="{Binding Pane.IsSemantic}" />
 
-                    <fc:Divider Orientation="Vertical" Margin="8,0" IsVisible="{Binding Pane.IsSemantic}" />
-
-                    <ComboBox ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
-                              SelectedItem="{Binding ThemeManager.CurrentTheme}"
-                              MinWidth="90" />
                 </fc:Toolbar>
             </Grid>
         </Border>
@@ -212,6 +244,14 @@
                    Severity="Error"
                    Message="{Binding ErrorMessage}"
                    IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+        <!-- Encodings, BOMs and line endings never reach the panes - the reader consumes them - so a
+             file pair that differs only in those shows two identical-looking documents and no rows.
+             This is the only place that difference can be reported at all. -->
+        <fc:Banner DockPanel.Dock="Top"
+                   Severity="Warning"
+                   Message="{Binding FormatDifferenceDetail, StringFormat='These files differ in format: {0}'}"
+                   IsVisible="{Binding HasFormatDifference}" />
 
         <Panel>
             <fc:EmptyState Title="Nothing to compare yet"

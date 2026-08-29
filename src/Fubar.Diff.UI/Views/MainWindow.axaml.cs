@@ -42,6 +42,23 @@ public partial class MainWindow : Window
 
     private void OnActualThemeVariantChanged(object? sender, EventArgs e) => Diff.OnThemeChanged();
 
+    /// <summary>
+    /// Opens the detailed settings window for the CURRENT tab. Read off the button's own DataContext
+    /// rather than the shell's SelectedTab: the button lives inside the per-tab-scoped ContentControl
+    /// (see MainWindow.axaml), so its DataContext already IS the right ComparisonViewModel - reaching
+    /// back up through the shell would work too, but would silently break if a future refactor moved
+    /// this button outside that scope.
+    /// </summary>
+    private void OnSettingsClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: ComparisonViewModel tab })
+        {
+            return;
+        }
+
+        new SettingsWindow { DataContext = tab }.ShowDialog(this);
+    }
+
     private static void OnDragOver(object? sender, DragEventArgs e)
     {
         // Advertise Copy only when the payload actually contains files; otherwise the cursor promises

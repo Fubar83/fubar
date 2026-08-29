@@ -1,0 +1,153 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+        x:Class="Fubar.Diff.UI.Views.SettingsWindow"
+        x:DataType="vm:ComparisonViewModel"
+        Title="Comparison settings"
+        Width="580" Height="680"
+        MinWidth="480" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgEditorCanvas}">
+
+    <!-- Everything the toolbar's old "Options" flyout held, plus the two settings that were built in
+         Core (IgnoreNullVsMissing, ArrayKeyOverrides - see AppSettings and ArrayKeyResolver) but never
+         actually reachable from Fubar Diff's UI, and a manual editor for JSON ignore rules (the
+         click-to-ignore affordance in the tree is API-Studio-only - DiffPaneViewModel.IgnorePathCommand
+         is left null here on purpose, see its own doc comment - so this is Fubar Diff's only way to
+         set one). Grouped by what they compare, not by control type, since that is the question a user
+         actually has ("what does JSON do differently"), not "which of these are checkboxes". -->
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="16,14">
+            <TextBlock Text="Comparison settings" FontSize="16" FontWeight="SemiBold" />
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Padding="16">
+            <StackPanel Spacing="20">
+
+                <!-- Appearance first: it is the one thing here that is not about comparison at all, and
+                     burying a set-once preference below three screens of JSON options would be worse
+                     than the toolbar slot it used to hold. -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="APPEARANCE" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0" Text="Theme" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <ComboBox Grid.Column="1" HorizontalAlignment="Left" MinWidth="140"
+                                  ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
+                                  SelectedItem="{Binding ThemeManager.CurrentTheme}" />
+                    </Grid>
+                </StackPanel>
+
+                <fc:Divider />
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="TEXT COMPARE" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" />
+
+                    <CheckBox Content="Ignore leading/trailing whitespace" IsChecked="{Binding IgnoreWhitespace}" />
+                    <CheckBox Content="Ignore case" IsChecked="{Binding IgnoreCase}" />
+                    <CheckBox Content="Normalize Unicode (NFC)"
+                              IsChecked="{Binding NormalizeUnicode}"
+                              ToolTip.Tip="Treat text that renders identically as equal - é written as one character and as e plus a combining accent. macOS decomposes where Windows and Linux compose, so the same edit on two machines can differ in every accented word and look identical everywhere." />
+                    <CheckBox Content="Reveal invisible characters"
+                              IsChecked="{Binding ShowInvisibles}"
+                              ToolTip.Tip="Mark non-breaking spaces, zero-width characters and bidirectional controls - the ones that make two identical-looking lines compare as different." />
+                    <CheckBox Content="Reformat for display"
+                              IsChecked="{Binding NormalizeStructure}"
+                              ToolTip.Tip="Pretty-print JSON or XML in the Text view for display - off by default, and the file on disk is never touched unless you then save. The Json view always shows both sides exactly as given, regardless of this." />
+                </StackPanel>
+
+                <fc:Divider />
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="JSON COMPARE" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="Applies whenever a comparison turns out to be JSON, whatever Compare mode says above - reordering keys and reformatting are never differences here regardless of these options."
+                               Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap" />
+
+                    <CheckBox Content="Report key order"
+                              IsChecked="{Binding ReportPropertyOrder}"
+                              ToolTip.Tip="JSON objects are unordered, so reordering is not a difference by default" />
+                    <CheckBox Content="Compare arrays by position"
+                              IsChecked="{Binding MatchArraysByPosition}"
+                              ToolTip.Tip="Match array elements by index instead of by an identity key" />
+                    <CheckBox Content="Treat null and missing as the same"
+                              IsChecked="{Binding IgnoreNullVsMissing}"
+                              ToolTip.Tip="An explicit &quot;x&quot;: null and an absent &quot;x&quot; are reported as equal" />
+
+                    <!-- Array key overrides -->
+                    <StackPanel Spacing="6" Margin="0,10,0,0">
+                        <TextBlock Text="Array key overrides" FontWeight="SemiBold" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   Text="Which field identifies an array's elements, for the arrays where auto-detection (id, _id, uuid, guid, key, name, tried in that order) guesses wrong or finds nothing." />
+
+                        <ItemsControl ItemsSource="{Binding ArrayKeyOverrides}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ArrayKeyOverrideEntry">
+                                    <Grid ColumnDefinitions="*,*,Auto" Margin="0,3">
+                                        <TextBlock Grid.Column="0" Text="{Binding Path}" VerticalAlignment="Center"
+                                                   FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Key}" VerticalAlignment="Center"
+                                                   Margin="8,0,0,0"
+                                                   FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                        <Button Grid.Column="2" Classes="secondary-btn" Content="Remove"
+                                                Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveArrayKeyOverrideCommand}"
+                                                CommandParameter="{Binding}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Grid ColumnDefinitions="*,*,Auto">
+                            <TextBox Grid.Column="0" PlaceholderText="Path, e.g. $.users" Text="{Binding NewOverridePath}" />
+                            <TextBox Grid.Column="1" PlaceholderText="Key, e.g. id" Margin="8,0,0,0"
+                                     Text="{Binding NewOverrideKey}" />
+                            <Button Grid.Column="2" Classes="toolbar-btn" Content="Add" Margin="8,0,0,0"
+                                    Command="{Binding AddArrayKeyOverrideCommand}" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Ignored paths -->
+                    <StackPanel Spacing="6" Margin="0,14,0,0">
+                        <TextBlock Text="Ignored paths" FontWeight="SemiBold" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   Text="Differences at these paths are never reported - for a field that changes on every run, like a requestId or timestamp. $.a.b for one field, $.items[*].x for it in every array element, $..name to match anywhere." />
+
+                        <ItemsControl ItemsSource="{Binding IgnoredPaths}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                                        <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center"
+                                                   FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                        <Button Grid.Column="1" Classes="secondary-btn" Content="Remove"
+                                                Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveIgnoredPathCommand}"
+                                                CommandParameter="{Binding}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" PlaceholderText="$.requestId" Text="{Binding NewIgnoredPath}" />
+                            <Button Grid.Column="1" Classes="toolbar-btn" Content="Add" Margin="8,0,0,0"
+                                    Command="{Binding AddIgnoredPathCommand}" />
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,1,0,0"
+                Padding="16,10">
+            <Button Classes="primary-btn" Content="Close" HorizontalAlignment="Right" Click="OnCloseClick" />
+        </Border>
+    </Grid>
+</Window>
