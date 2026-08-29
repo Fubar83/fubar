@@ -41,8 +41,14 @@ public sealed class FolderEntryViewModel
     /// </summary>
     public bool IsExpanded { get; set; } = true;
 
-    /// <summary>Only a file present on both sides can be opened as a two-file diff.</summary>
+    /// <summary>Only a file present on both sides can be opened as a two-file diff on its own.</summary>
     public bool CanCompare => Entry.CanCompare;
+
+    /// <summary>Whether the left tree has this entry, so it can supply the left side of a manual pair.</summary>
+    public bool HasLeft => !IsDirectory && Entry.LeftRelativePath is not null;
+
+    /// <summary>Whether the right tree has it.</summary>
+    public bool HasRight => !IsDirectory && Entry.RightRelativePath is not null;
 
     // Style classes. Avalonia cannot bind Classes directly, so each state is its own bool.
     public bool IsSame => Entry.Status == FolderEntryStatus.Same;

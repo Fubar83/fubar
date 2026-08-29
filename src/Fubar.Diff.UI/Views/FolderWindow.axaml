@@ -96,6 +96,15 @@
                                Foreground="{DynamicResource TextSecondary}" FontSize="11" />
                     <TextBox Text="{Binding ExcludeList}" MinWidth="240"
                              ToolTip.Tip="Names never compared or descended into. Wildcards * and ? are allowed; separate with commas." />
+
+                    <!-- Appears only when two rows that can actually be paired are selected, rather
+                         than sitting greyed out for the whole session - the codebase's rule for a
+                         control that cannot do anything right now. -->
+                    <Button Classes="toolbar-btn"
+                            Content="{Binding PairDescription}"
+                            Command="{Binding ComparePairCommand}"
+                            IsVisible="{Binding CanComparePair}"
+                            ToolTip.Tip="Compare the two selected files against each other - for a file that was renamed, where the old and new names are each on one side only." />
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -132,10 +141,14 @@
             <!-- A tree rather than a flat list: the question is "what changed in this project", and the
                  answer is shaped like the project. Double-click or Enter opens a file pair as an
                  ordinary comparison in the main window. -->
+            <!-- Multiple selection so two files can be paired by hand. A rename appears here as one
+                 left-only row and one right-only row, and pairing them is a judgement only the user
+                 can make - see FolderViewModel.ResolvePair. -->
             <TreeView x:Name="Tree"
                       ItemsSource="{Binding Entries}"
-                      SelectedItem="{Binding SelectedEntry}"
+                      SelectionMode="Multiple"
                       IsVisible="{Binding HasResults}"
+                      SelectionChanged="OnSelectionChanged"
                       DoubleTapped="OnRowActivated">
                 <TreeView.ItemTemplate>
                     <TreeDataTemplate x:DataType="vm:FolderEntryViewModel" ItemsSource="{Binding Children}">

@@ -82,6 +82,72 @@ public partial class FolderViewModel : ViewModelBase
     [ObservableProperty]
     public partial FolderEntryViewModel? SelectedEntry { get; set; }
 
+    /// <summary>Everything currently selected, in the order it was selected.</summary>
+    private IReadOnlyList<FolderEntryViewModel> _selection = [];
+
+    /// <summary>
+    /// Pushed up by the view, because multiple selection is something the control owns and the view
+    /// model only needs the answer to.
+    /// </summary>
+    public void SetSelection(IReadOnlyList<FolderEntryViewModel> rows)
+    {
+        _selection = rows;
+        SelectedEntry = rows.Count > 0 ? rows[0] : null;
+
+        OnPropertyChanged(nameof(CanComparePair));
+        OnPropertyChanged(nameof(PairDescription));
+    }
+
+    /// <summary>The pair the current selection resolves to, or null when it does not resolve to one.</summary>
+    private (FolderEntryViewModel Left, FolderEntryViewModel Right)? SelectedPair => ResolvePair(_selection);
+
+    /// <summary>Whether two selected rows can be compared against each other.</summary>
+    public bool CanComparePair => SelectedPair is not null;
+
+    /// <summary>Names the pair, so the button says what it will actually open.</summary>
+    public string PairDescription => SelectedPair is { } pair
+        ? $"Compare {pair.Left.Name} ↔ {pair.Right.Name}"
+        : "Compare selected";
+
+    /// <summary>
+    /// Works out which of two selected rows supplies which side.
+    ///
+    /// This exists for renames, which a folder comparison cannot detect and should not guess at: a
+    /// file renamed between two trees appears as one left-only row and one right-only row, neither of
+    /// which can be opened on its own, and pairing them is a judgement only the user can make. Rather
+    /// than inventing a similarity heuristic that is wrong on the cases that matter, the tool lets them
+    /// say so.
+    ///
+    /// The rule reads selection ORDER first and falls back to whichever assignment is possible: two
+    /// files that each exist on one side only have exactly one sensible pairing regardless of the order
+    /// they were clicked in, while two files that exist on both sides are genuinely ambiguous and the
+    /// first one selected becomes the left.
+    /// </summary>
+    private static (FolderEntryViewModel Left, FolderEntryViewModel Right)? ResolvePair(
+        IReadOnlyList<FolderEntryViewModel> rows)
+    {
+        if (rows.Count != 2 || rows[0].IsDirectory || rows[1].IsDirectory)
+        {
+            return null;
+        }
+
+        var (first, second) = (rows[0], rows[1]);
+
+        if (first.HasLeft && second.HasRight)
+        {
+            return (first, second);
+        }
+
+        // Selected the other way round: the right-hand file first.
+        if (first.HasRight && second.HasLeft)
+        {
+            return (second, first);
+        }
+
+        // Both on the same side only - there is no pairing to make.
+        return null;
+    }
+
     /// <summary>
     /// Show files that are identical on both sides.
     ///
@@ -203,9 +269,33 @@ public partial class FolderViewModel : ViewModelBase
             return;
         }
 
+        Request(row, row);
+    }
+
+    /// <summary>
+    /// Opens two DIFFERENT files against each other - the answer to a rename, where the old name is
+    /// left-only and the new one is right-only and neither can be opened by itself.
+    /// </summary>
+    [RelayCommand]
+    public void ComparePair()
+    {
+        if (SelectedPair is { } pair)
+        {
+            Request(pair.Left, pair.Right);
+        }
+    }
+
+    /// <summary>Raises the request, taking each side's path from the row that supplies that side.</summary>
+    private void Request(FolderEntryViewModel left, FolderEntryViewModel right)
+    {
+        if (left.Entry.LeftRelativePath is not { } leftPath || right.Entry.RightRelativePath is not { } rightPath)
+        {
+            return;
+        }
+
         CompareRequested?.Invoke(this, new FileComparisonRequest(
-            System.IO.Path.Combine(_comparison.LeftRoot, Normalize(row.Entry.LeftRelativePath!)),
-            System.IO.Path.Combine(_comparison.RightRoot, Normalize(row.Entry.RightRelativePath!))));
+            System.IO.Path.Combine(_comparison.LeftRoot, Normalize(leftPath)),
+            System.IO.Path.Combine(_comparison.RightRoot, Normalize(rightPath))));
     }
 
     /// <summary>Entries carry '/'-separated relative paths; the filesystem may spell them differently.</summary>

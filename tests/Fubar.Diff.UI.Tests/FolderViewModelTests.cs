@@ -239,6 +239,165 @@ public class FolderViewModelTests
         Assert.False(raised);
     }
 
+    // ---- Pairing two files by hand --------------------------------------------------------------
+
+    /// <summary>A rename: the old name exists only on the left, the new one only on the right.</summary>
+    private static async Task<FolderViewModel> Renamed()
+    {
+        var (folders, _) = Build(
+            File("old-name.cs", FolderEntryStatus.LeftOnly),
+            File("new-name.cs", FolderEntryStatus.RightOnly));
+
+        await folders.CompareAsync();
+
+        return folders;
+    }
+
+    private static FolderEntryViewModel Row(FolderViewModel folders, string name) =>
+        Flatten(folders.Entries).Single(r => r.Name == name);
+
+    [AvaloniaFact]
+    public async Task Neither_half_of_a_rename_can_be_opened_on_its_own()
+    {
+        // Which is the whole reason manual pairing exists.
+        var folders = await Renamed();
+
+        Assert.False(Row(folders, "old-name.cs").CanCompare);
+        Assert.False(Row(folders, "new-name.cs").CanCompare);
+    }
+
+    [AvaloniaFact]
+    public async Task Two_selected_files_from_opposite_sides_can_be_compared()
+    {
+        var folders = await Renamed();
+
+        FileComparisonRequest? request = null;
+        folders.CompareRequested += (_, r) => request = r;
+
+        folders.SetSelection([Row(folders, "old-name.cs"), Row(folders, "new-name.cs")]);
+
+        Assert.True(folders.CanComparePair);
+
+        folders.ComparePairCommand.Execute(null);
+
+        Assert.Equal(Path.Combine(@"C:\left", "old-name.cs"), request!.LeftPath);
+        Assert.Equal(Path.Combine(@"C:\right", "new-name.cs"), request.RightPath);
+    }
+
+    [AvaloniaFact]
+    public async Task Selecting_them_the_other_way_round_pairs_them_the_same_way()
+    {
+        // Two files that each exist on one side only have exactly one sensible pairing, whichever
+        // order they were clicked in.
+        var folders = await Renamed();
+
+        FileComparisonRequest? request = null;
+        folders.CompareRequested += (_, r) => request = r;
+
+        folders.SetSelection([Row(folders, "new-name.cs"), Row(folders, "old-name.cs")]);
+        folders.ComparePairCommand.Execute(null);
+
+        Assert.Equal(Path.Combine(@"C:\left", "old-name.cs"), request!.LeftPath);
+        Assert.Equal(Path.Combine(@"C:\right", "new-name.cs"), request.RightPath);
+    }
+
+    [AvaloniaFact]
+    public async Task With_two_files_present_on_both_sides_the_first_selected_becomes_the_left()
+    {
+        // Genuinely ambiguous, so selection order decides rather than the tool guessing.
+        var (folders, _) = Build(
+            File("a.cs", FolderEntryStatus.Different),
+            File("b.cs", FolderEntryStatus.Different));
+
+        await folders.CompareAsync();
+
+        FileComparisonRequest? request = null;
+        folders.CompareRequested += (_, r) => request = r;
+
+        folders.SetSelection([Row(folders, "b.cs"), Row(folders, "a.cs")]);
+        folders.ComparePairCommand.Execute(null);
+
+        Assert.Equal(Path.Combine(@"C:\left", "b.cs"), request!.LeftPath);
+        Assert.Equal(Path.Combine(@"C:\right", "a.cs"), request.RightPath);
+    }
+
+    [AvaloniaFact]
+    public async Task Two_files_from_the_SAME_side_cannot_be_paired()
+    {
+        // There is no comparison to make: nothing would supply the other side.
+        var (folders, _) = Build(
+            File("one.cs", FolderEntryStatus.LeftOnly),
+            File("two.cs", FolderEntryStatus.LeftOnly));
+
+        await folders.CompareAsync();
+        folders.SetSelection([Row(folders, "one.cs"), Row(folders, "two.cs")]);
+
+        Assert.False(folders.CanComparePair);
+    }
+
+    [AvaloniaFact]
+    public async Task A_directory_cannot_be_half_of_a_pair()
+    {
+        var (folders, _) = Build(
+            Directory("src", File("a.cs", FolderEntryStatus.LeftOnly)),
+            File("b.cs", FolderEntryStatus.RightOnly));
+
+        await folders.CompareAsync();
+        folders.SetSelection([Row(folders, "src"), Row(folders, "b.cs")]);
+
+        Assert.False(folders.CanComparePair);
+    }
+
+    [AvaloniaFact]
+    public async Task Fewer_or_more_than_two_selected_rows_is_not_a_pair()
+    {
+        var folders = await Renamed();
+
+        folders.SetSelection([Row(folders, "old-name.cs")]);
+        Assert.False(folders.CanComparePair);
+
+        folders.SetSelection([]);
+        Assert.False(folders.CanComparePair);
+
+        folders.SetSelection([Row(folders, "old-name.cs"), Row(folders, "new-name.cs"), Row(folders, "old-name.cs")]);
+        Assert.False(folders.CanComparePair);
+    }
+
+    [AvaloniaFact]
+    public async Task The_button_names_the_pair_it_would_open()
+    {
+        var folders = await Renamed();
+
+        folders.SetSelection([Row(folders, "old-name.cs"), Row(folders, "new-name.cs")]);
+
+        Assert.Equal("Compare old-name.cs ↔ new-name.cs", folders.PairDescription);
+    }
+
+    [AvaloniaFact]
+    public async Task Comparing_a_pair_that_does_not_resolve_does_nothing()
+    {
+        var folders = await Renamed();
+
+        var raised = false;
+        folders.CompareRequested += (_, _) => raised = true;
+
+        folders.SetSelection([Row(folders, "old-name.cs")]);
+        folders.ComparePairCommand.Execute(null);
+
+        Assert.False(raised);
+    }
+
+    [AvaloniaFact]
+    public async Task Selecting_one_row_still_sets_the_single_selection()
+    {
+        // The ordinary path - double-click and Enter both act on it.
+        var folders = await Renamed();
+
+        folders.SetSelection([Row(folders, "old-name.cs")]);
+
+        Assert.Same(Row(folders, "old-name.cs"), folders.SelectedEntry);
+    }
+
     // ---- Options --------------------------------------------------------------------------------
 
     [AvaloniaFact]
