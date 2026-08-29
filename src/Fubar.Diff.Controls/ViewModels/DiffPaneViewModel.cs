@@ -30,6 +30,25 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial AlignedDocument? RightDocument { get; set; }
 
+    /// <summary>
+    /// The whole comparison as ONE patch-style document, for the unified view.
+    ///
+    /// Its rows do not correspond to <see cref="Lines"/> one for one - a modified row becomes two, a
+    /// filler becomes none - so it carries its own hunk ranges and a row mapping. See
+    /// <see cref="UnifiedText"/> for why that is kept here rather than by weakening the side-by-side
+    /// invariant for everybody.
+    /// </summary>
+    [ObservableProperty]
+    public partial UnifiedDocument UnifiedDocument { get; set; } = UnifiedDocument.Empty;
+
+    /// <summary>The unified document's own folds, computed in its own row coordinates.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<FoldRange> UnifiedFolds { get; set; } = [];
+
+    /// <summary>Row to bring into view in the UNIFIED document; -1 means nothing pending.</summary>
+    [ObservableProperty]
+    public partial int UnifiedScrollToRow { get; set; } = -1;
+
     /// <summary>Total display rows - the denominator the diff map scales positions against.</summary>
     public int TotalLines => _result.Lines.Count;
 
@@ -150,8 +169,16 @@ public partial class DiffPaneViewModel : ObservableObject
 
     partial void OnContextLinesChanged(int value) => RebuildFolds();
 
-    private void RebuildFolds() =>
+    private void RebuildFolds()
+    {
         Folds = CollapseUnchanged ? CollapsedRegions.Compute(_result.Lines, ContextLines) : [];
+
+        // The unified document has its own row coordinates, so its folds have to be computed against
+        // its own lines rather than remapped from the side-by-side ones.
+        UnifiedFolds = CollapseUnchanged
+            ? CollapsedRegions.Compute(UnifiedDocument.Document.Lines, ContextLines)
+            : [];
+    }
 
     /// <summary>The current hunk's rows, left side, or null when no hunk is selected.</summary>
     [ObservableProperty]
@@ -281,19 +308,32 @@ public partial class DiffPaneViewModel : ObservableObject
         new Dictionary<string, JsonChangeNodeViewModel>();
 
     /// <summary>
-    /// Which view the pane shows. Defaults to Text, but <see cref="Show"/> resets it on every
-    /// comparison - Json when semantic comparison ran, Text otherwise - so it is never left showing
-    /// Json for a document that turned out not to be JSON, and JSON always opens in the view built
-    /// for it rather than requiring a manual switch every time.
+    /// Which view the pane shows. Defaults to side by side, but <see cref="Show"/> resets it on every
+    /// comparison - Json when semantic comparison ran, side by side otherwise - so it is never left
+    /// showing Json for a document that turned out not to be JSON, and JSON always opens in the view
+    /// built for it rather than requiring a manual switch every time.
     /// </summary>
     [ObservableProperty]
-    public partial DiffViewMode ViewMode { get; set; } = DiffViewMode.Text;
+    public partial DiffViewMode ViewMode { get; set; } = DiffViewMode.SideBySide;
 
-    /// <summary>The values offered by a view selector - just Text and Json; there is nothing else to pick.</summary>
+    /// <summary>Every view mode that exists.</summary>
     public static IReadOnlyList<DiffViewMode> ViewModeOptions { get; } = Enum.GetValues<DiffViewMode>();
 
+    /// <summary>
+    /// The modes offered for THIS comparison. Side by side and unified always apply; Json is dropped
+    /// for content that is not JSON rather than offered and then refusing to show anything, which is
+    /// how the selector used to hide itself entirely - it no longer can, because the other two are
+    /// always a real choice.
+    /// </summary>
+    public IReadOnlyList<DiffViewMode> AvailableViewModes => IsSemantic
+        ? ViewModeOptions
+        : [DiffViewMode.SideBySide, DiffViewMode.Unified];
+
     /// <summary>Whether the side-by-side editors are the visible pane.</summary>
-    public bool IsTextViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Text;
+    public bool IsSideBySideViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.SideBySide;
+
+    /// <summary>Whether the single-document patch view is the visible pane.</summary>
+    public bool IsUnifiedViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Unified;
 
     /// <summary>
     /// Whether the tree-plus-both-documents view is the visible pane. Requires a semantic comparison -
@@ -301,7 +341,27 @@ public partial class DiffPaneViewModel : ObservableObject
     /// </summary>
     public bool IsJsonViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Json && IsSemantic;
 
-    partial void OnViewModeChanged(DiffViewMode value) => RaiseViewVisibility();
+    partial void OnViewModeChanged(DiffViewMode value)
+    {
+        // The close-up exists to put a change's two versions next to each other; in the unified view
+        // they already ARE next to each other, one line apart, so it would be showing a copy of what is
+        // on screen. Hidden rather than merely empty, and remembered, so switching back restores it.
+        if (value == DiffViewMode.Unified)
+        {
+            _detailBeforeUnified = IsDetailVisible;
+            IsDetailVisible = false;
+        }
+        else if (_detailBeforeUnified is { } previous)
+        {
+            IsDetailVisible = previous;
+            _detailBeforeUnified = null;
+        }
+
+        RaiseViewVisibility();
+    }
+
+    /// <summary>What the close-up's visibility was before the unified view turned it off.</summary>
+    private bool? _detailBeforeUnified;
 
     partial void OnLeftDocumentChanged(AlignedDocument? value) => RaiseViewVisibility();
 
@@ -312,7 +372,7 @@ public partial class DiffPaneViewModel : ObservableObject
         // leaving Json selected for content that is not semantic would show an empty pane.
         if (!value && ViewMode == DiffViewMode.Json)
         {
-            ViewMode = DiffViewMode.Text;
+            ViewMode = DiffViewMode.SideBySide;
         }
 
         RaiseViewVisibility();
@@ -549,6 +609,11 @@ public partial class DiffPaneViewModel : ObservableObject
         LeftDocument = AlignedText.Build(result, DiffSide.Left);
         RightDocument = AlignedText.Build(result, DiffSide.Right);
 
+        UnifiedDocument = UnifiedText.Build(result);
+        UnifiedFolds = CollapseUnchanged
+            ? CollapsedRegions.Compute(UnifiedDocument.Document.Lines, ContextLines)
+            : [];
+
         IsSemantic = isSemantic;
         _changeIndex = JsonChangeIndex.Build(semanticChanges);
 
@@ -572,7 +637,7 @@ public partial class DiffPaneViewModel : ObservableObject
         // non-JSON comparison lands on the one view that always works. This runs on every comparison,
         // not just the first, so re-comparing content that changed format (e.g. toggling Mode) cannot
         // leave Json selected for a document that no longer parses as JSON.
-        ViewMode = isSemantic ? DiffViewMode.Json : DiffViewMode.Text;
+        ViewMode = isSemantic ? DiffViewMode.Json : DiffViewMode.SideBySide;
 
         RebuildDetail();
         RaiseDerived();
@@ -609,13 +674,38 @@ public partial class DiffPaneViewModel : ObservableObject
 
         CurrentHunk = index;
         ScrollToRow = _result.Hunks[index].StartIndex;
+
+        // The unified view is scrolled by its OWN row index, which is a different number for the same
+        // hunk. Both are set unconditionally so switching view mid-navigation lands in the right place
+        // in whichever one is showing.
+        UnifiedScrollToRow = index < UnifiedDocument.Hunks.Count
+            ? UnifiedDocument.Hunks[index].StartIndex
+            : -1;
+
         Navigated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Jumps from a row of the UNIFIED document, e.g. a click in that view. Translated through the
+    /// document's own row mapping, since its indices are not the comparison's.
+    /// </summary>
+    public void JumpToUnifiedRow(int unifiedRow)
+    {
+        if (unifiedRow < 0 || unifiedRow >= UnifiedDocument.SourceRows.Count)
+        {
+            return;
+        }
+
+        JumpToRow(UnifiedDocument.SourceRows[unifiedRow]);
+        UnifiedScrollToRow = unifiedRow;
     }
 
     private void RaiseViewVisibility()
     {
-        OnPropertyChanged(nameof(IsTextViewVisible));
+        OnPropertyChanged(nameof(IsSideBySideViewVisible));
+        OnPropertyChanged(nameof(IsUnifiedViewVisible));
         OnPropertyChanged(nameof(IsJsonViewVisible));
+        OnPropertyChanged(nameof(AvailableViewModes));
     }
 
     /// <summary>

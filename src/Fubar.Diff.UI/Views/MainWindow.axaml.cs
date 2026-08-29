@@ -33,14 +33,30 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e is { Key: Key.F, KeyModifiers: KeyModifiers.Control } && Diff.IsVisible)
+        if (e is not { Key: Key.F, KeyModifiers: KeyModifiers.Control })
+        {
+            return;
+        }
+
+        // Whichever view is actually on screen owns the find bar. Routing to the side-by-side one
+        // unconditionally would open a search over panes nobody is looking at.
+        if (Diff.IsVisible)
         {
             Diff.OpenSearch();
             e.Handled = true;
         }
+        else if (Unified.IsVisible)
+        {
+            Unified.OpenSearch();
+            e.Handled = true;
+        }
     }
 
-    private void OnActualThemeVariantChanged(object? sender, EventArgs e) => Diff.OnThemeChanged();
+    private void OnActualThemeVariantChanged(object? sender, EventArgs e)
+    {
+        Diff.OnThemeChanged();
+        Unified.OnThemeChanged();
+    }
 
     /// <summary>
     /// Opens the detailed settings window for the CURRENT tab. Read off the button's own DataContext

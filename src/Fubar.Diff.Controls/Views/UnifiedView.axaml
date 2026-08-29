@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Fubar.Diff.Controls.Views"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             x:Class="Fubar.Diff.Controls.Views.UnifiedView"
+             x:DataType="vm:DiffPaneViewModel">
+
+    <!-- The whole comparison as one document, patch style.
+
+         One editor, so there is no scroll sync, no filler rows and no second column competing for
+         width - which is most of why people prefer this view on a narrow window or in a screenshot.
+         The same DiffEditorPane as the side-by-side view, given a different document: removed lines
+         are tinted as removals and added ones as additions, exactly as they are over there, so nothing
+         about reading a change has to be relearned when switching.
+
+         It binds to UnifiedDocument rather than to LeftDocument/RightDocument, and to that document's
+         OWN folds and scroll row, because its rows are not the comparison's rows - see UnifiedText. -->
+    <views:DiffEditorPane x:Name="Pane"
+                          Document="{Binding UnifiedDocument.Document}"
+                          ShowInvisibles="{Binding ShowInvisibles}"
+                          SyntaxExtension="{Binding RightSyntaxExtension}"
+                          SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                          Folds="{Binding UnifiedFolds}" />
+</UserControl>

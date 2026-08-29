@@ -226,17 +226,16 @@
                               IsChecked="{Binding CollapseUnchanged}"
                               VerticalAlignment="Center" />
 
-                    <!-- Text / Json. Only offered when a semantic comparison ran, since Json has
-                         nothing to show for a plain text file - Pane.Show already defaults ViewMode to
-                         whichever of the two applies. Labelled for the same reason the Compare mode
-                         above is - same two words, different question ("how to compare" vs. "what to
+                    <!-- Side by side / Unified / Json. Always offered now: the first two apply to any
+                         comparison, where Json alone did not, so this no longer hides itself for a
+                         plain text file - Pane.Show still picks the right default for the content.
+                         Labelled for the same reason the Compare mode above is: both selectors offer
+                         similar-looking words for different questions ("how to compare" vs "what to
                          show right now"). -->
                     <TextBlock Text="View:" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextSecondary}" Margin="12,0,4,0"
-                               IsVisible="{Binding Pane.IsSemantic}" />
-                    <fc:SegmentedControl ItemsSource="{x:Static dvm:DiffPaneViewModel.ViewModeOptions}"
-                                         SelectedItem="{Binding Pane.ViewMode}"
-                                         IsVisible="{Binding Pane.IsSemantic}" />
+                               Foreground="{DynamicResource TextSecondary}" Margin="12,0,4,0" />
+                    <fc:SegmentedControl ItemsSource="{Binding Pane.AvailableViewModes}"
+                                         SelectedItem="{Binding Pane.ViewMode}" />
 
                 </fc:Toolbar>
             </Grid>
@@ -278,7 +277,11 @@
                  API Studio, and know nothing about files, options or merge. -->
             <dv:DiffView x:Name="Diff"
                          DataContext="{Binding Pane}"
-                         IsVisible="{Binding IsTextViewVisible}" />
+                         IsVisible="{Binding IsSideBySideViewVisible}" />
+
+            <dv:UnifiedView x:Name="Unified"
+                            DataContext="{Binding Pane}"
+                            IsVisible="{Binding IsUnifiedViewVisible}" />
 
             <dv:JsonView DataContext="{Binding Pane}"
                          IsVisible="{Binding IsJsonViewVisible}" />

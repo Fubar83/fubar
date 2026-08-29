@@ -56,6 +56,13 @@ public static class CollapsedRegions
     public static IReadOnlyList<FoldRange> Compute(Merge.ThreeWayResult result, int contextLines) =>
         Compute(result.Lines.Count, i => !result.Lines[i].IsChange, contextLines);
 
+    /// <summary>
+    /// The same, for an already-flattened document - the unified view, whose rows no longer correspond
+    /// one for one to <c>DiffResult.Lines</c> and so has to be measured in its own coordinates.
+    /// </summary>
+    public static IReadOnlyList<FoldRange> Compute(IReadOnlyList<AlignedLine> lines, int contextLines) =>
+        Compute(lines.Count, i => lines[i].Kind == ChangeKind.Unchanged && !lines[i].IsIgnored, contextLines);
+
     private static IReadOnlyList<FoldRange> Compute(int rowCount, System.Func<int, bool> isCollapsible, int contextLines)
     {
         var folds = new List<FoldRange>();

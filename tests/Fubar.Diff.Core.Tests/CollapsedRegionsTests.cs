@@ -139,7 +139,9 @@ public class CollapsedRegionsTests
     [Fact]
     public void An_empty_document_folds_nothing()
     {
-        Assert.Empty(CollapsedRegions.Compute([], 3));
+        // Typed explicitly: an empty collection expression cannot choose between the DiffLine and
+        // AlignedLine overloads, which address different coordinate systems.
+        Assert.Empty(CollapsedRegions.Compute(Array.Empty<DiffLine>(), 3));
     }
 
     [Fact]

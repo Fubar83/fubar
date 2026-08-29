@@ -209,7 +209,7 @@
                            Description="There is no content on either side."
                            IsVisible="{Binding Pane.LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
 
-            <dv:DiffView DataContext="{Binding Pane}" IsVisible="{Binding IsTextViewVisible}" />
+            <dv:DiffView DataContext="{Binding Pane}" IsVisible="{Binding IsSideBySideViewVisible}" />
             <dv:JsonView DataContext="{Binding Pane}" IsVisible="{Binding IsJsonViewVisible}" />
         </Panel>
     </DockPanel>

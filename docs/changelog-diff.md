@@ -18,6 +18,21 @@ All notable changes to this project are documented here. The format is based on
   hunting is the few that do not, through the same thousands of untouched lines. An ignored row is
   never folded away — its faint band is the only evidence that an ignore rule is doing anything.
 
+- **A unified (inline) view.** The whole comparison as one patch-style document — removals, then
+  additions, with shared context between them — switchable from the **View** selector, which now offers
+  *Side by side / Unified / Json* and no longer hides itself for non-JSON files. No second column, so it
+  reads well on a narrow window, in a screenshot, and for anyone who spends their day in patches.
+
+  It is a genuinely separate flattening rather than a mode on the existing one, because it cannot share
+  the invariant everything else rests on: side by side guarantees editor line *i* is `DiffResult.Lines[i]`
+  on both sides, and a unified document breaks that the moment one modified row becomes two lines. So it
+  carries its own hunk ranges, its own folds and its own row mapping back to the comparison, and the
+  side-by-side view keeps the guarantee it was built on.
+
+  The close-up hides itself while the unified view is showing and comes back when you leave — there, the
+  two versions of a change are already one line apart, so a close-up would be a copy of what is on
+  screen. If you had turned it off yourself, it stays off.
+
 - **Ignored text patterns** (Settings → Text compare). Regular expressions whose matches stop counting
   as differences — a build timestamp, a generated GUID, a version stamp in a header. Only the **match**
   is ignored rather than the whole line, so a real change elsewhere on the same line is still reported,

@@ -210,6 +210,16 @@ would make `ab` and `a` compare equal under the rule `b`, hiding a difference no
 And it is applied BEFORE the normalizer, so a rule written against what the user can see matches what
 they see rather than a trimmed, case-folded copy.
 
+**The unified view is the ONE place "editor line i is `DiffResult.Lines[i]`" does not hold, and it pays
+for that itself** (Diff). A modified row becomes two lines there and a filler becomes none, so the
+mapping stops being the identity. Rather than weaken the invariant everywhere - which would cost the
+side-by-side view its offset-copy scroll sync and make every renderer's row arithmetic conditional -
+`UnifiedText` builds its own document and carries the translation back explicitly: `UnifiedDocument.Hunks`
+in ITS row indices (same hunks, same order, different numbers) and `SourceRows` mapping each of its rows
+to the comparison's. Anything addressing the unified view must go through those; `DiffPaneViewModel`
+keeps `UnifiedScrollToRow` and `UnifiedFolds` separate from their side-by-side counterparts for exactly
+this reason, and computing either from the other's coordinates is wrong the moment a row splits.
+
 **Collapsing is a VIEW state, and folding must never remove a row** (Diff). `CollapsedRegions` returns
 ROW ranges and `DiffEditorPane` turns them into AvaloniaEdit folds, so the document still contains
 every line and editor line `i` is still `DiffResult.Lines[i]`. Filtering rows out of the document

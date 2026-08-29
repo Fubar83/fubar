@@ -36,6 +36,9 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   and all are equally minimal — which is why a moved method so often shows up as a closing brace plus
   the start of the next one. Groups are slid toward blank lines and lower indentation, the same
   heuristic git uses, without changing what the diff says.
+- **Side-by-side or unified.** The **View** selector switches between the two-editor view and a single
+  patch-style document — removals then additions, shared context between them — for a narrow window, a
+  screenshot, or anyone who reads patches all day.
 - **Collapse unchanged** — long stretches both files agree on fold behind a placeholder, keeping a few
   lines either side of each change. On by default; click any fold to expand it, or turn it off from the
   toolbar. A file of three thousand lines with two changes reads as two changes.
