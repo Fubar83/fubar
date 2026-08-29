@@ -78,6 +78,7 @@ public partial class MergeViewModel : ViewModelBase
             NormalizeStructure = settings.NormalizeStructure,
             NormalizeUnicode = settings.NormalizeUnicode,
             Mode = settings.Mode,
+            IgnoredLinePatterns = settings.IgnoredLinePatterns,
             Code = new CodeComparisonOptions
             {
                 IgnoreComments = settings.IgnoreComments,

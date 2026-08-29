@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Fubar.Diff.Core.Json;
 
 namespace Fubar.Diff.Core.Comparison;
@@ -56,6 +57,16 @@ public sealed record ComparisonOptions
     /// what changed should not hide one until asked.
     /// </summary>
     public bool NormalizeUnicode { get; init; }
+
+    /// <summary>
+    /// Regular expressions whose matches are blanked out before two lines are compared - see
+    /// <see cref="LinePatternMask"/>.
+    ///
+    /// For the text that changes on every run and that nobody can act on: a build timestamp, a
+    /// generated GUID, a version stamp in a header. Masking the MATCH rather than the whole line is
+    /// deliberate, so a real change elsewhere on the same line is still reported.
+    /// </summary>
+    public IReadOnlyList<string> IgnoredLinePatterns { get; init; } = [];
 
     /// <summary>Text or semantic comparison. See <see cref="ComparisonMode"/>.</summary>
     public ComparisonMode Mode { get; init; } = ComparisonMode.Auto;

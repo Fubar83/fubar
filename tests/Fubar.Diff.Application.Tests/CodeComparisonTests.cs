@@ -205,6 +205,65 @@ public class CodeComparisonTests
     }
 
     [Fact]
+    public async Task An_ignored_pattern_stops_a_regenerated_timestamp_being_a_difference()
+    {
+        var comparison = await Build().CompareTextAsync(
+            "generated 2024-01-01T09:00:00\nvalue = 1",
+            "generated 2025-06-30T17:45:12\nvalue = 1",
+            new ComparisonOptions { IgnoredLinePatterns = [@"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"] },
+            "a.txt",
+            "b.txt",
+            Token);
+
+        Assert.True(comparison.Result.AreIdentical);
+    }
+
+    [Fact]
+    public async Task An_ignored_pattern_still_reports_a_real_change_on_the_same_line()
+    {
+        // The whole reason this masks the match rather than dropping the line.
+        var comparison = await Build().CompareTextAsync(
+            "2024-01-01 starting up",
+            "2025-06-30 shutting down",
+            new ComparisonOptions { IgnoredLinePatterns = [@"\d{4}-\d{2}-\d{2}"] },
+            "a.txt",
+            "b.txt",
+            Token);
+
+        Assert.False(comparison.Result.AreIdentical);
+    }
+
+    [Fact]
+    public async Task The_user_still_sees_the_text_a_pattern_masked()
+    {
+        // Masking produces a comparison KEY. It must never reach the panes.
+        var comparison = await Build().CompareTextAsync(
+            "built at 2024-01-01",
+            "built at 2025-06-30",
+            new ComparisonOptions { IgnoredLinePatterns = [@"\d{4}-\d{2}-\d{2}"] },
+            "a.txt",
+            "b.txt",
+            Token);
+
+        Assert.Equal("built at 2024-01-01", comparison.Result.Lines[0].LeftText);
+        Assert.Equal("built at 2025-06-30", comparison.Result.Lines[0].RightText);
+    }
+
+    [Fact]
+    public async Task A_malformed_pattern_does_not_stop_the_comparison()
+    {
+        var comparison = await Build().CompareTextAsync(
+            "a",
+            "b",
+            new ComparisonOptions { IgnoredLinePatterns = ["([unclosed"] },
+            "a.txt",
+            "b.txt",
+            Token);
+
+        Assert.False(comparison.Result.AreIdentical);
+    }
+
+    [Fact]
     public async Task An_operator_change_highlights_the_whole_operator()
     {
         var comparison = await Compare("if (a == b) { }", "if (a === b) { }", CodeComparisonOptions.Default, ".ts");

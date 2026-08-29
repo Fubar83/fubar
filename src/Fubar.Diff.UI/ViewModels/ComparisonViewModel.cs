@@ -107,6 +107,12 @@ public partial class ComparisonViewModel : ViewModelBase
                 ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(path, key));
             }
 
+            IgnoredLinePatterns.Clear();
+            foreach (var pattern in settings.IgnoredLinePatterns)
+            {
+                IgnoredLinePatterns.Add(pattern);
+            }
+
             IgnoredPaths.Clear();
             foreach (var path in settings.IgnoredPaths)
             {
@@ -136,6 +142,7 @@ public partial class ComparisonViewModel : ViewModelBase
         IgnoreNullVsMissing = IgnoreNullVsMissing,
         Mode = Mode,
         ArrayKeyOverrides = ArrayKeyOverrides.ToDictionary(e => e.Path, e => e.Key),
+        IgnoredLinePatterns = [.. IgnoredLinePatterns],
         IgnoredPaths = [.. IgnoredPaths],
     };
 
@@ -358,6 +365,41 @@ public partial class ComparisonViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Regular expressions whose matches are ignored when comparing any text - see
+    /// <see cref="LinePatternMask"/>. Unlike <see cref="IgnoredPaths"/>, which is JSON-only, these
+    /// apply to every file.
+    /// </summary>
+    public ObservableCollection<string> IgnoredLinePatterns { get; } = [];
+
+    [ObservableProperty]
+    public partial string NewLinePattern { get; set; } = string.Empty;
+
+    [RelayCommand(CanExecute = nameof(CanAddLinePattern))]
+    private void AddLinePattern()
+    {
+        IgnoredLinePatterns.Add(NewLinePattern.Trim());
+        NewLinePattern = string.Empty;
+        OptionChanged();
+    }
+
+    /// <summary>
+    /// Refuses a pattern that will not compile, rather than storing one that silently does nothing.
+    /// The rule is validated here, once, instead of per line inside the comparison.
+    /// </summary>
+    private bool CanAddLinePattern() =>
+        !string.IsNullOrWhiteSpace(NewLinePattern)
+        && LinePatternMask.Create([NewLinePattern.Trim()]) is not null;
+
+    partial void OnNewLinePatternChanged(string value) => AddLinePatternCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand]
+    private void RemoveLinePattern(string pattern)
+    {
+        IgnoredLinePatterns.Remove(pattern);
+        OptionChanged();
+    }
+
+    /// <summary>
     /// JSON paths whose differences are never reported - see <see cref="JsonPathPattern"/> for the
     /// syntax. Same add/remove-only shape as <see cref="ArrayKeyOverrides"/>, for the same reason.
     /// </summary>
@@ -574,6 +616,7 @@ public partial class ComparisonViewModel : ViewModelBase
         NormalizeStructure = NormalizeStructure,
         NormalizeUnicode = NormalizeUnicode,
         Mode = Mode,
+        IgnoredLinePatterns = [.. IgnoredLinePatterns],
         Code = new CodeComparisonOptions
         {
             IgnoreComments = IgnoreComments,

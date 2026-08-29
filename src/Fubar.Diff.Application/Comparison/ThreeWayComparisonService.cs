@@ -86,9 +86,11 @@ public sealed class ThreeWayComparisonService : IThreeWayComparisonService
             language = LanguageDetector.FromPath(ancestorDoc.Path);
         }
 
-        var ancestorKeys = KeysFor(ancestorDoc.Lines, language, options);
-        var leftKeys = KeysFor(leftDoc.Lines, language, options);
-        var rightKeys = KeysFor(rightDoc.Lines, language, options);
+        var mask = LinePatternMask.Create(options.IgnoredLinePatterns);
+
+        var ancestorKeys = KeysFor(ancestorDoc.Lines, language, options, mask);
+        var leftKeys = KeysFor(leftDoc.Lines, language, options, mask);
+        var rightKeys = KeysFor(rightDoc.Lines, language, options, mask);
 
         var toLeft = Align(ancestorKeys, ancestorDoc.Lines, leftKeys, leftDoc.Lines, options);
         var toRight = Align(ancestorKeys, ancestorDoc.Lines, rightKeys, rightDoc.Lines, options);
@@ -205,7 +207,11 @@ public sealed class ThreeWayComparisonService : IThreeWayComparisonService
     /// The comparison key per line: the code rules first (comments stripped when asked), then the
     /// text-level normalisation. Never displayed - the rows carry each document's own lines.
     /// </summary>
-    private string[] KeysFor(IReadOnlyList<string> lines, SourceLanguage language, ComparisonOptions options)
+    private string[] KeysFor(
+        IReadOnlyList<string> lines,
+        SourceLanguage language,
+        ComparisonOptions options,
+        LinePatternMask? mask)
     {
         var code = CodeLines.Analyze(lines, language, options.Code);
         var source = code?.ComparisonLines ?? lines;
@@ -213,7 +219,8 @@ public sealed class ThreeWayComparisonService : IThreeWayComparisonService
         var keys = new string[source.Count];
         for (var i = 0; i < keys.Length; i++)
         {
-            keys[i] = _normalizer.ToComparisonKey(source[i], options);
+            var line = mask is null ? source[i] : mask.Apply(source[i]);
+            keys[i] = _normalizer.ToComparisonKey(line, options);
         }
 
         return keys;

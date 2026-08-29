@@ -63,6 +63,36 @@
                     <CheckBox Content="Reformat for display"
                               IsChecked="{Binding NormalizeStructure}"
                               ToolTip.Tip="Pretty-print JSON or XML in the Text view for display - off by default, and the file on disk is never touched unless you then save. The Json view always shows both sides exactly as given, regardless of this." />
+
+                    <!-- Applies to every file, unlike the JSON ignore paths below, so it belongs to the
+                         text section rather than that one. -->
+                    <StackPanel Spacing="6" Margin="0,10,0,0">
+                        <TextBlock Text="Ignored text" FontWeight="SemiBold" />
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                   Text="Regular expressions whose matches stop counting as differences - a build timestamp, a generated GUID, a version stamp. Only the MATCH is ignored, so a real change elsewhere on the same line is still reported. Your files are never altered; this only changes what is compared." />
+
+                        <ItemsControl ItemsSource="{Binding IgnoredLinePatterns}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                                        <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center"
+                                                   FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                        <Button Grid.Column="1" Classes="secondary-btn" Content="Remove"
+                                                Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveLinePatternCommand}"
+                                                CommandParameter="{Binding}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding NewLinePattern}"
+                                     PlaceholderText="\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+                                     ToolTip.Tip="A .NET regular expression. Add is disabled until it compiles." />
+                            <Button Grid.Column="1" Classes="toolbar-btn" Content="Add" Margin="8,0,0,0"
+                                    Command="{Binding AddLinePatternCommand}" />
+                        </Grid>
+                    </StackPanel>
                 </StackPanel>
 
                 <fc:Divider />

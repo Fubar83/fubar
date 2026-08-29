@@ -149,8 +149,12 @@ public sealed class FileComparisonService : IFileComparisonService
         // Keys again, not display text: ComparisonLines is the document with its comments stripped
         // when the user asked for that, and it is never shown to anyone - the projection below puts
         // the real lines back, comments included.
-        var leftKeys = ToKeys(leftCode?.ComparisonLines ?? leftDoc.Lines, options);
-        var rightKeys = ToKeys(rightCode?.ComparisonLines ?? rightDoc.Lines, options);
+        // Compiled once per comparison rather than per line: these are user-supplied regexes, and
+        // rebuilding them 60,000 times would dwarf the diff itself.
+        var mask = LinePatternMask.Create(options.IgnoredLinePatterns);
+
+        var leftKeys = ToKeys(leftCode?.ComparisonLines ?? leftDoc.Lines, options, mask);
+        var rightKeys = ToKeys(rightCode?.ComparisonLines ?? rightDoc.Lines, options, mask);
 
         var rows = _engine.Align(leftKeys, rightKeys, options);
 
@@ -199,12 +203,21 @@ public sealed class FileComparisonService : IFileComparisonService
         };
     }
 
-    private string[] ToKeys(IReadOnlyList<string> lines, ComparisonOptions options)
+    /// <summary>
+    /// The comparison key per line: the user's ignore patterns first, then the text-level
+    /// normalisation the adapter owns.
+    ///
+    /// Masking BEFORE normalising, because the two compose in that order and not the other: a rule
+    /// written against what the user can see should match what they see, not a copy that has already
+    /// been trimmed and case-folded out from under it.
+    /// </summary>
+    private string[] ToKeys(IReadOnlyList<string> lines, ComparisonOptions options, LinePatternMask? mask)
     {
         var keys = new string[lines.Count];
         for (var i = 0; i < keys.Length; i++)
         {
-            keys[i] = _normalizer.ToComparisonKey(lines[i], options);
+            var line = mask is null ? lines[i] : mask.Apply(lines[i]);
+            keys[i] = _normalizer.ToComparisonKey(line, options);
         }
 
         return keys;

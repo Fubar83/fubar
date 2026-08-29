@@ -198,6 +198,18 @@ banner before (`HasUnresolvedConflicts`) and names the count in the status line 
 this by throwing in the service, and do not drop the warnings - the fallback is only acceptable while
 it cannot be a surprise.
 
+**A user-supplied regex is hostile input, and `LinePatternMask` treats it that way** (Diff). Two
+failure modes, both handled and neither optional. A MALFORMED pattern is dropped rather than thrown -
+these come from a settings file a user can hand-edit, and refusing to compare anything because one rule
+has a stray bracket is not an acceptable answer (`Create` reports which were rejected so the UI can
+say). A PATHOLOGICAL one - `(a+)+$` and friends - cannot be allowed to hang the window, so patterns
+compile on `RegexOptions.NonBacktracking`, which is linear in the input; only a pattern needing
+lookaround or backreferences falls back to the ordinary engine, and that one carries a match timeout.
+Masking replaces the match with a marker character rather than with nothing, deliberately: blanking to empty
+would make `ab` and `a` compare equal under the rule `b`, hiding a difference nobody asked to hide.
+And it is applied BEFORE the normalizer, so a rule written against what the user can see matches what
+they see rather than a trimmed, case-folded copy.
+
 **Collapsing is a VIEW state, and folding must never remove a row** (Diff). `CollapsedRegions` returns
 ROW ranges and `DiffEditorPane` turns them into AvaloniaEdit folds, so the document still contains
 every line and editor line `i` is still `DiffResult.Lines[i]`. Filtering rows out of the document

@@ -73,7 +73,10 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 - **Comparison options**: ignore leading/trailing whitespace, ignore case, or reformat (pretty-print
   JSON/XML in the Text view - opt-in, never automatic; the Json view always shows both sides exactly as
   given regardless of this) from the toolbar; a **Settings…** window holds the rest in three sections -
-  Text compare; Code compare (ignore comments, ignore blank lines); and JSON compare (report key order,
+  Text compare (including **ignored text patterns**: regular expressions whose matches stop counting as
+  differences, for the build timestamp or generated GUID that changes on every run - only the match is
+  ignored, so a real change elsewhere on the line is still reported); Code compare (ignore comments,
+  ignore blank lines); and JSON compare (report key order,
   match arrays by position, treat `null` and a missing property as equal, per-path array identity key
   overrides, and a list of JSON paths whose differences are never reported).
 - **Format differences are reported, not hidden** — two files whose content matches but whose

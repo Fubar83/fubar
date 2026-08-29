@@ -18,6 +18,19 @@ All notable changes to this project are documented here. The format is based on
   hunting is the few that do not, through the same thousands of untouched lines. An ignored row is
   never folded away — its faint band is the only evidence that an ignore rule is doing anything.
 
+- **Ignored text patterns** (Settings → Text compare). Regular expressions whose matches stop counting
+  as differences — a build timestamp, a generated GUID, a version stamp in a header. Only the **match**
+  is ignored rather than the whole line, so a real change elsewhere on the same line is still reported,
+  which is the difference between this and simply filtering lines out. Your files are never altered:
+  masking produces a comparison key, and the panes still show the timestamp.
+
+  Two things a user-supplied regular expression can do that an application must survive, and does: a
+  malformed one is rejected rather than thrown (Add stays disabled until it compiles, and a bad rule
+  hand-edited into the settings file is dropped rather than stopping the comparison), and a
+  catastrophically backtracking one cannot hang the window — patterns run on .NET's non-backtracking
+  engine where possible, which is linear in the input, and on the ordinary engine with a timeout where
+  the pattern needs lookaround or backreferences.
+
 - **Java, Go, C, C++ and Python** join C#, JavaScript and TypeScript in the code-aware comparison, so
   "ignore comments" and token-level highlighting now cover most of what developers actually open. The
   scanner became rules-driven rather than a set of branches, so each language is a line of data plus

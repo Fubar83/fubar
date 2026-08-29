@@ -46,6 +46,12 @@ public sealed record AppSettings
     /// </summary>
     public bool CollapseUnchanged { get; init; } = true;
 
+    /// <summary>
+    /// Regular expressions whose matches are ignored when comparing - a build timestamp, a generated
+    /// GUID, a version stamp. See <c>LinePatternMask</c>.
+    /// </summary>
+    public IReadOnlyList<string> IgnoredLinePatterns { get; init; } = [];
+
     /// <summary>Treat comments as absent - see <c>CodeComparisonOptions.IgnoreComments</c>.</summary>
     public bool IgnoreComments { get; init; }
 
