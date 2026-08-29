@@ -333,7 +333,7 @@ public class JsonSemanticComparisonTests
 
     /// <summary>
     /// The one remaining way Left/Right can still diverge from the original: the user explicitly
-    /// turns on "Normalize XML" (NormalizeStructure) for a JSON file, which still reaches the JSON
+    /// turns on "Reformat" (NormalizeStructure) for a JSON file, which still reaches the JSON
     /// branch of Canonicalize. Even then, the Json view's copy must stay the TRUE original - that
     /// view's whole point is showing what is actually there, regardless of what Text mode is
     /// currently configured to display.

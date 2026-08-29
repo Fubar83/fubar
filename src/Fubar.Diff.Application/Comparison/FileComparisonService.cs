@@ -166,6 +166,10 @@ public sealed class FileComparisonService : IFileComparisonService
             OriginalSemanticChanges = originalSemanticChanges,
             OriginalLeftText = trueOriginalLeftText,
             OriginalRightText = trueOriginalRightText,
+
+            // Invisible in the lines by construction (the reader consumes the BOM and splits on every
+            // terminator), so it has to be carried alongside them or it is lost entirely.
+            FormatDifference = TextFormatComparer.Compare(leftDoc.Format, rightDoc.Format),
         };
     }
 

@@ -19,6 +19,35 @@ public class TextLineNormalizerTests
     public void IgnoreCase_folds_case() =>
         Assert.Equal("HELLO", _normalizer.ToComparisonKey("Hello", new ComparisonOptions { IgnoreCase = true }));
 
+    /// <summary>
+    /// NFC folds the two spellings of an accented letter together. The case this exists for: macOS
+    /// decomposes where Windows and Linux compose, so the same word can differ in bytes and be
+    /// pixel-identical on screen.
+    /// </summary>
+    [Fact]
+    public void NormalizeUnicode_folds_composed_and_decomposed_forms()
+    {
+        var options = new ComparisonOptions { NormalizeUnicode = true };
+
+        // "café" precomposed (U+00E9) vs decomposed (e + U+0301). Built from char codes rather than
+        // written as escapes, so no tool between here and the compiler can silently normalise the
+        // literal and make the test pass for the wrong reason.
+        var composed = "caf" + (char)0x00E9;
+        var decomposed = "cafe" + (char)0x0301;
+
+        Assert.Equal(
+            _normalizer.ToComparisonKey(composed, options),
+            _normalizer.ToComparisonKey(decomposed, options));
+    }
+
+    [Fact]
+    public void The_two_forms_stay_different_without_the_option()
+    {
+        Assert.NotEqual(
+            _normalizer.ToComparisonKey("caf" + (char)0x00E9, ComparisonOptions.Default),
+            _normalizer.ToComparisonKey("cafe" + (char)0x0301, ComparisonOptions.Default));
+    }
+
     [Fact]
     public void Both_options_compose()
     {
@@ -98,7 +127,7 @@ public class TextLineNormalizerTests
     // unconditional CanonicalizeJson entry point that ran this automatically before every semantic
     // comparison's alignment step; that was removed (Text mode shows the file as given, full stop -
     // the Json view is what handles differently-formatted JSON, and needs no reformatting to do it).
-    // The printer itself stays, since the explicit "Normalize XML" toggle still reaches it for JSON.
+    // The printer itself stays, since the explicit "Reformat" toggle still reaches it for JSON.
 
     private static readonly ComparisonOptions Normalized = new() { NormalizeStructure = true };
 
