@@ -25,10 +25,23 @@ public partial class DiffEditorPane : UserControl
     public static readonly StyledProperty<AlignedDocument?> DocumentProperty =
         AvaloniaProperty.Register<DiffEditorPane, AlignedDocument?>(nameof(Document));
 
+    /// <summary>
+    /// True when this pane is a close-up (<c>DiffDetailPane</c>) rather than one of the main
+    /// side-by-side panes - see <see cref="DiffLineColors.LineBackground"/> for why that changes the
+    /// tint's intensity.
+    /// </summary>
+    public static readonly StyledProperty<bool> EmphasizedProperty =
+        AvaloniaProperty.Register<DiffEditorPane, bool>(nameof(Emphasized));
+
+    /// <summary>Whether to mark invisible characters - see <see cref="InvisibleCharacterGenerator"/>.</summary>
+    public static readonly StyledProperty<bool> ShowInvisiblesProperty =
+        AvaloniaProperty.Register<DiffEditorPane, bool>(nameof(ShowInvisibles));
+
     private readonly ChangeLineBackgroundRenderer _backgroundRenderer;
     private readonly CharSpanColorizer _colorizer;
     private readonly SourceLineNumberMargin _lineNumbers;
     private readonly CurrentHunkRenderer _currentHunk;
+    private readonly InvisibleCharacterGenerator _invisibles;
     private readonly SearchPanel _searchPanel;
 
     public DiffEditorPane()
@@ -39,12 +52,14 @@ public partial class DiffEditorPane : UserControl
         _colorizer = new CharSpanColorizer(this);
         _lineNumbers = new SourceLineNumberMargin();
         _currentHunk = new CurrentHunkRenderer(this);
+        _invisibles = new InvisibleCharacterGenerator();
 
         Editor.TextArea.TextView.BackgroundRenderers.Add(_backgroundRenderer);
         // AFTER the change tint, deliberately: same layer, and background renderers paint in
         // registration order, so the current-hunk marker must be added second to land on top.
         Editor.TextArea.TextView.BackgroundRenderers.Add(_currentHunk);
         Editor.TextArea.TextView.LineTransformers.Add(_colorizer);
+        Editor.TextArea.TextView.ElementGenerators.Add(_invisibles);
         Editor.TextArea.LeftMargins.Add(_lineNumbers);
 
         // Ctrl+F within a pane. AvaloniaEdit brings its own search panel, so this is one line rather
@@ -59,6 +74,18 @@ public partial class DiffEditorPane : UserControl
     {
         get => GetValue(DocumentProperty);
         set => SetValue(DocumentProperty, value);
+    }
+
+    public bool Emphasized
+    {
+        get => GetValue(EmphasizedProperty);
+        set => SetValue(EmphasizedProperty, value);
+    }
+
+    public bool ShowInvisibles
+    {
+        get => GetValue(ShowInvisiblesProperty);
+        set => SetValue(ShowInvisiblesProperty, value);
     }
 
     /// <summary>The underlying editor, for the parent view to wire scroll sync and caret moves.</summary>
@@ -77,10 +104,15 @@ public partial class DiffEditorPane : UserControl
     /// <summary>
     /// Marks a row range as the current difference, or clears it with a negative start. Redraws
     /// immediately - this is driven by navigation, where the whole point is instant feedback.
+    ///
+    /// Also tells the background tint and character-span colourizer which rows are "current", so rows
+    /// outside the range can fade - see <see cref="ChangeLineBackgroundRenderer.SetCurrentRange"/>.
     /// </summary>
     internal void SetCurrentHunk(int startIndex, int endIndex)
     {
         _currentHunk.SetRange(startIndex, endIndex);
+        _backgroundRenderer.SetCurrentRange(startIndex, endIndex);
+        _colorizer.SetCurrentRange(startIndex, endIndex);
         Editor.TextArea.TextView.Redraw();
     }
 
@@ -91,6 +123,20 @@ public partial class DiffEditorPane : UserControl
         if (change.Property == DocumentProperty)
         {
             Apply(change.GetNewValue<AlignedDocument?>());
+        }
+        else if (change.Property == EmphasizedProperty)
+        {
+            var emphasized = change.GetNewValue<bool>();
+            _backgroundRenderer.SetEmphasized(emphasized);
+            _colorizer.SetEmphasized(emphasized);
+            Editor.TextArea.TextView.Redraw();
+        }
+        else if (change.Property == ShowInvisiblesProperty)
+        {
+            // Redraw, not re-render: the generator is consulted per visual line, so invalidating the
+            // visual lines is what makes it run again.
+            _invisibles.SetEnabled(change.GetNewValue<bool>());
+            Editor.TextArea.TextView.Redraw();
         }
         else if (change.Property == ForegroundProperty || change.Property == FontSizeProperty)
         {
@@ -110,6 +156,8 @@ public partial class DiffEditorPane : UserControl
 
         // A row range from the previous comparison addresses rows this document may not have.
         _currentHunk.SetRange(-1, -1);
+        _backgroundRenderer.SetCurrentRange(-1, -1);
+        _colorizer.SetCurrentRange(-1, -1);
 
         Editor.Document.Text = document?.Text ?? string.Empty;
 

@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="using:Fubar.Diff.Controls.Views"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="180"
+             x:Class="Fubar.Diff.Controls.Views.JsonDetailPane"
+             x:DataType="vm:DiffPaneViewModel">
+
+    <!-- The Json view's counterpart to DiffDetailPane: a close-up of the current change, stacked left
+         over right the same way, but built from the change's own SourceSpan rather than a hunk's row
+         range - Json changes have no aligned rows to excerpt from in the first place (see "The Json
+         view has no alignment at all, on purpose" in CLAUDE.md). Reuses RawJsonPane rather than
+         DiffEditorPane for the same reason the main Json panes do: each side addresses its own span
+         directly, with no correspondence between the two sides' line numbers to preserve. Emphasized="True"
+         switches RawJsonPane from the main view's full-width CurrentHunkRenderer band to
+         SpanTextColorizer, which highlights only the exact characters the span covers. -->
+
+    <Border Background="{DynamicResource BgHeader}"
+            BorderBrush="{DynamicResource BorderSubtle}"
+            BorderThickness="0,1,0,0">
+
+        <DockPanel>
+            <TextBlock DockPanel.Dock="Top"
+                       Text="{Binding JsonCaption}"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="11"
+                       Margin="8,4" />
+
+            <Grid RowDefinitions="*,1,*">
+                <DockPanel Grid.Row="0">
+                    <TextBlock DockPanel.Dock="Top" Text="Left"
+                               Foreground="{DynamicResource TextSecondary}"
+                               FontSize="10" Margin="8,2" />
+                    <views:RawJsonPane Text="{Binding DetailLeftRawText}"
+                                       HighlightSpan="{Binding DetailLeftHighlightSpan}"
+                                       Emphasized="True" />
+                </DockPanel>
+
+                <Border Grid.Row="1" Background="{DynamicResource BorderSubtle}" />
+
+                <DockPanel Grid.Row="2">
+                    <TextBlock DockPanel.Dock="Top" Text="Right"
+                               Foreground="{DynamicResource TextSecondary}"
+                               FontSize="10" Margin="8,2" />
+                    <views:RawJsonPane Text="{Binding DetailRightRawText}"
+                                       HighlightSpan="{Binding DetailRightHighlightSpan}"
+                                       Emphasized="True" />
+                </DockPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+
+</UserControl>

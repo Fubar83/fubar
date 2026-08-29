@@ -32,22 +32,35 @@
             </fc:Toolbar>
         </Border>
 
-        <Grid ColumnDefinitions="280,4,*,1,*">
-            <!-- The same tree control the old standalone Tree mode used - same ignore affordances,
-                 same tinting - clicking a row here is a second way to navigate, alongside Prev/Next. -->
-            <views:JsonTreeView Grid.Column="0" />
+        <!-- Rows: tree+documents, a drag handle, and the close-up of the current change - the same
+             three-row shape DiffView uses for its own detail pane, collapsed the same way (see
+             JsonView.axaml.cs) when the "Diff pane" toggle is off. -->
+        <Grid x:Name="Root" RowDefinitions="*,Auto,260">
+            <Grid Grid.Row="0" ColumnDefinitions="280,4,*,1,*">
+                <!-- The same tree control the old standalone Tree mode used - same ignore affordances,
+                     same tinting - clicking a row here is a second way to navigate, alongside Prev/Next. -->
+                <views:JsonTreeView Grid.Column="0" />
 
-            <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource BorderSubtle}" />
+                <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource BorderSubtle}" />
 
-            <views:RawJsonPane Grid.Column="2"
-                               Text="{Binding LeftRawText}"
-                               HighlightSpan="{Binding LeftHighlightSpan}" />
+                <views:RawJsonPane Grid.Column="2"
+                                   Text="{Binding LeftRawText}"
+                                   HighlightSpan="{Binding LeftHighlightSpan}" />
 
-            <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderSubtle}" />
+                <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderSubtle}" />
 
-            <views:RawJsonPane Grid.Column="4"
-                               Text="{Binding RightRawText}"
-                               HighlightSpan="{Binding RightHighlightSpan}" />
+                <views:RawJsonPane Grid.Column="4"
+                                   Text="{Binding RightRawText}"
+                                   HighlightSpan="{Binding RightHighlightSpan}" />
+            </Grid>
+
+            <GridSplitter x:Name="DetailSplitter"
+                          Grid.Row="1"
+                          Height="4"
+                          ResizeDirection="Rows"
+                          Background="{DynamicResource BorderSubtle}" />
+
+            <views:JsonDetailPane x:Name="Detail" Grid.Row="2" />
         </Grid>
     </DockPanel>
 </UserControl>

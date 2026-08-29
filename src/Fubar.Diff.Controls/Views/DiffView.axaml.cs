@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 
+using Fubar.Diff.Controls.Rendering;
 using Fubar.Diff.Controls.ViewModels;
 
 namespace Fubar.Diff.Controls.Views;
@@ -212,7 +213,7 @@ public partial class DiffView : UserControl
             : Math.Max(textView.VisualLines.Count, 1);
     }
 
-    /// <summary>Brings a row into view in both panes, roughly centred.</summary>
+    /// <summary>Centres a row in the viewport in both panes.</summary>
     private void ScrollTo(int rowIndex)
     {
         if (rowIndex < 0)
@@ -226,13 +227,13 @@ public partial class DiffView : UserControl
             return;
         }
 
-        // ScrollTo puts the line in view; both panes are told explicitly rather than relying on the
-        // sync handler, because a programmatic scroll of one may not move far enough to trip it.
+        // Both panes are told explicitly rather than relying on the sync handler, because a
+        // programmatic scroll of one may not move far enough to trip it.
         _syncingScroll = true;
         try
         {
-            LeftPane.TextEditor.ScrollToLine(rowIndex + 1);
-            RightPane.TextEditor.ScrollToLine(rowIndex + 1);
+            EditorScroll.CenterOnLine(LeftPane.TextEditor, LeftPane.TextView, rowIndex + 1);
+            EditorScroll.CenterOnLine(RightPane.TextEditor, RightPane.TextView, rowIndex + 1);
         }
         finally
         {

@@ -85,6 +85,17 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsDetailVisible { get; set; } = true;
 
+    /// <summary>
+    /// Whether the editors mark invisible characters (NBSP, zero-width, bidi controls).
+    ///
+    /// Purely a display setting - it changes nothing about what the comparison found. It exists for
+    /// the case where the diff is RIGHT and looks wrong: two lines that differ only by a non-breaking
+    /// space are reported as different and appear identical, and there is no way to tell why without
+    /// this.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowInvisibles { get; set; }
+
     /// <summary>The current hunk's rows, left side, or null when no hunk is selected.</summary>
     [ObservableProperty]
     public partial AlignedDocument? DetailLeft { get; set; }
@@ -291,6 +302,47 @@ public partial class DiffPaneViewModel : ObservableObject
     /// <summary>Where to highlight on the right.</summary>
     public SourceSpan? RightHighlightSpan => CurrentSemanticChange?.Right?.Span is { IsKnown: true } span ? span : null;
 
+    // ---- Json detail (close-up) ------------------------------------------------------------------
+
+    /// <summary>
+    /// The Json view's counterpart to <see cref="DetailLeft"/>: the current change's own lines on the
+    /// left, isolated from the rest of the document via <see cref="JsonSpanExcerpt"/> rather than
+    /// excerpted from a hunk's aligned rows - Json changes have no aligned rows to excerpt from (see
+    /// "The Json view has no alignment at all, on purpose"). Empty when the left side has no node for
+    /// this change (a pure insertion).
+    /// </summary>
+    [ObservableProperty]
+    public partial string DetailLeftRawText { get; set; } = string.Empty;
+
+    /// <summary>Where to highlight within <see cref="DetailLeftRawText"/> - the same span, renumbered to the excerpt.</summary>
+    [ObservableProperty]
+    public partial SourceSpan? DetailLeftHighlightSpan { get; set; }
+
+    /// <summary>The current change's own lines on the right.</summary>
+    [ObservableProperty]
+    public partial string DetailRightRawText { get; set; } = string.Empty;
+
+    /// <summary>Where to highlight within <see cref="DetailRightRawText"/>.</summary>
+    [ObservableProperty]
+    public partial SourceSpan? DetailRightHighlightSpan { get; set; }
+
+    private void RebuildJsonDetail()
+    {
+        (DetailLeftRawText, DetailLeftHighlightSpan) = BuildJsonExcerpt(LeftRawText, LeftHighlightSpan);
+        (DetailRightRawText, DetailRightHighlightSpan) = BuildJsonExcerpt(RightRawText, RightHighlightSpan);
+    }
+
+    private static (string Text, SourceSpan? Span) BuildJsonExcerpt(string rawText, SourceSpan? span)
+    {
+        if (span is not { } known)
+        {
+            return (string.Empty, null);
+        }
+
+        var (text, excerptSpan) = JsonSpanExcerpt.Build(rawText, known);
+        return (text, excerptSpan);
+    }
+
     /// <summary>Names the current change for the Json view's toolbar - path, kind, and position in the list.</summary>
     public string JsonCaption
     {
@@ -406,6 +458,7 @@ public partial class DiffPaneViewModel : ObservableObject
         OnPropertyChanged(nameof(LeftHighlightSpan));
         OnPropertyChanged(nameof(RightHighlightSpan));
         OnPropertyChanged(nameof(JsonCaption));
+        RebuildJsonDetail();
     }
 
     // ---- Loading --------------------------------------------------------------------------------
