@@ -892,8 +892,14 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
         if (!Pane.IsSemantic)
         {
+            // Moved blocks are named separately rather than deducted: they are still counted among the
+            // added and removed rows, because that is what they are on disk and what the patch will
+            // say. What the extra clause buys is the reader knowing how much of the total they can
+            // stop reading.
+            var moved = result.Moved > 0 ? $", {result.Moved} block(s) moved" : string.Empty;
+
             return $"{result.Hunks.Count} change(s) - {result.Inserted} added, "
-                   + $"{result.Deleted} removed, {result.Modified} changed";
+                   + $"{result.Deleted} removed, {result.Modified} changed{moved}";
         }
 
         // Count SEMANTIC changes, not rows. The two genuinely differ - a value that changed and also

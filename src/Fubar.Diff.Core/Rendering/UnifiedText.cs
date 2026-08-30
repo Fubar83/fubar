@@ -105,6 +105,7 @@ public static class UnifiedText
                 side == DiffSide.Left ? ChangeKind.Deleted : ChangeKind.Inserted,
                 side == DiffSide.Left ? row.LeftSpans : row.RightSpans,
                 row.IsIgnored,
+                row.IsMovedOn(side),
                 i);
         }
     }
@@ -138,6 +139,9 @@ public static class UnifiedText
             ChangeKind.Unchanged,
             [],
             row.IsIgnored,
+
+            // Context, so never a move by definition - a moved row is in a hunk, and is emitted above.
+            isMoved: false,
             sourceRow);
     }
 
@@ -150,6 +154,7 @@ public static class UnifiedText
         ChangeKind kind,
         IReadOnlyList<CharSpan> spans,
         bool isIgnored,
+        bool isMoved,
         int sourceRow)
     {
         if (meta.Count > 0)
@@ -158,7 +163,7 @@ public static class UnifiedText
         }
 
         builder.Append(text);
-        meta.Add(new AlignedLine(number, kind, spans) { IsIgnored = isIgnored });
+        meta.Add(new AlignedLine(number, kind, spans) { IsIgnored = isIgnored, IsMoved = isMoved });
         sourceRows.Add(sourceRow);
     }
 }

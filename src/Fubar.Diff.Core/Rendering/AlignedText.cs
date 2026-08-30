@@ -60,7 +60,18 @@ public static class AlignedText
             }
 
             builder.Append(text);
-            meta[i - from] = new AlignedLine(number, KindFor(row, side), spans) { IsIgnored = row.IsIgnored };
+
+            var kind = KindFor(row, side);
+
+            meta[i - from] = new AlignedLine(number, kind, spans)
+            {
+                IsIgnored = row.IsIgnored,
+
+                // This side's own answer. A row can be a move on one side and an ordinary change on
+                // the other - two methods swapping places is exactly that - and the filler half of a
+                // one-sided row has no text to have moved at all.
+                IsMoved = kind != ChangeKind.Filler && row.IsMovedOn(side),
+            };
         }
 
         return new AlignedDocument(builder.ToString(), meta);
@@ -109,7 +120,11 @@ public static class AlignedText
             // No KindFor remapping needed here: that exists purely to produce Filler on the side with
             // no content, which this method skips instead of keeping. A row that reaches this point
             // has real text on this side, so its own Kind is already correct as-is.
-            meta.Add(new AlignedLine(number, row.Kind, spans) { IsIgnored = row.IsIgnored });
+            meta.Add(new AlignedLine(number, row.Kind, spans)
+            {
+                IsIgnored = row.IsIgnored,
+                IsMoved = row.IsMovedOn(side),
+            });
         }
 
         return new AlignedDocument(builder.ToString(), meta);
@@ -157,4 +172,12 @@ public sealed record AlignedLine(int? SourceNumber, ChangeKind Kind, IReadOnlyLi
     /// it, which is exactly what a flag buys.
     /// </summary>
     public bool IsConflict { get; init; }
+
+    /// <summary>
+    /// True when this row is one half of a block that moved rather than being written or removed.
+    ///
+    /// A flag for the same reason as the two above, and drawn instead of the ordinary change tint
+    /// rather than over it: the point of marking a move is that the reader can stop reading it.
+    /// </summary>
+    public bool IsMoved { get; init; }
 }

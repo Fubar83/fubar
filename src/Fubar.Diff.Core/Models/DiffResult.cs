@@ -18,6 +18,12 @@ public sealed class DiffResult
         Inserted = lines.Count(l => l.Kind == ChangeKind.Inserted);
         Deleted = lines.Count(l => l.Kind == ChangeKind.Deleted);
         Modified = lines.Count(l => l.Kind == ChangeKind.Modified);
+        Moved = lines
+            .Where(l => l.IsMoved)
+            .SelectMany(l => new[] { l.LeftMoveId, l.RightMoveId })
+            .Where(id => id is not null)
+            .Distinct()
+            .Count();
     }
 
     /// <summary>Every row, in document order, including unchanged context and fillers.</summary>
@@ -29,6 +35,16 @@ public sealed class DiffResult
     public int Inserted { get; }
     public int Deleted { get; }
     public int Modified { get; }
+
+    /// <summary>
+    /// How many BLOCKS moved, counted once each rather than once per side or once per line.
+    ///
+    /// Reported alongside the other counts and not subtracted from them: a moved block genuinely is
+    /// a deletion here and an insertion there, and the counts have to keep agreeing with the rows,
+    /// the hunks and the patch. What this adds is the sentence the reader wants - "6 changes, 2 of
+    /// them blocks that only moved".
+    /// </summary>
+    public int Moved { get; }
 
     /// <summary>True when the two documents compared equal under the options used.</summary>
     public bool AreIdentical => Hunks.Count == 0;

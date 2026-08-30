@@ -8,6 +8,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Moved code is shown as moved.** A block that was reordered rather than rewritten is tinted blue on
+  both sides instead of red here and green there, counted separately in the status line (`… 2 block(s)
+  moved`), and drawn blue in the diff map so the map answers "how much is left to review" honestly on a
+  reordered file. Nothing else changes: the rows keep their kinds, so the counts, the hunks, F7/F8, the
+  merge and the patch all still describe what is genuinely on disk. The mark only says *why*.
+
+  Marks are per side, which is what makes it work on real edits rather than only on the textbook case.
+  Moving a method far enough that it has no counterpart gives a deleted block and an inserted block, and
+  matching those is easy. Swapping two methods of similar shape gives neither — the aligner pairs
+  `void Helper()` against `void Run()` and calls the row modified, because from a line differ's point of
+  view that is what it is. Looking at each side's own text independently finds both, and a swapped row
+  is correctly marked as two different blocks: its left text moved down, its right text moved up.
+
+  Two blocks are paired only when their text appears **exactly once** on each side. A run of `}` matches
+  a hundred other runs of `}`, and drawing a confident line between two unrelated braces is worse than
+  drawing none — ambiguity is reported as "not a move" rather than guessed at. Blank lines at the ends
+  of a block are ignored when matching, since a method takes its neighbouring blank line with it and
+  ends up with it below in the file it left and above in the file it arrived in. A moved row also loses
+  its word-level highlights: the two lines the aligner paired turn out not to be counterparts, so
+  highlighting the letters that differ between them would invite reading a change nobody made.
+
 - **Collapse unchanged context.** Long stretches both sides agree on fold behind a `42 unchanged lines`
   placeholder, keeping three lines either side of every change. A three-thousand-line file with two
   changes now reads as two changes instead of two screens of scrolling to find them. On by default, one

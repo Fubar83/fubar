@@ -163,6 +163,13 @@ public sealed class FileComparisonService : IFileComparisonService
         // ambiguous run of added or removed lines sits among the identical lines around it.
         rows = ChangeGroupSlider.Compact(rows, leftKeys, leftDoc.Lines, rightKeys, rightDoc.Lines);
 
+        // After the slider and on the keys, for the same two reasons: a group that has just been slid
+        // to a better position is the one that should be matched against its other half, and two lines
+        // the user asked to compare as equal must count as equal here too. Always on and never
+        // optional - it only ever ADDS a mark to rows that are already reported as changes, so there
+        // is nothing for a user to want switched off.
+        rows = MoveDetector.Detect(rows, leftKeys, rightKeys);
+
         var projected = ProjectOntoDocuments(rows, leftDoc.Lines, rightDoc.Lines);
 
         // Filtered AFTER the rows exist, because a comment that was ADDED has nothing on the other
@@ -258,6 +265,15 @@ public sealed class FileComparisonService : IFileComparisonService
         {
             var row = rows[i];
             if (row.Kind != ChangeKind.Modified || row.LeftText is not { } left || row.RightText is not { } right)
+            {
+                continue;
+            }
+
+            // A row whose sides moved is a pairing of convenience, not of meaning: the aligner put
+            // `void Helper()` opposite `void Run()` because they were in the same place, and both have
+            // since been recognised as halves of two different blocks. Highlighting the letters that
+            // differ between them would invite the reader to read a word-level change that nobody made.
+            if (row.IsMoved)
             {
                 continue;
             }

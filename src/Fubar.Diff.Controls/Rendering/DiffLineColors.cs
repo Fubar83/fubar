@@ -80,6 +80,20 @@ internal static class DiffLineColors
         Tinted(host, "PostmanAmberBrush", emphasis == DiffEmphasis.Faded ? 0.12 : 0.30);
 
     /// <summary>
+    /// The band behind a row that is one half of a block that only MOVED.
+    ///
+    /// Blue rather than green or red, and painted INSTEAD of them rather than over them, because the
+    /// whole message is "this is not something you need to read". Green on one side and red on the
+    /// other says two things happened; one colour on both halves says one thing did, and says which
+    /// two places it connects.
+    ///
+    /// Kept at the same weight as an ordinary change tint. A move is still a difference - it can break
+    /// a file - so quietening it below the changes around it would be overstating the case.
+    /// </summary>
+    public static IBrush? MovedBackground(StyledElement host, DiffEmphasis emphasis = DiffEmphasis.Normal) =>
+        Tinted(host, "PostmanBlueBrush", emphasis == DiffEmphasis.Faded ? 0.07 : 0.18);
+
+    /// <summary>
     /// The tint for the characters that actually changed within a modified line - now the PRIMARY
     /// signal for a modified row, since <see cref="LineBackground"/> no longer washes the row itself.
     /// At <see cref="DiffEmphasis.Emphasized"/> (the close-up panes) it is also the ONLY signal for a

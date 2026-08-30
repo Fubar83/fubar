@@ -36,6 +36,14 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   and all are equally minimal — which is why a moved method so often shows up as a closing brace plus
   the start of the next one. Groups are slid toward blank lines and lower indentation, the same
   heuristic git uses, without changing what the diff says.
+- **Moved code is shown as moved.** A block that was reordered rather than rewritten is tinted blue on
+  both sides — not red here and green there — counted separately in the status line, and drawn blue in
+  the diff map, so a reordered file stops looking like a rewritten one. It still counts as a change
+  everywhere it should: the hunks, F7 / F8, the merge and the patch all describe what is genuinely on
+  disk. Two blocks are paired only when their text appears exactly once on each side, so a run of `}`
+  is never matched with an unrelated one — where the answer is ambiguous, nothing is claimed. Works for
+  a block that travelled far enough to have no counterpart *and* for two methods that simply swapped
+  places, which a line differ reports as a pile of rewritten lines.
 - **Side-by-side or unified.** The **View** selector switches between the two-editor view and a single
   patch-style document — removals then additions, shared context between them — for a narrow window, a
   screenshot, or anyone who reads patches all day.
@@ -203,15 +211,20 @@ rather than "where are the changes", which the conflict count and next/previous 
 map would have to colour its ticks from one of three columns with no right answer for the other two.
 Merging more than two edits, and merging directories, are not built.
 
+Move detection is exact: a block that moved AND was edited on the way is reported as an ordinary
+change, because its two halves are no longer the same text. That is the conservative direction to be
+wrong in — a mark that says "you can skip this" has to be right — but a similarity threshold would
+catch more, and is the obvious next step.
+
 Folder comparison compares and opens, but does not COPY: there is no "make this side match that one".
 That is the other half of what people use Beyond Compare for, and it is deliberately not built yet -
 a diff tool that deletes the wrong file once is never trusted again, so it wants care rather than
 speed.
 
-**Cut.** A CLI with exit codes and patch export; semantic XML, YAML and CSV. Dropped deliberately
-rather than forgotten — `MergedDocument` already produces the line model a patch would need. Git
-integration is now partly there: `--merge $BASE $LOCAL $REMOTE` is the argument order `git mergetool`
-passes, so it can be configured as one.
+**Cut.** A CLI with exit codes; semantic XML, YAML and CSV. Dropped deliberately rather than
+forgotten. Patch export has since been built (toolbar → *Patch*), and git integration is partly there:
+`--merge $BASE $LOCAL $REMOTE` is the argument order `git mergetool` passes, so it can be configured
+as one.
 
 ## Contributing
 

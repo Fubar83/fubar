@@ -39,6 +39,36 @@ public sealed record DiffLine(
     /// </summary>
     public bool IsIgnored { get; init; }
 
+    /// <summary>
+    /// Identifies the block <see cref="LeftText"/> belongs to when this line left the file here and
+    /// turned up somewhere else on the right - both halves of one move share an id. Null otherwise.
+    ///
+    /// Like <see cref="IsIgnored"/>, a mark rather than a <see cref="ChangeKind"/>: the row really is
+    /// deleted or modified, and a move is only ever extra information about WHY.
+    ///
+    /// Per side because the two halves of a move are rarely on the same row, and on a swap they are
+    /// both - a row pairing `void Helper()` against `void Run()` has a left half that moved DOWN and a
+    /// right half that moved UP, and one flag on the row could only describe one of them.
+    /// </summary>
+    public int? LeftMoveId { get; init; }
+
+    /// <summary>Identifies the block <see cref="RightText"/> arrived from. See <see cref="LeftMoveId"/>.</summary>
+    public int? RightMoveId { get; init; }
+
+    /// <summary>
+    /// True when either side of this row is part of a block that moved rather than changed.
+    ///
+    /// Conditioned on <see cref="IsChange"/> because a later pass can downgrade a row to unchanged -
+    /// a comment-only insertion under the code rules, a formatting-only one under the semantic
+    /// filter - and a row that is no longer reported as a difference must not be reported as a move
+    /// either.
+    /// </summary>
+    public bool IsMoved => (LeftMoveId ?? RightMoveId) is not null && IsChange;
+
+    /// <summary>Whether the given side of this row is part of a moved block.</summary>
+    public bool IsMovedOn(DiffSide side) =>
+        (side == DiffSide.Left ? LeftMoveId : RightMoveId) is not null && IsChange;
+
     /// <summary>True when this row represents a real difference rather than common context.</summary>
     public bool IsChange => Kind is ChangeKind.Inserted or ChangeKind.Deleted or ChangeKind.Modified;
 }

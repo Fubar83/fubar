@@ -77,12 +77,18 @@ internal sealed class ChangeLineBackgroundRenderer : IBackgroundRenderer
             // would return no tint at all. A conflicting row's Kind is a perfectly ordinary
             // Inserted/Deleted, so falling through would tint it exactly like the changes that need
             // no decision, which is the one thing a merge view must not do.
+            // A moved row is checked here for the same reason as a conflicting one: its Kind is an
+            // ordinary Inserted/Deleted, so falling through would paint the two halves of one moved
+            // block in the two colours that mean "written" and "removed" - which is exactly the
+            // reading the mark exists to correct.
             var line = _lines[index];
             var brushOrNull = line.IsConflict
                 ? DiffLineColors.ConflictBackground(_host, Emphasis(index))
                 : line.IsIgnored
                     ? DiffLineColors.IgnoredBackground(_host)
-                    : DiffLineColors.LineBackground(_host, line.Kind, Emphasis(index));
+                    : line.IsMoved
+                        ? DiffLineColors.MovedBackground(_host, Emphasis(index))
+                        : DiffLineColors.LineBackground(_host, line.Kind, Emphasis(index));
 
             if (brushOrNull is not { } brush)
             {

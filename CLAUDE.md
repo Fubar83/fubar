@@ -285,6 +285,33 @@ already made that call) - but it SCORES on the display lines, because indentatio
 and trimming it is exactly what a key may have done. And an ignored row is deliberately not slideable
 context: it is drawn faintly precisely so the reader can see where it is.
 
+**A move mark is PER SIDE, and that is not a detail** (Diff). `DiffLine` carries `LeftMoveId` and
+`RightMoveId`, not one `MoveId`, because the obvious case is only half of what people do. A block that
+travels far enough to have no counterpart gives a deleted run and an inserted run, and matching whole
+ROWS finds it. Two methods of similar shape SWAPPING gives neither: the aligner pairs `void Helper()`
+against `void Run()` and calls the row modified, which is what it is to a line differ - so that row's
+left text moved down and its right text moved up, two different blocks on one row, and a single flag
+could only describe one of them. Everything downstream asks per side (`DiffLine.IsMovedOn(side)`,
+`AlignedLine.IsMoved`), including `UnifiedText`, which is the one place both halves become separate
+lines. `MoveDetector` was first written whole-row and the swap case - the one users hit most - was
+silently invisible; the end-to-end test that caught it is `MoveComparisonTests`.
+
+**Move detection only ADDS a mark - kinds, counts, hunks and the patch are untouched** (Diff). Same
+reasoning as `IsIgnored` and `IsConflict`, and the reverse of the trap: a moved row is genuinely
+deleted or modified on disk, so promoting it to a `ChangeKind` or deducting it from the counts would
+make the patch, the merge and F7/F8 disagree with what is actually in the files. `DiffResult.Moved`
+counts BLOCKS alongside the row counts rather than instead of them. Three rules in `MoveDetector` are
+load-bearing and were each found by a failing realistic test, not by design: runs break on a change of
+KIND as well as on unchanged context (an ordinary edit sitting against a moved block otherwise fuses
+into one run that matches nothing); blank lines at a run's ENDS are trimmed before matching (a method
+takes its neighbouring blank line with it, and ends up with it below in the file it left and above in
+the one it arrived in - interior blanks are kept, they are part of the block's shape); and a pairing is
+made only when the text occurs EXACTLY ONCE on each side, so a run of `}` is never matched with an
+unrelated one. That last rule is the whole reason the feature is usable: a mark that tells the reader
+"you can skip this" is worse than nothing when it is wrong. `FileComparisonService` also skips inline
+spans on a moved row - the aligner's pairing was positional, the two lines are not counterparts, and
+highlighting the letters between them invites reading a change nobody made.
+
 **Do not reach for a cleverer alignment algorithm before measuring** (Diff). Patience diffing was built
 here, behind `IDiffEngine`, decorating `DiffPlexDiffEngine` - and then removed, because on measurement
 it produced an answer identical to DiffPlex's on every realistic C#/TS/JSON case tried (a method
