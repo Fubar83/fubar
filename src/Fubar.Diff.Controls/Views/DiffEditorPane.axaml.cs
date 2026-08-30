@@ -758,6 +758,37 @@ public partial class DiffEditorPane : UserControl
         Editor.TextArea.Caret.Column = column > line.Length + 1 ? line.Length + 1 : column;
     }
 
+    /// <summary>
+    /// Replaces a range of ROWS with the given lines, as an ordinary edit.
+    ///
+    /// This is how taking a side works. It could have been done by rewriting the file and re-comparing,
+    /// but then it would not be on the editor's undo stack - and the whole reason for making a merge an
+    /// edit is that Ctrl+Z takes it back like everything else. Going through the document also means
+    /// the normal cycle follows on its own: the change is reported, the comparison re-runs, and the
+    /// difference disappears.
+    ///
+    /// Rows, not file lines, because that is the coordinate a hunk speaks: row i is document line i+1
+    /// in both panes, which is the invariant the whole side-by-side view rests on.
+    /// </summary>
+    public void ReplaceRows(int firstRow, int lastRow, IReadOnlyList<string> lines)
+    {
+        var document = Editor.Document;
+
+        if (firstRow < 0 || lastRow < firstRow || firstRow >= document.LineCount)
+        {
+            return;
+        }
+
+        var first = document.GetLineByNumber(firstRow + 1);
+        var last = document.GetLineByNumber(Math.Min(lastRow + 1, document.LineCount));
+
+        var replacement = string.Join("\n", lines);
+
+        // Keep the block a block: replacing up to EndOffset leaves the terminator that follows it, so
+        // the lines after this one stay where they are instead of being pulled up into it.
+        document.Replace(first.Offset, last.EndOffset - first.Offset, replacement);
+    }
+
     /// <summary>Reports the user's own edits, and only those - see <see cref="Edited"/>.</summary>
     private void OnDocumentTextChanged(object? sender, EventArgs e)
     {

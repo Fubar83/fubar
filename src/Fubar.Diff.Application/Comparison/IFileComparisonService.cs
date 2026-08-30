@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Fubar.Diff.Core.Comparison;
+using Fubar.Diff.Core.Files;
 
 namespace Fubar.Diff.Application.Comparison;
 
@@ -35,6 +36,20 @@ public interface IFileComparisonService
         ComparisonOptions options,
         string leftLabel = "left",
         string rightLabel = "right",
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Compares two documents held in memory, keeping each one's path and format.
+    ///
+    /// This is what an EDIT re-runs through. <see cref="Recompare"/> cannot serve: it reuses the
+    /// documents the comparison already holds, which is the whole point of it, and an edit's whole
+    /// point is that one of them has changed. Reading from disk would be worse still - it would throw
+    /// away what the user just typed.
+    /// </summary>
+    Task<FileComparison> CompareDocumentsAsync(
+        TextDocument left,
+        TextDocument right,
+        ComparisonOptions options,
         CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -68,6 +68,9 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   difference is marked with an accent bar and outline, so it stays findable among the other changes.
 - **Merge and save** — take the left or right version of a change (Alt+Left / Alt+Right), then save.
   The file's encoding, BOM, line endings and trailing newline are preserved byte-for-byte.
+- **Editable panes** — tick *Edit* and type straight into either side; the diff re-runs as you pause.
+  Taking a side is an edit too, so it applies immediately and **Ctrl+Z** takes it back along with
+  anything you typed. Find gains Replace. Off by default, and side-by-side text comparisons only.
 - **Folder comparison** — two directory trees walked together and reported as a tree: changed, left
   only, right only. Identical files are **hidden by default** (the count is in the status line), since
   on two real checkouts they are most of what is there. `.git`, `bin`, `obj`, `node_modules` and
@@ -213,10 +216,11 @@ the `IDiffEngine` port in Infrastructure — swapping it is a one-file change, a
 
 ## Roadmap
 
-**Open.** Free-form editing in the panes — the editors are read-only because the aligned documents
-contain filler lines, and typing needs a bidirectional editor↔source offset map. That also gates
-search/**replace** (find works today). Virtualised diffing for very large files is the other gap: the
-whole aligned document is currently materialised per side, under a 64 MB reader cap.
+**Open.** Editing is now built, but only in the side-by-side view of a text comparison — the unified
+view has its own row numbering, the Json view shows each side unaligned, and a hex dump cannot be
+written back as text. The three-way merge window is still resolve-only. Virtualised diffing for very
+large files is the other gap: the whole aligned document is materialised per side, under a 64 MB
+reader cap.
 
 The three-way view has no diff map, unlike the two-way one — a merge asks "which of these needs me"
 rather than "where are the changes", which the conflict count and next/previous answer directly, and a

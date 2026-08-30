@@ -31,6 +31,10 @@ public class PatchExportTests
             string leftLabel = "left", string rightLabel = "right", CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<FileComparison> CompareDocumentsAsync(
+            TextDocument left, TextDocument right, ComparisonOptions options, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new FileComparison(left, right, options, result));
+
         public Task<FileComparison> RecompareAsync(
             FileComparison comparison, ComparisonOptions options, CancellationToken cancellationToken = default) =>
             Task.FromResult(comparison);

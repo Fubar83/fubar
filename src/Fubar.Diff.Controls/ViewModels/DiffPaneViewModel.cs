@@ -143,6 +143,48 @@ public partial class DiffPaneViewModel : ObservableObject
     public partial bool SyntaxHighlighting { get; set; } = true;
 
     /// <summary>
+    /// Whether the two side-by-side panes can be typed into.
+    ///
+    /// Off by default, and off for every host that is not the diff app: API Studio compares things
+    /// that are not files - a request against what an OpenAPI spec would import, two response bodies -
+    /// and there is nowhere for an edit to go.
+    ///
+    /// Only the side-by-side view honours it. The unified view has its own row coordinates, the Json
+    /// view shows each side unaligned, the close-ups show an excerpt, and a hex view of a binary file
+    /// is not text that can be written back - none of those can accept an edit and none of them offer
+    /// to.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsEditable { get; set; }
+
+    /// <summary>
+    /// Raised when the user has typed into one of the panes. Carries the side, not the text: reading
+    /// the text back costs a pass over the document, and this fires on every keystroke.
+    /// </summary>
+    public event EventHandler<DiffSide>? SideEdited;
+
+    /// <summary>
+    /// Reads one side's current content as the FILE's own lines, or null before a view has offered to.
+    ///
+    /// Handed over by the view rather than computed here, for the same reason the folder window pushes
+    /// its selection up: the document, its fillers and the anchors tracking them belong to the editor,
+    /// and a view model that reached for them would be reaching for a control.
+    /// </summary>
+    public Func<DiffSide, IReadOnlyList<string>>? FileLinesReader { get; set; }
+
+    /// <summary>Called by the view when the user edits a pane.</summary>
+    public void ReportEdit(DiffSide side) => SideEdited?.Invoke(this, side);
+
+    /// <summary>
+    /// Replaces a row range in one pane, as an ordinary edit - how taking a side is applied.
+    ///
+    /// Handed over by the view for the same reason <see cref="FileLinesReader"/> is: the document and
+    /// its undo stack belong to the editor. Null until a view offers one, and null forever in a host
+    /// that does not edit.
+    /// </summary>
+    public Action<DiffSide, int, int, IReadOnlyList<string>>? RowReplacer { get; set; }
+
+    /// <summary>
     /// Whether long lines wrap in the UNIFIED view.
     ///
     /// Unified only, and that is a constraint rather than an oversight. The side-by-side panes rest on

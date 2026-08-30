@@ -255,6 +255,44 @@ to the comparison's. Anything addressing the unified view must go through those;
 keeps `UnifiedScrollToRow` and `UnifiedFolds` separate from their side-by-side counterparts for exactly
 this reason, and computing either from the other's coordinates is wrong the moment a row splits.
 
+**An editable pane keeps the filler invariant rather than weakening it** (Diff). The roadmap said this
+needed a bidirectional editor↔source offset map. It does not, and the reason is worth knowing before
+anyone "fixes" it: the document stays the file-with-fillers, each filler carries a `TextAnchor`, and
+`AlignedEdit.ToFileLines` takes it back apart with one rule - *a line belongs to the file unless it is
+empty AND still a filler*. Every renderer, the diff map, the folds and the offset-copy scroll sync are
+untouched. Do not reach for "just remove the fillers from the editable document" - that is the same
+invariant-weakening the unified view had to pay for itself.
+
+**Re-aligning after an edit is a PATCH, not a new document** (Diff). `FillerPatch` computes the blank
+lines to move; replacing the text would throw away the caret, selection and undo history the user is
+mid-sentence in. Four things around it are load-bearing and each was got wrong first. The caret is
+restored by FILE position, never by raw offset - the text moves around the offset and the caret
+silently lands on a different line. The continued undo group must be the OUTERMOST thing:
+`document.BeginUpdate()` starts an undo group of its own, which un-continues ours and makes Ctrl+Z
+take two presses for one change. Loading a document calls `UndoStack.ClearAll()`, because otherwise one
+Ctrl+Z in a fresh comparison walks back past the load and empties the pane. And `FillerPatch` REFUSES
+when the two alignments differ by more than fillers, which is a different comparison arriving - the
+caller replaces the document instead.
+
+**Anchors survive the user's undo but not the app's re-anchoring** (Diff). An anchor made before an
+edit is put back by undoing that edit, because an undo is just another text change - so anchors need
+no help there. What breaks them is re-anchoring mid-history, which re-aligning after every edit does:
+undo past a re-alignment and the anchors describe a layout the document no longer has, a filler row
+reads as a blank line the user typed, and the file quietly grows one. `DiffEditorPane` therefore
+remembers the layouts it has shown, keyed by exact text, and answers from those when the document is
+one of them. Bounded on purpose - the alternative is holding every revision of a large file for the
+life of the tab.
+
+**Taking a side is an EDIT, and `MergeState` is vestigial in the two-way path** (Diff). `Take left`
+rewrites the target document through `DiffEditorPane.ReplaceRows` and lets the ordinary
+edit → re-diff cycle follow, so it is visible immediately, lands on the editor's undo stack, and
+cannot be renumbered by the next comparison - which is what the old pending-decision model was
+vulnerable to (`RemapTo` existed purely to cope with it). `MergeState` is now always empty in
+`ComparisonViewModel`, which is exactly what makes `MergedDocument.Build` round-trip the base side and
+therefore save what the pane holds. The THREE-WAY merge still uses the old model and must keep it: it
+resolves regions across three documents and has a defined answer for regions nobody decided.
+`HunkEditTests` asserts the new path agrees with `MergedDocument` for the same choices.
+
 **Folder copying copies and NEVER deletes, and the confirmation is not optional** (Diff). This is the
 only thing in the app that writes a file the user did not name, so every decision about it is
 deliberate. `FileCopyPlanner` (Core, no disk) makes every choice about WHICH file, because that is

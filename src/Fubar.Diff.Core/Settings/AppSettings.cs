@@ -53,6 +53,12 @@ public sealed record AppSettings
     public bool WordWrap { get; init; }
 
     /// <summary>
+    /// Let the panes be typed into. Off by default - see <c>ComparisonViewModel.IsEditing</c> for why
+    /// a reading tool should not open with a caret in someone's source file.
+    /// </summary>
+    public bool Editing { get; init; }
+
+    /// <summary>
     /// Re-run a comparison when its files change on disk. On by default - see
     /// <c>ComparisonViewModel.AutoRefresh</c>.
     /// </summary>

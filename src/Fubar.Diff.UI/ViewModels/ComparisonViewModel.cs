@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Core.Comparison;
+using Fubar.Diff.Core.Editing;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Languages;
@@ -86,7 +87,123 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         ThemeManager = themeManager;
 
         Pane.Navigated += OnPaneNavigated;
+        Pane.SideEdited += OnSideEdited;
+
+        // Editing is offered only in the side-by-side view, so the toggle has to appear and disappear
+        // with it rather than only when a comparison is re-run.
+        Pane.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DiffPaneViewModel.IsSideBySideViewVisible))
+            {
+                OnPropertyChanged(nameof(CanEdit));
+            }
+        };
+
         _watcher.Changed += OnFilesChangedOnDisk;
+    }
+
+    // ---- Editing ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// How long to wait after the last keystroke before re-diffing.
+    ///
+    /// Long enough that typing a word costs one comparison rather than five, short enough that the
+    /// diff feels live. The work behind it is affordable at this rate - a 60,000-line pair takes about
+    /// 90 ms to align and 60 ms to read back, and both happen off the UI thread.
+    /// </summary>
+    private static readonly TimeSpan EditSettleTime = TimeSpan.FromMilliseconds(300);
+
+    private Avalonia.Threading.DispatcherTimer? _editTimer;
+
+    private DiffSide _editedSide = DiffSide.Right;
+
+    /// <summary>
+    /// Whether the panes accept typing. Off by default: a diff tool is a reading tool most of the
+    /// time, and a caret blinking in someone's source file is an invitation to change it by accident.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsEditing { get; set; }
+
+    partial void OnIsEditingChanged(bool value)
+    {
+        // Never for a byte comparison. The panes are showing a hex dump, which is a view OF the file
+        // rather than the file, and there is nothing sensible to write back from it.
+        Pane.IsEditable = value && !IsBinaryComparison;
+
+        DisplayOptionChanged();
+    }
+
+    /// <summary>True when a pane holds changes that are not on disk.</summary>
+    [ObservableProperty]
+    public partial bool HasUnsavedEdits { get; set; }
+
+    /// <summary>
+    /// Whether editing can be offered at all: only for a text comparison shown side by side.
+    ///
+    /// Hidden rather than disabled elsewhere, like everything else in this toolbar - a permanently
+    /// grey box in the Json or hex view is a question the user has to rule out for themselves.
+    /// </summary>
+    public bool CanEdit => !IsBinaryComparison && Pane.IsSideBySideViewVisible;
+
+    /// <summary>
+    /// A pane was typed into. Restarts the settle timer rather than comparing now - the user is very
+    /// likely still typing, and re-diffing per keystroke would spend the whole budget on answers
+    /// nobody reads.
+    /// </summary>
+    private void OnSideEdited(object? sender, DiffSide side)
+    {
+        _editedSide = side;
+        HasUnsavedEdits = true;
+
+        _editTimer ??= CreateEditTimer();
+        _editTimer.Stop();
+        _editTimer.Start();
+    }
+
+    private Avalonia.Threading.DispatcherTimer CreateEditTimer()
+    {
+        var timer = new Avalonia.Threading.DispatcherTimer { Interval = EditSettleTime };
+
+        timer.Tick += async (_, _) =>
+        {
+            timer.Stop();
+            await ReDiffAfterEditAsync().ConfigureAwait(true);
+        };
+
+        return timer;
+    }
+
+    /// <summary>
+    /// Re-runs the comparison over what the panes now hold.
+    ///
+    /// The edited side's text comes from the PANE rather than from disk or from the previous
+    /// comparison - it is the only place the user's typing exists. The other side is whatever it
+    /// already was.
+    /// </summary>
+    private async Task ReDiffAfterEditAsync()
+    {
+        if (Pane.FileLinesReader is not { } read || !_comparison.HasBothSides || _comparison.IsBinary)
+        {
+            return;
+        }
+
+        var edited = read(_editedSide);
+
+        var left = _editedSide == DiffSide.Left ? _comparison.Left with { Lines = edited } : _comparison.Left;
+        var right = _editedSide == DiffSide.Right ? _comparison.Right with { Lines = edited } : _comparison.Right;
+
+        try
+        {
+            _comparison = await _comparisonService
+                .CompareDocumentsAsync(left, right, CurrentOptions())
+                .ConfigureAwait(true);
+
+            Refresh();
+        }
+        catch (TextFileReadException ex)
+        {
+            ErrorMessage = ex.Message;
+        }
     }
 
     /// <summary>Stops watching. Called when the tab closes; a watcher holds OS handles.</summary>
@@ -135,6 +252,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             ShowInvisibles = settings.ShowInvisibles;
             CollapseUnchanged = settings.CollapseUnchanged;
             WordWrap = settings.WordWrap;
+            IsEditing = settings.Editing;
             AutoRefresh = settings.AutoRefresh;
             IgnoreComments = settings.IgnoreComments;
             IgnoreBlankLines = settings.IgnoreBlankLines;
@@ -178,6 +296,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         ShowInvisibles = ShowInvisibles,
         CollapseUnchanged = CollapseUnchanged,
         WordWrap = WordWrap,
+        Editing = IsEditing,
         AutoRefresh = AutoRefresh,
         IgnoreComments = IgnoreComments,
         IgnoreBlankLines = IgnoreBlankLines,
@@ -582,9 +701,16 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
     // ---- Merge --------------------------------------------------------------------------------
 
-    /// <summary>True once at least one hunk has been resolved, i.e. there is something to save.</summary>
-    [ObservableProperty]
-    public partial bool HasUnsavedMerge { get; set; }
+    /// <summary>
+    /// True when there is something to save.
+    ///
+    /// Now just an alias for <see cref="HasUnsavedEdits"/>. It used to mean "at least one hunk has a
+    /// pending decision", which was a separate idea from editing; taking a side is an edit now, so
+    /// there is only one kind of unsaved change and only one thing to ask about.
+    /// </summary>
+    public bool HasUnsavedMerge => HasUnsavedEdits;
+
+    partial void OnHasUnsavedEditsChanged(bool value) => OnPropertyChanged(nameof(HasUnsavedMerge));
 
     /// <summary>
     /// Which document the merge is written into. Right by convention: left is the original / theirs,
@@ -633,8 +759,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
                 .CompareFilesAsync(LeftPath, RightPath, CurrentOptions())
                 .ConfigureAwait(true);
 
-            // A fresh pair of files invalidates any decisions made about the previous one.
+            // A fresh pair of files is a fresh start: whatever was typed into the previous one is
+            // either saved or gone, and the panes are about to be replaced wholesale anyway.
             _mergeState = MergeState.Empty;
+            HasUnsavedEdits = false;
             FilesChangedOnDisk = false;
             Refresh();
 
@@ -661,17 +789,20 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>Resolves the current hunk in favour of the left side.</summary>
+    /// <summary>Resolves the current hunk in favour of the left side, by rewriting the right file.</summary>
     [RelayCommand]
-    private void TakeLeft() => Resolve(HunkResolution.TakeLeft);
+    private Task TakeLeftAsync() => ResolveAsync(HunkResolution.TakeLeft);
 
-    /// <summary>Resolves the current hunk in favour of the right side.</summary>
+    /// <summary>Resolves the current hunk in favour of the right side, by rewriting the left file.</summary>
     [RelayCommand]
-    private void TakeRight() => Resolve(HunkResolution.TakeRight);
+    private Task TakeRightAsync() => ResolveAsync(HunkResolution.TakeRight);
 
-    /// <summary>Undoes the decision on the current hunk.</summary>
+    /// <summary>
+    /// Kept so the toolbar binding and the shortcut still resolve, but there is nothing pending to
+    /// reset any more - it points at undo instead.
+    /// </summary>
     [RelayCommand]
-    private void ResetHunk() => Resolve(HunkResolution.Unresolved);
+    private Task ResetHunkAsync() => ResolveAsync(HunkResolution.Unresolved);
 
     // ---- Patch --------------------------------------------------------------------------------
 
@@ -797,23 +928,98 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         },
     };
 
-    private void Resolve(HunkResolution resolution)
+    private async Task ResolveAsync(HunkResolution resolution)
     {
         if (Pane.CurrentHunk < 0 || Pane.CurrentHunk >= _comparison.Result.Hunks.Count)
         {
             return;
         }
 
-        _mergeState = _mergeState.With(Pane.CurrentHunk, resolution);
-        HasUnsavedMerge = _mergeState.HasResolutions;
-
-        StatusMessage = resolution switch
+        if (resolution == HunkResolution.Unresolved)
         {
-            HunkResolution.TakeLeft => $"Change {Pane.CurrentHunk + 1} resolved: left.",
-            HunkResolution.TakeRight => $"Change {Pane.CurrentHunk + 1} resolved: right.",
-            _ => $"Change {Pane.CurrentHunk + 1} reset.",
-        };
+            // There is nothing pending to reset any more - taking a side rewrote the file, and undoing
+            // that is what Ctrl+Z is for, along with everything else the user has done.
+            StatusMessage = "Use undo (Ctrl+Z) to take back a change.";
+            return;
+        }
+
+        var take = resolution == HunkResolution.TakeLeft ? DiffSide.Left : DiffSide.Right;
+        var target = take == DiffSide.Left ? DiffSide.Right : DiffSide.Left;
+
+        var hunk = Pane.CurrentHunk;
+        var range = _comparison.Result.Hunks[hunk];
+
+        if (IsEditing && Pane.RowReplacer is { } replace)
+        {
+            // Through the DOCUMENT, so the merge lands on the editor's undo stack next to everything
+            // the user typed. The rest follows on its own: the pane reports the edit, the comparison
+            // re-runs, and the difference disappears.
+            replace(
+                target,
+                range.StartIndex,
+                range.EndIndex,
+                TextIn(_comparison.Result, range, take));
+        }
+        else
+        {
+            // No editable pane to write through - the toolbar hides the merge controls in that case,
+            // but a keyboard shortcut still reaches here. Rewrite the file directly instead; the only
+            // thing lost is Ctrl+Z, which is not available outside edit mode anyway.
+            await ApplyEditAsync(
+                target,
+                HunkEdit.Resolve(_comparison.Result, range, take, target, DocumentFor(target).Lines))
+                .ConfigureAwait(true);
+        }
+
+        StatusMessage = take == DiffSide.Left
+            ? $"Change {hunk + 1}: took the left version."
+            : $"Change {hunk + 1}: took the right version.";
     }
+
+    /// <summary>One side's text across a hunk's rows, skipping the rows that side has no line for.</summary>
+    private static IReadOnlyList<string> TextIn(DiffResult result, DiffHunk hunk, DiffSide side)
+    {
+        var lines = new List<string>();
+
+        for (var i = hunk.StartIndex; i <= hunk.EndIndex && i < result.Lines.Count; i++)
+        {
+            if ((side == DiffSide.Left ? result.Lines[i].LeftText : result.Lines[i].RightText) is { } text)
+            {
+                lines.Add(text);
+            }
+        }
+
+        return lines;
+    }
+
+    /// <summary>
+    /// Rewrites one side and re-compares, which is how every change to a file happens now - whether it
+    /// was typed or came from taking a side.
+    ///
+    /// Going through one path is the point. Taking a side used to record a decision that stayed
+    /// invisible until save, was keyed by hunk INDEX so a fresh comparison silently renumbered it, and
+    /// could not be undone because nothing in the document had changed. As an edit it has none of
+    /// those problems, and the diff shrinks in front of the user as they work.
+    /// </summary>
+    private async Task ApplyEditAsync(DiffSide side, IReadOnlyList<string> lines)
+    {
+        var left = side == DiffSide.Left ? _comparison.Left with { Lines = lines } : _comparison.Left;
+        var right = side == DiffSide.Right ? _comparison.Right with { Lines = lines } : _comparison.Right;
+
+        // CompareDocumentsAsync rather than Recompare: the side's content has changed, so the
+        // "original text" the semantic pass highlights from has to be re-derived from it. Recompare
+        // threads the PREVIOUS original text through on purpose, which is right when only an option
+        // changed and wrong the moment the document did.
+        _comparison = await _comparisonService
+            .CompareDocumentsAsync(left, right, CurrentOptions())
+            .ConfigureAwait(true);
+
+        HasUnsavedEdits = true;
+        Refresh();
+    }
+
+    private TextDocument DocumentFor(DiffSide side) =>
+        side == DiffSide.Left ? _comparison.Left : _comparison.Right;
 
     private async Task SaveToAsync(string? targetPath)
     {
@@ -843,7 +1049,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
                 .SaveAsync(_comparison, _mergeState, MergeTarget, targetPath)
                 .ConfigureAwait(true);
 
-            HasUnsavedMerge = false;
+            HasUnsavedEdits = false;
             StatusMessage = $"Saved {path}";
 
             // Re-read from disk so the view reflects what was actually written, rather than a merge
@@ -878,10 +1084,11 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             ? HexDiff.Build(binary)
             : _comparison.Result;
 
-        // Decisions are keyed by hunk index, and re-running the diff can produce fewer hunks; drop any
-        // that no longer exist so a stale index cannot silently resolve the wrong change.
-        _mergeState = _mergeState.RemapTo(result.Hunks.Count);
-        HasUnsavedMerge = _mergeState.HasResolutions;
+        // Nothing to remap any more: there are no pending decisions keyed by hunk index, because
+        // taking a side rewrites the document there and then. The merge state is kept only because
+        // MergeService still takes one, and it is always empty - which makes MergedDocument.Build
+        // round-trip the base side exactly, i.e. save what the pane holds.
+        _mergeState = MergeState.Empty;
 
         // Before Show, like the renderer metadata it resembles: Show replaces both documents, and a
         // pane that learned its grammar afterwards would repaint the new content with the previous
@@ -894,6 +1101,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.SyntaxHighlighting = SyntaxHighlighting;
         Pane.CollapseUnchanged = CollapseUnchanged;
         Pane.WordWrap = WordWrap;
+
+        // Re-asserted per comparison rather than only when the toggle moves: a pair that turns out to
+        // be binary must not stay editable just because the previous one was.
+        Pane.IsEditable = IsEditing && !_comparison.IsBinary;
 
         // Before Show for the same reason the grammar is: this replaces both bitmaps, and the previous
         // comparison's pictures must not be on screen next to the new one's hex for a frame.
@@ -922,6 +1133,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ShowsImages));
         OnPropertyChanged(nameof(CanMerge));
         OnPropertyChanged(nameof(ShowsMergeControls));
+        OnPropertyChanged(nameof(CanEdit));
 
         StatusMessage = _comparison.Binary is { } summary ? BuildBinaryStatus(summary) : BuildStatus(result);
     }
@@ -1040,7 +1252,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     {
         _comparison = FileComparison.Empty;
         _mergeState = MergeState.Empty;
-        HasUnsavedMerge = false;
+        HasUnsavedEdits = false;
         Pane.Clear();
 
         RaiseTitle();
@@ -1137,7 +1349,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
                 return;
             }
 
-            if (HasUnsavedMerge)
+            if (HasUnsavedEdits)
             {
                 FilesChangedOnDisk = true;
                 return;

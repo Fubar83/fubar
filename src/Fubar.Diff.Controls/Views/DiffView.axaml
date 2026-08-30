@@ -24,6 +24,7 @@
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding LeftSyntaxExtension}"
                                   SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  IsEditable="{Binding IsEditable}"
                                   Folds="{Binding Folds}" />
 
             <!-- The map sits between the panes so it reads as belonging to both. -->
@@ -44,6 +45,7 @@
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding RightSyntaxExtension}"
                                   SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  IsEditable="{Binding IsEditable}"
                                   Folds="{Binding Folds}" />
         </Grid>
 

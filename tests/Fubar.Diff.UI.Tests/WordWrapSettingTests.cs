@@ -40,6 +40,14 @@ public class WordWrapSettingTests
             string leftLabel = "left", string rightLabel = "right", CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<FileComparison> CompareDocumentsAsync(
+            TextDocument left, TextDocument right, ComparisonOptions options, CancellationToken cancellationToken = default)
+        {
+            Comparisons++;
+
+            return Task.FromResult(new FileComparison(left, right, options, DiffResult.Empty));
+        }
+
         public Task<FileComparison> RecompareAsync(
             FileComparison comparison, ComparisonOptions options, CancellationToken cancellationToken = default)
         {

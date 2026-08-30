@@ -144,6 +144,13 @@ public sealed class FileComparisonService : IFileComparisonService
         return lines.Length > 1 && lines[^1].Length == 0 ? lines[..^1] : lines;
     }
 
+    public Task<FileComparison> CompareDocumentsAsync(
+        TextDocument left,
+        TextDocument right,
+        ComparisonOptions options,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => Compare(left, right, options), cancellationToken);
+
     /// <summary>
     /// Re-runs the comparison off the calling thread. The synchronous <see cref="Recompare"/> stays for
     /// callers that are already on a background thread, and for tests.

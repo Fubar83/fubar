@@ -5,6 +5,7 @@ using Avalonia.Controls;
 
 using Fubar.Diff.Controls.Rendering;
 using Fubar.Diff.Controls.ViewModels;
+using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Controls.Views;
 
@@ -40,6 +41,13 @@ public partial class DiffView : UserControl
 
         Map.JumpRequested += (_, row) => _viewModel?.JumpToRow(row);
 
+        // The panes own their documents, their filler anchors and their carets; the view model owns
+        // what a comparison MEANS. Edits cross that line here - the side that changed goes up, and the
+        // text comes back down only when someone asks for it, because reading a document costs a pass
+        // over it and this fires on every keystroke.
+        LeftPane.Edited += (_, _) => _viewModel?.ReportEdit(DiffSide.Left);
+        RightPane.Edited += (_, _) => _viewModel?.ReportEdit(DiffSide.Right);
+
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -62,6 +70,14 @@ public partial class DiffView : UserControl
             // The map colours each tick by change kind, and the rows are a plain list rather than a
             // styled property, so it is handed over directly instead of bound.
             Map.DiffLines = _viewModel.Lines;
+
+            // Same reasoning: the pane knows how to take its document back apart, and the view model
+            // has no business holding a control to ask it.
+            _viewModel.FileLinesReader = side =>
+                side == DiffSide.Left ? LeftPane.ReadFileLines() : RightPane.ReadFileLines();
+
+            _viewModel.RowReplacer = (side, first, last, lines) =>
+                (side == DiffSide.Left ? LeftPane : RightPane).ReplaceRows(first, last, lines);
 
             ApplyCurrentHunk();
             ApplyDetailVisibility();

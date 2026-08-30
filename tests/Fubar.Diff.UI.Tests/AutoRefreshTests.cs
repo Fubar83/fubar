@@ -73,6 +73,18 @@ public class AutoRefreshTests
             string leftLabel = "left", string rightLabel = "right", CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<FileComparison> CompareDocumentsAsync(
+            TextDocument left, TextDocument right, ComparisonOptions options, CancellationToken cancellationToken = default)
+        {
+            Comparisons++;
+
+            return Task.FromResult(new FileComparison(
+                left,
+                right,
+                options,
+                DiffResult.Create([new DiffLine(1, "a", 1, "b", ChangeKind.Modified)])));
+        }
+
         public Task<FileComparison> RecompareAsync(
             FileComparison comparison, ComparisonOptions options, CancellationToken cancellationToken = default) =>
             Task.FromResult(comparison);
@@ -95,6 +107,10 @@ public class AutoRefreshTests
         public Task<FileComparison> CompareTextAsync(
             string leftText, string rightText, ComparisonOptions options,
             string leftLabel = "left", string rightLabel = "right", CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<FileComparison> CompareDocumentsAsync(
+            TextDocument left, TextDocument right, ComparisonOptions options, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public Task<FileComparison> RecompareAsync(
@@ -207,21 +223,27 @@ public class AutoRefreshTests
     }
 
     [AvaloniaFact]
-    public async Task Unsaved_merge_decisions_are_never_discarded_by_a_file_event()
+    public async Task Unsaved_edits_are_never_discarded_by_a_file_event()
     {
-        // The rule this whole feature has to get right.
+        // The rule this whole feature has to get right. Taking a side is an EDIT now - it rewrites the
+        // document rather than recording a decision - so what must survive a file event is the user's
+        // unsaved text, which is if anything more valuable than a pending choice was.
         var (tab, watcher, service) = Build();
         await tab.CompareAsync();
 
         tab.Pane.CurrentHunk = 0;
-        tab.TakeLeftCommand.Execute(null);
-        Assert.True(tab.HasUnsavedMerge);
+        await tab.TakeLeftCommand.ExecuteAsync(null);
+
+        Assert.True(tab.HasUnsavedEdits);
+
+        // Two so far: the comparison, and the re-diff that taking a side triggers.
+        var afterEdit = service.Comparisons;
 
         SignalChange(watcher);
 
-        Assert.Equal(1, service.Comparisons);
+        Assert.Equal(afterEdit, service.Comparisons);
         Assert.True(tab.FilesChangedOnDisk);
-        Assert.True(tab.HasUnsavedMerge);
+        Assert.True(tab.HasUnsavedEdits);
     }
 
     [AvaloniaFact]
@@ -231,14 +253,16 @@ public class AutoRefreshTests
         await tab.CompareAsync();
 
         tab.Pane.CurrentHunk = 0;
-        tab.TakeLeftCommand.Execute(null);
+        await tab.TakeLeftCommand.ExecuteAsync(null);
         SignalChange(watcher);
+
+        var beforeReload = service.Comparisons;
 
         await tab.ReloadCommand.ExecuteAsync(null);
 
-        Assert.Equal(2, service.Comparisons);
+        Assert.Equal(beforeReload + 1, service.Comparisons);
         Assert.False(tab.FilesChangedOnDisk);
-        Assert.False(tab.HasUnsavedMerge);
+        Assert.False(tab.HasUnsavedEdits);
     }
 
     [AvaloniaFact]

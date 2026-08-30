@@ -178,8 +178,14 @@
                                 Command="{Binding TakeLeftCommand}" />
                         <Button Classes="toolbar-btn" Content="Take right →" ToolTip.Tip="Use the right version of this change (Alt+Right)"
                                 Command="{Binding TakeRightCommand}" />
-                        <Button Classes="toolbar-btn" Content="Reset" ToolTip.Tip="Undo the decision on this change"
-                                Command="{Binding ResetHunkCommand}" />
+                        <!-- No Reset button any more: taking a side is an edit, so it comes back with
+                             Ctrl+Z along with everything else, and a second way to undo one kind of
+                             change would only raise the question of which one to reach for. -->
+                        <TextBlock Text="Ctrl+Z to undo"
+                                   VerticalAlignment="Center"
+                                   FontSize="10"
+                                   IsVisible="{Binding IsEditing}"
+                                   Foreground="{DynamicResource TextSecondary}" />
                     </StackPanel>
 
                     <!-- Likewise: nothing to save until a decision has been made, so nothing is shown. -->
@@ -250,6 +256,17 @@
                     <CheckBox Content="Collapse unchanged"
                               ToolTip.Tip="Hide long stretches of identical context, keeping a few lines either side of each change. Click any fold to expand it."
                               IsChecked="{Binding CollapseUnchanged}"
+                              VerticalAlignment="Center" />
+
+                    <!-- Editing is off by default and asked for explicitly. A diff tool is a reading
+                         tool most of the time, and a caret blinking in someone's source file is an
+                         invitation to change it by accident. Only the side-by-side view can offer it -
+                         the unified view has its own row coordinates, the Json view shows each side
+                         unaligned, and a hex dump is not text that can be written back. -->
+                    <CheckBox Content="Edit"
+                              ToolTip.Tip="Type directly into either pane. Take left/right becomes an edit too, so Ctrl+Z undoes it."
+                              IsChecked="{Binding IsEditing}"
+                              IsVisible="{Binding CanEdit}"
                               VerticalAlignment="Center" />
 
                     <!-- Only in the unified view, which is the only view that CAN wrap: the two

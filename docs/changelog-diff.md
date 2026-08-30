@@ -29,6 +29,28 @@ All notable changes to this project are documented here. The format is based on
   its word-level highlights: the two lines the aligner paired turn out not to be counterparts, so
   highlighting the letters that differ between them would invite reading a change nobody made.
 
+- **Editable panes** (toolbar → *Edit*). Type directly into either side of a side-by-side comparison.
+  The diff re-runs as you pause, so it stays live rather than going stale under you. Find gains
+  **Replace** at the same time. Off by default and remembered — a diff tool is a reading tool most of
+  the time, and a caret blinking in someone's source file is an invitation to change it by accident.
+
+  **Take left / take right are now edits.** They rewrite the file there and then instead of recording a
+  decision applied at save, which means the change is visible immediately, the difference disappears as
+  you resolve it, and **Ctrl+Z takes it back** along with everything you typed. The *Reset* button is
+  gone — there is nothing pending to reset, and a second way to undo one kind of change would only
+  raise the question of which to reach for.
+
+  The panes still show each file with blank filler rows so the two columns line up, so they are not
+  the file's text — which is why this was read-only for so long. They now track those rows and hand
+  back the file's own lines, which meant the diff map, the folds, the change tints and the
+  lock-step scrolling all kept working exactly as they were. One rule does it: *a line belongs to the
+  file unless it is empty and still a filler.* Typing into a filler is how you add a line where the
+  other side already has one.
+
+  Editing is offered only in the side-by-side view of a text comparison. The unified view has its own
+  row numbering, the Json view shows each side unaligned, and a hex dump of a binary file is not text
+  that can be written back.
+
 - **Copy files between the two sides of a folder comparison.** Select a file — or a folder, meaning
   everything under it — and copy it to the other side. The button says what it would actually do
   (*Copy 3 files to the right, replacing 2*) rather than showing a bare arrow, and a confirmation names
