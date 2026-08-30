@@ -69,6 +69,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// </summary>
     private bool _loadingSettings;
 
+    private readonly IConfirmationService? _confirmation;
+
     public ComparisonViewModel(
         IFileComparisonService comparisonService,
         IMergeService mergeService,
@@ -76,7 +78,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         IFileChangeWatcher watcher,
         IClipboardService clipboard,
         ITextFileWriter patchWriter,
-        ThemeManagerViewModel themeManager)
+        ThemeManagerViewModel themeManager,
+        IConfirmationService? confirmation = null)
     {
         _comparisonService = comparisonService;
         _mergeService = mergeService;
@@ -85,6 +88,11 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         _clipboard = clipboard;
         _patchWriter = patchWriter;
         ThemeManager = themeManager;
+
+        // Optional so the many tests that never prompt are not made to supply one. Without it the
+        // conflicts below fall back to the SAFE answer - keep the user's changes, refuse to close -
+        // rather than to silence, because a prompt that cannot be shown must never be read as a yes.
+        _confirmation = confirmation;
 
         Pane.Navigated += OnPaneNavigated;
         Pane.SideEdited += OnSideEdited;
@@ -133,9 +141,98 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         DisplayOptionChanged();
     }
 
-    /// <summary>True when a pane holds changes that are not on disk.</summary>
+    /// <summary>
+    /// Whether each side holds changes that are not on disk. Tracked per SIDE because both panes are
+    /// editable and the two files are saved independently - a session that fixed something on the left
+    /// and something else on the right has two files to write, and writing one of them is not "saved".
+    /// </summary>
     [ObservableProperty]
-    public partial bool HasUnsavedEdits { get; set; }
+    public partial bool HasUnsavedLeft { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasUnsavedRight { get; set; }
+
+    /// <summary>True when either side holds changes that are not on disk.</summary>
+    public bool HasUnsavedEdits => HasUnsavedLeft || HasUnsavedRight;
+
+    partial void OnHasUnsavedLeftChanged(bool value) => RaiseUnsavedState();
+
+    partial void OnHasUnsavedRightChanged(bool value) => RaiseUnsavedState();
+
+    private void RaiseUnsavedState()
+    {
+        OnPropertyChanged(nameof(HasUnsavedEdits));
+        OnPropertyChanged(nameof(HasUnsavedMerge));
+        OnPropertyChanged(nameof(UnsavedDescription));
+    }
+
+    /// <summary>
+    /// Asks whether it is alright to throw this tab's unsaved changes away, saving them first if the
+    /// user wants. Returns false to mean "do not close".
+    ///
+    /// Called before closing a tab and before closing the window. Clean tabs return true immediately,
+    /// which is nearly all of them - the prompt is for the case where something would actually be
+    /// lost, not a ceremony on the way out.
+    /// </summary>
+    public async Task<bool> ConfirmDiscardAsync()
+    {
+        if (!HasUnsavedEdits)
+        {
+            return true;
+        }
+
+        if (_confirmation is null)
+        {
+            // Nothing to ask with. Refusing to close is the only safe answer: losing work silently is
+            // the outcome this whole prompt exists to prevent, and a tab that will not close is a
+            // nuisance the user can see and act on.
+            return false;
+        }
+
+        var choice = await _confirmation
+            .ChooseAsync(
+                "Save changes?",
+                $"{UnsavedDescription}\n\nClosing now discards them.",
+                ["Save and close", "Close without saving"])
+            .ConfigureAwait(true);
+
+        return choice switch
+        {
+            0 => await SaveDirtySidesAsync().ConfigureAwait(true),
+            1 => true,
+
+            // Cancelled, or the dialog was dismissed. "Went away" is never agreement to discard.
+            _ => false,
+        };
+    }
+
+    /// <summary>Names what is unsaved, for a prompt that has to be specific about what would be lost.</summary>
+    public string UnsavedDescription => (HasUnsavedLeft, HasUnsavedRight) switch
+    {
+        (true, true) => $"{_comparison.Left.DisplayName} and {_comparison.Right.DisplayName} have unsaved changes.",
+        (true, false) => $"{_comparison.Left.DisplayName} has unsaved changes.",
+        (false, true) => $"{_comparison.Right.DisplayName} has unsaved changes.",
+        _ => string.Empty,
+    };
+
+    /// <summary>Marks one side dirty.</summary>
+    private void MarkDirty(DiffSide side)
+    {
+        if (side == DiffSide.Left)
+        {
+            HasUnsavedLeft = true;
+        }
+        else
+        {
+            HasUnsavedRight = true;
+        }
+    }
+
+    private void MarkClean()
+    {
+        HasUnsavedLeft = false;
+        HasUnsavedRight = false;
+    }
 
     /// <summary>
     /// Whether editing can be offered at all: only for a text comparison shown side by side.
@@ -153,7 +250,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     private void OnSideEdited(object? sender, DiffSide side)
     {
         _editedSide = side;
-        HasUnsavedEdits = true;
+        MarkDirty(side);
 
         _editTimer ??= CreateEditTimer();
         _editTimer.Stop();
@@ -710,8 +807,6 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// </summary>
     public bool HasUnsavedMerge => HasUnsavedEdits;
 
-    partial void OnHasUnsavedEditsChanged(bool value) => OnPropertyChanged(nameof(HasUnsavedMerge));
-
     /// <summary>
     /// Which document the merge is written into. Right by convention: left is the original / theirs,
     /// right is the current / mine.
@@ -762,7 +857,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             // A fresh pair of files is a fresh start: whatever was typed into the previous one is
             // either saved or gone, and the panes are about to be replaced wholesale anyway.
             _mergeState = MergeState.Empty;
-            HasUnsavedEdits = false;
+            MarkClean();
             FilesChangedOnDisk = false;
             Refresh();
 
@@ -861,15 +956,47 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     private static IReadOnlyList<string> SplitLines(string patch) =>
         patch.TrimEnd('\n').Split('\n');
 
+    /// <summary>Ctrl+S: writes every side that has unsaved changes.</summary>
     [RelayCommand]
-    private Task SaveAsync() => SaveToAsync(targetPath: null);
+    private Task SaveAsync() => SaveDirtySidesAsync();
+
+    /// <summary>Writes just the left file.</summary>
+    [RelayCommand]
+    private async Task SaveLeftAsync()
+    {
+        if (await SaveSideAsync(DiffSide.Left, null).ConfigureAwait(true))
+        {
+            await CompareAsync().ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Writes just the right file.</summary>
+    [RelayCommand]
+    private async Task SaveRightAsync()
+    {
+        if (await SaveSideAsync(DiffSide.Right, null).ConfigureAwait(true))
+        {
+            await CompareAsync().ConfigureAwait(true);
+        }
+    }
 
     [RelayCommand]
-    private async Task SaveAsAsync()
+    private Task SaveLeftAsAsync() => SaveAsAsync(DiffSide.Left);
+
+    [RelayCommand]
+    private Task SaveRightAsAsync() => SaveAsAsync(DiffSide.Right);
+
+    /// <summary>
+    /// Writes one side to a file the user picks. Deliberately does NOT clear that side's unsaved flag -
+    /// see <see cref="SaveSideAsync"/>.
+    /// </summary>
+    private async Task SaveAsAsync(DiffSide side)
     {
-        if (await _filePicker.PickSaveFileAsync("Save merged file").ConfigureAwait(true) is { } path)
+        var name = side == DiffSide.Left ? _comparison.Left.DisplayName : _comparison.Right.DisplayName;
+
+        if (await _filePicker.PickSaveFileAsync($"Save {name} as").ConfigureAwait(true) is { } path)
         {
-            await SaveToAsync(path).ConfigureAwait(true);
+            await SaveSideAsync(side, path).ConfigureAwait(true);
         }
     }
 
@@ -1014,29 +1141,63 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             .CompareDocumentsAsync(left, right, CurrentOptions())
             .ConfigureAwait(true);
 
-        HasUnsavedEdits = true;
+        MarkDirty(side);
         Refresh();
     }
 
     private TextDocument DocumentFor(DiffSide side) =>
         side == DiffSide.Left ? _comparison.Left : _comparison.Right;
 
-    private async Task SaveToAsync(string? targetPath)
+    /// <summary>
+    /// Writes every side that has unsaved changes, and reports what happened.
+    ///
+    /// Both sides, because both are editable: a session that fixed something on the left and something
+    /// else on the right has two files to write, and writing one of them is not "saved". Returns false
+    /// when anything failed, so a caller closing the tab knows not to.
+    /// </summary>
+    public async Task<bool> SaveDirtySidesAsync()
+    {
+        var saved = new List<string>();
+
+        if (HasUnsavedLeft && !await SaveSideAsync(DiffSide.Left, null, saved).ConfigureAwait(true))
+        {
+            return false;
+        }
+
+        if (HasUnsavedRight && !await SaveSideAsync(DiffSide.Right, null, saved).ConfigureAwait(true))
+        {
+            return false;
+        }
+
+        if (saved.Count == 0)
+        {
+            return true;
+        }
+
+        StatusMessage = $"Saved {string.Join(" and ", saved)}";
+
+        // Re-read once, after everything is written, rather than per side: the view should reflect
+        // what is now on disk, and doing it between two writes would compare a half-saved pair.
+        await CompareAsync().ConfigureAwait(true);
+
+        return true;
+    }
+
+    private async Task<bool> SaveSideAsync(DiffSide side, string? targetPath, List<string>? saved = null)
     {
         if (!_comparison.HasBothSides)
         {
-            return;
+            return false;
         }
 
-        // The guard that keeps this feature from being destructive. A binary comparison carries EMPTY
-        // text documents - the bytes live on Binary, not on Left/Right - so the merge would build a
-        // document of no lines and write it cheerfully over the user's file. The toolbar hides these
-        // controls and CanMerge says no, but a save that erases a PNG is not a thing to leave resting
-        // on a binding.
+        // The guard that keeps editing from being destructive. A binary comparison carries EMPTY text
+        // documents - the bytes live on Binary, not on Left/Right - so a save would build a document of
+        // no lines and write it cheerfully over the user's file. The toolbar hides these controls and
+        // CanMerge says no, but a save that erases a PNG is not a thing to leave resting on a binding.
         if (IsBinaryComparison)
         {
             StatusMessage = "Binary files cannot be merged.";
-            return;
+            return false;
         }
 
         IsBusy = true;
@@ -1045,31 +1206,48 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
         try
         {
+            // The merge state is always empty now, which is what makes this write the document exactly
+            // as the pane holds it - see MergedDocument.Build.
             var path = await _mergeService
-                .SaveAsync(_comparison, _mergeState, MergeTarget, targetPath)
+                .SaveAsync(_comparison, _mergeState, side, targetPath)
                 .ConfigureAwait(true);
 
-            HasUnsavedEdits = false;
-            StatusMessage = $"Saved {path}";
-
-            // Re-read from disk so the view reflects what was actually written, rather than a merge
-            // preview that could drift from the file. Only for an in-place save: a Save As leaves the
-            // compared pair untouched, so re-reading would show no change and look like it failed.
+            // Only an in-place save makes the side clean. A Save As writes a copy somewhere else and
+            // leaves the compared file exactly as unsaved as it was, which is the one thing about
+            // Save As that is easy to get wrong and expensive when it is.
             if (targetPath is null)
             {
-                await CompareAsync().ConfigureAwait(true);
+                if (side == DiffSide.Left)
+                {
+                    HasUnsavedLeft = false;
+                }
+                else
+                {
+                    HasUnsavedRight = false;
+                }
             }
+
+            saved?.Add(System.IO.Path.GetFileName(path));
+
+            if (saved is null)
+            {
+                StatusMessage = $"Saved {path}";
+            }
+
+            return true;
         }
         catch (TextFileWriteException ex)
         {
             ErrorMessage = ex.Message;
             StatusMessage = "Save failed.";
+
+            return false;
         }
         finally
         {
             IsBusy = false;
 
-            // Stamped again on the way out: the re-read above can take longer than the watcher's quiet
+            // Stamped again on the way out: the re-read can take longer than the watcher's quiet
             // period, and the window has to still be open when the event finally arrives.
             _lastSelfWrite = DateTime.UtcNow;
         }
@@ -1252,7 +1430,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     {
         _comparison = FileComparison.Empty;
         _mergeState = MergeState.Empty;
-        HasUnsavedEdits = false;
+        MarkClean();
         Pane.Clear();
 
         RaiseTitle();
@@ -1342,21 +1520,90 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     private void OnFilesChangedOnDisk(object? sender, EventArgs e) =>
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            if (!AutoRefresh
-                || !_comparison.HasBothSides
-                || DateTime.UtcNow - _lastSelfWrite < SelfWriteWindow)
+            if (!_comparison.HasBothSides || DateTime.UtcNow - _lastSelfWrite < SelfWriteWindow)
             {
                 return;
             }
 
             if (HasUnsavedEdits)
             {
+                // A genuine conflict: the file moved under changes the user has not saved, and only
+                // they can say which version wins. The banner stays up as well as the prompt, so
+                // dismissing the dialog does not leave the situation unmarked.
+                FilesChangedOnDisk = true;
+                _ = PromptForConflictAsync();
+
+                return;
+            }
+
+            if (!AutoRefresh)
+            {
+                // Auto-refresh off used to mean nothing happened at all - the file changed and the
+                // user went on reading a stale comparison with no sign of it. Saying so is not the
+                // same as reloading behind their back.
                 FilesChangedOnDisk = true;
                 return;
             }
 
             _ = RefreshFromDiskAsync();
         });
+
+    /// <summary>
+    /// Asks what to do when the files changed on disk under unsaved changes.
+    ///
+    /// The safe answer is first and is what a dismissed dialog gives: keeping what the user typed
+    /// costs them a manual reload, while reloading over it costs them their work. Saving first is
+    /// offered because it is usually what they meant - they were finished, and something else touched
+    /// the file while they were not looking.
+    /// </summary>
+    private async Task PromptForConflictAsync()
+    {
+        if (_confirmation is null || _promptingConflict)
+        {
+            return;
+        }
+
+        _promptingConflict = true;
+
+        try
+        {
+            var choice = await _confirmation
+                .ChooseAsync(
+                    "The files changed on disk",
+                    $"{UnsavedDescription}\n\nSomething else has written to these files since they were opened.",
+                    ["Keep my changes", "Save mine over what changed", "Reload and discard my changes"])
+                .ConfigureAwait(true);
+
+            switch (choice)
+            {
+                case 1:
+                    await SaveDirtySidesAsync().ConfigureAwait(true);
+                    break;
+
+                case 2:
+                    MarkClean();
+                    await RefreshFromDiskAsync().ConfigureAwait(true);
+                    break;
+
+                default:
+                    // Keep the banner: they chose to keep their work, and the files are still out of
+                    // date. The Reload button in the banner is how they change their mind.
+                    StatusMessage = "Kept your changes. The files on disk are newer.";
+                    break;
+            }
+        }
+        finally
+        {
+            _promptingConflict = false;
+        }
+    }
+
+    /// <summary>
+    /// Guards against a second dialog while one is open. Editors save by writing a temporary file and
+    /// renaming it, which can produce several events in a row - and stacking modal prompts on top of
+    /// each other is how a window becomes impossible to close.
+    /// </summary>
+    private bool _promptingConflict;
 
     /// <summary>
     /// Re-runs the comparison against the files as they are now.

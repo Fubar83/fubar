@@ -167,7 +167,9 @@ public class BinaryComparisonTabTests
         await tab.CompareAsync();
 
         await tab.SaveCommand.ExecuteAsync(null);
-        await tab.SaveAsCommand.ExecuteAsync(null);
+        await tab.SaveLeftCommand.ExecuteAsync(null);
+        await tab.SaveRightCommand.ExecuteAsync(null);
+        await tab.SaveLeftAsCommand.ExecuteAsync(null);
 
         Assert.Equal(0, merge.Saves);
         Assert.False(tab.CanMerge);

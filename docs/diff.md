@@ -71,6 +71,10 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 - **Editable panes** — tick *Edit* and type straight into either side; the diff re-runs as you pause.
   Taking a side is an edit too, so it applies immediately and **Ctrl+Z** takes it back along with
   anything you typed. Find gains Replace. Off by default, and side-by-side text comparisons only.
+- **Both files are saved independently** — each side gets its own Save button when it has unsaved
+  changes, Ctrl+S writes whatever changed, and *Save as* leaves the compared file alone. Closing a tab
+  or the window with unsaved changes asks first, naming the files. If a file changes on disk while you
+  have unsaved changes, you are asked which version wins rather than being told after the fact.
 - **Folder comparison** — two directory trees walked together and reported as a tree: changed, left
   only, right only. Identical files are **hidden by default** (the count is in the status line), since
   on two real checkouts they are most of what is there. `.git`, `bin`, `obj`, `node_modules` and

@@ -29,6 +29,43 @@ public partial class MainWindow : Window
         // command - it has to know which pane has focus. Tunnelling so it wins before the editor's own
         // handling of the gesture.
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+
+        Closing += OnClosing;
+    }
+
+    /// <summary>
+    /// Set once the tabs have all agreed to close, so the second Close() is not intercepted again.
+    /// </summary>
+    private bool _closeConfirmed;
+
+    /// <summary>
+    /// Stops the window closing over unsaved changes.
+    ///
+    /// The prompt is asynchronous and Closing is not, so the close is cancelled first and re-issued
+    /// once the answer is in - which is the standard shape for this and the only one that works
+    /// without blocking the UI thread inside an event handler.
+    /// </summary>
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_closeConfirmed || DataContext is not ShellViewModel shell)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+
+        _ = ConfirmThenCloseAsync(shell);
+    }
+
+    private async System.Threading.Tasks.Task ConfirmThenCloseAsync(ShellViewModel shell)
+    {
+        if (!await shell.ConfirmCloseAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
+        _closeConfirmed = true;
+        Close();
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)

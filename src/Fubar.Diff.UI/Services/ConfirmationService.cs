@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -15,17 +16,20 @@ namespace Fubar.Diff.UI.Services;
 /// </summary>
 public sealed class ConfirmationService : IConfirmationService
 {
-    public async Task<bool> ConfirmAsync(string title, string message, string confirmLabel)
+    public async Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
+        await ChooseAsync(title, message, [confirmLabel]).ConfigureAwait(true) == 0;
+
+    public async Task<int> ChooseAsync(string title, string message, IReadOnlyList<string> choices)
     {
         if (Owner is not { } owner)
         {
-            // No window to be modal to. Refusing is the only safe answer - a confirmation that cannot
-            // be shown must not silently count as a yes.
-            return false;
+            // No window to be modal to. Answering "none of them" is the only safe outcome - a prompt
+            // that cannot be shown must never count as agreement to whatever it was going to ask.
+            return -1;
         }
 
-        return await new ConfirmWindow(title, message, confirmLabel)
-            .ShowDialog<bool>(owner)
+        return await new ConfirmWindow(title, message, choices)
+            .ShowDialog<int>(owner)
             .ConfigureAwait(true);
     }
 

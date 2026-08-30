@@ -191,15 +191,71 @@ public class EditingTests
     }
 
     [AvaloniaFact]
-    public async Task Saving_with_no_changes_round_trips_the_file()
+    public async Task Saving_with_no_changes_writes_nothing_at_all()
     {
-        // Nothing pending, nothing typed - saving must not rewrite the file into something else.
+        // Ctrl+S on an untouched comparison used to rewrite the right-hand file with its own content.
+        // Now that both sides are tracked separately, "save" means "save what changed" - and rewriting
+        // a file nobody edited moves its timestamp, which is enough to make a build think it is stale.
         var (tab, disk) = Build(["a", "LEFT", "c"], ["a", "RIGHT", "c"]);
         await tab.CompareAsync();
 
         await tab.SaveCommand.ExecuteAsync(null);
 
+        Assert.Null(disk.Written);
+    }
+
+    [AvaloniaFact]
+    public async Task Each_side_is_tracked_and_saved_on_its_own()
+    {
+        // Both panes are editable, so a session can leave two files to write - and saving one of them
+        // is not "saved".
+        var (tab, disk) = Build(["a", "LEFT", "c"], ["a", "RIGHT", "c"]);
+        await tab.CompareAsync();
+
+        tab.Pane.CurrentHunk = 0;
+        await tab.TakeLeftCommand.ExecuteAsync(null);
+
+        Assert.True(tab.HasUnsavedRight);
+        Assert.False(tab.HasUnsavedLeft);
+
+        await tab.SaveRightCommand.ExecuteAsync(null);
+
+        Assert.False(tab.HasUnsavedRight);
+        Assert.Equal("right.txt", disk.WrittenTo);
+    }
+
+    [AvaloniaFact]
+    public async Task Taking_the_right_side_leaves_the_LEFT_file_to_save()
+    {
+        var (tab, disk) = Build(["a", "LEFT", "c"], ["a", "RIGHT", "c"]);
+        await tab.CompareAsync();
+
+        tab.Pane.CurrentHunk = 0;
+        await tab.TakeRightCommand.ExecuteAsync(null);
+
+        Assert.True(tab.HasUnsavedLeft);
+        Assert.False(tab.HasUnsavedRight);
+
+        await tab.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal("left.txt", disk.WrittenTo);
         Assert.Equal(["a", "RIGHT", "c"], disk.Written);
+    }
+
+    [AvaloniaFact]
+    public async Task The_unsaved_description_names_the_files_that_would_be_lost()
+    {
+        // What the prompts show. "You have unsaved changes" is not enough to decide on - which file?
+        var (tab, _) = Build(["a", "LEFT", "c"], ["a", "RIGHT", "c"]);
+        await tab.CompareAsync();
+
+        Assert.Empty(tab.UnsavedDescription);
+
+        tab.Pane.CurrentHunk = 0;
+        await tab.TakeLeftCommand.ExecuteAsync(null);
+
+        Assert.Contains("right.txt", tab.UnsavedDescription, StringComparison.Ordinal);
+        Assert.DoesNotContain("left.txt", tab.UnsavedDescription, StringComparison.Ordinal);
     }
 
     // ---- The toggle -------------------------------------------------------------------------------

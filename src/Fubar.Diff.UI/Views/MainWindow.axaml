@@ -188,14 +188,36 @@
                                    Foreground="{DynamicResource TextSecondary}" />
                     </StackPanel>
 
-                    <!-- Likewise: nothing to save until a decision has been made, so nothing is shown. -->
+                    <!-- Nothing to save until something has changed, so nothing is shown. Both sides
+                         are editable, so each gets its own button and each appears only when THAT file
+                         has something unsaved - "Save" alone would leave the user guessing which of
+                         the two it meant, and guessing wrong is a file written by accident. -->
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0,0,0"
-                                IsVisible="{Binding HasUnsavedMerge}">
+                                IsVisible="{Binding HasUnsavedEdits}">
                         <fc:Divider Orientation="Vertical" Margin="0,0,2,0" />
-                        <Button Classes="primary-btn" Content="Save" ToolTip.Tip="Write the merged result (Ctrl+S)"
+
+                        <Button Classes="primary-btn" Content="Save all" ToolTip.Tip="Write every file with unsaved changes (Ctrl+S)"
                                 Command="{Binding SaveCommand}" />
-                        <Button Classes="toolbar-btn" Content="Save as…" ToolTip.Tip="Write the merged result to a new file"
-                                Command="{Binding SaveAsCommand}" />
+
+                        <Button Classes="toolbar-btn" Content="◀ Save left"
+                                ToolTip.Tip="Write the left-hand file"
+                                IsVisible="{Binding HasUnsavedLeft}"
+                                Command="{Binding SaveLeftCommand}" />
+
+                        <Button Classes="toolbar-btn" Content="Save right ▶"
+                                ToolTip.Tip="Write the right-hand file"
+                                IsVisible="{Binding HasUnsavedRight}"
+                                Command="{Binding SaveRightCommand}" />
+
+                        <Button Classes="toolbar-btn" Content="Save as ▾"
+                                ToolTip.Tip="Write one side to a different file, leaving the compared file alone">
+                            <Button.Flyout>
+                                <MenuFlyout>
+                                    <MenuItem Header="Left as…" Command="{Binding SaveLeftAsCommand}" />
+                                    <MenuItem Header="Right as…" Command="{Binding SaveRightAsCommand}" />
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
                     </StackPanel>
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />

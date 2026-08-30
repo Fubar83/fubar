@@ -2,15 +2,20 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:fc="using:Fubar.Controls"
         x:Class="Fubar.Diff.UI.Views.ConfirmWindow"
-        Width="520" SizeToContent="Height"
+        Width="540" SizeToContent="Height"
         CanResize="False"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BgEditorCanvas}"
         Title="Confirm">
 
-    <!-- Deliberately plain. The only thing this window has to do well is let someone read exactly
-         which files are about to be written before they agree to it, so the message gets room to wrap
-         and is selectable - a path you cannot copy out is a path you cannot check. -->
+    <!-- Deliberately plain. The only thing this window has to do well is let someone read exactly what
+         is about to happen - which files, and what becomes of them - before they agree to it, so the
+         message gets room to wrap and is selectable: a path you cannot copy out is a path you cannot
+         check.
+
+         The buttons are built in code-behind because the number of them varies. A confirmation has one
+         and a cancel; a choice - reload or keep, save or discard - has two or more, and inventing a
+         separate window per shape would be three windows saying the same thing. -->
     <StackPanel Margin="20" Spacing="14">
 
         <TextBlock x:Name="TitleText"
@@ -21,13 +26,8 @@
                              Foreground="{DynamicResource TextSecondary}"
                              TextWrapping="Wrap" />
 
-        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-            <!-- Cancel first and focused, because the safe answer should be the one a stray Return
-                 gives. -->
-            <Button x:Name="CancelButton" Classes="toolbar-btn" Content="Cancel"
-                    IsCancel="True" IsDefault="True" Click="OnCancel" />
-            <Button x:Name="ConfirmButton" Classes="primary-btn" Content="Continue"
-                    Click="OnConfirm" />
-        </StackPanel>
+        <StackPanel x:Name="Buttons"
+                    Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" />
     </StackPanel>
 </Window>

@@ -255,6 +255,31 @@ to the comparison's. Anything addressing the unified view must go through those;
 keeps `UnifiedScrollToRow` and `UnifiedFolds` separate from their side-by-side counterparts for exactly
 this reason, and computing either from the other's coordinates is wrong the moment a row splits.
 
+**A prompt that cannot be shown is a NO, never a yes** (Diff). `IConfirmationService.ChooseAsync`
+returns -1 for "none of these", and every caller treats it as the safe answer: closing a tab is
+refused, a disk conflict keeps the user's changes. `ConfirmationService` returns -1 when there is no
+window to be modal to, and `ComparisonViewModel` refuses to close when no confirmation service was
+injected at all. Do not "simplify" any of these to a default of the first choice - the choices are
+things like *discard* and *overwrite*, and treating a dismissed dialog as agreement to one of them is
+the exact bug the prompt exists to prevent. `UnsavedPromptTests` and `ShellCloseTests` pin the
+refusals specifically.
+
+**Unsaved state is tracked PER SIDE** (Diff). Both panes are editable, so a session can leave two
+files to write and saving one of them is not "saved". `HasUnsavedLeft`/`HasUnsavedRight` are the
+truth; `HasUnsavedEdits` and the legacy `HasUnsavedMerge` are derived. Two consequences worth keeping:
+Ctrl+S writes only the sides that changed (rewriting an untouched file moves its timestamp, which is
+enough to make a build think it is stale), and **Save As does NOT clear the dirty flag** - it writes a
+copy somewhere else and leaves the compared file exactly as unsaved as it was.
+
+**A file changing on disk under unsaved edits is a CONFLICT, and only the user can settle it** (Diff).
+`OnFilesChangedOnDisk` has three paths and they are deliberately different: clean plus auto-refresh
+reloads silently (a diff kept open beside an editor should stay current), clean with auto-refresh off
+raises the banner (it used to do nothing at all, leaving the user reading a stale comparison with no
+sign of it), and dirty prompts - keep mine / save mine over it / reload and discard. The banner is
+raised as well as the prompt, so dismissing the dialog does not leave the situation unmarked, and
+`_promptingConflict` stops a second dialog stacking on the first: editors save by writing a temporary
+file and renaming it, which can produce several events in a row.
+
 **An editable pane keeps the filler invariant rather than weakening it** (Diff). The roadmap said this
 needed a bidirectional editor↔source offset map. It does not, and the reason is worth knowing before
 anyone "fixes" it: the document stays the file-with-fillers, each filler carries a `TextAnchor`, and

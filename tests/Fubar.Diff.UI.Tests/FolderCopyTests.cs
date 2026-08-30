@@ -63,6 +63,9 @@ public class FolderCopyTests
 
             return Task.FromResult(answer);
         }
+
+        public Task<int> ChooseAsync(string title, string message, IReadOnlyList<string> choices) =>
+            throw new NotSupportedException("folder copying asks yes/no questions only");
     }
 
     private sealed class Copier(string? failOn = null) : IFileCopier

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -102,9 +103,16 @@ public partial class ShellViewModel : ViewModelBase
     /// to show and no way back.
     /// </summary>
     [RelayCommand]
-    public void CloseTab(ComparisonViewModel? tab)
+    public async Task CloseTabAsync(ComparisonViewModel? tab)
     {
         if (tab is null || !Tabs.Contains(tab))
+        {
+            return;
+        }
+
+        // Ask before anything is torn down. A tab holding typed changes is the only thing in this app
+        // that can lose work by being closed, and the answer may well be "no, don't".
+        if (!await tab.ConfirmDiscardAsync().ConfigureAwait(true))
         {
             return;
         }
@@ -129,6 +137,30 @@ public partial class ShellViewModel : ViewModelBase
         // application does and what the user's eye expects.
         SelectedTab = Tabs[Math.Min(index, Tabs.Count - 1)];
         OnPropertyChanged(nameof(HasMultipleTabs));
+    }
+
+    /// <summary>
+    /// Asks every tab whether it is alright to close, for the window shutting down.
+    ///
+    /// Stops at the first refusal and SELECTS that tab, so the user is looking at the thing they are
+    /// being asked about rather than at whichever tab happened to be in front.
+    /// </summary>
+    public async Task<bool> ConfirmCloseAsync()
+    {
+        foreach (var tab in Tabs.ToList())
+        {
+            if (tab.HasUnsavedEdits)
+            {
+                SelectedTab = tab;
+            }
+
+            if (!await tab.ConfirmDiscardAsync().ConfigureAwait(true))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Opens a remembered pair in a new tab.</summary>

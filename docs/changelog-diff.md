@@ -29,6 +29,24 @@ All notable changes to this project are documented here. The format is based on
   its word-level highlights: the two lines the aligner paired turn out not to be counterparts, so
   highlighting the letters that differ between them would invite reading a change nobody made.
 
+- **Nothing is lost silently any more.** Closing a tab or the window with unsaved changes now asks —
+  *Save and close*, *Close without saving*, or Cancel — and naming the files that would be lost rather
+  than saying "you have unsaved changes". Cancelling, or dismissing the dialog, keeps the tab open:
+  going away is never agreement to discard.
+
+- **Both sides save independently.** Both panes are editable, so a session can leave two files to
+  write. Each side has its own *Save* button, appearing only when that file has something unsaved, and
+  Ctrl+S writes every side that changed. *Save as ▾* writes one side to a different file and
+  deliberately leaves the compared file as unsaved as it was. Saving with nothing changed now writes
+  nothing at all, rather than rewriting a file with its own content and moving its timestamp.
+
+- **A file changing on disk under your edits is treated as a conflict.** It used to raise a passive
+  banner; now it asks: *keep my changes*, *save mine over what changed*, or *reload and discard mine*.
+  Keeping your work is first and is what a dismissed dialog gives. Nothing changes for the ordinary
+  case — with no unsaved edits the comparison still refreshes silently — except that with auto-refresh
+  **off** you are now told the files moved, where before nothing happened at all and you carried on
+  reading a stale comparison with no sign of it.
+
 - **Editable panes** (toolbar → *Edit*). Type directly into either side of a side-by-side comparison.
   The diff re-runs as you pause, so it stays live rather than going stale under you. Find gains
   **Replace** at the same time. Off by default and remembered — a diff tool is a reading tool most of

@@ -16,7 +16,7 @@ public class ConfirmWindowTests
     [AvaloniaFact]
     public void It_loads_and_shows_what_it_was_given()
     {
-        var window = new ConfirmWindow("Replace 2 files?", @"C:\a will be written to C:\b", "Replace");
+        var window = new ConfirmWindow("Replace 2 files?", @"C:\a will be written to C:\b", ["Replace"]);
 
         window.Show();
         window.UpdateLayout();
