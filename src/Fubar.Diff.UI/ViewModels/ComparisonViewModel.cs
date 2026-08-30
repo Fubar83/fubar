@@ -13,6 +13,7 @@ using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Merge;
 using Fubar.Diff.Core.Models;
+using Fubar.Diff.Core.Patch;
 using Fubar.Diff.Controls.ViewModels;
 using Fubar.Diff.Core.Settings;
 using Fubar.Diff.UI.Services;
@@ -36,6 +37,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     private readonly IMergeService _mergeService;
     private readonly IFilePickerService _filePicker;
     private readonly IFileChangeWatcher _watcher;
+    private readonly IClipboardService _clipboard;
+    private readonly ITextFileWriter _patchWriter;
 
     private FileComparison _comparison = FileComparison.Empty;
     private MergeState _mergeState = MergeState.Empty;
@@ -69,12 +72,16 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         IMergeService mergeService,
         IFilePickerService filePicker,
         IFileChangeWatcher watcher,
+        IClipboardService clipboard,
+        ITextFileWriter patchWriter,
         ThemeManagerViewModel themeManager)
     {
         _comparisonService = comparisonService;
         _mergeService = mergeService;
         _filePicker = filePicker;
         _watcher = watcher;
+        _clipboard = clipboard;
+        _patchWriter = patchWriter;
         ThemeManager = themeManager;
 
         Pane.Navigated += OnPaneNavigated;
@@ -637,6 +644,63 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void ResetHunk() => Resolve(HunkResolution.Unresolved);
 
+    // ---- Patch --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The comparison as a unified diff - the format git, patch and every review tool understands.
+    ///
+    /// Built from the CURRENT result, so every comparison option is already reflected in it: a patch
+    /// exported with "ignore comments" on describes the changes the user was actually looking at.
+    /// </summary>
+    private string BuildPatch() => UnifiedPatch.Create(
+        _comparison.Result,
+        "a/" + _comparison.Left.DisplayName,
+        "b/" + _comparison.Right.DisplayName);
+
+    /// <summary>Whether there is anything to export. A patch of no changes is not worth a file.</summary>
+    public bool HasPatch => _comparison.Result.Hunks.Count > 0;
+
+    [RelayCommand]
+    private async Task CopyPatchAsync()
+    {
+        if (!HasPatch)
+        {
+            return;
+        }
+
+        await _clipboard.SetTextAsync(BuildPatch()).ConfigureAwait(true);
+        StatusMessage = "Patch copied to the clipboard.";
+    }
+
+    [RelayCommand]
+    private async Task ExportPatchAsync()
+    {
+        if (!HasPatch || await _filePicker.PickSaveFileAsync("Save patch").ConfigureAwait(true) is not { } path)
+        {
+            return;
+        }
+
+        try
+        {
+            // Written through the same port as a merge, so a patch is subject to the same failure
+            // reporting rather than throwing out of a command.
+            await _patchWriter.WriteAsync(path, SplitLines(BuildPatch()), TextFormat.Default).ConfigureAwait(true);
+            StatusMessage = $"Patch saved to {path}";
+        }
+        catch (TextFileWriteException ex)
+        {
+            ErrorMessage = ex.Message;
+            StatusMessage = "Could not save the patch.";
+        }
+    }
+
+    /// <summary>
+    /// A patch is built with '\n' terminators throughout, which is what patch tools expect regardless
+    /// of the platform, so it is split back apart for the writer rather than being handed over whole.
+    /// </summary>
+    private static IReadOnlyList<string> SplitLines(string patch) =>
+        patch.TrimEnd('\n').Split('\n');
+
     [RelayCommand]
     private Task SaveAsync() => SaveToAsync(targetPath: null);
 
@@ -799,6 +863,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasFormatDifference));
         OnPropertyChanged(nameof(FormatDifferenceDetail));
         OnPropertyChanged(nameof(CodeLanguageDescription));
+        OnPropertyChanged(nameof(HasPatch));
 
         StatusMessage = BuildStatus(result);
     }

@@ -18,6 +18,17 @@ All notable changes to this project are documented here. The format is based on
   hunting is the few that do not, through the same thousands of untouched lines. An ignored row is
   never folded away — its faint band is the only evidence that an ignore rule is doing anything.
 
+- **Export as a patch** (toolbar → *Patch*). Copy to the clipboard or save as a unified diff — the
+  format `git apply`, `patch` and every review tool already read. The point is that a comparison stops
+  being something only this app can open: it can be pasted into a review, attached to an issue, or
+  applied on another machine.
+
+  Three lines of context around each change, and hunks whose context overlaps are merged into one —
+  emitting them separately would describe the same lines twice and produce a patch that does not apply.
+  Line ranges come from the files' own line numbers rather than from row counts, since filler rows have
+  no number and counting would drift by one per insertion. The headers name the files, not your
+  absolute paths. Verified by generating a patch and running `git apply` on it.
+
 - **Snapshot review: one folder, linked by name.** Tick *One folder, linked by name* and the comparison
   pairs files against each other inside a single directory — `Thing.verified.json` against
   `Thing.received.json`. That is what Verify and ApprovalTests leave behind after a run, and reviewing

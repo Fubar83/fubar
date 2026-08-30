@@ -106,6 +106,9 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 - **Follows the files** — when either file is saved elsewhere the comparison re-runs, so a diff kept
   open beside your editor stays current. It never discards unsaved merge decisions to do it: with any
   pending, it offers a Reload button instead.
+- **Export as a patch** — copy the comparison to the clipboard or save it as a unified diff, the format
+  `git apply`, `patch` and every review tool already understand. Three lines of context around each
+  change, overlapping hunks merged, and the file names rather than your absolute paths.
 - **Search** inside either pane with Ctrl+F.
 - **Drag and drop** two files onto the window to compare them.
 - **Tabs** — several comparisons open at once (Ctrl+T / Ctrl+W), each with its own files, options and

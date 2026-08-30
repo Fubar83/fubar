@@ -33,6 +33,7 @@ internal static class Composition
                 services.AddSingleton<IMergeService, MergeService>();
 
                 services.AddSingleton<IFilePickerService, FilePickerService>();
+                services.AddSingleton<IClipboardService, ClipboardService>();
 
                 // Two files may be named on the command line: FubarDiff left.txt right.txt
                 services.AddSingleton(StartupFiles.FromArgs(args));

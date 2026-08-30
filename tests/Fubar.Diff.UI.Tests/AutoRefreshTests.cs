@@ -122,6 +122,36 @@ public class AutoRefreshTests
             string.Empty;
     }
 
+    /// <summary>Records what would have been copied, so a patch export can be asserted.</summary>
+    private sealed class FakeClipboard : IClipboardService
+    {
+        public string? Text { get; private set; }
+
+        public Task SetTextAsync(string text)
+        {
+            Text = text;
+
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Records what would have been written.</summary>
+    private sealed class FakeWriter : ITextFileWriter
+    {
+        public string? Path { get; private set; }
+
+        public IReadOnlyList<string>? Lines { get; private set; }
+
+        public Task WriteAsync(
+            string path, IReadOnlyList<string> lines, TextFormat format, CancellationToken cancellationToken = default)
+        {
+            Path = path;
+            Lines = lines;
+
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class NoPicker : IFilePickerService
     {
         public Task<string?> PickFileAsync(string title) => Task.FromResult<string?>(null);
@@ -136,7 +166,9 @@ public class AutoRefreshTests
         var watcher = new FakeWatcher();
         var service = new StubComparisonService();
 
-        var tab = new ComparisonViewModel(service, new NoopMergeService(), new NoPicker(), watcher, new ThemeManagerViewModel())
+        var tab = new ComparisonViewModel(
+            service, new NoopMergeService(), new NoPicker(), watcher,
+            new FakeClipboard(), new FakeWriter(), new ThemeManagerViewModel())
         {
             LeftPath = "left.txt",
             RightPath = "right.txt",
@@ -272,7 +304,9 @@ public class AutoRefreshTests
         var watcher = new FakeWatcher();
         var service = new VanishingComparisonService();
 
-        var tab = new ComparisonViewModel(service, new NoopMergeService(), new NoPicker(), watcher, new ThemeManagerViewModel())
+        var tab = new ComparisonViewModel(
+            service, new NoopMergeService(), new NoPicker(), watcher,
+            new FakeClipboard(), new FakeWriter(), new ThemeManagerViewModel())
         {
             LeftPath = "gone.txt",
             RightPath = "also-gone.txt",

@@ -213,6 +213,19 @@
                     <Button Classes="toolbar-btn" Content="Settings…" Margin="8,0,0,0"
                             ToolTip.Tip="More comparison options, and the theme" Click="OnSettingsClick" />
 
+                    <!-- Hidden until there is something to export, like every other conditional
+                         control here. A patch of no changes is not worth a file. -->
+                    <Button Classes="toolbar-btn" Content="Patch ▾" Margin="8,0,0,0"
+                            IsVisible="{Binding HasPatch}"
+                            ToolTip.Tip="Export this comparison as a unified diff, which git apply and patch understand">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="Copy to clipboard" Command="{Binding CopyPatchCommand}" />
+                                <MenuItem Header="Save as…" Command="{Binding ExportPatchCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
                     <!-- One "how it's displayed" group: the Diff pane toggle and the View switch are
