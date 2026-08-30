@@ -27,4 +27,14 @@ public sealed class TextFileReadException : Exception
 
     /// <summary>Why, phrased for a user rather than a log.</summary>
     public string Reason { get; }
+
+    /// <summary>
+    /// True when the file was rejected specifically for NOT BEING TEXT, rather than for being missing,
+    /// locked or too large.
+    ///
+    /// A flag rather than a caller matching on <see cref="Reason"/>: that string exists to be shown to
+    /// a person and will be reworded, and a comparison that silently stops offering binary files
+    /// because someone improved the wording is exactly the kind of break nothing would catch.
+    /// </summary>
+    public bool IsBinary { get; init; }
 }

@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IInlineDiffEngine, DiffPlexInlineDiffEngine>();
         services.AddSingleton<ILineNormalizer, TextLineNormalizer>();
         services.AddSingleton<ITextFileReader, TextFileReader>();
+        services.AddSingleton<IBinaryFileReader, BinaryFileReader>();
         services.AddSingleton<ITextFileWriter, TextFileWriter>();
         services.AddSingleton<IJsonParser, JsonAstParser>();
         services.AddSingleton<IFolderScanner, FileSystemFolderScanner>();

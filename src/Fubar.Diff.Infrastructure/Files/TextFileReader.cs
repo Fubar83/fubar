@@ -21,9 +21,6 @@ public sealed class TextFileReader : ITextFileReader
     /// </summary>
     private const long MaxBytes = 64L * 1024 * 1024;
 
-    /// <summary>How much of the file to inspect when deciding whether it is text.</summary>
-    private const int SniffBytes = 8000;
-
     public async Task<TextDocument> ReadAsync(string path, CancellationToken cancellationToken = default)
     {
         var info = new FileInfo(path);
@@ -50,9 +47,12 @@ public sealed class TextFileReader : ITextFileReader
             throw new TextFileReadException(path, ex.Message, ex);
         }
 
-        if (LooksBinary(bytes))
+        // The SAME rule the binary comparison uses to decide it should take over - see BinaryContent.
+        // Two answers to "is this binary" that could disagree would give a file refused by one path and
+        // diffed as text by the other.
+        if (BinaryContent.LooksBinary(bytes))
         {
-            throw new TextFileReadException(path, "it appears to be a binary file.");
+            throw new TextFileReadException(path, "it appears to be a binary file.") { IsBinary = true };
         }
 
         var encoding = DetectEncoding(bytes, out var preambleLength);
@@ -67,32 +67,6 @@ public sealed class TextFileReader : ITextFileReader
                 DetectLineEnding(text),
                 EndsWithNewline: EndsWithTerminator(text)));
     }
-
-    /// <summary>
-    /// A NUL byte in the first few KB is the classic, cheap binary signal - real text encodings do not
-    /// produce one (UTF-16 would, but its BOM is checked first and it is handled as text).
-    /// </summary>
-    private static bool LooksBinary(byte[] bytes)
-    {
-        if (HasUtf16Preamble(bytes))
-        {
-            return false;
-        }
-
-        var limit = bytes.Length < SniffBytes ? bytes.Length : SniffBytes;
-        for (var i = 0; i < limit; i++)
-        {
-            if (bytes[i] == 0)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool HasUtf16Preamble(byte[] b) =>
-        b.Length >= 2 && ((b[0] == 0xFF && b[1] == 0xFE) || (b[0] == 0xFE && b[1] == 0xFF));
 
     private static Encoding DetectEncoding(byte[] b, out int preambleLength)
     {

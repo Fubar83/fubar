@@ -255,6 +255,34 @@ to the comparison's. Anything addressing the unified view must go through those;
 keeps `UnifiedScrollToRow` and `UnifiedFolds` separate from their side-by-side counterparts for exactly
 this reason, and computing either from the other's coordinates is wrong the moment a row splits.
 
+**A binary comparison is shown as an ordinary `DiffResult` of HEX rows, and that is why it cost so
+little - but it is also the trap** (Diff). `HexDiff.Build` turns a `BinaryComparison` into the same
+shape everything else consumes, so the side-by-side editors, scroll sync, tints, the diff map, F7/F8
+and the collapse folds all work on bytes without knowing they are bytes. The cost is that the MERGE
+also thinks it can work on them: a binary `FileComparison` carries EMPTY `TextDocument`s (the bytes
+live on `Binary`), so a save would build a document of no lines and write it over the user's PNG.
+Three things stop that and all three are deliberate - `ComparisonViewModel.SaveToAsync` returns early
+when `IsBinaryComparison`, `ShowsMergeControls` hides the take-left/take-right group even though
+`Pane.HasCurrentHunk` is perfectly true, and `HasPatch` is false because it reads
+`_comparison.Result` (empty) rather than what the pane is showing. `BinaryComparisonTabTests` pins the
+save guard specifically. Do not "simplify" any of them by trusting the ones above it.
+
+**A binary result must never be re-run through the text path** (Diff). `Recompare`/`RecompareAsync`
+branch on `IsBinary` and only swap the options. Falling through would SUCCEED - the empty text
+documents compare equal - producing an empty diff and dropping `FileComparison.Binary`, so the tab
+would quietly turn from a picture into "the files are identical" the moment anyone ticked "ignore
+whitespace". Pinned by `BinaryFallbackTests`.
+
+**"Is this binary" has exactly one answer, and it lives in Core** (Diff). `BinaryContent.LooksBinary`
+is used by `TextFileReader` to refuse a file and by the comparison to decide it should take over
+instead; two implementations that could disagree would give a file refused by one path and diffed as
+text by the other. The hand-off is by `TextFileReadException.IsBinary`, a FLAG rather than a caller
+matching on `Reason` - that string is written to be shown to a person and will be reworded, and
+binary comparison silently switching itself off over a copy edit is not a break anything would catch.
+Image formats are detected from the CONTENT signature, unlike languages, which are detected from the
+extension: a renamed `.png` that is really a JPEG is ordinary, and being wrong here is immediately
+visible because the picture either appears or it does not.
+
 **Word wrap belongs to the unified view and CANNOT be given to the side-by-side one** (Diff). The two
 columns are aligned by having the same number of visual lines, which is what makes scroll sync a plain
 offset copy; a line long enough to wrap on one side and not the other pulls them apart by a line for

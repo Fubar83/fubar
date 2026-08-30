@@ -167,9 +167,12 @@
 
                     <!-- Merge acts on the CURRENT change, so the whole group APPEARS with one rather
                          than sitting greyed out for the entire time nobody is merging - which, for
-                         someone only reading a diff, is the whole session. -->
+                         someone only reading a diff, is the whole session.
+                         ShowsMergeControls rather than HasCurrentHunk alone: a binary comparison is
+                         shown as hex, which really does have hunks, and merging them would write hex
+                         text over the user's file. -->
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,0,0,0"
-                                IsVisible="{Binding Pane.HasCurrentHunk}">
+                                IsVisible="{Binding ShowsMergeControls}">
                         <fc:Divider Orientation="Vertical" Margin="0,0,2,0" />
                         <Button Classes="toolbar-btn" Content="← Take left" ToolTip.Tip="Use the left version of this change (Alt+Left)"
                                 Command="{Binding TakeLeftCommand}" />
@@ -194,17 +197,23 @@
                     <!-- Labelled inline rather than left to the tooltip alone: "Text"/"Json" show up
                          again below as the VIEW toggle, and the two are easy to conflate at a glance
                          without something distinguishing "how to compare" from "what to show". -->
+                    <!-- Hidden for a binary comparison, along with the two options beside it: not one
+                         of them means anything to a stream of bytes, and a control that cannot change
+                         the answer is a question the user has to rule out for themselves. -->
                     <TextBlock Text="Compare:" VerticalAlignment="Center"
+                               IsVisible="{Binding !IsBinaryComparison}"
                                Foreground="{DynamicResource TextSecondary}" Margin="0,0,4,0" />
                     <ComboBox ItemsSource="{x:Static vm:ComparisonViewModel.ModeOptions}"
                               SelectedItem="{Binding Mode}"
+                              IsVisible="{Binding !IsBinaryComparison}"
                               MinWidth="76"
                               ToolTip.Tip="Auto compares JSON semantically and everything else as text; Text/Json force one or the other" />
 
                     <!-- The one comparison option worth a click of its own: reviewing code, this is the
                          toggle developers reach for constantly, unlike the rest below (set once per
                          session, if ever). -->
-                    <CheckBox Content="Ignore whitespace" IsChecked="{Binding IgnoreWhitespace}" Margin="8,0,0,0" />
+                    <CheckBox Content="Ignore whitespace" IsChecked="{Binding IgnoreWhitespace}" Margin="8,0,0,0"
+                              IsVisible="{Binding !IsBinaryComparison}" />
 
                     <!-- Everything else opens the detailed settings window instead of fighting for
                          space in this row - a modal rather than a flyout now that it also covers
@@ -310,6 +319,21 @@
                    Severity="Warning"
                    Message="{Binding FormatDifferenceDetail, StringFormat='These files differ in format: {0}'}"
                    IsVisible="{Binding HasFormatDifference}" />
+
+        <!-- Two pictures above their own bytes, when the compared files turned out to be images.
+             Above rather than instead of: the hex is still the answer to "which byte changed", and the
+             pictures are the answer to "what changed", so both belong on screen. A fixed height rather
+             than a share of the window, because the hex below has to stay usable and an image pane that
+             grows with the window would push it off the bottom on a photo. Docked rather than in a grid
+             row, so IsVisible alone is enough to collapse it - a hidden docked child takes no space,
+             where DiffView's close-up needed its RowDefinition zeroed as well. -->
+        <Border DockPanel.Dock="Top"
+                Height="380"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                IsVisible="{Binding ShowsImages}">
+            <dv:ImagePairView DataContext="{Binding Images}" />
+        </Border>
 
         <Panel>
             <fc:EmptyState Title="Nothing to compare yet"

@@ -14,6 +14,7 @@ using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Merge;
 using Fubar.Diff.Core.Models;
 using Fubar.Diff.Core.Patch;
+using Fubar.Diff.Core.Rendering;
 using Fubar.Diff.Controls.ViewModels;
 using Fubar.Diff.Core.Settings;
 using Fubar.Diff.UI.Services;
@@ -93,6 +94,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     {
         _watcher.Changed -= OnFilesChangedOnDisk;
         _watcher.Dispose();
+
+        // Decoded bitmaps hold unmanaged buffers, and an image comparison holds two of them for as
+        // long as the tab is open.
+        Images.Dispose();
     }
 
     /// <summary>
@@ -211,6 +216,15 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// which produces its comparisons from memory rather than from files.
     /// </summary>
     public DiffPaneViewModel Pane { get; } = new();
+
+    /// <summary>
+    /// The two pictures, when the compared files turned out to be images. Empty otherwise, and hidden.
+    ///
+    /// Beside <see cref="Pane"/> rather than inside it: the diff pane is about aligned rows and knows
+    /// nothing about bitmaps, and a comparison of two PNGs still HAS a row view - the hex one - which
+    /// this sits above rather than replaces.
+    /// </summary>
+    public ImagePairViewModel Images { get; } = new();
 
     // ---- File selection ----------------------------------------------------------------------
 
@@ -808,6 +822,17 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // The guard that keeps this feature from being destructive. A binary comparison carries EMPTY
+        // text documents - the bytes live on Binary, not on Left/Right - so the merge would build a
+        // document of no lines and write it cheerfully over the user's file. The toolbar hides these
+        // controls and CanMerge says no, but a save that erases a PNG is not a thing to leave resting
+        // on a binding.
+        if (IsBinaryComparison)
+        {
+            StatusMessage = "Binary files cannot be merged.";
+            return;
+        }
+
         IsBusy = true;
         ErrorMessage = null;
         _lastSelfWrite = DateTime.UtcNow;
@@ -846,7 +871,12 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
     private void Refresh()
     {
-        var result = _comparison.Result;
+        // A binary comparison has no text rows of its own, so the pane is given the HEX rows instead -
+        // an ordinary DiffResult, which is what lets the editors, scroll sync, tints, diff map,
+        // navigation and folds all work on bytes without knowing they are bytes. See HexDiff.
+        var result = _comparison.Binary is { } binary
+            ? HexDiff.Build(binary)
+            : _comparison.Result;
 
         // Decisions are keyed by hunk index, and re-running the diff can produce fewer hunks; drop any
         // that no longer exist so a stale index cannot silently resolve the wrong change.
@@ -856,11 +886,18 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         // Before Show, like the renderer metadata it resembles: Show replaces both documents, and a
         // pane that learned its grammar afterwards would repaint the new content with the previous
         // comparison's colours for a frame.
-        Pane.LeftSyntaxExtension = System.IO.Path.GetExtension(_comparison.Left.Path);
-        Pane.RightSyntaxExtension = System.IO.Path.GetExtension(_comparison.Right.Path);
+        //
+        // No grammar at all for hex: the extension belongs to the file, and colouring a dump of its
+        // bytes as if it were a PNG - or worse, as C# - would be actively misleading.
+        Pane.LeftSyntaxExtension = _comparison.IsBinary ? null : System.IO.Path.GetExtension(_comparison.Left.Path);
+        Pane.RightSyntaxExtension = _comparison.IsBinary ? null : System.IO.Path.GetExtension(_comparison.Right.Path);
         Pane.SyntaxHighlighting = SyntaxHighlighting;
         Pane.CollapseUnchanged = CollapseUnchanged;
         Pane.WordWrap = WordWrap;
+
+        // Before Show for the same reason the grammar is: this replaces both bitmaps, and the previous
+        // comparison's pictures must not be on screen next to the new one's hex for a frame.
+        Images.Show(_comparison.Binary);
 
         Pane.Show(
             result,
@@ -880,9 +917,76 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(FormatDifferenceDetail));
         OnPropertyChanged(nameof(CodeLanguageDescription));
         OnPropertyChanged(nameof(HasPatch));
+        OnPropertyChanged(nameof(Binary));
+        OnPropertyChanged(nameof(IsBinaryComparison));
+        OnPropertyChanged(nameof(ShowsImages));
+        OnPropertyChanged(nameof(CanMerge));
+        OnPropertyChanged(nameof(ShowsMergeControls));
 
-        StatusMessage = BuildStatus(result);
+        StatusMessage = _comparison.Binary is { } summary ? BuildBinaryStatus(summary) : BuildStatus(result);
     }
+
+    /// <summary>The byte comparison, when the files turned out not to be text. Null otherwise.</summary>
+    public BinaryComparison? Binary => _comparison.Binary;
+
+    /// <summary>True when this tab is comparing bytes rather than text.</summary>
+    public bool IsBinaryComparison => _comparison.IsBinary;
+
+    /// <summary>True when both sides are images the app can put on screen next to each other.</summary>
+    public bool ShowsImages => _comparison.Binary?.BothAreImages ?? false;
+
+    /// <summary>
+    /// Whether taking a side and saving is offered at all.
+    ///
+    /// False for a binary comparison, and this is the one guard in the feature that MATTERS. The pane
+    /// is showing hex rows, which are an ordinary <c>DiffResult</c> as far as everything downstream is
+    /// concerned - including the merge, which would happily write those hex STRINGS over the user's
+    /// PNG. The view hides the merge controls (see MainWindow), and the commands refuse as well, so
+    /// neither a keyboard shortcut nor a binding that outlives a refactor can reach the write path.
+    /// </summary>
+    public bool CanMerge => !IsBinaryComparison;
+
+    /// <summary>
+    /// Whether the take-left/take-right group belongs in the toolbar right now.
+    ///
+    /// A hex comparison HAS hunks - that is the point of expressing it as a diff result - so the
+    /// group's usual condition is satisfied and it would appear, offering to merge two files it must
+    /// not touch.
+    /// </summary>
+    public bool ShowsMergeControls => CanMerge && Pane.HasCurrentHunk;
+
+    /// <summary>
+    /// The status line for a byte comparison.
+    ///
+    /// Says what a byte comparison can honestly say and no more. There is no "3 changes" here: for
+    /// anything compressed, one altered pixel moves every byte after it, and a count would read as a
+    /// total rewrite of a file that changed in one place.
+    /// </summary>
+    private static string BuildBinaryStatus(BinaryComparison binary)
+    {
+        if (binary.AreIdentical)
+        {
+            return $"Binary - the files are identical ({Bytes(binary.LeftLength)}).";
+        }
+
+        var sizes = binary.LengthsDiffer
+            ? $"{Bytes(binary.LeftLength)} vs {Bytes(binary.RightLength)}"
+            : $"both {Bytes(binary.LeftLength)}";
+
+        var at = binary.FirstDifference is { } offset
+            ? $", first differ at byte 0x{offset:x} ({offset:N0})"
+            : string.Empty;
+
+        return $"Binary - {sizes}{at}.";
+    }
+
+    /// <summary>A byte count in the unit a person would use for it.</summary>
+    private static string Bytes(int count) => count switch
+    {
+        < 1024 => $"{count:N0} B",
+        < 1024 * 1024 => $"{count / 1024.0:N1} KB",
+        _ => $"{count / (1024.0 * 1024.0):N1} MB",
+    };
 
     /// <summary>
     /// The status line. When a semantic comparison finds nothing, it says so explicitly rather than
@@ -993,8 +1097,14 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>Reports the position after the pane navigates. Navigation itself lives on the pane.</summary>
-    private void OnPaneNavigated(object? sender, EventArgs e) =>
-        StatusMessage = $"Change {Pane.CurrentHunk + 1} of {Pane.Hunks.Count}";
+    private void OnPaneNavigated(object? sender, EventArgs e)
+    {
+        StatusMessage = _comparison.IsBinary
+            ? $"Difference {Pane.CurrentHunk + 1} of {Pane.Hunks.Count} in the bytes"
+            : $"Change {Pane.CurrentHunk + 1} of {Pane.Hunks.Count}";
+
+        OnPropertyChanged(nameof(ShowsMergeControls));
+    }
 
     /// <summary>Starts or stops watching, to match the current files and the setting.</summary>
     private void ApplyWatch()

@@ -29,6 +29,27 @@ All notable changes to this project are documented here. The format is based on
   its word-level highlights: the two lines the aligner paired turn out not to be counterparts, so
   highlighting the letters that differ between them would invite reading a change nobody made.
 
+- **Binary and image comparison.** Opening two files that are not text used to produce
+  *"it appears to be a binary file"* and nothing else. They are now compared as bytes: the status line
+  says whether they are identical, how big each is and where they first differ, and the panes show a
+  hex dump of each side with the differing rows tinted.
+
+  The hex is an ordinary diff result, which is why it arrived with everything already working — scroll
+  sync, the change tints, the diff map, F7/F8 between differing regions and collapse-unchanged all
+  operate on it without knowing it is hex. Alignment is by byte offset, which is the only honest answer
+  for binary content: matching a row of bytes against a similar-looking row elsewhere would invent a
+  correspondence the format does not have.
+
+  **Two images are shown as pictures**, side by side above their bytes, scaled to the same size with
+  each one's real dimensions written underneath — because at equal display size a rescale and a redraw
+  look identical. PNG, JPEG, GIF, BMP, WebP and ICO, recognised from the file's own signature rather
+  than its extension, so a renamed file still shows. A picture that will not decode says so and leaves
+  the hex view to answer the question instead.
+
+  Merging is refused for binary comparisons, and the take-left/take-right controls do not appear: the
+  hex on screen is a view of the bytes, not the file, and writing it back would destroy the file it
+  came from.
+
 - **Word wrap in the unified view** (toolbar → *Wrap lines*). Minified JSON, long log lines and wide
   string literals stop running off the right edge. Off by default and remembered.
 

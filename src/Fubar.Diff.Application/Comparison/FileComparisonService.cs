@@ -22,6 +22,7 @@ namespace Fubar.Diff.Application.Comparison;
 public sealed class FileComparisonService : IFileComparisonService
 {
     private readonly ITextFileReader _reader;
+    private readonly IBinaryFileReader? _binaryReader;
     private readonly IDiffEngine _engine;
     private readonly IInlineDiffEngine _inlineEngine;
     private readonly ILineNormalizer _normalizer;
@@ -32,13 +33,19 @@ public sealed class FileComparisonService : IFileComparisonService
         IDiffEngine engine,
         IInlineDiffEngine inlineEngine,
         ILineNormalizer normalizer,
-        JsonSemanticPass semanticPass)
+        JsonSemanticPass semanticPass,
+        IBinaryFileReader? binaryReader = null)
     {
         _reader = reader;
         _engine = engine;
         _inlineEngine = inlineEngine;
         _normalizer = normalizer;
         _semanticPass = semanticPass;
+
+        // Optional so a caller that only ever compares text - and every test that only cares about
+        // text - is not made to supply one. Without it a binary file is refused exactly as it was
+        // before this existed, which is the correct degradation rather than a crash.
+        _binaryReader = binaryReader;
     }
 
     public async Task<FileComparison> CompareFilesAsync(
@@ -47,14 +54,60 @@ public sealed class FileComparisonService : IFileComparisonService
         ComparisonOptions options,
         CancellationToken cancellationToken = default)
     {
-        // Sequential rather than Task.WhenAll: a failure must name the file that failed, and reading
-        // two local files is not the bottleneck worth complicating error handling for.
-        var left = await _reader.ReadAsync(leftPath, cancellationToken).ConfigureAwait(false);
-        var right = await _reader.ReadAsync(rightPath, cancellationToken).ConfigureAwait(false);
+        TextDocument left;
+        TextDocument right;
+
+        try
+        {
+            // Sequential rather than Task.WhenAll: a failure must name the file that failed, and reading
+            // two local files is not the bottleneck worth complicating error handling for.
+            left = await _reader.ReadAsync(leftPath, cancellationToken).ConfigureAwait(false);
+            right = await _reader.ReadAsync(rightPath, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TextFileReadException ex) when (ex.IsBinary && _binaryReader is not null)
+        {
+            // Not text after all. Comparing the bytes is a far better answer than the error the text
+            // reader was about to produce, and it is the same pair of files the user asked about -
+            // so it comes back as a comparison rather than as a failure with a suggestion attached.
+            return await CompareBytesAsync(leftPath, rightPath, options, cancellationToken).ConfigureAwait(false);
+        }
 
         // Off the calling thread. Diffing is CPU-bound and grows with file size; on the UI thread a
         // large pair freezes the window, including the cancel path that would let the user escape it.
         return await Task.Run(() => Compare(left, right, options), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Compares the two files as bytes.
+    ///
+    /// Reads BOTH sides even though only one may have been binary: a PNG against a text file is still a
+    /// pair the user asked to compare, and the only comparison of it that means anything is at the byte
+    /// level. Saying "the left one is binary" and stopping would be technically accurate and useless.
+    /// </summary>
+    private async Task<FileComparison> CompareBytesAsync(
+        string leftPath,
+        string rightPath,
+        ComparisonOptions options,
+        CancellationToken cancellationToken)
+    {
+        var left = await _binaryReader!.ReadAsync(leftPath, cancellationToken).ConfigureAwait(false);
+        var right = await _binaryReader.ReadAsync(rightPath, cancellationToken).ConfigureAwait(false);
+
+        var comparison = await Task
+            .Run(() => BinaryComparer.Compare(left, right), cancellationToken)
+            .ConfigureAwait(false);
+
+        // Empty text documents carrying the paths: everything in the UI that names a comparison, tracks
+        // its files or lists it as recent reads them, and none of that has any business knowing whether
+        // the content was text.
+        return new FileComparison(
+            new TextDocument(leftPath, [], TextFormat.Default),
+            new TextDocument(rightPath, [], TextFormat.Default),
+            options,
+            DiffResult.Empty)
+        {
+            Binary = comparison,
+        };
     }
 
     public Task<FileComparison> CompareTextAsync(
@@ -99,12 +152,28 @@ public sealed class FileComparisonService : IFileComparisonService
         FileComparison comparison,
         ComparisonOptions options,
         CancellationToken cancellationToken = default) =>
-        Task.Run(
-            () => Compare(comparison.Left, comparison.Right, options, comparison.OriginalLeftText, comparison.OriginalRightText),
-            cancellationToken);
+        comparison.IsBinary
+            ? Task.FromResult(WithOptions(comparison, options))
+            : Task.Run(
+                () => Compare(comparison.Left, comparison.Right, options, comparison.OriginalLeftText, comparison.OriginalRightText),
+                cancellationToken);
 
     public FileComparison Recompare(FileComparison comparison, ComparisonOptions options) =>
-        Compare(comparison.Left, comparison.Right, options, comparison.OriginalLeftText, comparison.OriginalRightText);
+        comparison.IsBinary
+            ? WithOptions(comparison, options)
+            : Compare(comparison.Left, comparison.Right, options, comparison.OriginalLeftText, comparison.OriginalRightText);
+
+    /// <summary>
+    /// A binary comparison under new options, which is the same comparison: not one of the text options
+    /// means anything to a stream of bytes.
+    ///
+    /// It has to be handled rather than left to fall through, and the reason is nasty. A binary result
+    /// carries EMPTY text documents, so re-running the text path over them would succeed, produce an
+    /// empty diff, and drop <see cref="FileComparison.Binary"/> - the tab would quietly turn from a
+    /// picture into "the files are identical" the moment anyone ticked "ignore whitespace".
+    /// </summary>
+    private static FileComparison WithOptions(FileComparison comparison, ComparisonOptions options) =>
+        comparison with { Options = options };
 
     private FileComparison Compare(
         TextDocument left,

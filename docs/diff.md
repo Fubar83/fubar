@@ -52,6 +52,13 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 - **Collapse unchanged** — long stretches both files agree on fold behind a placeholder, keeping a few
   lines either side of each change. On by default; click any fold to expand it, or turn it off from the
   toolbar. A file of three thousand lines with two changes reads as two changes.
+- **Binary and image comparison.** Two files that are not text are compared as bytes: whether they are
+  identical, how big each is, where they first differ, and a hex dump of each side with the differing
+  rows tinted. Because that dump is an ordinary diff result, the scroll sync, diff map, navigation and
+  collapse-unchanged all work on it. **Two images are shown as pictures**, side by side above their
+  bytes, at the same scale with each one's real dimensions underneath — PNG, JPEG, GIF, BMP, WebP and
+  ICO, recognised from the file's own signature rather than its extension. Merging is refused here: the
+  hex is a view of the bytes, not the file.
 - **Diff map** between the panes — one tick per change, coloured by kind, click or drag to jump.
 - **Diff pane** below the panes: the old line stacked directly above the new one, so you can read
   both versions of one change without scrolling between two blocks a screen apart - and with the same
@@ -111,8 +118,8 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   controls marked where they occur, for when the diff is right and looks wrong.
 - **Normalize Unicode (NFC)** — optional, for text that renders identically but is encoded differently
   (macOS decomposes where Windows and Linux compose).
-- **Encoding aware** — detects UTF-8/UTF-16 BOMs and CRLF/LF/CR line endings, and declines binary
-  files rather than rendering a screen of mojibake.
+- **Encoding aware** — detects UTF-8/UTF-16 BOMs and CRLF/LF/CR line endings, and never renders a
+  screen of mojibake: content that is not text is handed to the byte comparison above instead.
 - **Follows the files** — when either file is saved elsewhere the comparison re-runs, so a diff kept
   open beside your editor stays current. It never discards unsaved merge decisions to do it: with any
   pending, it offers a Reload button instead.

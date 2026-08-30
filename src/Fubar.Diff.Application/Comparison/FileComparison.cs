@@ -78,6 +78,24 @@ public sealed record FileComparison(
     /// </summary>
     public bool DiffersOnlyByFormat => Result.AreIdentical && FormatDifference.Any;
 
+    /// <summary>
+    /// The byte-level comparison, when at least one side turned out not to be text. Null for the
+    /// ordinary case.
+    ///
+    /// Carried on the same result rather than returned from a separate service so that everything the
+    /// UI already does with a comparison - open it in a tab, name it, watch its files, reload it -
+    /// keeps working without learning about a second kind of comparison. What differs is only what is
+    /// DRAWN, which is one more view mode.
+    ///
+    /// When this is set, <see cref="Left"/> and <see cref="Right"/> carry the paths and no lines, and
+    /// <see cref="Result"/> is empty: there is no text to align, and inventing rows for bytes would put
+    /// a diff on screen that means nothing.
+    /// </summary>
+    public BinaryComparison? Binary { get; init; }
+
+    /// <summary>True when this comparison is of bytes rather than of text.</summary>
+    public bool IsBinary => Binary is not null;
+
     /// <summary>Nothing loaded yet - the app's initial state.</summary>
     public static FileComparison Empty { get; } = new(
         TextDocument.Empty,
