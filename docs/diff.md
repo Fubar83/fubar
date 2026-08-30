@@ -74,12 +74,15 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   friends are excluded out of the box and the list is editable, with `*` and `?` wildcards. Files are
   compared by **contents**, not size — two files of the same length are routinely different. Double-click
   any changed pair to open it as an ordinary comparison tab. Select any two files and compare **those**
-  against each other, for a file that was renamed and so appears once on each side.
+  against each other, for a file that was renamed and so appears once on each side. **Copy** a file, or
+  everything under a folder, to the other side — the button says what it would do and a confirmation
+  names the paths and how many files would be replaced first. It copies and never deletes.
 - **Snapshot review** — tick *One folder, linked by name* and it pairs files against each other inside a
   single folder: `Thing.verified.json` against `Thing.received.json`, which is what
   [Verify](https://github.com/VerifyTests/Verify) and ApprovalTests leave behind. New snapshots and
   baselines nothing produces any more are called out separately from changed ones. The rules are just
-  markers (`.verified = .received`), editable, so any convention works.
+  markers (`.verified = .received`), editable, so any convention works. **Accept a snapshot** by copying
+  the `.received` file leftwards over its baseline, after confirming.
 - **Three-way merge** — give it a common ancestor and two edits and it settles everything only one side
   touched, plus everything both sides changed identically, on its own. What is left is the set that
   genuinely disagrees. Three panes, the ancestor in the middle, all locked in step; conflicts are marked
@@ -225,10 +228,10 @@ change, because its two halves are no longer the same text. That is the conserva
 wrong in — a mark that says "you can skip this" has to be right — but a similarity threshold would
 catch more, and is the obvious next step.
 
-Folder comparison compares and opens, but does not COPY: there is no "make this side match that one".
-That is the other half of what people use Beyond Compare for, and it is deliberately not built yet -
-a diff tool that deletes the wrong file once is never trusted again, so it wants care rather than
-speed.
+Folder comparison copies but does not DELETE: there is no "make this side match that one", which
+means removing what the other side does not have. That is deliberately still not built — a diff tool
+that deletes the wrong file once is never trusted again, and the copy half delivers most of the value
+with none of that risk.
 
 **Cut.** A CLI with exit codes; semantic XML, YAML and CSV. Dropped deliberately rather than
 forgotten. Patch export has since been built (toolbar → *Patch*), and git integration is partly there:

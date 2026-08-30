@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:fc="using:Fubar.Controls"
+        x:Class="Fubar.Diff.UI.Views.ConfirmWindow"
+        Width="520" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgEditorCanvas}"
+        Title="Confirm">
+
+    <!-- Deliberately plain. The only thing this window has to do well is let someone read exactly
+         which files are about to be written before they agree to it, so the message gets room to wrap
+         and is selectable - a path you cannot copy out is a path you cannot check. -->
+    <StackPanel Margin="20" Spacing="14">
+
+        <TextBlock x:Name="TitleText"
+                   FontSize="15" FontWeight="SemiBold"
+                   TextWrapping="Wrap" />
+
+        <SelectableTextBlock x:Name="MessageText"
+                             Foreground="{DynamicResource TextSecondary}"
+                             TextWrapping="Wrap" />
+
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <!-- Cancel first and focused, because the safe answer should be the one a stray Return
+                 gives. -->
+            <Button x:Name="CancelButton" Classes="toolbar-btn" Content="Cancel"
+                    IsCancel="True" IsDefault="True" Click="OnCancel" />
+            <Button x:Name="ConfirmButton" Classes="primary-btn" Content="Continue"
+                    Click="OnConfirm" />
+        </StackPanel>
+    </StackPanel>
+</Window>

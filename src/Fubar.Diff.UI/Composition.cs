@@ -35,6 +35,11 @@ internal static class Composition
                 services.AddSingleton<IFilePickerService, FilePickerService>();
                 services.AddSingleton<IClipboardService, ClipboardService>();
 
+                // The pair that makes folder copying possible. Registered together deliberately: the
+                // view model offers copying only when it has BOTH, so wiring the copier without a way
+                // to ask the user would give a window that replaces files without confirming.
+                services.AddSingleton<IConfirmationService, ConfirmationService>();
+
                 // Two files may be named on the command line: FubarDiff left.txt right.txt
                 services.AddSingleton(StartupFiles.FromArgs(args));
 

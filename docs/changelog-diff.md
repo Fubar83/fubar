@@ -29,6 +29,18 @@ All notable changes to this project are documented here. The format is based on
   its word-level highlights: the two lines the aligner paired turn out not to be counterparts, so
   highlighting the letters that differ between them would invite reading a change nobody made.
 
+- **Copy files between the two sides of a folder comparison.** Select a file — or a folder, meaning
+  everything under it — and copy it to the other side. The button says what it would actually do
+  (*Copy 3 files to the right, replacing 2*) rather than showing a bare arrow, and a confirmation names
+  the paths and how many existing files would be replaced before anything is written.
+
+  In one-folder mode this is how a snapshot is accepted: copying `Thing.received.json` leftwards writes
+  it over `Thing.verified.json`, which is the action snapshot review was missing.
+
+  **It copies and never deletes.** There is no "make this side match the other" — removing what the
+  other side does not have is where a folder tool turns a mistake into lost work, and it is not
+  offered. A copy that fails part-way stops rather than pressing on, and says which file it stopped at.
+
 - **Binary and image comparison.** Opening two files that are not text used to produce
   *"it appears to be a binary file"* and nothing else. They are now compared as bytes: the status line
   says whether they are identical, how big each is and where they first differ, and the panes show a

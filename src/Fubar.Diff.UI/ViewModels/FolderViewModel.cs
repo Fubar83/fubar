@@ -25,17 +25,30 @@ public partial class FolderViewModel : ViewModelBase
 {
     private readonly IFolderComparisonService _service;
     private readonly IFilePickerService _filePicker;
+    private readonly IFileCopier? _copier;
+    private readonly IConfirmationService? _confirmation;
 
     private FolderComparison _comparison = FolderComparison.Empty;
 
     /// <summary>Cancels a walk in progress - the one operation here long enough to want abandoning.</summary>
     private CancellationTokenSource? _cancellation;
 
-    public FolderViewModel(IFolderComparisonService service, IFilePickerService filePicker, ThemeManagerViewModel themeManager)
+    public FolderViewModel(
+        IFolderComparisonService service,
+        IFilePickerService filePicker,
+        ThemeManagerViewModel themeManager,
+        IFileCopier? copier = null,
+        IConfirmationService? confirmation = null)
     {
         _service = service;
         _filePicker = filePicker;
         ThemeManager = themeManager;
+
+        // Both optional, and copying is offered only when BOTH are present. A host that wired up the
+        // copier but no way to ask the user would otherwise get a folder window that overwrites files
+        // without confirming, which is the one outcome this feature must not have.
+        _copier = copier;
+        _confirmation = confirmation;
     }
 
     public ThemeManagerViewModel ThemeManager { get; }
@@ -97,6 +110,21 @@ public partial class FolderViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(CanComparePair));
         OnPropertyChanged(nameof(PairDescription));
+        RaiseCopyState();
+    }
+
+    /// <summary>
+    /// The copy buttons describe what they would do to the CURRENT selection, so they all change
+    /// together whenever it does - including after a copy, when the rows involved have just become
+    /// identical and there is nothing left to copy.
+    /// </summary>
+    private void RaiseCopyState()
+    {
+        OnPropertyChanged(nameof(CanCopy));
+        OnPropertyChanged(nameof(CanCopyToRight));
+        OnPropertyChanged(nameof(CanCopyToLeft));
+        OnPropertyChanged(nameof(CopyToRightDescription));
+        OnPropertyChanged(nameof(CopyToLeftDescription));
     }
 
     /// <summary>The pair the current selection resolves to, or null when it does not resolve to one.</summary>
@@ -332,6 +360,149 @@ public partial class FolderViewModel : ViewModelBase
         }
     }
 
+    // ---- Copying --------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether copying is available at all - both the copier and a way to ask the user must be wired
+    /// up, and there has to be something selected that a copy would mean anything for.
+    /// </summary>
+    public bool CanCopy => _copier is not null && _confirmation is not null && SelectedEntry is not null;
+
+    /// <summary>How many files a left-to-right copy of the selection would write, and what it would replace.</summary>
+    public string CopyToRightDescription => Describe(Plan(CopyDirection.ToRight), "right");
+
+    /// <summary>The same for the other direction.</summary>
+    public string CopyToLeftDescription => Describe(Plan(CopyDirection.ToLeft), "left");
+
+    /// <summary>Whether a left-to-right copy would do anything.</summary>
+    public bool CanCopyToRight => CanCopy && Plan(CopyDirection.ToRight).Count > 0;
+
+    /// <summary>Whether a right-to-left copy would do anything.</summary>
+    public bool CanCopyToLeft => CanCopy && Plan(CopyDirection.ToLeft).Count > 0;
+
+    /// <summary>
+    /// The copies the current selection implies.
+    ///
+    /// A directory row means everything under it, which is why this returns a list rather than one
+    /// copy - and why the confirmation counts them: "copy 34 files, replacing 12" is a very different
+    /// proposition from the single file the user thought they had selected.
+    /// </summary>
+    private IReadOnlyList<FileCopy> Plan(CopyDirection direction) =>
+        SelectedEntry is { } row
+            ? FileCopyPlanner.PlanAll(row.Entry, _comparison.LeftRoot, _comparison.RightRoot, direction)
+            : [];
+
+    private static string Describe(IReadOnlyList<FileCopy> copies, string side)
+    {
+        if (copies.Count == 0)
+        {
+            return $"Nothing to copy to the {side}";
+        }
+
+        var replacing = copies.Count(c => c.Overwrites);
+
+        var what = copies.Count == 1 ? "1 file" : $"{copies.Count} files";
+        var overwriting = replacing == 0
+            ? string.Empty
+            : replacing == copies.Count
+                ? ", replacing all of them"
+                : $", replacing {replacing}";
+
+        return $"Copy {what} to the {side}{overwriting}";
+    }
+
+    [RelayCommand]
+    private Task CopyToRightAsync() => CopyAsync(CopyDirection.ToRight, "right");
+
+    [RelayCommand]
+    private Task CopyToLeftAsync() => CopyAsync(CopyDirection.ToLeft, "left");
+
+    /// <summary>
+    /// Copies the selection, after confirming.
+    ///
+    /// The confirmation is not a formality and is not skippable. This is the only thing in the app
+    /// that writes a file the user did not explicitly name, and it can replace one they have not
+    /// looked at - so it says how many, how many it replaces, and, for a single file, exactly which
+    /// path is about to be overwritten.
+    /// </summary>
+    private async Task CopyAsync(CopyDirection direction, string side)
+    {
+        if (_copier is null || _confirmation is null)
+        {
+            return;
+        }
+
+        var copies = Plan(direction);
+        if (copies.Count == 0)
+        {
+            return;
+        }
+
+        var replacing = copies.Count(c => c.Overwrites);
+
+        var detail = copies.Count == 1
+            ? $"{copies[0].SourcePath}\n\nwill be written to\n\n{copies[0].DestinationPath}"
+            : $"{copies.Count} files will be written under {(direction == CopyDirection.ToRight ? _comparison.RightRoot : _comparison.LeftRoot)}.";
+
+        var warning = replacing == 0
+            ? "\n\nNothing existing will be replaced."
+            : $"\n\n{(replacing == 1 ? "1 existing file" : $"{replacing} existing files")} will be replaced. This cannot be undone.";
+
+        var confirmed = await _confirmation
+            .ConfirmAsync(
+                replacing > 0 ? $"Replace files on the {side}?" : $"Copy to the {side}?",
+                detail + warning,
+                replacing > 0 ? "Replace" : "Copy")
+            .ConfigureAwait(true);
+
+        if (!confirmed)
+        {
+            StatusMessage = "Copy cancelled.";
+            return;
+        }
+
+        IsBusy = true;
+        ErrorMessage = null;
+
+        var written = 0;
+        string? failure = null;
+
+        try
+        {
+            foreach (var copy in copies)
+            {
+                await _copier.CopyAsync(copy.SourcePath, copy.DestinationPath).ConfigureAwait(true);
+                written++;
+            }
+        }
+        catch (FileCopyException ex)
+        {
+            // Stop at the first failure rather than pressing on: the rest of the batch probably shares
+            // the same permission or the same disk, and a partial copy the user was not told about is
+            // worse than one that stopped and named the file.
+            failure = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        // Re-walk BEFORE reporting, so the tree reflects what is now on disk - without it the rows the
+        // user has just made identical would still show as different, which reads as the copy having
+        // failed. Reporting after it, rather than before, because a comparison clears the error and
+        // status for its own run: say it first and the one thing the user needs to read is wiped by
+        // the refresh that follows.
+        await CompareAsync().ConfigureAwait(true);
+
+        ErrorMessage = failure;
+
+        StatusMessage = failure is null
+            ? written == 1 ? "Copied 1 file." : $"Copied {written} files."
+            : written == 0
+                ? "Nothing was copied."
+                : $"Copied {written} file(s), then stopped.";
+    }
+
     /// <summary>Raises the request, taking each side's path from the row that supplies that side.</summary>
     private void Request(FolderEntryViewModel left, FolderEntryViewModel right)
     {
@@ -399,6 +570,10 @@ public partial class FolderViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(HasResults));
         OnPropertyChanged(nameof(AreIdentical));
+
+        // The tree is new, so the previous selection points at rows that no longer exist - including
+        // the rows a copy has just made identical, which must stop offering to be copied again.
+        SetSelection([]);
     }
 
     /// <summary>

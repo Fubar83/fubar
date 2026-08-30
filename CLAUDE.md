@@ -255,6 +255,21 @@ to the comparison's. Anything addressing the unified view must go through those;
 keeps `UnifiedScrollToRow` and `UnifiedFolds` separate from their side-by-side counterparts for exactly
 this reason, and computing either from the other's coordinates is wrong the moment a row splits.
 
+**Folder copying copies and NEVER deletes, and the confirmation is not optional** (Diff). This is the
+only thing in the app that writes a file the user did not name, so every decision about it is
+deliberate. `FileCopyPlanner` (Core, no disk) makes every choice about WHICH file, because that is
+where all the mistakes would be: the destination uses the spelling the destination side already has
+(names pair case-insensitively, so writing the source's spelling would leave `README.md` beside
+`readme.md` on a case-sensitive filesystem instead of replacing it), a direction with no source is not
+offered, and identical files plan nothing. `IFileCopier` holds no policy at all and refuses only one
+thing - copying a file over itself, which is reachable in one-folder mode and which `File.Copy`
+answers on some platforms by truncating the file. `FolderViewModel` offers copying only when it has
+BOTH a copier and an `IConfirmationService`, so a host that wires up one without the other gets no
+copy buttons rather than silent overwrites. Deletion and "make this side match" are still not built,
+on purpose: that is where a mistake becomes lost work. One ordering detail is load-bearing - the
+re-walk happens BEFORE the status and error are set, because `CompareAsync` clears both for its own
+run and reporting first means the failure message is wiped by the refresh that follows.
+
 **A binary comparison is shown as an ordinary `DiffResult` of HEX rows, and that is why it cost so
 little - but it is also the trap** (Diff). `HexDiff.Build` turns a `BinaryComparison` into the same
 shape everything else consumes, so the side-by-side editors, scroll sync, tints, the diff map, F7/F8

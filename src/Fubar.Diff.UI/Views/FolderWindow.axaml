@@ -127,6 +127,27 @@
                             Command="{Binding ComparePairCommand}"
                             IsVisible="{Binding CanComparePair}"
                             ToolTip.Tip="Compare the two selected files against each other - for a file that was renamed, where the old and new names are each on one side only." />
+
+                    <!-- Copying, which is the only thing in this app that writes a file the user did
+                         not name. Each button says what it would actually do to the current selection
+                         ("Copy 3 files to the right, replacing 2") rather than a bare arrow, and both
+                         confirm before anything is written. Hidden when the selection has nothing to
+                         copy, like everything else in this toolbar.
+
+                         There is no delete and no "make this side match": removing what the other side
+                         does not have is where a folder tool turns a mistake into lost work, and it is
+                         not offered. -->
+                    <Button Classes="toolbar-btn"
+                            Content="{Binding CopyToRightDescription}"
+                            Command="{Binding CopyToRightCommand}"
+                            IsVisible="{Binding CanCopyToRight}"
+                            ToolTip.Tip="Copy the selected file, or everything under the selected folder, from the left side to the right. You will be asked to confirm." />
+
+                    <Button Classes="toolbar-btn"
+                            Content="{Binding CopyToLeftDescription}"
+                            Command="{Binding CopyToLeftCommand}"
+                            IsVisible="{Binding CanCopyToLeft}"
+                            ToolTip.Tip="Copy from the right side to the left. In one-folder mode this is how a .received snapshot is accepted over its .verified baseline. You will be asked to confirm." />
                 </StackPanel>
             </StackPanel>
         </Border>
