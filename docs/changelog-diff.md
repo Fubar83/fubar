@@ -29,6 +29,19 @@ All notable changes to this project are documented here. The format is based on
   its word-level highlights: the two lines the aligner paired turn out not to be counterparts, so
   highlighting the letters that differ between them would invite reading a change nobody made.
 
+- **Word wrap in the unified view** (toolbar → *Wrap lines*). Minified JSON, long log lines and wide
+  string literals stop running off the right edge. Off by default and remembered.
+
+  Unified only, and that is a constraint rather than an oversight: the two side-by-side panes are
+  aligned by having the same number of visual lines — which is what makes their scroll sync a plain
+  offset copy — and a line long enough to wrap on one side and not the other pulls them apart by a line
+  for every wrap above the viewport. The unified view has one document and nothing to keep in step
+  with. The checkbox is hidden in the other views rather than sitting there greyed out.
+
+  Centring a difference now asks the editor where the line actually is instead of multiplying its
+  number by the line height. That arithmetic was only ever right when every line is one row tall, which
+  stopped being true when collapsing arrived — a fold above the target already threw it off, quietly.
+
 - **Collapse unchanged context.** Long stretches both sides agree on fold behind a `42 unchanged lines`
   placeholder, keeping three lines either side of every change. A three-thousand-line file with two
   changes now reads as two changes instead of two screens of scrolling to find them. On by default, one

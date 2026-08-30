@@ -255,6 +255,22 @@ to the comparison's. Anything addressing the unified view must go through those;
 keeps `UnifiedScrollToRow` and `UnifiedFolds` separate from their side-by-side counterparts for exactly
 this reason, and computing either from the other's coordinates is wrong the moment a row splits.
 
+**Word wrap belongs to the unified view and CANNOT be given to the side-by-side one** (Diff). The two
+columns are aligned by having the same number of visual lines, which is what makes scroll sync a plain
+offset copy; a line long enough to wrap on one side and not the other pulls them apart by a line for
+every wrap above the viewport, silently and with nothing to throw. `DiffEditorPane.WordWrap` exists as
+a property but is bound only from `UnifiedView`, and the toolbar checkbox is hidden outside that view
+rather than disabled, per the hide-don't-disable rule. `WordWrapTests` pins that the side-by-side panes
+stay unwrapped whatever the setting says. Do not "finish the feature" by binding it in `DiffView`.
+
+**`EditorScroll.CenterOnLine` must ask the editor where a line IS, not multiply by line height** (Diff).
+It used to compute `(line - 1) * DefaultLineHeight`, which is only right when every document line is
+exactly one visual line tall - and neither view it serves is in that state: collapsing is on by default
+(a fold above the target removes its rows from the visual height) and the unified view can wrap. It
+now uses `TextView.GetVisualTopByDocumentLine`. The failure is silent - the pane scrolls somewhere
+plausible and simply does not centre the difference - so it will not announce itself if reintroduced.
+The `ScrollToLine` call before it is separate and still required; see the gotcha below.
+
 **Collapsing is a VIEW state, and folding must never remove a row** (Diff). `CollapsedRegions` returns
 ROW ranges and `DiffEditorPane` turns them into AvaloniaEdit folds, so the document still contains
 every line and editor line `i` is still `DiffResult.Lines[i]`. Filtering rows out of the document

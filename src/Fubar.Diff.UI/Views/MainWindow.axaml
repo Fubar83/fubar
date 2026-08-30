@@ -243,6 +243,17 @@
                               IsChecked="{Binding CollapseUnchanged}"
                               VerticalAlignment="Center" />
 
+                    <!-- Only in the unified view, which is the only view that CAN wrap: the two
+                         side-by-side panes are aligned by having the same number of visual lines, and
+                         a wrapped line on one side alone breaks that. Hidden rather than disabled
+                         elsewhere, per the rule the rest of this toolbar follows - a permanently grey
+                         box in the other two views would just be a question nobody can answer. -->
+                    <CheckBox Content="Wrap lines"
+                              ToolTip.Tip="Wrap long lines instead of scrolling sideways"
+                              IsChecked="{Binding WordWrap}"
+                              IsVisible="{Binding Pane.IsUnifiedViewVisible}"
+                              VerticalAlignment="Center" />
+
                     <!-- Side by side / Unified / Json. Always offered now: the first two apply to any
                          comparison, where Json alone did not, so this no longer hides itself for a
                          plain text file - Pane.Show still picks the right default for the content.

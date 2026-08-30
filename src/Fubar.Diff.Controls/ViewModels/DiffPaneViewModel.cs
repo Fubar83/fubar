@@ -143,6 +143,23 @@ public partial class DiffPaneViewModel : ObservableObject
     public partial bool SyntaxHighlighting { get; set; } = true;
 
     /// <summary>
+    /// Whether long lines wrap in the UNIFIED view.
+    ///
+    /// Unified only, and that is a constraint rather than an oversight. The side-by-side panes rest on
+    /// "editor line i is the same row in both", which is what makes scroll sync a plain offset copy;
+    /// wrapping breaks it the moment one side's line is long enough to take two visual lines and the
+    /// other's is not, and the columns drift apart by a line for every wrap above the viewport. The
+    /// unified view has one document and nothing to keep in step with, so it can simply wrap - and it
+    /// is the view people are in when the lines are too long to read anyway, which is why the option
+    /// belongs to it rather than being a global that does nothing half the time.
+    ///
+    /// Off by default: a wrapped line has no fixed height, so a screen of diff holds fewer changes,
+    /// and the reader loses the ability to scan down a column.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool WordWrap { get; set; }
+
+    /// <summary>
     /// Whether long stretches of unchanged context are hidden behind a collapsed placeholder.
     ///
     /// On by default, which is what every review tool does and the reason they are pleasant to read: a

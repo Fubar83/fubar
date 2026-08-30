@@ -18,6 +18,7 @@
     <views:DiffEditorPane x:Name="Pane"
                           Document="{Binding UnifiedDocument.Document}"
                           ShowInvisibles="{Binding ShowInvisibles}"
+                          WordWrap="{Binding WordWrap}"
                           SyntaxExtension="{Binding RightSyntaxExtension}"
                           SyntaxHighlighting="{Binding SyntaxHighlighting}"
                           Folds="{Binding UnifiedFolds}" />

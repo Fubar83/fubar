@@ -42,6 +42,17 @@ public partial class DiffEditorPane : UserControl
         AvaloniaProperty.Register<DiffEditorPane, bool>(nameof(ShowInvisibles));
 
     /// <summary>
+    /// Whether long lines wrap rather than scrolling horizontally.
+    ///
+    /// Only ever set by the unified view. Turning it on for one of the side-by-side panes would break
+    /// the row-count parity the two columns are aligned by - a wrapped line occupies two visual lines
+    /// on one side and one on the other, and the panes drift apart by a line for every wrap above the
+    /// viewport.
+    /// </summary>
+    public static readonly StyledProperty<bool> WordWrapProperty =
+        AvaloniaProperty.Register<DiffEditorPane, bool>(nameof(WordWrap));
+
+    /// <summary>
     /// The file extension whose grammar this side should be highlighted with (<c>.cs</c>, <c>.ts</c>),
     /// or null for none.
     ///
@@ -147,6 +158,12 @@ public partial class DiffEditorPane : UserControl
         set => SetValue(ShowInvisiblesProperty, value);
     }
 
+    public bool WordWrap
+    {
+        get => GetValue(WordWrapProperty);
+        set => SetValue(WordWrapProperty, value);
+    }
+
     public string? SyntaxExtension
     {
         get => GetValue(SyntaxExtensionProperty);
@@ -214,6 +231,12 @@ public partial class DiffEditorPane : UserControl
             // visual lines is what makes it run again.
             _invisibles.SetEnabled(change.GetNewValue<bool>());
             Editor.TextArea.TextView.Redraw();
+        }
+        else if (change.Property == WordWrapProperty)
+        {
+            // The editor recomputes its visual lines itself; the renderers all key off VisualLine,
+            // whose Height already covers every wrapped row of a document line, so they need nothing.
+            Editor.WordWrap = change.GetNewValue<bool>();
         }
         else if (change.Property == SyntaxExtensionProperty || change.Property == SyntaxHighlightingProperty)
         {

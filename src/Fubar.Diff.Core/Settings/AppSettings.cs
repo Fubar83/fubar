@@ -47,6 +47,12 @@ public sealed record AppSettings
     public bool CollapseUnchanged { get; init; } = true;
 
     /// <summary>
+    /// Wrap long lines in the unified view. Off by default, and unified-only - see
+    /// <c>DiffPaneViewModel.WordWrap</c> for why the side-by-side panes cannot have it.
+    /// </summary>
+    public bool WordWrap { get; init; }
+
+    /// <summary>
     /// Re-run a comparison when its files change on disk. On by default - see
     /// <c>ComparisonViewModel.AutoRefresh</c>.
     /// </summary>

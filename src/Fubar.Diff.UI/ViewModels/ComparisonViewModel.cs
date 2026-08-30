@@ -129,6 +129,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             NormalizeUnicode = settings.NormalizeUnicode;
             ShowInvisibles = settings.ShowInvisibles;
             CollapseUnchanged = settings.CollapseUnchanged;
+            WordWrap = settings.WordWrap;
             AutoRefresh = settings.AutoRefresh;
             IgnoreComments = settings.IgnoreComments;
             IgnoreBlankLines = settings.IgnoreBlankLines;
@@ -171,6 +172,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         NormalizeUnicode = NormalizeUnicode,
         ShowInvisibles = ShowInvisibles,
         CollapseUnchanged = CollapseUnchanged,
+        WordWrap = WordWrap,
         AutoRefresh = AutoRefresh,
         IgnoreComments = IgnoreComments,
         IgnoreBlankLines = IgnoreBlankLines,
@@ -345,6 +347,19 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     partial void OnCollapseUnchangedChanged(bool value)
     {
         Pane.CollapseUnchanged = value;
+        DisplayOptionChanged();
+    }
+
+    /// <summary>
+    /// Wrap long lines in the unified view. A display setting like the two above, and one the unified
+    /// view alone can offer - see <c>DiffPaneViewModel.WordWrap</c>.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool WordWrap { get; set; }
+
+    partial void OnWordWrapChanged(bool value)
+    {
+        Pane.WordWrap = value;
         DisplayOptionChanged();
     }
 
@@ -845,6 +860,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.RightSyntaxExtension = System.IO.Path.GetExtension(_comparison.Right.Path);
         Pane.SyntaxHighlighting = SyntaxHighlighting;
         Pane.CollapseUnchanged = CollapseUnchanged;
+        Pane.WordWrap = WordWrap;
 
         Pane.Show(
             result,
