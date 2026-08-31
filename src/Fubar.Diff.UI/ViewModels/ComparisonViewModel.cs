@@ -97,6 +97,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.Navigated += OnPaneNavigated;
         Pane.SideEdited += OnSideEdited;
 
+        // This host has the parser behind it, so it can offer the Json view's pretty buttons.
+        Pane.CanReformat = true;
+        Pane.FormattingChanged += (_, _) => Refresh();
+
         // Editing is offered only in the side-by-side view, so the toggle has to appear and disappear
         // with it rather than only when a comparison is re-run.
         Pane.PropertyChanged += (_, e) =>
@@ -139,6 +143,52 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.IsEditable = value && !IsBinaryComparison;
 
         DisplayOptionChanged();
+    }
+
+    // ---- Json formatting -------------------------------------------------------------------------
+
+    /// <summary>Spaces per level when a Json document is pretty-printed for reading.</summary>
+    [ObservableProperty]
+    public partial int JsonIndentSize { get; set; } = 2;
+
+    /// <summary>Indent with tabs instead of spaces.</summary>
+    [ObservableProperty]
+    public partial bool JsonUseTabs { get; set; }
+
+    /// <summary>Keep an object or array of only scalars on one line - see <see cref="JsonFormatOptions"/>.</summary>
+    [ObservableProperty]
+    public partial bool JsonInlineSimpleContainers { get; set; } = true;
+
+    /// <summary>Order properties by name when pretty-printing.</summary>
+    [ObservableProperty]
+    public partial bool JsonSortProperties { get; set; }
+
+    private JsonFormatOptions CurrentFormatOptions() => new()
+    {
+        IndentSize = JsonIndentSize,
+        UseTabs = JsonUseTabs,
+        InlineSimpleContainers = JsonInlineSimpleContainers,
+        SortProperties = JsonSortProperties,
+    };
+
+    // Formatting changes what is on screen and nothing about what was found, so it re-renders rather
+    // than re-comparing - and only matters at all while a side is being shown pretty-printed.
+    partial void OnJsonIndentSizeChanged(int value) => ReformatIfShowing();
+
+    partial void OnJsonUseTabsChanged(bool value) => ReformatIfShowing();
+
+    partial void OnJsonInlineSimpleContainersChanged(bool value) => ReformatIfShowing();
+
+    partial void OnJsonSortPropertiesChanged(bool value) => ReformatIfShowing();
+
+    private void ReformatIfShowing()
+    {
+        DisplayOptionChanged();
+
+        if (Pane.PrettyLeft || Pane.PrettyRight)
+        {
+            Refresh();
+        }
     }
 
     /// <summary>
@@ -350,6 +400,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             CollapseUnchanged = settings.CollapseUnchanged;
             WordWrap = settings.WordWrap;
             IsEditing = settings.Editing;
+            JsonIndentSize = settings.JsonIndentSize;
+            JsonUseTabs = settings.JsonUseTabs;
+            JsonInlineSimpleContainers = settings.JsonInlineSimpleContainers;
+            JsonSortProperties = settings.JsonSortProperties;
             AutoRefresh = settings.AutoRefresh;
             IgnoreComments = settings.IgnoreComments;
             IgnoreBlankLines = settings.IgnoreBlankLines;
@@ -394,6 +448,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         CollapseUnchanged = CollapseUnchanged,
         WordWrap = WordWrap,
         Editing = IsEditing,
+        JsonIndentSize = JsonIndentSize,
+        JsonUseTabs = JsonUseTabs,
+        JsonInlineSimpleContainers = JsonInlineSimpleContainers,
+        JsonSortProperties = JsonSortProperties,
         AutoRefresh = AutoRefresh,
         IgnoreComments = IgnoreComments,
         IgnoreBlankLines = IgnoreBlankLines,
@@ -1288,13 +1346,22 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         // comparison's pictures must not be on screen next to the new one's hex for a frame.
         Images.Show(_comparison.Binary);
 
+        // The Json view's text and the spans into it are produced together, because a change carries
+        // offsets into one specific string - reformatting a side without re-deriving them would leave
+        // every highlight pointing at the line a value used to be on.
+        var json = _comparisonService.FormatJsonForDisplay(
+            _comparison,
+            Pane.PrettyLeft,
+            Pane.PrettyRight,
+            CurrentFormatOptions());
+
         Pane.Show(
             result,
             _comparison.IsSemantic,
             _comparison.SemanticChanges,
-            _comparison.OriginalLeftText,
-            _comparison.OriginalRightText,
-            _comparison.OriginalSemanticChanges);
+            json.LeftText,
+            json.RightText,
+            json.Changes);
 
         // A skipped semantic pass is only worth mentioning when the user explicitly asked for JSON;
         // the service decides that and leaves the reason null otherwise.

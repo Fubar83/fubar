@@ -43,15 +43,38 @@
 
                 <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource BorderSubtle}" />
 
-                <views:RawJsonPane Grid.Column="2"
-                                   Text="{Binding LeftRawText}"
-                                   HighlightSpan="{Binding LeftHighlightSpan}" />
+                <!-- The pretty toggle sits ON the document rather than in the toolbar, because it is
+                     about THIS side: a minified file next to a formatted one is the case it exists
+                     for, and a single toolbar button could not say which of the two it meant. Hidden
+                     when the host cannot reformat - re-deriving the highlight spans against the new
+                     text needs a parser, which not every host has. -->
+                <Panel Grid.Column="2">
+                    <views:RawJsonPane Text="{Binding LeftRawText}"
+                                       HighlightSpan="{Binding LeftHighlightSpan}" />
+
+                    <ToggleButton Classes="toolbar-btn"
+                                  Content="Pretty"
+                                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                                  Margin="0,4,16,0" Padding="6,2" FontSize="11"
+                                  ToolTip.Tip="Re-lay-out this document for reading. Changes nothing about the comparison, and nothing on disk."
+                                  IsVisible="{Binding CanReformat}"
+                                  IsChecked="{Binding PrettyLeft}" />
+                </Panel>
 
                 <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderSubtle}" />
 
-                <views:RawJsonPane Grid.Column="4"
-                                   Text="{Binding RightRawText}"
-                                   HighlightSpan="{Binding RightHighlightSpan}" />
+                <Panel Grid.Column="4">
+                    <views:RawJsonPane Text="{Binding RightRawText}"
+                                       HighlightSpan="{Binding RightHighlightSpan}" />
+
+                    <ToggleButton Classes="toolbar-btn"
+                                  Content="Pretty"
+                                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                                  Margin="0,4,16,0" Padding="6,2" FontSize="11"
+                                  ToolTip.Tip="Re-lay-out this document for reading. Changes nothing about the comparison, and nothing on disk."
+                                  IsVisible="{Binding CanReformat}"
+                                  IsChecked="{Binding PrettyRight}" />
+                </Panel>
             </Grid>
 
             <GridSplitter x:Name="DetailSplitter"

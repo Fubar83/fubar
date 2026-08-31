@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
+using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Models;
 
@@ -142,6 +143,32 @@ public sealed class FileComparisonService : IFileComparisonService
         var lines = text.Split(["\r\n", "\n", "\r"], System.StringSplitOptions.None);
 
         return lines.Length > 1 && lines[^1].Length == 0 ? lines[..^1] : lines;
+    }
+
+    public JsonDisplay FormatJsonForDisplay(
+        FileComparison comparison,
+        bool prettyLeft,
+        bool prettyRight,
+        JsonFormatOptions format)
+    {
+        var left = comparison.OriginalLeftText;
+        var right = comparison.OriginalRightText;
+
+        if (!comparison.IsSemantic || (!prettyLeft && !prettyRight))
+        {
+            return new JsonDisplay(left, right, comparison.OriginalSemanticChanges);
+        }
+
+        var formattedLeft = prettyLeft ? _semanticPass.TryFormat(left, format) ?? left : left;
+        var formattedRight = prettyRight ? _semanticPass.TryFormat(right, format) ?? right : right;
+
+        // Re-derived against the text that will actually be shown. Skipping this would leave every
+        // highlight pointing at the line a value used to be on, which looks exactly like the
+        // comparison having gone wrong.
+        var changes = _semanticPass.TryCompareOriginalText(formattedLeft, formattedRight, comparison.Options)
+                      ?? comparison.OriginalSemanticChanges;
+
+        return new JsonDisplay(formattedLeft, formattedRight, changes);
     }
 
     public Task<FileComparison> CompareDocumentsAsync(

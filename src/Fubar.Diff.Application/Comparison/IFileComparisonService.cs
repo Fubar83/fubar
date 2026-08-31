@@ -2,6 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
+using Fubar.Diff.Core.Json;
 
 namespace Fubar.Diff.Application.Comparison;
 
@@ -51,6 +52,20 @@ public interface IFileComparisonService
         TextDocument right,
         ComparisonOptions options,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Applies the Json view's per-side pretty-printing, re-deriving the change spans to match.
+    ///
+    /// A display concern, not a comparison one: it changes what the user reads and nothing about what
+    /// was found. It lives here rather than in the view model because re-deriving the spans needs the
+    /// parser, and because the two halves - the text and the spans into it - must never be computed
+    /// separately.
+    /// </summary>
+    JsonDisplay FormatJsonForDisplay(
+        FileComparison comparison,
+        bool prettyLeft,
+        bool prettyRight,
+        JsonFormatOptions format);
 
     /// <summary>
     /// Re-runs the comparison over already-loaded documents. Toggling "ignore whitespace" should not

@@ -119,6 +119,36 @@
 
                 <fc:Divider />
 
+                <!-- Its own section, kept apart from JSON COMPARE below on purpose: nothing here
+                     changes what the comparison finds. It only decides how a document is laid out
+                     when the Json view's Pretty button is on, and nothing formatted this way is ever
+                     written to a file. -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="JSON FORMATTING" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="How the Json view re-lays-out a document when you press Pretty. Display only - it never changes what was found, and never touches the file."
+                               Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Indent" VerticalAlignment="Center" />
+                        <NumericUpDown Value="{Binding JsonIndentSize}"
+                                       Minimum="0" Maximum="8" Increment="1"
+                                       FormatString="0" Width="110"
+                                       IsEnabled="{Binding !JsonUseTabs}"
+                                       ToolTip.Tip="Spaces per level" />
+                        <CheckBox Content="Use tabs" IsChecked="{Binding JsonUseTabs}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <CheckBox Content="Keep simple objects and arrays on one line"
+                              IsChecked="{Binding JsonInlineSimpleContainers}"
+                              ToolTip.Tip="An object or array holding only scalars stays on one line. Without this an array of ten small objects becomes forty lines, most of them braces - anything genuinely nested still expands." />
+                    <CheckBox Content="Sort keys alphabetically"
+                              IsChecked="{Binding JsonSortProperties}"
+                              ToolTip.Tip="Easier to read two documents against each other, and a lie about what the file contains - worth it when the two sides come from serializers that disagree about ordering." />
+                </StackPanel>
+
+                <fc:Divider />
+
                 <StackPanel Spacing="8">
                     <TextBlock Text="JSON COMPARE" FontSize="11" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextSecondary}" />

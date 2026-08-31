@@ -430,6 +430,36 @@ public partial class DiffPaneViewModel : ObservableObject
     // correct here - only the visibilities to re-raise.
     partial void OnIsSemanticChanged(bool value) => RaiseViewVisibility();
 
+    // ---- Json formatting --------------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether the host can re-lay-out a document for reading. False leaves the pretty buttons hidden.
+    ///
+    /// Asked of the host rather than assumed, for the same reason <see cref="CanIgnorePaths"/> is:
+    /// re-deriving the change spans against reformatted text needs a parser, which this view model
+    /// does not have and should not acquire. A host that cannot do it does not offer it.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CanReformat { get; set; }
+
+    /// <summary>Whether the left document is shown pretty-printed rather than as it is on disk.</summary>
+    [ObservableProperty]
+    public partial bool PrettyLeft { get; set; }
+
+    /// <summary>Whether the right document is shown pretty-printed.</summary>
+    [ObservableProperty]
+    public partial bool PrettyRight { get; set; }
+
+    /// <summary>
+    /// Raised when a pretty toggle moved, so the host can supply the reformatted text AND the change
+    /// spans that go with it. The two must arrive together - see <c>JsonDisplay</c>.
+    /// </summary>
+    public event EventHandler? FormattingChanged;
+
+    partial void OnPrettyLeftChanged(bool value) => FormattingChanged?.Invoke(this, EventArgs.Empty);
+
+    partial void OnPrettyRightChanged(bool value) => FormattingChanged?.Invoke(this, EventArgs.Empty);
+
     // ---- Json view --------------------------------------------------------------------------------
 
     /// <summary>

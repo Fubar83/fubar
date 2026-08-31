@@ -59,6 +59,18 @@ public sealed record AppSettings
     public bool Editing { get; init; }
 
     /// <summary>
+    /// How the Json view lays a document out when the pretty button is on. Display only - see
+    /// <c>JsonFormatOptions</c>, and note that none of this changes what the comparison found.
+    /// </summary>
+    public int JsonIndentSize { get; init; } = 2;
+
+    public bool JsonUseTabs { get; init; }
+
+    public bool JsonInlineSimpleContainers { get; init; } = true;
+
+    public bool JsonSortProperties { get; init; }
+
+    /// <summary>
     /// Re-run a comparison when its files change on disk. On by default - see
     /// <c>ComparisonViewModel.AutoRefresh</c>.
     /// </summary>

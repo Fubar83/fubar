@@ -56,6 +56,10 @@ public class WordWrapSettingTests
             return Task.FromResult(comparison);
         }
 
+        public JsonDisplay FormatJsonForDisplay(
+            FileComparison comparison, bool prettyLeft, bool prettyRight, Fubar.Diff.Core.Json.JsonFormatOptions format) =>
+            new(comparison.OriginalLeftText, comparison.OriginalRightText, comparison.OriginalSemanticChanges);
+
         public FileComparison Recompare(FileComparison comparison, ComparisonOptions options)
         {
             Comparisons++;

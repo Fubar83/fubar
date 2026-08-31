@@ -102,6 +102,17 @@ public sealed class JsonSemanticPass
     }
 
     /// <summary>
+    /// Re-lays-out a document for reading, or returns null when it does not parse.
+    ///
+    /// Null rather than the original text, so the caller can tell "nothing to do" from "this is not
+    /// JSON" - the second means the pretty button should not have been offered at all.
+    /// </summary>
+    public string? TryFormat(string text, JsonFormatOptions format) =>
+        _parser.TryParse(text, out var root, out _) && root is not null
+            ? JsonFormatter.Format(root, format)
+            : null;
+
+    /// <summary>
     /// Falls back to the text result. In <see cref="ComparisonMode.Auto"/> this is unremarkable - most
     /// files are not JSON - so no reason is reported and the UI stays quiet. When the user explicitly
     /// asked for JSON, the parse error is worth surfacing.
