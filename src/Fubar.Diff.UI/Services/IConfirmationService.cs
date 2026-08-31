@@ -29,4 +29,12 @@ public interface IConfirmationService
     /// keypress is most likely to land on.
     /// </summary>
     Task<int> ChooseAsync(string title, string message, IReadOnlyList<string> choices);
+
+    /// <summary>
+    /// Asks for a line of text, returning null when the user cancels or types nothing.
+    ///
+    /// Null rather than an empty string, so "cancelled" and "cleared it deliberately" stay
+    /// distinguishable at the call site even where they happen to do the same thing.
+    /// </summary>
+    Task<string?> AskForTextAsync(string title, string message, string initial = "");
 }

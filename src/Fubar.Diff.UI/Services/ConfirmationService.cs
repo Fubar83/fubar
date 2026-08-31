@@ -33,6 +33,18 @@ public sealed class ConfirmationService : IConfirmationService
             .ConfigureAwait(true);
     }
 
+    public async Task<string?> AskForTextAsync(string title, string message, string initial = "")
+    {
+        if (Owner is not { } owner)
+        {
+            return null;
+        }
+
+        return await new PromptWindow(title, message, initial)
+            .ShowDialog<string?>(owner)
+            .ConfigureAwait(true);
+    }
+
     private static Window? Owner
     {
         get

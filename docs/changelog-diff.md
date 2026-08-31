@@ -29,6 +29,38 @@ All notable changes to this project are documented here. The format is based on
   its word-level highlights: the two lines the aligner paired turn out not to be counterparts, so
   highlighting the letters that differ between them would invite reading a change nobody made.
 
+- **Json view: right-click an array to choose how its elements are matched.** *Match by position*, or
+  by any field that could identify them — the auto-detected one first and labelled as suggested, then
+  every other field that would actually work. A field that is missing from some element, or repeated
+  across two, is not offered: it would silently fail to match and produce a diff that looks like data
+  loss. *Match by another field…* accepts anything, including a dotted path like `meta.id` for
+  identity that is nested.
+
+  The choice is **per array**, which is the point — one document can hold a list of users, where order
+  means nothing and matching by id is the only way to read a diff of it, beside a list of migration
+  steps where order is the entire content.
+
+- **Json view: an added or removed field now highlights its key as well as its value.** Previously
+  only the value was coloured, leaving the key beside it looking untouched — the opposite of what
+  happened. A value that merely *changed* still highlights the value alone, because the key really is
+  unchanged.
+
+- **Json view: a Pretty button on each document.** Re-lays-out that side for reading — the case being
+  a minified file next to a formatted one. Per document rather than one button in the toolbar, since a
+  single one could not say which side it meant. Settings for indent size or tabs, whether an object of
+  only scalars stays on one line, and whether to sort keys. It changes nothing about what the
+  comparison found and never touches the file, and every number is written back exactly as the author
+  wrote it — `1.0` stays `1.0`.
+
+- **Json view: the change tree is simpler to use.** Clicking anywhere along a row expands or collapses
+  it, rather than only the chevron doing that while the rest merely selected.
+
+- **The View selector no longer offers Json.** The Compare selector (Auto / Text / Json) already
+  decides that, and having it in both places meant picking Text in one and Json in the other was a
+  contradiction the app resolved behind your back. View now chooses between side-by-side and unified,
+  and hides itself when the Json view is showing. To see JSON as two columns of text, set Compare to
+  Text. Your side-by-side/unified preference now survives the next comparison, too.
+
 - **Nothing is lost silently any more.** Closing a tab or the window with unsaved changes now asks —
   *Save and close*, *Close without saving*, or Cancel — and naming the files that would be lost rather
   than saying "you have unsaved changes". Cancelling, or dismissing the dialog, keeps the tab open:

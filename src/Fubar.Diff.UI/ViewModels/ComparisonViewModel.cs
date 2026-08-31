@@ -101,6 +101,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.CanReformat = true;
         Pane.FormattingChanged += (_, _) => Refresh();
 
+        // The pane asks; this owns the comparison options, so it answers and re-compares.
+        Pane.ArrayKeyChosen += (_, option) => _ = ApplyArrayKeyAsync(option.Path, option.Key);
+        Pane.CustomArrayKeyRequested += (_, path) => _ = AskForArrayKeyAsync(path);
+
         // Editing is offered only in the side-by-side view, so the toggle has to appear and disappear
         // with it rather than only when a comparison is re-run.
         Pane.PropertyChanged += (_, e) =>
@@ -143,6 +147,84 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.IsEditable = value && !IsBinaryComparison;
 
         DisplayOptionChanged();
+    }
+
+    // ---- Array matching --------------------------------------------------------------------------
+
+    /// <summary>
+    /// Arrays the user has asked to compare by position, by path - the per-array counterpart of the
+    /// global <see cref="MatchArraysByPosition"/> switch.
+    /// </summary>
+    public ObservableCollection<string> PositionalArrays { get; } = [];
+
+    /// <summary>
+    /// Records how one array should be matched and re-compares.
+    ///
+    /// A null key means "by position". The two lists are kept mutually exclusive rather than layered,
+    /// because an array cannot both be keyed and positional, and leaving a stale entry in the other
+    /// list would make the menu's check marks lie about what is happening.
+    /// </summary>
+    public async Task ApplyArrayKeyAsync(string path, string? key)
+    {
+        var existing = ArrayKeyOverrides.FirstOrDefault(o => string.Equals(o.Path, path, StringComparison.Ordinal));
+        if (existing is not null)
+        {
+            ArrayKeyOverrides.Remove(existing);
+        }
+
+        while (PositionalArrays.Remove(path))
+        {
+            // Remove every copy, not just the first - a repeated entry would survive as a rule the
+            // user cannot see and cannot undo from the menu.
+        }
+
+        if (key is null)
+        {
+            PositionalArrays.Add(path);
+        }
+        else
+        {
+            ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(path, key));
+        }
+
+        StatusMessage = key is null
+            ? $"{path}: comparing by position."
+            : $"{path}: matching elements by {key}.";
+
+        if (_loadingSettings)
+        {
+            return;
+        }
+
+        OptionsChanged?.Invoke(this, System.EventArgs.Empty);
+
+        // Awaited rather than fired and forgotten, unlike an option checkbox: the caller here is a
+        // menu click that the user is watching for a result, and a test has something to assert once
+        // it lands.
+        await RecompareAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Asks for a field the menu did not offer - one only some elements carry today, or nested deeper
+    /// than the scanner looks. A dotted path works, so <c>meta.id</c> is as valid as <c>id</c>.
+    /// </summary>
+    private async Task AskForArrayKeyAsync(string path)
+    {
+        if (_confirmation is null)
+        {
+            return;
+        }
+
+        var key = await _confirmation
+            .AskForTextAsync(
+                "Match elements by",
+                $"Which field identifies the elements of {path}?\n\nA name, or a dotted path into each element - for example meta.id.")
+            .ConfigureAwait(true);
+
+        if (key is not null)
+        {
+            await ApplyArrayKeyAsync(path, key).ConfigureAwait(true);
+        }
     }
 
     // ---- Json formatting -------------------------------------------------------------------------
@@ -1109,6 +1191,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             MatchArraysByPosition = MatchArraysByPosition,
             IgnoreNullVsMissing = IgnoreNullVsMissing,
             ArrayKeyOverrides = ArrayKeyOverrides.ToDictionary(e => e.Path, e => e.Key),
+            PositionalArrays = [.. PositionalArrays],
             IgnoredPaths = [.. IgnoredPaths],
         },
     };
@@ -1338,6 +1421,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.CollapseUnchanged = CollapseUnchanged;
         Pane.WordWrap = WordWrap;
 
+        // Before Show: the tree is annotated with these as it is built, so a right-click on an array
+        // row has its options from the first frame rather than after the next comparison.
+        Pane.ArrayKeys = _comparison.ArrayKeys;
+
         // Re-asserted per comparison rather than only when the toggle moves: a pair that turns out to
         // be binary must not stay editable just because the previous one was.
         Pane.IsEditable = IsEditing && !_comparison.IsBinary;
@@ -1519,7 +1606,16 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// Re-runs against the loaded documents when an option changes. Silent when nothing is loaded -
     /// toggling a checkbox before choosing files is not an error.
     /// </summary>
-    private async void Recompare()
+    private async void Recompare() => await RecompareAsync().ConfigureAwait(true);
+
+    /// <summary>
+    /// <see cref="Recompare"/>, awaitable.
+    ///
+    /// Split out because the fire-and-forget form is right for a property setter - a checkbox cannot
+    /// await anything - and wrong for a caller that has something to do afterwards, including a test
+    /// that wants to assert on the result rather than sleep and hope.
+    /// </summary>
+    public async Task RecompareAsync()
     {
         if (!_comparison.HasBothSides)
         {

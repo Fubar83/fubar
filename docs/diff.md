@@ -44,8 +44,8 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   is never matched with an unrelated one — where the answer is ambiguous, nothing is claimed. Works for
   a block that travelled far enough to have no counterpart *and* for two methods that simply swapped
   places, which a line differ reports as a pile of rewritten lines.
-- **Side-by-side or unified.** The **View** selector switches between the two-editor view and a single
-  patch-style document — removals then additions, shared context between them — for a narrow window, a
+- **Side-by-side or unified.** The **View** selector switches a TEXT comparison between the two-editor
+  view and a single patch-style document — removals then additions, shared context between them — for a narrow window, a
   screenshot, or anyone who reads patches all day. The unified view can **wrap long lines**, which the
   side-by-side one cannot: two columns stay aligned by having the same number of visual lines, and a
   line that wraps on one side alone would pull them apart.
@@ -108,10 +108,21 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   documents, each shown exactly as given (a minified file stays minified, not reformatted) - where
   stepping through changes (Prev/Next, or a click in the tree) highlights each one directly in both,
   immune to formatting or property-order differences since neither side depends on lining up with the
-  other. It has its own **Diff pane** too, the same close-up shown below the aligned Text view but
-  built from the change's own location in each side's raw text rather than an aligned row range.
-  **Text** remains available for the aligned side-by-side view, and is the only mode for anything that
-  does not parse as JSON.
+  other. An added or removed field highlights its key as well as its value; one whose value merely
+  changed highlights the value alone. It has its own **Diff pane** too, the same close-up shown below
+  the aligned Text view but built from the change's own location in each side's raw text rather than
+  an aligned row range. Set **Compare** to **Text** for the aligned side-by-side view instead — which
+  is also the only mode for anything that does not parse as JSON.
+- **Right-click an array in the change tree** to choose how its elements are matched: by position, or
+  by any field that could identify them — the auto-detected one first, then every other field that
+  would actually work, plus a dotted path like `meta.id` for identity that is nested. A field missing
+  from some element, or repeated across two, is never offered: it would silently fail to match. The
+  choice is per array, because one document can hold a list of users where order means nothing beside
+  a list of steps where order is the whole content.
+- **A Pretty button on each JSON document** re-lays-out that side for reading — for a minified file
+  next to a formatted one. Indent size or tabs, whether simple objects stay on one line, and key
+  sorting are all in Settings. It changes nothing about the comparison and never touches the file, and
+  numbers are written back exactly as authored.
 - **Comparison options**: ignore leading/trailing whitespace, ignore case, or reformat (pretty-print
   JSON/XML in the Text view - opt-in, never automatic; the Json view always shows both sides exactly as
   given regardless of this) from the toolbar; a **Settings…** window holds the rest in three sections -

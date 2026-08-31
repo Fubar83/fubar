@@ -255,6 +255,42 @@ to the comparison's. Anything addressing the unified view must go through those;
 keeps `UnifiedScrollToRow` and `UnifiedFolds` separate from their side-by-side counterparts for exactly
 this reason, and computing either from the other's coordinates is wrong the moment a row splits.
 
+**Json is not a VIEW mode** (Diff). `DiffViewMode` has two members - side by side and unified - and both
+are layouts of a TEXT comparison. Whether the Json view shows is decided by whether the semantic pass
+ran, which the Auto/Text/Json Compare selector controls. Having it in both places meant two controls
+answering the same question, and picking Text in one and Json in the other was a contradiction the app
+resolved behind the user's back (`OnIsSemanticChanged` used to quietly reset `ViewMode`). Do not add it
+back: to see JSON as two columns of text, compare it as text. A consequence worth keeping: `Show` no
+longer resets `ViewMode`, so a preference for unified survives the next comparison.
+
+**A change's span is the whole `"name": value` pair when the pair APPEARED or WENT AWAY** (Diff).
+`JsonChange.LeftSpan`/`RightSpan` union the name span with the value's for `Inserted`, `Deleted` and
+`IsReorder`, and return the value alone for an ordinary `Modified`. The parser has always recorded
+`JsonAstProperty.NameSpan` and the change has always carried it, but the view highlighted
+`Left?.Span` - the value - so an added field showed a coloured value beside an untouched-looking key.
+Do not extend the union to `Modified`: the key is still there and still spelled the same, and
+colouring it claims an edit nobody made.
+
+**Reformatting for display re-derives the change spans, and the two travel together** (Diff). A
+`JsonChange` carries offsets into ONE specific string, so `FormatJsonForDisplay` returns the text and
+the changes as a single `JsonDisplay` - reformatting a side without re-deriving them leaves every
+highlight pointing at the line a value used to be on, which reads as the comparison having broken.
+That is also why it lives on the service rather than in the view model: re-deriving needs the parser.
+`JsonFormatter` works from the AST and writes every scalar back as its own `RawText`, so `1.0` stays
+`1.0` and `1e3` stays `1e3` - a formatter that re-derived values would edit the file's numbers while
+claiming to have changed only whitespace.
+
+**Array matching is per-array, and only fields that WOULD work are offered** (Diff).
+`JsonComparisonOptions.PositionalArrays` is the per-path counterpart of the global
+`MatchArraysByPosition`, because one document can hold a list of users where order means nothing
+beside a list of steps where order is the whole content. `ArrayKeyScanner` finds every array and the
+fields that could identify its elements, applying the same bar `ArrayKeyResolver` does - present on
+every element of BOTH sides, scalar, distinct - so a field on the menu always matches; one that
+silently failed would produce a diff that looks like data loss. An explicit override beats positional,
+including the global switch, because naming a key for one array is the more specific instruction. Keys
+may be dotted paths (`meta.id`), resolved by `ArrayKeyResolver.ValueFor`, which is also what
+`JsonSemanticDiffer.KeyOf` goes through.
+
 **A prompt that cannot be shown is a NO, never a yes** (Diff). `IConfirmationService.ChooseAsync`
 returns -1 for "none of these", and every caller treats it as the safe answer: closing a tab is
 refused, a disk conflict keeps the user's changes. `ConfirmationService` returns -1 when there is no

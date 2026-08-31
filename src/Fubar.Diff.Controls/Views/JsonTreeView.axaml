@@ -56,6 +56,43 @@
                          reach nothing. The row itself is already full width and already takes hover,
                          which is what makes the whole line one target - see JsonTreeView.axaml.cs. -->
                     <Border Background="Transparent" HorizontalAlignment="Stretch">
+
+                        <!-- Only on array rows, because it is the only row where there is a real
+                             question: whether the elements have identity, and which field carries it.
+                             Every array row in this tree has differences beneath it by construction -
+                             the tree is built from change paths - so there is no separate "does this
+                             one differ" test to make. -->
+                        <Border.ContextMenu>
+                            <ContextMenu IsVisible="{Binding IsArray}">
+                                <MenuItem Header="How should this array be matched?" IsEnabled="False" />
+                                <Separator />
+
+                                <!-- The list is built per row: match by position first, then the
+                                     suggested key labelled as such, then every other field that would
+                                     actually work as one. A field that is missing somewhere, or
+                                     repeated, is not offered - it would silently fail to match and
+                                     produce a diff that looks like data loss. -->
+                                <MenuItem Header="Match by" ItemsSource="{Binding ArrayKeyOptions}">
+                                    <MenuItem.ItemContainerTheme>
+                                        <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                                      x:DataType="vm:ArrayKeyOption">
+                                            <Setter Property="Header" Value="{Binding Label}" />
+                                            <Setter Property="Command"
+                                                    Value="{Binding #Root.((vm:DiffPaneViewModel)DataContext).ChooseArrayKeyCommand}" />
+                                            <Setter Property="CommandParameter" Value="{Binding}" />
+                                        </ControlTheme>
+                                    </MenuItem.ItemContainerTheme>
+                                </MenuItem>
+
+                                <!-- For identity the scanner cannot see: a field only some elements
+                                     have today, or one nested deeper than it looks for. Accepts a
+                                     dotted path, so "meta.id" works as well as "id". -->
+                                <MenuItem Header="Match by another field…"
+                                          Command="{Binding #Root.((vm:DiffPaneViewModel)DataContext).RequestCustomArrayKeyCommand}"
+                                          CommandParameter="{Binding Path}" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
+
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Classes="path" Text="{Binding Label}" VerticalAlignment="Center"
                                    Classes.ignored="{Binding IsIgnored}" />

@@ -55,6 +55,17 @@ public sealed record FileComparison(
     /// </summary>
     public IReadOnlyList<JsonChange> OriginalSemanticChanges { get; init; } = [];
 
+    /// <summary>
+    /// What each array in the pair could be matched by, keyed by JSON path.
+    ///
+    /// Carried on the result so the change tree can offer the choice on a right-click without going
+    /// back to the parser: it needs to know which tree rows ARE arrays and what fields their elements
+    /// share, and neither is answerable from the change list alone - a change tells you a value
+    /// differed, not what else was in the object beside it.
+    /// </summary>
+    public IReadOnlyDictionary<string, ArrayKeyChoices> ArrayKeys { get; init; } =
+        new Dictionary<string, ArrayKeyChoices>();
+
     /// <summary>The left side's text exactly as given, before any canonicalisation for alignment.</summary>
     public string OriginalLeftText { get; init; } = string.Empty;
 

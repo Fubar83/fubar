@@ -430,6 +430,44 @@ public partial class DiffPaneViewModel : ObservableObject
     // correct here - only the visibilities to re-raise.
     partial void OnIsSemanticChanged(bool value) => RaiseViewVisibility();
 
+    // ---- Array matching ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// What each array in the comparison could be matched by, keyed by JSON path. Supplied by the host
+    /// BEFORE <see cref="Show"/>, like the syntax extensions - the tree is annotated as it is built.
+    ///
+    /// Empty in a host that cannot act on the choice, which leaves the right-click menu off.
+    /// </summary>
+    public IReadOnlyDictionary<string, ArrayKeyChoices> ArrayKeys { get; set; } =
+        new Dictionary<string, ArrayKeyChoices>();
+
+    /// <summary>
+    /// Raised when the user picks how an array should be matched. The host owns the comparison
+    /// options, so it applies the choice and re-compares; this view model only asks.
+    /// </summary>
+    public event EventHandler<ArrayKeyOption>? ArrayKeyChosen;
+
+    /// <summary>Raised when the user asks to name a field the menu did not offer.</summary>
+    public event EventHandler<string>? CustomArrayKeyRequested;
+
+    [RelayCommand]
+    private void ChooseArrayKey(ArrayKeyOption? option)
+    {
+        if (option is not null)
+        {
+            ArrayKeyChosen?.Invoke(this, option);
+        }
+    }
+
+    [RelayCommand]
+    private void RequestCustomArrayKey(string? path)
+    {
+        if (!string.IsNullOrEmpty(path))
+        {
+            CustomArrayKeyRequested?.Invoke(this, path);
+        }
+    }
+
     // ---- Json formatting --------------------------------------------------------------------------
 
     /// <summary>
@@ -708,7 +746,7 @@ public partial class DiffPaneViewModel : ObservableObject
         // The tree (paths, kinds, ignore status) is identical either way, so it is built from the
         // canonicalized list like everything else in Text mode; only navigation/highlighting needs
         // spans into the ORIGINAL text.
-        var (roots, byPath) = JsonChangeNodeViewModel.Build(semanticChanges ?? []);
+        var (roots, byPath) = JsonChangeNodeViewModel.Build(semanticChanges ?? [], ArrayKeys);
         SemanticTree = roots;
         _treeNodesByPath = byPath;
         _semanticChanges = originalSemanticChanges ?? semanticChanges ?? [];

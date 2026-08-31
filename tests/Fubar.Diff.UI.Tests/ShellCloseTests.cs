@@ -79,6 +79,9 @@ public class ShellCloseTests
         public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
             Task.FromResult(answer == 0);
 
+        public Task<string?> AskForTextAsync(string title, string message, string initial = "") =>
+            throw new NotSupportedException("these tests never ask for text");
+
         public Task<int> ChooseAsync(string title, string message, IReadOnlyList<string> choices)
         {
             Asked++;

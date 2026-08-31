@@ -64,6 +64,9 @@ public class FolderCopyTests
             return Task.FromResult(answer);
         }
 
+        public Task<string?> AskForTextAsync(string title, string message, string initial = "") =>
+            throw new NotSupportedException("these tests never ask for text");
+
         public Task<int> ChooseAsync(string title, string message, IReadOnlyList<string> choices) =>
             throw new NotSupportedException("folder copying asks yes/no questions only");
     }

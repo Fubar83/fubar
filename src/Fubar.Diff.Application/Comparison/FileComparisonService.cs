@@ -307,6 +307,13 @@ public sealed class FileComparisonService : IFileComparisonService
             OriginalLeftText = trueOriginalLeftText,
             OriginalRightText = trueOriginalRightText,
 
+            // From the original text, like the changes the tree is built from - the paths are
+            // structural either way, but scanning the same documents keeps the two in step if that
+            // ever stops being true.
+            ArrayKeys = semantic.Applied
+                ? _semanticPass.ScanArrays(trueOriginalLeftText, trueOriginalRightText, options)
+                : new Dictionary<string, ArrayKeyChoices>(),
+
             // Invisible in the lines by construction (the reader consumes the BOM and splits on every
             // terminator), so it has to be carried alongside them or it is lost entirely.
             FormatDifference = TextFormatComparer.Compare(leftDoc.Format, rightDoc.Format),

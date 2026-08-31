@@ -268,8 +268,10 @@ public static class JsonSemanticDiffer
         }
     }
 
+    // Through ArrayKeyResolver.ValueFor rather than Find, so a key naming something nested -
+    // "meta.id" - matches elements the same way the resolver decided it could.
     private static string? KeyOf(JsonAstNode node, string key) =>
-        node is JsonAstObject obj && obj.Find(key)?.Value is JsonAstScalar scalar
+        node is JsonAstObject obj && ArrayKeyResolver.ValueFor(obj, key) is { } scalar
             ? ArrayKeyResolver.KeyOf(scalar)
             : null;
 

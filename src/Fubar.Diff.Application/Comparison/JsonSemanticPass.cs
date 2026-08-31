@@ -102,6 +102,26 @@ public sealed class JsonSemanticPass
     }
 
     /// <summary>
+    /// What each array in the pair could be matched by, so the change tree can offer a real choice on
+    /// a right-click rather than a text box the user fills from memory. Empty when either side does
+    /// not parse.
+    /// </summary>
+    public IReadOnlyDictionary<string, ArrayKeyChoices> ScanArrays(
+        string leftText,
+        string rightText,
+        ComparisonOptions options)
+    {
+        if (options.Mode == ComparisonMode.Text
+            || !_parser.TryParse(leftText, out var left, out _)
+            || !_parser.TryParse(rightText, out var right, out _))
+        {
+            return new Dictionary<string, ArrayKeyChoices>();
+        }
+
+        return ArrayKeyScanner.Scan(left, right, options.Json);
+    }
+
+    /// <summary>
     /// Re-lays-out a document for reading, or returns null when it does not parse.
     ///
     /// Null rather than the original text, so the caller can tell "nothing to do" from "this is not
