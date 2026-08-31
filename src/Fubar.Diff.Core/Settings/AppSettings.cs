@@ -77,6 +77,12 @@ public sealed record AppSettings
     public bool AutoRefresh { get; init; } = true;
 
     /// <summary>
+    /// Re-run the comparison as an editable pane is typed into, shortly after typing stops. On by
+    /// default; with it off the diff waits for F5 - see <c>ComparisonViewModel.LiveDiff</c>.
+    /// </summary>
+    public bool LiveDiff { get; init; } = true;
+
+    /// <summary>
     /// Regular expressions whose matches are ignored when comparing - a build timestamp, a generated
     /// GUID, a version stamp. See <c>LinePatternMask</c>.
     /// </summary>

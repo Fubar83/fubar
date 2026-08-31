@@ -154,13 +154,13 @@ public partial class MergeViewModel : ViewModelBase
     /// <summary>
     /// Whether to warn that saving now would keep the ancestor's version somewhere.
     ///
-    /// Shown as a banner rather than blocking the save: stopping half way through a long merge to save
-    /// what you have is a legitimate thing to want, and the domain has a defined answer for an
+    /// Said in the status bar rather than blocking the save: stopping half way through a long merge
+    /// to save what you have is a legitimate thing to want, and the domain has a defined answer for an
     /// unresolved region. What is NOT acceptable is that answer being a surprise.
     /// </summary>
     public bool HasUnresolvedConflicts => UnresolvedConflicts > 0;
 
-    /// <summary>Names what would happen on save, for the banner.</summary>
+    /// <summary>Names what would happen on save, for the status bar.</summary>
     public string UnresolvedDetail =>
         $"{UnresolvedConflicts} conflict(s) still unresolved - saving now keeps the base version for those.";
 

@@ -75,9 +75,14 @@
 
                 <!-- ...and collapsed to a summary once a merge is on screen, since the row it costs is
                      a row of the thing the window exists to show. -->
-                <Button Classes="link-btn"
+                <!-- toolbar-btn, like every other button in the window. It used to carry a "link-btn"
+                     class that no style has ever defined, so it rendered as a stock Fluent button
+                     among a row of flat ones - the kind of mismatch that is invisible in a diff and
+                     obvious on screen. -->
+                <Button Classes="toolbar-btn"
                         HorizontalAlignment="Left"
                         IsVisible="{Binding !IsFileRowExpanded}"
+                        ToolTip.Tip="Change the files being merged"
                         Command="{Binding ToggleFileRowCommand}"
                         Content="{Binding FileSummary}" />
 
@@ -91,17 +96,20 @@
                     <Button Classes="toolbar-btn" Content="Next ›" Command="{Binding Pane.NextRegionCommand}"
                             ToolTip.Tip="Next region (F8)" />
 
-                    <CheckBox Content="Conflicts only"
-                              IsChecked="{Binding Pane.ConflictsOnly}"
-                              ToolTip.Tip="Stop only on regions both sides changed. A merge of any size is mostly regions only one side touched, and those are already decided." />
+                    <!-- Toggle buttons rather than check boxes, matching the comparison window: same
+                         box, same height and same hover as the buttons either side, instead of a tick
+                         box sitting at its own height in a row of buttons. -->
+                    <ToggleButton Classes="toolbar-btn" Content="Conflicts only"
+                                  IsChecked="{Binding Pane.ConflictsOnly}"
+                                  ToolTip.Tip="Stop only on regions both sides changed. A merge of any size is mostly regions only one side touched, and those are already decided." />
 
-                    <CheckBox Content="Diff pane"
-                              IsChecked="{Binding Pane.IsDetailVisible}"
-                              ToolTip.Tip="Show the three versions of the current region stacked below, so they can be read together instead of across three columns." />
+                    <ToggleButton Classes="toolbar-btn" Content="Diff pane"
+                                  IsChecked="{Binding Pane.IsDetailVisible}"
+                                  ToolTip.Tip="Show the three versions of the current region stacked below, so they can be read together instead of across three columns." />
 
-                    <CheckBox Content="Collapse unchanged"
-                              IsChecked="{Binding Pane.CollapseUnchanged}"
-                              ToolTip.Tip="Hide long stretches all three files agree on. Worth more in a merge than in a diff: most regions resolve themselves, so what you are hunting is the few that do not." />
+                    <ToggleButton Classes="toolbar-btn" Content="Collapse"
+                                  IsChecked="{Binding Pane.CollapseUnchanged}"
+                                  ToolTip.Tip="Hide long stretches all three files agree on. Worth more in a merge than in a diff: most regions resolve themselves, so what you are hunting is the few that do not." />
 
                     <fc:Divider Orientation="Vertical" />
 
@@ -138,36 +146,41 @@
             </StackPanel>
         </Border>
 
-        <!-- Status line. -->
+        <!-- Status bar: what the merge is doing, and how much of it is still undecided. The
+             unresolved count used to be an amber band across the top, above the columns it was about;
+             it is the same warning either way, and down here it does not push the merge down a row to
+             say it. Errors keep their band - see below. -->
         <Border DockPanel.Dock="Bottom"
                 Background="{DynamicResource BgHeader}"
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,1,0,0"
-                Padding="10,6">
-            <TextBlock Text="{Binding StatusMessage}"
-                       Foreground="{DynamicResource TextSecondary}"
-                       FontSize="11" TextWrapping="Wrap" />
+                Padding="10,5">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" TextTrimming="CharacterEllipsis" />
+
+                <TextBlock Grid.Column="1" Text="{Binding UnresolvedDetail}"
+                           VerticalAlignment="Center"
+                           Margin="10,0,0,0"
+                           ToolTip.Tip="Saving now resolves these the way the merge already shows them. Nothing is blocked - stopping half way through a long merge is legitimate; being surprised by it is not."
+                           Foreground="{DynamicResource PostmanAmberBrush}"
+                           FontSize="11"
+                           IsVisible="{Binding HasUnresolvedConflicts}" />
+            </Grid>
         </Border>
 
-        <!-- Errors, and the unresolved-conflict warning. The warning is a banner rather than a blocked
-             Save: stopping half way through a long merge to save what you have is legitimate, and the
-             domain has a defined answer for a region nobody decided. What is not acceptable is that
-             answer arriving as a surprise. -->
+        <!-- An error keeps its band: it means the thing just asked for did not happen, which is not
+             something to file away in a corner of the status bar. The unresolved-conflict WARNING is
+             in that status bar now - it is a running count, not a failure, and it was pushing the
+             merge down a row for the whole session. -->
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource BgHover}"
                 Padding="10,6"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <TextBlock Text="{Binding ErrorMessage}"
                        Foreground="{DynamicResource PostmanRedBrush}"
-                       FontSize="11" TextWrapping="Wrap" />
-        </Border>
-
-        <Border DockPanel.Dock="Top"
-                Background="{DynamicResource BgHover}"
-                Padding="10,6"
-                IsVisible="{Binding HasUnresolvedConflicts}">
-            <TextBlock Text="{Binding UnresolvedDetail}"
-                       Foreground="{DynamicResource PostmanAmberBrush}"
                        FontSize="11" TextWrapping="Wrap" />
         </Border>
 

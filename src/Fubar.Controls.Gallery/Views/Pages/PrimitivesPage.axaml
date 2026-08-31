@@ -72,10 +72,17 @@
                     <fc:PillToggle Content="Raw" />
                     <fc:PillToggle Content="Headers" />
                 </StackPanel>
+                <!-- One row of every class, deliberately: this is where a height or padding change in
+                     ButtonStyles shows up as a ragged baseline before an app inherits it. The blue
+                     button carried Height="30" here to keep up with the others until they all agreed
+                     on one (ControlHeight) - if a Height reappears on one of these, the fix belongs in
+                     ButtonStyles instead. -->
                 <fc:Toolbar HorizontalAlignment="Left">
-                    <Button Classes="primary-btn" Content="Send" Height="30" />
+                    <Button Classes="primary-btn" Content="Send" />
                     <Button Classes="secondary-btn" Content="Save" />
                     <Button Classes="toolbar-btn" Content="Menu" />
+                    <ToggleButton Classes="toolbar-btn" Content="Wrap" IsChecked="True" />
+                    <ToggleButton Classes="toolbar-btn" Content="Invisibles" />
                 </fc:Toolbar>
             </StackPanel>
         </fc:Card>
@@ -108,6 +115,32 @@
                 <fc:LabeledField Header="Timeout" Orientation="Horizontal">
                     <TextBox Text="30s" Width="120" HorizontalAlignment="Left" />
                 </fc:LabeledField>
+            </StackPanel>
+        </fc:Card>
+
+        <!-- SettingRow: what a settings page is made of. -->
+        <fc:Card>
+            <fc:Card.Header>
+                <fc:SectionHeader Title="SETTING ROW" />
+            </fc:Card.Header>
+            <StackPanel>
+                <fc:SettingRow Header="Update while you type"
+                               Description="Off: press F5 to update. Better for very large files.">
+                    <ToggleSwitch IsChecked="True" />
+                </fc:SettingRow>
+                <fc:Divider Margin="0" />
+                <fc:SettingRow Header="Theme" Description="Dark, light, or follow the system.">
+                    <ComboBox SelectedIndex="0" MinWidth="130">
+                        <ComboBoxItem>System</ComboBoxItem>
+                        <ComboBoxItem>Dark</ComboBoxItem>
+                        <ComboBoxItem>Light</ComboBoxItem>
+                    </ComboBox>
+                </fc:SettingRow>
+                <fc:Divider Margin="0" />
+                <!-- A header that needs no explaining simply has no description. -->
+                <fc:SettingRow Header="Wrap long lines">
+                    <ToggleSwitch />
+                </fc:SettingRow>
             </StackPanel>
         </fc:Card>
 

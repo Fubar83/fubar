@@ -27,7 +27,10 @@
             <TextBlock DockPanel.Dock="Top" Text="Left (theirs)"
                        Foreground="{DynamicResource TextSecondary}"
                        FontSize="10" Margin="8,3" />
+            <!-- Side only decides how a modified row is tinted (removal colour on the left, addition
+                 colour on the right). The base column is deliberately left unset: it is neither. -->
             <views:DiffEditorPane x:Name="LeftPane"
+                                  Side="Left"
                                   Document="{Binding LeftDocument}"
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding SyntaxExtension}"
@@ -56,6 +59,7 @@
                        Foreground="{DynamicResource TextSecondary}"
                        FontSize="10" Margin="8,3" />
             <views:DiffEditorPane x:Name="RightPane"
+                                  Side="Right"
                                   Document="{Binding RightDocument}"
                                   ShowInvisibles="{Binding ShowInvisibles}"
                                   SyntaxExtension="{Binding SyntaxExtension}"

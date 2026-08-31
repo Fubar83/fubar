@@ -10,8 +10,8 @@ It is a sibling of [Fubar API Studio](https://github.com/Fubar83/fubar) and shar
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 
 > **Status: early.** Two-way file comparison, semantic JSON, source-code comparison, three-way merge,
-> folder comparison and save all work end to end. Free-form editing and the other formats are not built
-> yet — see [Roadmap](#roadmap).
+> folder comparison, editing and save all work end to end. Editing the three-way merge's panes, and the
+> other formats, are not built yet — see [Roadmap](#roadmap).
 
 ## Features
 
@@ -19,11 +19,17 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   numbers still match what is on disk across insertions.
 - **Aligned panes.** Insertions and deletions get a placeholder row opposite them, and the two
   editors scroll in lockstep, so the columns cannot drift apart.
-- **Character-level diff** inside modified lines, so a one-word change reads at a glance. In a language
+- **Every difference is tinted, quietly.** Each changed row carries a low-contrast background — the
+  removal colour on the left, the addition colour on the right — so a glance down either pane shows
+  where the changes are, including lines that were merely edited rather than added or removed. The
+  difference you are actually on is drawn stronger, with an accent bar and an outline around it, so
+  "which one did F8 just take me to?" never has to be answered by colour density.
+- **Character-level diff** inside modified lines, so a one-word change reads at a glance: the row says
+  which line, the highlight says which words. In a language
   the tool knows, the split follows the language's own tokens: `==` becoming `===` highlights the whole
   operator rather than a lone third `=`.
 - **Syntax highlighting**, for every language a TextMate grammar ships for, following the app theme.
-  On by default; switch it off in Settings → Appearance.
+  On by default; switch it off in Settings → General.
 - **Source-code comparison** for **C#, JavaScript, TypeScript, Java, Go, C, C++ and Python**, picked
   from the file extension:
   optionally ignore comments (a changed comment stops being a difference; a comment-only line that was
@@ -44,14 +50,14 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   is never matched with an unrelated one — where the answer is ambiguous, nothing is claimed. Works for
   a block that travelled far enough to have no counterpart *and* for two methods that simply swapped
   places, which a line differ reports as a pile of rewritten lines.
-- **Side-by-side or unified.** The **View** selector switches a TEXT comparison between the two-editor
+- **Side-by-side or unified.** **View → Layout** switches a TEXT comparison between the two-editor
   view and a single patch-style document — removals then additions, shared context between them — for a narrow window, a
   screenshot, or anyone who reads patches all day. The unified view can **wrap long lines**, which the
   side-by-side one cannot: two columns stay aligned by having the same number of visual lines, and a
   line that wraps on one side alone would pull them apart.
 - **Collapse unchanged** — long stretches both files agree on fold behind a placeholder, keeping a few
   lines either side of each change. On by default; click any fold to expand it, or turn it off from the
-  toolbar. A file of three thousand lines with two changes reads as two changes.
+  toolbar (*Collapse*). A file of three thousand lines with two changes reads as two changes.
 - **Binary and image comparison.** Two files that are not text are compared as bytes: whether they are
   identical, how big each is, where they first differ, and a hex dump of each side with the differing
   rows tinted. Because that dump is an ordinary diff result, the scroll sync, diff map, navigation and
@@ -63,14 +69,21 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 - **Diff pane** below the panes: the old line stacked directly above the new one, so you can read
   both versions of one change without scrolling between two blocks a screen apart - and with the same
   line right above its replacement, the character-level highlight is what catches the eye. Drag its
-  edge to resize, or turn it off from the toolbar.
+  edge to resize, or turn it off under View.
 - **Change navigation** — next/previous with wrap-around (F7 / F8, or Alt+Up / Alt+Down). The current
   difference is marked with an accent bar and outline, so it stays findable among the other changes.
 - **Merge and save** — take the left or right version of a change (Alt+Left / Alt+Right), then save.
   The file's encoding, BOM, line endings and trailing newline are preserved byte-for-byte.
-- **Editable panes** — tick *Edit* and type straight into either side; the diff re-runs as you pause.
-  Taking a side is an edit too, so it applies immediately and **Ctrl+Z** takes it back along with
-  anything you typed. Find gains Replace. Off by default, and side-by-side text comparisons only.
+- **Editable panes** — turn on *Edit* and type straight into either side; the diff re-runs as you
+  pause. Taking a side is an edit too, so it applies immediately and **Ctrl+Z** takes it back along
+  with anything you typed. Find gains Replace. Off by default, and side-by-side text comparisons only.
+- **F5 refreshes the comparison**, and the status bar says when it needs to. With something typed,
+  that means re-comparing what the panes now hold — never re-reading from disk, which would throw your
+  edits away; with nothing typed it re-reads both files, which is what F5 after a build or a checkout
+  is asking for. While an edit is waiting to be compared the status bar says **Diff out of date** and
+  offers a Refresh button, so the counts on screen are never quietly describing the previous version.
+  On a pair big enough that comparing takes a noticeable moment, switch off *Update the diff while you
+  type* in Settings → General: the diff then waits for F5, and says so until you press it.
 - **Both files are saved independently** — each side gets its own Save button when it has unsaved
   changes, Ctrl+S writes whatever changed, and *Save as* leaves the compared file alone. Closing a tab
   or the window with unsaved changes asks first, naming the files. If a file changes on disk while you
@@ -100,15 +113,17 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   **Diff pane** below stacks the three versions of the current region — left, base, right — so they can
   be read together rather than across three columns a screen apart. Save
   writes the merged file to whichever of the three you choose, in that file's own encoding and line
-  endings. An unresolved conflict keeps the ancestor's text and says so, both in a banner before saving
-  and in the status line after.
+  endings. An unresolved conflict keeps the ancestor's text and says so in the status bar, both before
+  saving and after.
 - **Semantic JSON**: compares structure, not text. Reordered properties and reformatting are not
   differences; array elements are matched by an auto-detected identity key, so an element inserted
   mid-array marks only itself. JSON opens in the **Json** view by default - the change tree plus both
   documents, each shown exactly as given (a minified file stays minified, not reformatted) - where
-  stepping through changes (Prev/Next, or a click in the tree) highlights each one directly in both,
-  immune to formatting or property-order differences since neither side depends on lining up with the
-  other. An added or removed field highlights its key as well as its value; one whose value merely
+  every difference is marked in both documents at once and stepping through them (the toolbar's ◀ ▶,
+  F7 / F8, or a click in the tree) brings each one up strongly in turn, immune to formatting or
+  property-order differences since neither side depends on
+  lining up with the other. The buttons walk semantic changes here and text hunks elsewhere, so there
+  is one pair of them wherever you are, and the status bar names the change you are on. An added or removed field highlights its key as well as its value; one whose value merely
   changed highlights the value alone. It has its own **Diff pane** too, the same close-up shown below
   the aligned Text view but built from the change's own location in each side's raw text rather than
   an aligned row range. Set **Compare** to **Text** for the aligned side-by-side view instead — which
@@ -123,15 +138,19 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   next to a formatted one. Indent size or tabs, whether simple objects stay on one line, and key
   sorting are all in Settings. It changes nothing about the comparison and never touches the file, and
   numbers are written back exactly as authored.
-- **Comparison options**: ignore leading/trailing whitespace, ignore case, or reformat (pretty-print
-  JSON/XML in the Text view - opt-in, never automatic; the Json view always shows both sides exactly as
-  given regardless of this) from the toolbar; a **Settings…** window holds the rest in three sections -
-  Text compare (including **ignored text patterns**: regular expressions whose matches stop counting as
-  differences, for the build timestamp or generated GUID that changes on every run - only the match is
-  ignored, so a real change elsewhere on the line is still reported); Code compare (ignore comments,
-  ignore blank lines); and JSON compare (report key order,
-  match arrays by position, treat `null` and a missing property as equal, per-path array identity key
-  overrides, and a list of JSON paths whose differences are never reported).
+- **A toolbar of eight things.** Open, ◀ ▶, three toggle buttons — *Whitespace*, *Collapse*, *Edit* —
+  then **View** and **⋯**. That is the whole row, plus the merge and save buttons that appear when
+  there is something to merge or save. The three toggles are the options reached for while reading a
+  particular diff; **View** holds everything about what is on screen (compare as Auto / Text / Json,
+  side-by-side or unified layout, the diff pane, wrapping); **⋯** holds patch export and Settings.
+- **Settings you can read.** Every option is a row with a plain sentence under it saying what turning
+  it on does — no hovering to find out what "Normalize Unicode (NFC)" was going to do to your files.
+  Four groups: General (theme, reloading, updating while you type, syntax highlighting), What counts as
+  a difference (whitespace, case, encoding, comments, blank lines), JSON (key order, list matching,
+  null vs missing) and Display (invisible characters, reformatting, and how the Pretty button lays a
+  document out). **Advanced** is collapsed and holds the three rules that need a pattern rather than a
+  switch: ignored text (regular expressions whose matches stop counting — a build timestamp, a
+  generated id), which field identifies a JSON list's items, and JSON paths never to report.
 - **Format differences are reported, not hidden** — two files whose content matches but whose
   encoding, byte order mark, line endings or trailing newline do not are called out explicitly, since
   none of those reach the panes and "identical" would be wrong.
@@ -148,9 +167,19 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   `git apply`, `patch` and every review tool already understand. Three lines of context around each
   change, overlapping hunks merged, and the file names rather than your absolute paths.
 - **Search** inside either pane with Ctrl+F.
+- **One way in: Open.** A single toolbar button (Ctrl+O) picks both files in one dialog — select two,
+  or one to fill whichever side is free. The same menu replaces one side of an open comparison, swaps
+  the two (for a pair that opened the wrong way round), reopens something recent, and starts a folder
+  comparison or a three-way merge. There is no picker row taking up a band of the window: what is being
+  compared is written on the tab.
 - **Drag and drop** two files onto the window to compare them.
-- **Tabs** — several comparisons open at once (Ctrl+T / Ctrl+W), each with its own files, options and
-  merge decisions.
+- **Tabs in the title bar** — several comparisons open at once (Ctrl+T / Ctrl+W), each with its own
+  files, options and merge decisions, in the space the window was already spending on decoration. A tab
+  is named for its pair and carries a dot while it holds unsaved changes.
+- **A status bar rather than banners** — what the comparison found, whether the files have changed on
+  disk (with the Reload button beside it), whether the diff is out of date, and whether anything is
+  unsaved, all along the bottom. Only an error — the thing you just asked for did not happen — still
+  gets a band across the top.
 - **Recent comparisons**, and your options and theme are remembered between sessions.
 - **Dark and light themes**, switchable at runtime.
 
@@ -233,9 +262,20 @@ the `IDiffEngine` port in Infrastructure — swapping it is a one-file change, a
 
 **Open.** Editing is now built, but only in the side-by-side view of a text comparison — the unified
 view has its own row numbering, the Json view shows each side unaligned, and a hex dump cannot be
-written back as text. The three-way merge window is still resolve-only. Virtualised diffing for very
-large files is the other gap: the whole aligned document is materialised per side, under a 64 MB
-reader cap.
+written back as text.
+
+The three-way merge window is still **resolve-only**, deliberately rather than for want of plumbing.
+Its panes could be made editable with the same machinery the two-way ones use, but a merge's decisions
+are keyed by region index and any edit to an input needs a full re-merge, which renumbers those regions
+and so discards every decision made so far — an edit half way through a long merge would quietly throw
+the work away. There is also nowhere to save an edited *input* to: the window writes the merged result
+to a destination you pick, not the three files it read. Fix the first of those (decisions that survive
+a re-merge, keyed by content rather than index) and this becomes worth doing; until then, edit the file
+in a two-way comparison and start the merge again.
+
+Virtualised diffing for very large files is the other gap: the whole aligned document is materialised
+per side, under a 64 MB reader cap. It is also why *Update the diff while you type* is a setting — see
+Settings → General — rather than always on.
 
 The three-way view has no diff map, unlike the two-way one — a merge asks "which of these needs me"
 rather than "where are the changes", which the conflict count and next/previous answer directly, and a
@@ -253,7 +293,7 @@ that deletes the wrong file once is never trusted again, and the copy half deliv
 with none of that risk.
 
 **Cut.** A CLI with exit codes; semantic XML, YAML and CSV. Dropped deliberately rather than
-forgotten. Patch export has since been built (toolbar → *Patch*), and git integration is partly there:
+forgotten. Patch export has since been built (toolbar → *⋯* → *Copy patch* / *Save patch*), and git integration is partly there:
 `--merge $BASE $LOCAL $REMOTE` is the argument order `git mergetool` passes, so it can be configured
 as one.
 

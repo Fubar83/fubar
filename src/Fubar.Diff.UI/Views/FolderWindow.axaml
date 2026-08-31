@@ -98,19 +98,21 @@
 
                     <!-- A mode rather than an option: linked mode has one folder, not two, so it
                          changes what the window is asking for. -->
-                    <CheckBox Content="One folder, linked by name" IsChecked="{Binding LinkedMode}"
-                              ToolTip.Tip="Pair files against each other inside a single folder - for snapshot tests, where a run leaves Thing.received.json beside Thing.verified.json." />
+                    <!-- Toggle buttons rather than check boxes, matching the other two windows: one
+                         visual language for "click this and something changes", at one height. -->
+                    <ToggleButton Classes="toolbar-btn" Content="One folder, linked by name" IsChecked="{Binding LinkedMode}"
+                                  ToolTip.Tip="Pair files against each other inside a single folder - for snapshot tests, where a run leaves Thing.received.json beside Thing.verified.json." />
 
                     <fc:Divider Orientation="Vertical" />
 
                     <!-- Off by default. The answer to "what differs" should not arrive buried in ten
                          thousand files that do not - and the count of what is hidden is in the status
                          line, so nothing goes missing silently. -->
-                    <CheckBox Content="Show identical" IsChecked="{Binding ShowIdentical}"
-                              ToolTip.Tip="Include files that are the same on both sides. Off by default: on two real checkouts they are most of the tree." />
-                    <CheckBox Content="Subfolders" IsChecked="{Binding Recursive}" />
-                    <CheckBox Content="Compare contents" IsChecked="{Binding CompareContents}"
-                              ToolTip.Tip="Read both files rather than trusting their size. Two files of the same length are routinely different." />
+                    <ToggleButton Classes="toolbar-btn" Content="Show identical" IsChecked="{Binding ShowIdentical}"
+                                  ToolTip.Tip="Include files that are the same on both sides. Off by default: on two real checkouts they are most of the tree." />
+                    <ToggleButton Classes="toolbar-btn" Content="Subfolders" IsChecked="{Binding Recursive}" />
+                    <ToggleButton Classes="toolbar-btn" Content="Compare contents" IsChecked="{Binding CompareContents}"
+                                  ToolTip.Tip="Read both files rather than trusting their size. Two files of the same length are routinely different." />
 
                     <fc:Divider Orientation="Vertical" />
 

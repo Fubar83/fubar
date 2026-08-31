@@ -33,22 +33,38 @@ internal enum DiffEmphasis
 internal static class DiffLineColors
 {
     /// <summary>
+    /// How strong a full-line tint is: quiet enough to read text through at every level, and clearly
+    /// stronger on the difference the user is actually on.
+    ///
+    /// EVERY changed row gets one of these - including modified rows, which had none at all until
+    /// recently. The old bargain was that a modified line's own words carry a precise span tint, so
+    /// washing the row underneath would compete with it; the trouble is that it left the commonest
+    /// kind of change with no row-level mark, so scanning a file for "which lines changed" worked for
+    /// insertions and deletions and simply did not for modifications. Both now: the row says WHERE at
+    /// a glance, the span still says WHAT, and the gap between 0.12 and 0.55 is what keeps the span
+    /// the louder of the two.
+    /// </summary>
+    private static double LineOpacity(DiffEmphasis emphasis) => emphasis == DiffEmphasis.Faded ? 0.12 : 0.28;
+
+    /// <summary>
     /// Background tint for a WHOLE line in the MAIN panes, or null when the line needs no tint.
     /// Never called with <see cref="DiffEmphasis.Emphasized"/> - the close-up panes skip this renderer
     /// entirely (see <c>ChangeLineBackgroundRenderer.Draw</c>) in favour of <see cref="SpanBackground"/>
     /// alone, so there is nothing here for that level to mean.
     ///
-    /// Modified is deliberately null: a modified line's own words already get a stronger,
-    /// precisely-located tint from <see cref="SpanBackground"/>, and washing the entire row underneath
-    /// that competed with it rather than helping - "here is what changed" reads better than "here is a
-    /// row, somewhere in which something changed". Inserted/Deleted rows have no such span to defer
-    /// to in the main panes - the whole row IS the difference - so they keep a full-line tint there.
+    /// A MODIFIED row is tinted in the colour of the side it is on - the removal colour on the left,
+    /// the addition colour on the right - which is why the caller resolves the kind from the row's own
+    /// spans before asking (see <c>ChangeLineBackgroundRenderer.TintKind</c>): those spans are Deleted
+    /// on the left and Inserted on the right already, so the row and the words inside it agree. The
+    /// Modified case below is the fallback for a row that has no spans to say which side it is (a
+    /// blank line paired with a written one, or a three-way base column), and is deliberately a third
+    /// colour rather than a guess at one of the two.
     /// </summary>
     public static IBrush? LineBackground(StyledElement host, ChangeKind kind, DiffEmphasis emphasis = DiffEmphasis.Normal) => kind switch
     {
-        ChangeKind.Inserted => Tinted(host, "MethodPostBrush", emphasis == DiffEmphasis.Faded ? 0.07 : 0.18),
-        ChangeKind.Deleted => Tinted(host, "MethodDeleteBrush", emphasis == DiffEmphasis.Faded ? 0.07 : 0.18),
-        ChangeKind.Modified => null,
+        ChangeKind.Inserted => Tinted(host, "MethodPostBrush", LineOpacity(emphasis)),
+        ChangeKind.Deleted => Tinted(host, "MethodDeleteBrush", LineOpacity(emphasis)),
+        ChangeKind.Modified => Tinted(host, "MethodPutBrush", LineOpacity(emphasis)),
         ChangeKind.Filler => Tinted(host, "BgHover", 0.35),
         _ => null,
     };
@@ -91,11 +107,13 @@ internal static class DiffLineColors
     /// a file - so quietening it below the changes around it would be overstating the case.
     /// </summary>
     public static IBrush? MovedBackground(StyledElement host, DiffEmphasis emphasis = DiffEmphasis.Normal) =>
-        Tinted(host, "PostmanBlueBrush", emphasis == DiffEmphasis.Faded ? 0.07 : 0.18);
+        Tinted(host, "PostmanBlueBrush", LineOpacity(emphasis));
 
     /// <summary>
-    /// The tint for the characters that actually changed within a modified line - now the PRIMARY
-    /// signal for a modified row, since <see cref="LineBackground"/> no longer washes the row itself.
+    /// The tint for the characters that actually changed within a modified line - the precise half of
+    /// the pair, sitting on top of the row tint <see cref="LineBackground"/> now paints underneath it.
+    /// Kept well above <see cref="LineOpacity"/> at every level so the words stay the loudest thing on
+    /// the row, which is the point: the row says where, this says what.
     /// At <see cref="DiffEmphasis.Emphasized"/> (the close-up panes) it is also the ONLY signal for a
     /// whole inserted/deleted row, once <see cref="LineBackground"/> stops drawing there - see
     /// <c>CharSpanColorizer</c>, which synthesizes a whole-row span for exactly that case.

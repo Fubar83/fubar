@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -37,6 +38,34 @@ public partial class MainWindow : Window
     /// Set once the tabs have all agreed to close, so the second Close() is not intercepted again.
     /// </summary>
     private bool _closeConfirmed;
+
+    // No full-screen support, for the same reason API Studio has none: Avalonia's extended-client-area
+    // chrome draws a full-screen caption button this version exposes no way to remove, and the button
+    // is outside the window's own visual tree, so no style or tree walk can hide it either. Removed at
+    // the state level instead - anything driving the window into FullScreen snaps back to Maximized.
+    // Minimize / maximize / restore / close are untouched.
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == WindowStateProperty && WindowState == WindowState.FullScreen)
+        {
+            WindowState = WindowState.Maximized;
+        }
+    }
+
+    // The title-bar row is our own content (ExtendClientAreaToDecorationsHint), so none of the usual
+    // drag-to-move / double-click-to-maximize behaviour exists unless it is implemented here.
+    private void TitleBarDragArea_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            BeginMoveDrag(e);
+        }
+    }
+
+    private void TitleBarDragArea_OnDoubleTapped(object? sender, TappedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     /// <summary>
     /// Stops the window closing over unsaved changes.
@@ -104,7 +133,13 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Control { DataContext: ComparisonViewModel tab })
+        // The menu item's own DataContext first (it inherits the per-tab scope), falling back to the
+        // shell's selection: a flyout lives in a popup, and a popup's inherited DataContext is one
+        // more thing that could be changed by a future refactor without anything failing loudly.
+        var tab = (sender as Control)?.DataContext as ComparisonViewModel
+            ?? (DataContext as ShellViewModel)?.SelectedTab;
+
+        if (tab is null)
         {
             return;
         }

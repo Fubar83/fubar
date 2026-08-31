@@ -11,6 +11,7 @@ using AvaloniaEdit.Rendering;
 using AvaloniaEdit.Search;
 using AvaloniaEdit.TextMate;
 using Fubar.Diff.Core.Editing;
+using Fubar.Diff.Core.Models;
 using Fubar.Diff.Core.Rendering;
 using Fubar.Diff.Controls.Rendering;
 using TextMateSharp.Grammars;
@@ -42,6 +43,17 @@ public partial class DiffEditorPane : UserControl
     /// <summary>Whether to mark invisible characters - see <see cref="InvisibleCharacterGenerator"/>.</summary>
     public static readonly StyledProperty<bool> ShowInvisiblesProperty =
         AvaloniaProperty.Register<DiffEditorPane, bool>(nameof(ShowInvisibles));
+
+    /// <summary>
+    /// Which side of the comparison this pane shows, or null for a pane that is neither - the unified
+    /// view, or a three-way merge's base column.
+    ///
+    /// Used for one thing: colouring a MODIFIED row. That row is "modified" on both sides, so its kind
+    /// alone cannot say whether this column lost the text or gained it, and the two panes would end up
+    /// the same colour. See <c>ChangeLineBackgroundRenderer.TintKind</c>.
+    /// </summary>
+    public static readonly StyledProperty<DiffSide?> SideProperty =
+        AvaloniaProperty.Register<DiffEditorPane, DiffSide?>(nameof(Side));
 
     /// <summary>
     /// Whether the user can type into this pane.
@@ -218,6 +230,12 @@ public partial class DiffEditorPane : UserControl
         set => SetValue(ShowInvisiblesProperty, value);
     }
 
+    public DiffSide? Side
+    {
+        get => GetValue(SideProperty);
+        set => SetValue(SideProperty, value);
+    }
+
     public bool IsEditable
     {
         get => GetValue(IsEditableProperty);
@@ -298,6 +316,11 @@ public partial class DiffEditorPane : UserControl
             var emphasized = change.GetNewValue<bool>();
             _backgroundRenderer.SetEmphasized(emphasized);
             _colorizer.SetEmphasized(emphasized);
+            Editor.TextArea.TextView.Redraw();
+        }
+        else if (change.Property == SideProperty)
+        {
+            _backgroundRenderer.SetSide(change.GetNewValue<DiffSide?>());
             Editor.TextArea.TextView.Redraw();
         }
         else if (change.Property == ShowInvisiblesProperty)

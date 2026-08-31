@@ -401,8 +401,8 @@ visible because the picture either appears or it does not.
 columns are aligned by having the same number of visual lines, which is what makes scroll sync a plain
 offset copy; a line long enough to wrap on one side and not the other pulls them apart by a line for
 every wrap above the viewport, silently and with nothing to throw. `DiffEditorPane.WordWrap` exists as
-a property but is bound only from `UnifiedView`, and the toolbar checkbox is hidden outside that view
-rather than disabled, per the hide-don't-disable rule. `WordWrapTests` pins that the side-by-side panes
+a property but is bound only from `UnifiedView`, and the toolbar Wrap toggle is hidden outside that
+view rather than disabled, per the hide-don't-disable rule. `WordWrapTests` pins that the side-by-side panes
 stay unwrapped whatever the setting says. Do not "finish the feature" by binding it in `DiffView`.
 
 **`EditorScroll.CenterOnLine` must ask the editor where a line IS, not multiply by line height** (Diff).
@@ -583,11 +583,30 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   with `Emphasized` - `ChangeLineBackgroundRenderer.Draw` skips itself entirely when emphasized (see
   below) - so only `SpanBackground` actually has three meaningfully different levels; `LineBackground`
   only ever sees `Faded` or `Normal`.
+- **With NOTHING selected, every change draws `Faded`** (Diff). Both `Emphasis` helpers
+  (`ChangeLineBackgroundRenderer`, `CharSpanColorizer`) treat "outside the current range" and "there is
+  no current range" the same way. It used to be the opposite - a negative range meant everything drew
+  at `Normal` - which was survivable when only inserted/deleted rows were tinted, and became a wall of
+  colour once every changed row got a background. A document nobody has navigated yet should read as
+  one even wash saying "the changes are here", with nothing pretending to be the current one.
+- **Every changed row gets a line tint, and a MODIFIED row takes the colour of its own side** (Diff).
+  `LineBackground` returned null for `Modified` for a long time, on the argument that the row's
+  character spans are more precise than a full-row wash - true, but it left the commonest kind of
+  change with no row-level mark at all, so scanning for "which lines changed" worked for insertions
+  and not for edits. Both now: the row says where (`LineOpacity`, 0.12/0.28), the span says what
+  (0.30/0.55), and the gap between them is what keeps the span the louder of the two -
+  `ChangeTintTests` pins that ordering. Which colour a modified row takes comes from
+  `DiffEditorPane.Side` (removal colour on the left, addition colour on the right), NOT from the row's
+  own spans: deriving it from `Spans[0].Kind` was tried and is wrong, because a line that only had text
+  added to it has no deleted spans on the left, so half the modified rows in an ordinary diff fell
+  through to the neutral fallback and came out a third colour. A pane that is neither side (the
+  unified view, a three-way base column) leaves `Side` null and gets that fallback.
 - **The two Diff pane close-ups have NO full-line tint at all, in either mode** (Diff). Text mode:
   `ChangeLineBackgroundRenderer.Draw` returns immediately when `_emphasized`, so `DiffLineColors.LineBackground`
-  is dead code there regardless of `ChangeKind` - Modified rows already lost their line tint earlier
-  (only `SpanBackground` tints them, precisely, since a full-row wash competed with that rather than
-  helping), and Inserted/Deleted rows now lose it too. Since a whole inserted/deleted row normally
+  is dead code there regardless of `ChangeKind` - a close-up is a pane full of nothing BUT the current
+  difference, where a band across its whole width says nothing the pane's own border does not.
+  (The MAIN panes are the opposite case and tint every changed row - see above.) Since a whole
+  inserted/deleted row normally
   carries NO character spans at all (the full-line tint used to say "this whole row is the diff" on its
   own - see `FileComparisonServiceTests.Only_modified_rows_get_inline_spans`), `CharSpanColorizer`
   synthesizes one covering the row's entire text when `_emphasized` and `Spans.Count == 0`, so the
@@ -597,6 +616,16 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   actually use those columns; every other consumer of `SourceSpan` in this codebase only reads the line
   range. Do not restore a full-line/full-width wash to either close-up "to make it easier to scan" -
   that is precisely what both changes were replacing with something more precise.
+- **The Json panes mark EVERY change, not just the current one** (Diff). `JsonChangeSpanColorizer`
+  paints each change's own `SourceSpan` faintly and the current one at full strength;
+  `CurrentHunkRenderer` still bands and brackets the current change's lines on top. Character spans
+  rather than full-width bands, unlike the aligned views: a Json document is unaligned and one line
+  routinely holds several properties, so banding the line would claim the whole of
+  `{"a": 1, "b": 2}` changed when only `b` did. It must be fed `DiffPaneViewModel.SemanticChanges` -
+  the list whose spans address each side's RAW text - never the canonicalized list, which is a line or
+  two out as soon as "Reformat for display" is on. The close-up (`JsonDetailPane`) passes no changes at
+  all: it shows an excerpt renumbered from line 1, so whole-document spans would land on whatever text
+  happened to sit at those numbers.
 - **`TextEditor.ScrollToVerticalOffset` silently clamps to the CURRENTLY KNOWN extent, not the whole
   document** (Diff). Calling it for a line AvaloniaEdit has never scrolled towards is a no-op - the
   ScrollViewer only learns the document is that tall once something (`ScrollToLine`) asks it to make
@@ -635,15 +664,64 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   codebase argued this for one control ("Recent is hidden rather than disabled when empty: an
   always-greyed control on first run is just clutter") and it is now the general rule: Fubar Diff's
   merge group binds `IsVisible` to `Pane.HasCurrentHunk` and its save group to `HasUnsavedMerge`, so
-  neither occupies the toolbar during the many sessions that are only ever a read. The file pickers
-  collapse to a one-line summary after a successful compare (`ComparisonViewModel.IsFileRowExpanded`)
-  for the same reason. Do not "restore" these to always-visible-but-disabled - the row they cost is a
-  row of diff, which is the thing the app exists to show.
+  neither occupies the toolbar during the many sessions that are only ever a read. `MergeWindow`'s
+  three file pickers collapse to a one-line summary after a successful merge
+  (`MergeViewModel.IsFileRowExpanded`) for the same reason - the comparison window went further and
+  removed its picker row outright (see below). Do not "restore" these to
+  always-visible-but-disabled - the row they cost is a row of diff, which is the thing the app exists
+  to show.
 - **The "Reformat" checkbox (`NormalizeStructure`) used to be labeled "Normalize XML" and hidden
   whenever `Pane.IsSemantic` was true** - i.e. hidden exactly for JSON, the one format users most want
   to reformat. It backs both XML and JSON already (`TextLineNormalizer.Canonicalize`); the bug was
   purely the toolbar's `IsVisible` binding. It is now unconditionally visible, like "Ignore whitespace"
-  and "Ignore case" - it is a no-op on content that is neither, which is fine.
+  and "Ignore case" - it is a no-op on content that is neither, which is fine. It lives in
+  `SettingsWindow` rather than the toolbar now; the toolbar keeps only the options reached for
+  mid-comparison.
+- **An Avalonia type selector matches the EXACT type, so `Button.foo` does not style a `ToggleButton`**
+  (Controls). `ToggleButton` derives from `Button`, and `Classes="toolbar-btn"` on one looked right in
+  the XAML and rendered as a stock Fluent button on screen - which is how the Json view's Pretty toggle
+  came to look unlike everything around it. `ButtonStyles.axaml` therefore spells out
+  `ToggleButton.toolbar-btn` separately rather than reaching for `:is(Button)`, because the checked
+  state needs somewhere to live anyway. Same trap for any future `RadioButton`/`SplitButton` class.
+- **One `ControlHeight` for every button class** (Controls). `.toolbar-btn` / `.primary-btn` /
+  `.secondary-btn` / `ToggleButton.toolbar-btn` all set `MinHeight` from it, with vertical padding
+  deliberately smaller so the height decides the box. If a button in a row looks wrong, fix
+  `ButtonStyles.axaml` - do NOT put `Height` on the instance, which is what the Gallery's blue button
+  used to carry and what made the mismatch invisible in every diff.
+- **Do not set `VerticalAlignment` in the shared button styles** (Controls). It was tried and reverted:
+  API Studio's Send button is a `Panel` child that stretches to match the URL bar beside it, and
+  `Center` shrank it to `MinHeight`. `MinHeight` alone gives an even toolbar row without taking that
+  away.
+- **F5 means two different things, and picking wrong loses work** (Diff).
+  `ComparisonViewModel.RefreshDiffAsync` re-diffs what the PANES hold when there are unsaved edits, and
+  re-reads both files from disk only when there are none. Reloading over typed text discards the only
+  copy of it. `IsDiffStale` is the other half: set the moment a pane is edited, cleared when the
+  re-diff lands, and shown in the status bar - do not "tidy it away" because it usually clears itself
+  within a few hundred ms, since `LiveDiff` off is a supported mode where it stays up until F5.
+- **`JsonView` brings its own Prev/Next strip, and Fubar Diff turns it off** (Diff).
+  `JsonView.ShowToolbar` defaults to TRUE for API Studio, which embeds the view where there is no
+  toolbar to put buttons in; the diff window sets it False and drives navigation from its own toolbar
+  through `DiffPaneViewModel.NextDifferenceCommand`, which walks semantic changes in the Json view and
+  hunks everywhere else. Do not "simplify" by deleting the strip - one host still needs it - and do
+  not point a toolbar's Prev/Next at `NextChangeCommand` again: in the Json view that walks hunks
+  nobody is looking at. The caption the strip carried lives in the status bar now, fed by
+  `ComparisonViewModel` watching `JsonCaption` (guarded on `CurrentSemanticChange is not null`, or the
+  "none selected" form raised by every load would overwrite the summary just written there).
+- **Radio/check `MenuItem`s need their binding mode spelled out** (Diff). The View menu's
+  `IsChecked` bindings read computed properties (`IsModeAuto`, `Pane.IsSideBySideViewVisible`), and a
+  toggled MenuItem writes back to whatever it is bound to - so those are `Mode=OneWay` and the state
+  is changed by the item's `Command` instead. The two genuine two-way ones (Diff pane, Wrap) say
+  `Mode=TwoWay` for the opposite reason: do not rely on the default either way.
+- **A settings row's explanation is a `Description`, not a tooltip** (both apps). `fc:SettingRow`
+  exists for this: a header, a plain sentence under it, the control on the right. The Diff settings
+  window was a column of terse labels whose meaning lived entirely in `ToolTip.Tip`, which is where an
+  explanation goes to be missed. Tooltips are for the second-order detail, not for what the option
+  does. Keep new rows in that shape, and keep the sentence short and in the user's words.
+- **`ExtendClientAreaToDecorationsHint` means `Window.Title` must be empty** (both apps). Both main
+  windows draw their own tab strip into the native title-bar row; a non-empty Title has the OS paint
+  its own text over the first tab. Both also snap `WindowState.FullScreen` back to `Maximized` in
+  `OnPropertyChanged`, because this Avalonia version draws a full-screen caption button that cannot be
+  removed or hidden (it lives outside the window's visual tree).
 
 ## Workflow notes
 

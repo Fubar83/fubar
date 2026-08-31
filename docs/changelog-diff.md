@@ -8,6 +8,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **F5 refreshes the comparison, and the window says when it needs to.** With something typed into a
+  pane, F5 re-compares what the panes now hold; with nothing typed it re-reads both files from disk.
+  The distinction is the whole command: going to disk over unsaved edits would discard text that exists
+  nowhere else, and a refresh key may not do that.
+
+  Between a keystroke and the re-diff behind it, every count, tint and hunk boundary on screen
+  describes the file as it was *before* that keystroke. The status bar now says **Diff out of date**
+  while that is true, with a Refresh button beside it. Ordinarily it flashes past, since the comparison
+  re-runs by itself a moment after you stop typing — but on a pair big enough for that to be a stutter
+  rather than a pause, **Settings → Re-compare as you type** turns the automatic run off, and the diff
+  then waits for F5 and says so until you press it. Off is a real working mode rather than a
+  degradation: a stale diff that admits it is stale is honest, where one that quietly is not is the
+  failure the whole feature exists to prevent.
+
+- **Swap sides** (Open ▾ → *Swap sides*). A multi-select dialog reports files in the platform's order,
+  not the order they were clicked, so a pair can land the wrong way round through no fault of yours —
+  and everything about a diff reverses with the sides. Refused while either side has unsaved edits,
+  because swapping re-compares and that reloads both sides from disk.
+
 - **Moved code is shown as moved.** A block that was reordered rather than rewritten is tinted blue on
   both sides instead of red here and green there, counted separately in the status line (`… 2 block(s)
   moved`), and drawn blue in the diff map so the map answers "how much is left to review" honestly on a
@@ -329,6 +348,106 @@ All notable changes to this project are documented here. The format is based on
   say so on screen when the pair is not a language they apply to, rather than silently doing nothing.
 
 ### Changed
+
+- **Every difference now has a background, and the one you are on stands out from it.** Two gaps,
+  either side of the same idea.
+
+  A row that was *edited* had no row-level mark at all — only the words that changed were highlighted,
+  on the argument that a full-row wash competes with something more precise. It does, but the cost was
+  that scanning a file for "which lines changed" worked for insertions and deletions and simply did
+  not for edits, which are most of a real diff. Every changed row is tinted now, at a weight (0.12)
+  well under the word-level highlight (0.30–0.55) so the precise mark stays the loud one: the row says
+  *where*, the words say *what*. A modified row takes the colour of the column it is in — the removal
+  colour on the left, the addition colour on the right — matching the highlights already inside it.
+
+  And with nothing selected, everything now draws quietly. A negative "current range" used to mean
+  every change drew at full strength, which was survivable when a third of them had no tint and became
+  a wall of colour once they all did. An unnavigated document reads as one even wash saying "the
+  changes are here"; F7/F8 then lifts one out of it, with its accent bar and outline on top.
+
+- **The Json view marks every change, not just the current one.** Its two documents used to highlight
+  exactly the difference you were standing on, which made them unreadable as documents: a file with
+  eleven differences showed one, and the only way to find the others was to press Next eleven times.
+  Each change now carries a quiet tint of its own — the exact characters, not a band across the line,
+  since one line of JSON routinely holds several properties — and the current one is painted at full
+  strength inside the band and bracket it already had. An ignored change is drawn too, in the same
+  neutral, barely-there colour the aligned views use: it still exists, you just asked not to be told
+  about it.
+
+- **The toolbar is eight controls.** Open, ◀ ▶, three toggles (*Whitespace*, *Collapse*, *Edit*),
+  **View** and **⋯**. What used to sit beside them — a "Compare:" label and its combo, a
+  side-by-side / unified switch, *Diff pane*, *Wrap*, *Patch* and *Settings…* — is now two menus:
+  **View** for everything about what is on screen, **⋯** for patch export and settings. The three
+  toggles that stayed are the ones reached for while reading a particular diff; the rest were being
+  set once and then occupying the row for the rest of the session.
+
+  **Compare as** and **Layout** are submenus with those names, which also settles an old trap: the
+  mode selector (Auto / Text / Json — *how* the files are compared) and the view switch (*what* is on
+  screen) rendered the same two words for different questions, and no amount of inline labelling made
+  two adjacent controls read as two questions. Under headings, they do.
+
+- **One pair of Prev/Next buttons, in every view.** The Json view used to bring its own strip of
+  Prev/Next plus a caption, stacked directly under the window's toolbar, because a hunk and a semantic
+  change are different things to step through — so the toolbar hid *its* buttons in Json mode rather
+  than offer two "next" buttons that disagreed. `DiffPaneViewModel.NextDifference` now decides from
+  the view that is actually on screen, so the toolbar's buttons are the only ones, that whole second
+  row is gone, and F7 / F8 finally do the same thing in the Json view that they do everywhere else.
+  Where the strip's caption went: the status bar, which already said "Change 2 of 5" for text
+  comparisons and now says `$.meta.owner · Modified · 2 of 5` for JSON ones.
+
+  API Studio still gets the strip — it embeds this view where there is no toolbar to put buttons in.
+  `JsonView.ShowToolbar` is how a host says which it is.
+
+- **Settings is written in sentences.** Every option is a row with a plain-language description under
+  it, instead of a terse label whose explanation lived in a tooltip nobody hovers: *Ignore invisible
+  encoding differences — "Text that looks identical counts as identical. An accented é can be stored
+  two ways, and macOS and Windows disagree about which."* The groups are named for what they do
+  (General, What counts as a difference, JSON, Display, The Pretty button) rather than for the layer
+  they belong to, switches replaced check boxes, and the three rules that need a regular expression or
+  a JSON path moved behind a collapsed **Advanced** — they are for particular files, and having them
+  open made a page of ordinary switches look like something you had to configure before use.
+
+- **Opening files is one button.** The toolbar's first row — two text boxes, two Browse buttons, a
+  Compare button, Recent, + Tab, 3-way merge and Folders — is gone, replaced by **Open ▾** (Ctrl+O).
+  It picks both files in one dialog: select two, or one to fill whichever side is free. The same menu
+  replaces a single side, swaps them, reopens something recent, opens a tab, and starts a folder
+  comparison or a three-way merge.
+
+  Eight controls for a question with one answer ("which files?") were occupying a band of the window
+  for the whole session, and the two commonest ways in — dropping files on the window, and the command
+  line — never touched them. The collapsed one-line summary that stood in for the row afterwards is
+  gone too, because the tab already carries `left.json ↔ right.json`. What the row could do and a
+  button cannot is show a half-finished choice, so the empty state does that instead: open one file and
+  it says which one is loaded and that it needs the other.
+
+- **The comparison tabs moved into the title bar**, Chrome-style, and no longer hide themselves until a
+  second one opens. The strip used to cost a row of window, which is why a single tab was not worth
+  showing; up here it costs nothing the window was not already spending on decoration. A tab carries a
+  dot while it holds unsaved changes — the one thing about a tab its title cannot say, and the thing
+  worth knowing *before* choosing which tab to close.
+
+- **The orange banners are a status bar.** "The files changed on disk" (with its Reload button) and the
+  format-difference warning were bands across the top of the window, each pushing the diff down a row
+  to say something you had not asked about; the three-way merge's unresolved-conflict count was another
+  one. All of them are now in the status bar along the bottom, beside the change counts and the unsaved
+  badge — the one place a user already looks to find out what the app thinks is going on. An **error**
+  still gets a band: it means the thing you just asked for did not happen, and that may not be filed
+  away quietly in a corner.
+
+- **Toolbar options are toggle buttons, not check boxes**, in all three windows. A tick box in a row of
+  buttons is a second visual language for the same act — click this, something changes — sitting at its
+  own height halfway along the row. The toolbar also carries only what is reached for mid-comparison
+  (ignore whitespace, collapse unchanged, the diff pane, edit, and wrap in the unified view); the rest
+  stays in Settings, which is what makes a row that short possible.
+
+- **Every button is the same height.** `.primary-btn` sized itself from its own padding and stood a few
+  pixels taller than everything beside it, which is why the gallery had a `Height="30"` on the blue
+  button and nothing else did. All the button classes now share one `ControlHeight`, and
+  `ToggleButton` finally picks up `.toolbar-btn` at all — an Avalonia type selector matches the exact
+  type, so `Button.toolbar-btn` never reached a `ToggleButton`, and the Json view's Pretty toggle had
+  been rendering as a stock Fluent button among a row of flat ones. The merge window's file summary
+  carried a `link-btn` class no style has ever defined, with the same result; it is a `toolbar-btn`
+  now.
 
 - **A moved block now reads as the block, not as a brace and half of the next one.** When a run of
   added or removed lines is bounded by lines identical to the ones just inside it, the diff is

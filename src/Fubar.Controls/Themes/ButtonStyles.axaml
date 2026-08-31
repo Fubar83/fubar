@@ -3,7 +3,22 @@
 
     <!-- Shared Button class styles for every app on Fubar.Controls. Applied via Classes="..." (never a
          bare "Button" selector) so they never bleed into buttons that intentionally keep the default
-         theme. All colours are palette tokens (see Palette.axaml), so they follow the app's theme. -->
+         theme. All colours are palette tokens (see Palette.axaml), so they follow the app's theme.
+
+         EVERY class here is the same height, which is what ControlHeight below is for. A toolbar row
+         mixes .toolbar-btn, .primary-btn, a ComboBox and a toggle or two, and each of them sizing
+         itself from its own padding is what left the blue buttons standing taller than everything
+         beside them - a ragged baseline the moment two of them share a row. Vertical padding is
+         therefore deliberately smaller than that height (it only keeps the glyph off the edge; the
+         height decides the box), and a view should never set Height on one of these to patch a
+         mismatch - fix it here instead, or every app inherits the workaround. -->
+
+    <Styles.Resources>
+        <!-- One height for every button in a toolbar row. 30 rather than Fluent's 32: these toolbars
+             are dense and information-first, and the rows above the diff are rows the diff does not
+             get. -->
+        <x:Double x:Key="ControlHeight">30</x:Double>
+    </Styles.Resources>
 
     <!-- Toolbar buttons: minimal top-bar look - no border/fill until hover. -->
     <Style Selector="Button.toolbar-btn">
@@ -11,13 +26,24 @@
         <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="6" />
-        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="Padding" Value="12,4" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource PostmanTextPrimaryBrush}" />
     </Style>
     <Style Selector="Button.toolbar-btn:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource PostmanPanelBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource PostmanBorderBrush}" />
+    </Style>
+    <!-- Fluent paints a disabled button with a filled box, which on a borderless toolbar button reads
+         as MORE prominent than the enabled ones beside it - grey slabs in a row of flat labels. Fade
+         it instead, the way every other disabled control here does. -->
+    <Style Selector="Button.toolbar-btn:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.toolbar-btn:disabled">
+        <Setter Property="Opacity" Value="0.4" />
     </Style>
 
     <!-- Primary action (Send): solid blue, white text. -->
@@ -27,7 +53,8 @@
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="CornerRadius" Value="6" />
-        <Setter Property="Padding" Value="22,0" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="Padding" Value="18,4" />
         <Setter Property="BorderThickness" Value="0" />
     </Style>
     <Style Selector="Button.primary-btn:pointerover /template/ ContentPresenter">
@@ -43,12 +70,59 @@
         <Setter Property="BorderBrush" Value="{DynamicResource PostmanBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="6" />
-        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="Padding" Value="10,4" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{DynamicResource PostmanTextPrimaryBrush}" />
     </Style>
     <Style Selector="Button.secondary-btn:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource PostmanPanelBackgroundBrush}" />
+    </Style>
+
+    <!-- Toggle buttons: a .toolbar-btn that stays pressed.
+         A ToggleButton IS a Button, but an Avalonia type selector matches the exact type, so
+         "Button.toolbar-btn" above never reached one - a ToggleButton carrying the class rendered as a
+         stock Fluent button (which is how the Json view's Pretty toggle came to look unlike every
+         other control around it). Written out rather than as :is(Button) so the checked state has
+         somewhere to live and the two cannot drift apart.
+
+         This is what toolbar CheckBoxes became: same box, same height, same hover as the buttons
+         either side, and "on" reading as a held-down key rather than as a tick in a second visual
+         language halfway along the row. -->
+    <Style Selector="ToggleButton.toolbar-btn">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="Padding" Value="12,4" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource PostmanTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.toolbar-btn /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="ToggleButton.toolbar-btn:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource PostmanPanelBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PostmanBorderBrush}" />
+    </Style>
+    <!-- Checked repeated for the hover case on purpose: without it, resting the pointer on an ACTIVE
+         toggle would paint it with the inactive hover fill and make it read as off. -->
+    <Style Selector="ToggleButton.toolbar-btn:checked /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource BgSelected}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PostmanBlueBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.toolbar-btn:checked:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource BgSelected}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PostmanBlueBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.toolbar-btn:checked">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="ToggleButton.toolbar-btn:disabled">
+        <Setter Property="Opacity" Value="0.4" />
     </Style>
 
     <!-- Tiny icon-only buttons (rename, +, close, etc.): neutral hover highlight for everything by

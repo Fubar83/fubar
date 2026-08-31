@@ -57,7 +57,7 @@ app is a matter of overriding these keys.
 
 | Include | Provides |
 | --- | --- |
-| `Themes/ButtonStyles.axaml` | `Button` classes: `.toolbar-btn`, `.primary-btn`, `.secondary-btn`, `.icon-btn`, `.icon-btn-danger`, `.TabPill`. |
+| `Themes/ButtonStyles.axaml` | `Button` classes: `.toolbar-btn`, `.primary-btn`, `.secondary-btn`, `.icon-btn`, `.icon-btn-danger`, `.TabPill`, and `ToggleButton.toolbar-btn` (the same box with a checked state). All of them share one `ControlHeight` (30) so a toolbar row has a single baseline — never set `Height` on one to make it match its neighbours. |
 | `Themes/WorkspaceTabStyles.axaml` | `Border.WorkspaceTab` (+ `.Active`) — Chrome-style title-bar tabs. |
 | `Themes/SeamlessTab.axaml` | Styling for the `SeamlessTabControl` boxed-tab look. |
 
@@ -77,6 +77,7 @@ Primitives — small, single-purpose, coloured through their own `Background`/`F
 | `PillToggle` | `ToggleButton` | Rounded toggle segment for view/filter switchers. |
 | `SectionHeader` | `TemplatedControl` | `Title` + right-aligned `Action` slot. |
 | `LabeledField` | `HeaderedContentControl` | Caption (`Header`) + field (`Content`); stacked or inline. |
+| `SettingRow` | `HeaderedContentControl` | A settings-page row: `Header` + plain-language `Description` on the left, the control (`Content` — a `ToggleSwitch`, combo, number box) on the right. Write the description; a settings page whose explanations all live in tooltips is a page of terse labels. |
 | `Toolbar` | `ItemsControl` | Horizontal items strip with consistent spacing. |
 | `Spinner` | `TemplatedControl` | Indeterminate rotating-ring loader; `Diameter`, colour = `Foreground`. |
 | `MetricChip` | `TemplatedControl` | Icon + monospace value readout (latency/size/count); `Icon`, `Text`, threshold colour via `Foreground`. |

@@ -104,10 +104,11 @@ public static class ThreeWayAlignedText
     /// a merge asks - who moved? - back into something the reader has to work out for themselves.
     ///
     /// The one refinement: a changed row that HAS an ancestor line opposite it is reported as
-    /// <see cref="ChangeKind.Modified"/> rather than Inserted, which drops its full-line tint (see
-    /// <c>DiffLineColors.LineBackground</c>) and leaves its character spans as the whole signal -
-    /// precisely the bargain the two-way view already makes for a modified line. A row with no
-    /// ancestor line has no spans to defer to, so it keeps the full tint.
+    /// <see cref="ChangeKind.Modified"/> rather than Inserted, so it reads as an edit of that line
+    /// rather than as brand-new text, and its character spans can point at the words that actually
+    /// differ. It is still tinted - every changed row is (see <c>DiffLineColors.LineBackground</c>),
+    /// in the colour of the column it is in. A row with no ancestor line has no spans to point with,
+    /// so calling it Inserted is both true and all this can say.
     /// </summary>
     private static ChangeKind KindFor(ThreeWayLine row, MergeSide side)
     {

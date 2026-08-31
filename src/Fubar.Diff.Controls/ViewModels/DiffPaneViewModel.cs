@@ -527,6 +527,15 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial JsonChangeNodeViewModel? CurrentTreeNode { get; set; }
 
+    /// <summary>
+    /// Every semantic change, for the panes that mark all of them rather than only the current one.
+    ///
+    /// These are the ORIGINAL changes - spans into each side's text exactly as given, which is what
+    /// the Json panes display. The other list (spans into the canonicalized copy the aligner worked
+    /// on) would be a line or two out the moment a user turned on "Reformat for display".
+    /// </summary>
+    public IReadOnlyList<JsonChange> SemanticChanges => _semanticChanges;
+
     /// <summary>The change the Json view is currently showing, or null when nothing is selected.</summary>
     public JsonChange? CurrentSemanticChange =>
         CurrentSemanticChangeIndex >= 0 && CurrentSemanticChangeIndex < _semanticChanges.Count
@@ -697,7 +706,9 @@ public partial class DiffPaneViewModel : ObservableObject
 
     private void RaiseJsonDerived()
     {
+        OnPropertyChanged(nameof(SemanticChanges));
         OnPropertyChanged(nameof(CurrentSemanticChange));
+        OnPropertyChanged(nameof(HasDifferences));
         OnPropertyChanged(nameof(LeftHighlightSpan));
         OnPropertyChanged(nameof(RightHighlightSpan));
         OnPropertyChanged(nameof(JsonCaption));
@@ -779,6 +790,68 @@ public partial class DiffPaneViewModel : ObservableObject
     [RelayCommand]
     public void PreviousChange() => MoveTo(HunkNavigator.Previous(_result.Hunks, CurrentHunk));
 
+    /// <summary>
+    /// Next difference, whichever kind of difference this view is showing: a hunk in the text views, a
+    /// semantic change in the Json one.
+    ///
+    /// The two really are different things - a hunk is a run of rows the aligner paired up, a semantic
+    /// change is one value that differs - which is why the Json view used to bring its own Prev/Next
+    /// buttons and the host hid its own to avoid two "next" buttons that disagreed. Deciding here
+    /// instead leaves one pair of buttons in one place, and moves the choice to the only object that
+    /// knows which view is on screen.
+    /// </summary>
+    [RelayCommand]
+    public void NextDifference()
+    {
+        if (IsJsonViewVisible)
+        {
+            NextSemanticChange();
+        }
+        else
+        {
+            NextChange();
+        }
+    }
+
+    [RelayCommand]
+    public void PreviousDifference()
+    {
+        if (IsJsonViewVisible)
+        {
+            PreviousSemanticChange();
+        }
+        else
+        {
+            PreviousChange();
+        }
+    }
+
+    /// <summary>
+    /// Whether there is anything to walk, counted the same way the buttons walk it. Ignored semantic
+    /// changes do not count: navigation skips them, so a document whose only differences are ignored
+    /// has nothing to step through however many the tree lists.
+    /// </summary>
+    public bool HasDifferences
+    {
+        get
+        {
+            if (!IsJsonViewVisible)
+            {
+                return HasChanges;
+            }
+
+            foreach (var change in _semanticChanges)
+            {
+                if (!change.IsIgnored)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     /// <summary>Jumps to a row, e.g. from a diff-map click, syncing the hunk selection to match.</summary>
     public void JumpToRow(int rowIndex)
     {
@@ -830,6 +903,10 @@ public partial class DiffPaneViewModel : ObservableObject
         OnPropertyChanged(nameof(IsUnifiedViewVisible));
         OnPropertyChanged(nameof(IsJsonViewVisible));
         OnPropertyChanged(nameof(AvailableViewModes));
+
+        // Which kind of difference Next/Previous walk changes with the view, and so does whether
+        // there is one to walk.
+        OnPropertyChanged(nameof(HasDifferences));
     }
 
     /// <summary>
@@ -840,6 +917,7 @@ public partial class DiffPaneViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Result));
         OnPropertyChanged(nameof(HasChanges));
+        OnPropertyChanged(nameof(HasDifferences));
         OnPropertyChanged(nameof(HasCurrentHunk));
         OnPropertyChanged(nameof(CurrentIgnorePath));
         OnPropertyChanged(nameof(CanIgnoreCurrent));

@@ -52,8 +52,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// A timestamp rather than a flag held across the save, because the watcher announces changes only
     /// after a quiet period: by the time it speaks, a flag cleared in a `finally` is long gone and our
     /// own write arrives looking exactly like an external one. Saving already re-reads the file
-    /// deliberately, so acting on it again would be a wasted comparison at best and a "changed on disk"
-    /// banner about the user's own save at worst.
+    /// deliberately, so acting on it again would be a wasted comparison at best and a "files changed
+    /// on disk" notice about the user's own save at worst.
     /// </summary>
     private DateTime _lastSelfWrite = DateTime.MinValue;
 
@@ -112,6 +112,21 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             if (e.PropertyName == nameof(DiffPaneViewModel.IsSideBySideViewVisible))
             {
                 OnPropertyChanged(nameof(CanEdit));
+            }
+
+            // Stepping through a JSON comparison reports where it has got to in the status bar, the
+            // same way stepping through a text one does (OnPaneNavigated). The Json view used to say
+            // this in a strip of its own; that strip is gone in this app, and the status bar is where
+            // the answer to "which difference am I on" already lives.
+            //
+            // Only once something IS selected: the caption's other form ("5 difference(s) - none
+            // selected") is raised whenever a comparison loads, and would overwrite the summary that
+            // has just been written there.
+            if (e.PropertyName == nameof(DiffPaneViewModel.JsonCaption)
+                && Pane.IsJsonViewVisible
+                && Pane.CurrentSemanticChange is not null)
+            {
+                StatusMessage = Pane.JsonCaption;
             }
         };
 
@@ -384,9 +399,88 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         _editedSide = side;
         MarkDirty(side);
 
+        // Said out loud either way. Between the keystroke and the re-diff, every count, tint and hunk
+        // boundary on screen describes the text as it was BEFORE the keystroke - and a diff tool
+        // showing a stale answer without saying so is exactly the failure this whole thing exists to
+        // prevent. With LiveDiff on that gap is a fraction of a second; with it off it lasts until F5.
+        IsDiffStale = true;
+
+        if (!LiveDiff)
+        {
+            return;
+        }
+
         _editTimer ??= CreateEditTimer();
         _editTimer.Stop();
         _editTimer.Start();
+    }
+
+    /// <summary>
+    /// Whether typing re-runs the comparison on its own, shortly after the typing stops.
+    ///
+    /// On by default, and for most files it is the right answer - the diff keeps up, and F5 is only
+    /// ever needed to skip the wait. Off is for the case the default cannot serve: on a pair big
+    /// enough that a comparison is measured in seconds, re-running one per pause turns typing into a
+    /// series of freezes, and the honest alternative is to let the diff go stale, SAY that it has, and
+    /// re-run it when the user asks. Which is what makes this a switch rather than a hidden threshold:
+    /// where "big enough" falls depends on the machine and the file, and guessing it wrong is either a
+    /// stuttering editor or a refresh key nobody knew they needed.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool LiveDiff { get; set; } = true;
+
+    partial void OnLiveDiffChanged(bool value)
+    {
+        if (!value)
+        {
+            // Turned off mid-edit: the pending re-diff was still the old promise. Anything already
+            // typed stays marked stale, which is now true until F5.
+            _editTimer?.Stop();
+        }
+        else if (IsDiffStale)
+        {
+            // Turned on with an edit outstanding: honour it now rather than waiting for the next
+            // keystroke to start the timer.
+            _ = RefreshDiffAsync();
+        }
+
+        DisplayOptionChanged();
+    }
+
+    /// <summary>
+    /// Whether the comparison on screen describes what the panes now hold.
+    ///
+    /// False for the whole of an ordinary reading session: it goes true only when a pane is typed
+    /// into, and back to false as soon as the re-diff behind it lands. The status bar shows it, and
+    /// F5 (<see cref="RefreshDiffCommand"/>) resolves it without waiting for the timer.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsDiffStale { get; set; }
+
+    /// <summary>
+    /// F5: bring the comparison up to date, now.
+    ///
+    /// Two different things, and picking between them is the whole point of the command. With typed
+    /// changes in a pane, "up to date" means re-diffing WHAT IS ON SCREEN - going back to disk there
+    /// would quietly throw the user's edits away, which is not something a refresh key may do. With
+    /// nothing typed, it means re-reading both files, which is what someone pressing F5 after a build
+    /// or a checkout is asking for.
+    /// </summary>
+    [RelayCommand]
+    public async Task RefreshDiffAsync()
+    {
+        // Whatever the timer was about to do, this is doing now - leaving it running would re-diff a
+        // second time for nothing.
+        _editTimer?.Stop();
+
+        if (HasUnsavedEdits)
+        {
+            await ReDiffAfterEditAsync().ConfigureAwait(true);
+            return;
+        }
+
+        FilesChangedOnDisk = false;
+        await CompareAsync().ConfigureAwait(true);
     }
 
     private Avalonia.Threading.DispatcherTimer CreateEditTimer()
@@ -427,10 +521,13 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
                 .CompareDocumentsAsync(left, right, CurrentOptions())
                 .ConfigureAwait(true);
 
+            IsDiffStale = false;
             Refresh();
         }
         catch (TextFileReadException ex)
         {
+            // Left stale on purpose: the comparison on screen is still the pre-edit one, and saying so
+            // is more use than an error message the user has to remember the meaning of.
             ErrorMessage = ex.Message;
         }
     }
@@ -487,6 +584,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             JsonInlineSimpleContainers = settings.JsonInlineSimpleContainers;
             JsonSortProperties = settings.JsonSortProperties;
             AutoRefresh = settings.AutoRefresh;
+            LiveDiff = settings.LiveDiff;
             IgnoreComments = settings.IgnoreComments;
             IgnoreBlankLines = settings.IgnoreBlankLines;
             SyntaxHighlighting = settings.SyntaxHighlighting;
@@ -535,6 +633,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         JsonInlineSimpleContainers = JsonInlineSimpleContainers,
         JsonSortProperties = JsonSortProperties,
         AutoRefresh = AutoRefresh,
+        LiveDiff = LiveDiff,
         IgnoreComments = IgnoreComments,
         IgnoreBlankLines = IgnoreBlankLines,
         SyntaxHighlighting = SyntaxHighlighting,
@@ -594,29 +693,64 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     public partial string StatusMessage { get; set; } = "Choose two files to compare.";
 
     /// <summary>
-    /// Whether the two file pickers are shown in full, or collapsed to a one-line summary.
+    /// What is loaded, for the empty state and the Open menu: neither side, one side, or both.
     ///
-    /// Collapses itself after a successful comparison: the pickers are how you START a comparison, but
-    /// once one is on screen they are four controls and a whole row of chrome standing between the
-    /// user and the thing they opened the app to look at. The summary line stays clickable, so getting
-    /// them back is one click and nothing is hidden for good.
+    /// There is no picker row in the window any more - one Open button in the toolbar replaced two
+    /// text boxes, two Browse buttons, a Compare button and the collapsed summary line that used to
+    /// stand in for all of them (IsFileRowExpanded, now gone). What replaced the SUMMARY is the tab
+    /// title in the title bar, which named both files all along.
+    ///
+    /// Which leaves one thing the row did that a button cannot: show a half-finished choice. Opening
+    /// one file is a real state - it is how "compare this against something" starts - so it gets said
+    /// here, on the empty state, rather than leaving a window that looks like nothing happened.
     /// </summary>
-    [ObservableProperty]
-    public partial bool IsFileRowExpanded { get; set; } = true;
+    public bool HasOneSide => !_comparison.HasBothSides
+        && (!string.IsNullOrWhiteSpace(LeftPath) || !string.IsNullOrWhiteSpace(RightPath));
+
+    /// <summary>
+    /// What the empty state says below its title: how to start, or what is still missing.
+    ///
+    /// The half-finished case is the one worth spelling out. Opening a single file leaves a window
+    /// that looks exactly like a window where nothing happened, and "pick two files" is then both
+    /// wrong and unhelpful - one of them is already picked.
+    /// </summary>
+    public string EmptyStateDescription
+    {
+        get
+        {
+            if (!HasOneSide)
+            {
+                return "Open two files, or drop them onto this window.";
+            }
+
+            var chosen = System.IO.Path.GetFileName(
+                string.IsNullOrWhiteSpace(LeftPath) ? RightPath : LeftPath);
+
+            return $"{chosen} is loaded. Choose the file to compare it with.";
+        }
+    }
+
+    partial void OnLeftPathChanged(string value) => RaiseSideState();
+
+    partial void OnRightPathChanged(string value) => RaiseSideState();
+
+    private void RaiseSideState()
+    {
+        OnPropertyChanged(nameof(HasOneSide));
+        OnPropertyChanged(nameof(EmptyStateDescription));
+        OnPropertyChanged(nameof(CanSwapSides));
+    }
 
     /// <summary>
     /// Names how the two files' encodings/BOM/line endings differ, or empty when they do not.
     ///
-    /// Shown as a banner as well as in the status line, because when it is the ONLY difference the
-    /// panes are identical and there is nothing else on screen to notice.
+    /// Named in the status bar in its own right, not only inside the status message, because when it
+    /// is the ONLY difference the panes are identical and there is nothing else on screen to notice.
     /// </summary>
     public string FormatDifferenceDetail =>
         TextFormatComparer.Describe(_comparison.Left.Format, _comparison.Right.Format);
 
     public bool HasFormatDifference => _comparison.FormatDifference.Any;
-
-    [RelayCommand]
-    private void ToggleFileRow() => IsFileRowExpanded = !IsFileRowExpanded;
 
     /// <summary>True while a comparison or save is running, so the view can disable the toolbar.</summary>
     [ObservableProperty]
@@ -644,8 +778,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Set when the files changed but the comparison was NOT re-run, so the view can offer a Reload
-    /// button. That happens for one reason: unsaved merge decisions. Refreshing would silently discard
+    /// Set when the files changed but the comparison was NOT re-run, so the status bar can say so and
+    /// offer a Reload button. That happens for one reason: unsaved merge decisions. Refreshing would silently discard
     /// them, since decisions are keyed by hunk index and a new comparison renumbers the hunks - so the
     /// choice belongs to the user, not to a file-system event.
     /// </summary>
@@ -789,6 +923,30 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     public static IReadOnlyList<ComparisonMode> ModeOptions { get; } = Enum.GetValues<ComparisonMode>();
 
     /// <summary>
+    /// Sets the comparison mode, for the View menu's three radio entries.
+    ///
+    /// A command rather than a two-way bound selector because the mode now lives in a menu: a menu
+    /// item reports "I was clicked", and the check marks are read back off <see cref="Mode"/> so the
+    /// menu cannot disagree with the comparison about which mode is in force.
+    /// </summary>
+    [RelayCommand]
+    private void SetCompareMode(ComparisonMode mode) => Mode = mode;
+
+    /// <summary>Which entry the View menu ticks. Read-only, so the tick always follows the comparison.</summary>
+    public bool IsModeAuto => Mode == ComparisonMode.Auto;
+
+    public bool IsModeText => Mode == ComparisonMode.Text;
+
+    public bool IsModeJson => Mode == ComparisonMode.Json;
+
+    /// <summary>Layout, the other half of the View menu. Side by side or unified - text views only.</summary>
+    [RelayCommand]
+    private void SetSideBySide() => Pane.ViewMode = DiffViewMode.SideBySide;
+
+    [RelayCommand]
+    private void SetUnified() => Pane.ViewMode = DiffViewMode.Unified;
+
+    /// <summary>
     /// Identity-key overrides for specific arrays, shown and edited as a list rather than the
     /// dictionary <see cref="JsonComparisonOptions"/> actually wants - see <see cref="CurrentOptions"/>
     /// for the conversion. Entries are replaced wholesale (remove then re-add), never edited in place,
@@ -902,7 +1060,15 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
     partial void OnIgnoreNullVsMissingChanged(bool value) => OptionChanged();
 
-    partial void OnModeChanged(ComparisonMode value) => OptionChanged();
+    partial void OnModeChanged(ComparisonMode value)
+    {
+        // The View menu's tick marks are computed from Mode, so they have to be told.
+        OnPropertyChanged(nameof(IsModeAuto));
+        OnPropertyChanged(nameof(IsModeText));
+        OnPropertyChanged(nameof(IsModeJson));
+
+        OptionChanged();
+    }
 
     partial void OnIgnoreCommentsChanged(bool value) => OptionChanged();
 
@@ -956,6 +1122,60 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
     // ---- Commands -----------------------------------------------------------------------------
 
+    /// <summary>
+    /// The toolbar's Open button: one dialog, both files.
+    ///
+    /// This is the whole file-opening UI now, and it is one control because opening files is one
+    /// question. Picking two at once is a shift-click for the common case (a pair in the same folder);
+    /// picking one fills whichever side is free, which is how "compare this against what I have open"
+    /// works. The per-side entries in the same menu (<see cref="BrowseLeftCommand"/>,
+    /// <see cref="BrowseRightCommand"/>) cover replacing ONE side of an existing comparison, which is
+    /// the only thing the old two-text-box row could do that this cannot.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenFilesDialogAsync()
+    {
+        var picked = await _filePicker.PickFilesAsync("Choose two files to compare").ConfigureAwait(true);
+
+        if (picked.Count > 0)
+        {
+            await OpenFilesAsync(picked).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Whether there is a pair to swap. Both sides, or there is nothing to exchange.</summary>
+    public bool CanSwapSides =>
+        !string.IsNullOrWhiteSpace(LeftPath) && !string.IsNullOrWhiteSpace(RightPath);
+
+    /// <summary>
+    /// Exchanges the two sides and re-compares.
+    ///
+    /// The picker reports a multi-selection in the platform's order, not the order they were clicked,
+    /// so a pair can land the wrong way round through no fault of the user's. Everything about a diff
+    /// reverses with the sides - added becomes removed - so getting it back is one click rather than
+    /// two trips through a dialog.
+    ///
+    /// Refuses to throw away typed changes: with unsaved edits the panes hold text that exists nowhere
+    /// else, and re-comparing reloads both sides from disk.
+    /// </summary>
+    [RelayCommand]
+    private async Task SwapSidesAsync()
+    {
+        if (!CanSwapSides || HasUnsavedEdits)
+        {
+            if (HasUnsavedEdits)
+            {
+                StatusMessage = "Save or undo your changes before swapping sides.";
+            }
+
+            return;
+        }
+
+        (LeftPath, RightPath) = (RightPath, LeftPath);
+
+        await CompareAsync().ConfigureAwait(true);
+    }
+
     [RelayCommand]
     private async Task BrowseLeftAsync()
     {
@@ -999,12 +1219,14 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             _mergeState = MergeState.Empty;
             MarkClean();
             FilesChangedOnDisk = false;
+
+            // Whatever was out of date is now the thing on screen.
+            IsDiffStale = false;
             Refresh();
 
             ApplyWatch();
 
-            // The pickers have done their job - give the row back to the diff.
-            IsFileRowExpanded = false;
+            RaiseSideState();
 
             // Announced only after a successful read - a path that could not be opened is not
             // something worth offering to reopen. The shell owns the recent list, since it is shared
@@ -1676,7 +1898,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// The files changed underneath us.
     ///
     /// Arrives on a background thread, so everything real happens back on the UI one. With unsaved
-    /// decisions we refuse to reload and raise a banner instead: a new comparison renumbers the hunks
+    /// decisions we refuse to reload and say so in the status bar instead: a new comparison renumbers the hunks
     /// those decisions are keyed by, so refreshing would either discard them or, worse, apply them to
     /// different changes.
     /// </summary>
@@ -1691,8 +1913,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             if (HasUnsavedEdits)
             {
                 // A genuine conflict: the file moved under changes the user has not saved, and only
-                // they can say which version wins. The banner stays up as well as the prompt, so
-                // dismissing the dialog does not leave the situation unmarked.
+                // they can say which version wins. The status bar keeps saying so as well as the prompt,
+                // so dismissing the dialog does not leave the situation unmarked.
                 FilesChangedOnDisk = true;
                 _ = PromptForConflictAsync();
 
@@ -1749,8 +1971,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
                     break;
 
                 default:
-                    // Keep the banner: they chose to keep their work, and the files are still out of
-                    // date. The Reload button in the banner is how they change their mind.
+                    // Keep saying so: they chose to keep their work, and the files are still out of
+                    // date. The status bar's Reload button is how they change their mind.
                     StatusMessage = "Kept your changes. The files on disk are newer.";
                     break;
             }
@@ -1774,7 +1996,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// A read failure is swallowed rather than shown, because this was not asked for: an editor that
     /// saves by replacing the file leaves it missing for a moment, and turning that instant into an
     /// error banner over a diff that was fine would be worse than waiting for the next event. The
-    /// banner offers a manual reload if the file really has gone.
+    /// status bar offers a manual reload if the file really has gone.
     /// </summary>
     private async Task RefreshFromDiskAsync()
     {

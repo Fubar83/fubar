@@ -70,8 +70,10 @@ public partial class ShellViewModel : ViewModelBase
     [ObservableProperty]
     public partial IReadOnlyList<RecentComparison> Recent { get; set; } = [];
 
-    /// <summary>True once more than one tab is open, so the strip can stay hidden until it is useful.</summary>
-    public bool HasMultipleTabs => Tabs.Count > 1;
+    // HasMultipleTabs used to live here, hiding the tab strip until a second tab existed - a strip
+    // below the toolbar cost a row of window, so one tab was not worth it. The strip is IN the title
+    // bar now, in space the window already spends on decoration, so there is nothing to buy back and
+    // a single tab shows like any other.
 
     /// <summary>
     /// Opens the first tab and, if two files were named on the command line, compares them.
@@ -93,7 +95,6 @@ public partial class ShellViewModel : ViewModelBase
 
         Tabs.Add(tab);
         SelectedTab = tab;
-        OnPropertyChanged(nameof(HasMultipleTabs));
 
         return tab;
     }
@@ -136,7 +137,6 @@ public partial class ShellViewModel : ViewModelBase
         // Select the neighbour rather than jumping to the first tab, which is what every tabbed
         // application does and what the user's eye expects.
         SelectedTab = Tabs[Math.Min(index, Tabs.Count - 1)];
-        OnPropertyChanged(nameof(HasMultipleTabs));
     }
 
     /// <summary>

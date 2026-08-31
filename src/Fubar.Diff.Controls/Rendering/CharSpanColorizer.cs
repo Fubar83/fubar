@@ -94,6 +94,11 @@ internal sealed class CharSpanColorizer : DocumentColorizingTransformer
         }
     }
 
+    /// <summary>
+    /// Quiet unless this row is part of the difference being read - and quiet everywhere while
+    /// nothing is selected, which is the same rule the row tint follows. See
+    /// <see cref="ChangeLineBackgroundRenderer.Emphasis"/>.
+    /// </summary>
     private DiffEmphasis Emphasis(int index)
     {
         if (_emphasized)
@@ -101,8 +106,8 @@ internal sealed class CharSpanColorizer : DocumentColorizingTransformer
             return DiffEmphasis.Emphasized;
         }
 
-        return _currentStart >= 0 && (index < _currentStart || index > _currentEnd)
-            ? DiffEmphasis.Faded
-            : DiffEmphasis.Normal;
+        return _currentStart >= 0 && index >= _currentStart && index <= _currentEnd
+            ? DiffEmphasis.Normal
+            : DiffEmphasis.Faded;
     }
 }

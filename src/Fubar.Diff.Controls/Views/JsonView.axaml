@@ -14,11 +14,14 @@
          never needing an alignment in the first place - which is also why it is the default for JSON
          (DiffPaneViewModel.Show), with Text as the one fallback for everything else. -->
     <DockPanel>
+        <!-- Only for a host with no toolbar of its own - see JsonView.ShowToolbar. A hidden docked
+             child takes no space, so this collapses cleanly. -->
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource BgHeader}"
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,0,0,1"
-                Padding="10,6">
+                Padding="10,6"
+                IsVisible="{Binding $parent[views:JsonView].ShowToolbar}">
             <fc:Toolbar>
                 <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous difference"
                         Command="{Binding PreviousSemanticChangeCommand}" />
@@ -49,7 +52,13 @@
                      when the host cannot reformat - re-deriving the highlight spans against the new
                      text needs a parser, which not every host has. -->
                 <Panel Grid.Column="2">
+                    <!-- Changes as well as HighlightSpan: every difference in the document is marked
+                         quietly, the current one strongly. Showing only the current one left a
+                         document with eleven differences displaying one, with no way to see where the
+                         others were short of pressing Next eleven times. -->
                     <views:RawJsonPane Text="{Binding LeftRawText}"
+                                       Changes="{Binding SemanticChanges}"
+                                       Side="Left"
                                        HighlightSpan="{Binding LeftHighlightSpan}" />
 
                     <ToggleButton Classes="toolbar-btn"
@@ -65,6 +74,8 @@
 
                 <Panel Grid.Column="4">
                     <views:RawJsonPane Text="{Binding RightRawText}"
+                                       Changes="{Binding SemanticChanges}"
+                                       Side="Right"
                                        HighlightSpan="{Binding RightHighlightSpan}" />
 
                     <ToggleButton Classes="toolbar-btn"

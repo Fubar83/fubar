@@ -82,6 +82,9 @@ public class BinaryComparisonTabTests
     {
         public Task<string?> PickFileAsync(string title) => Task.FromResult<string?>(null);
 
+        public Task<IReadOnlyList<string>> PickFilesAsync(string title) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+
         public Task<string?> PickSaveFileAsync(string title) => Task.FromResult(save);
 
         public Task<string?> PickFolderAsync(string title) => Task.FromResult<string?>(null);
