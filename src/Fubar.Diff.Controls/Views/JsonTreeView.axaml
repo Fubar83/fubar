@@ -32,6 +32,7 @@
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
             <Setter Property="Opacity" Value="0.45" />
         </Style>
+
     </UserControl.Styles>
 
     <Panel>
@@ -42,13 +43,19 @@
         <!-- SelectedItem is two-way so the Hybrid view's Prev/Next can drive the tree's selection
              (DiffPaneViewModel.CurrentTreeNode) as well as read it when the user clicks a row - Text
              and Tree mode never set CurrentTreeNode, so this binding is otherwise inert for them. -->
-        <fc:TreeView ItemsSource="{Binding SemanticTree}"
+        <fc:TreeView x:Name="Tree"
+                     ItemsSource="{Binding SemanticTree}"
                      SelectedItem="{Binding CurrentTreeNode, Mode=TwoWay}"
                      Background="Transparent"
                      BorderThickness="0"
                      IsVisible="{Binding !!SemanticTree.Count}">
             <TreeView.ItemTemplate>
                 <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:JsonChangeNodeViewModel">
+                    <!-- Transparent rather than unset: an unset background is not hit-testable, so a
+                         click landing on the padding between the label and the next control would
+                         reach nothing. The row itself is already full width and already takes hover,
+                         which is what makes the whole line one target - see JsonTreeView.axaml.cs. -->
+                    <Border Background="Transparent" HorizontalAlignment="Stretch">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Classes="path" Text="{Binding Label}" VerticalAlignment="Center"
                                    Classes.ignored="{Binding IsIgnored}" />
@@ -85,6 +92,7 @@
                                     CommandParameter="{Binding IgnorePath}" />
                         </Panel>
                     </StackPanel>
+                    </Border>
                 </TreeDataTemplate>
             </TreeView.ItemTemplate>
         </fc:TreeView>

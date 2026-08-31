@@ -302,15 +302,17 @@
                               IsVisible="{Binding Pane.IsUnifiedViewVisible}"
                               VerticalAlignment="Center" />
 
-                    <!-- Side by side / Unified / Json. Always offered now: the first two apply to any
-                         comparison, where Json alone did not, so this no longer hides itself for a
-                         plain text file - Pane.Show still picks the right default for the content.
-                         Labelled for the same reason the Compare mode above is: both selectors offer
-                         similar-looking words for different questions ("how to compare" vs "what to
-                         show right now"). -->
+                    <!-- Side by side / Unified - two LAYOUTS of a text comparison, and nothing more.
+                         Json used to be a third option here, which meant this selector and the
+                         Compare selector above both answered "text or Json", and picking Text in one
+                         and Json in the other was a contradiction the app had to resolve behind the
+                         user's back. Compare decides what is shown; this decides how text is laid out,
+                         so it hides when text is not what is being shown. -->
                     <TextBlock Text="View:" VerticalAlignment="Center"
+                               IsVisible="{Binding !Pane.IsJsonViewVisible}"
                                Foreground="{DynamicResource TextSecondary}" Margin="12,0,4,0" />
                     <fc:SegmentedControl ItemsSource="{Binding Pane.AvailableViewModes}"
+                                         IsVisible="{Binding !Pane.IsJsonViewVisible}"
                                          SelectedItem="{Binding Pane.ViewMode}" />
 
                 </fc:Toolbar>

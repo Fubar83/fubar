@@ -27,4 +27,11 @@
     <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- So a view's interaction RULES can be tested without a pointer. Headless Avalonia never
+         delivers a real press to a row it has not laid out, and a test that pokes the property it is
+         meant to be checking proves nothing - see JsonTreeView.RowToToggle. -->
+    <InternalsVisibleTo Include="Fubar.Diff.Controls.Tests" />
+  </ItemGroup>
+
 </Project>

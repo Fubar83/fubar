@@ -29,6 +29,32 @@ public sealed record JsonChange(
     public SourceSpan RightNameSpan { get; init; }
 
     /// <summary>
+    /// Everything this change covers on the left - what a renderer should highlight.
+    ///
+    /// For a property that was ADDED or REMOVED that is the whole <c>"name": value</c> pair, because
+    /// the whole pair is what appeared or went away; highlighting the value alone leaves the key
+    /// looking untouched next to it, which is precisely the wrong reading. For a value that merely
+    /// CHANGED it is the value alone: the key is still there, still spelled the same, and colouring it
+    /// would claim an edit nobody made.
+    ///
+    /// A property that only MOVED counts with the first group - the pair went somewhere else as a
+    /// unit.
+    /// </summary>
+    public SourceSpan LeftSpan => Covered(Left, LeftNameSpan);
+
+    /// <summary>Everything this change covers on the right. See <see cref="LeftSpan"/>.</summary>
+    public SourceSpan RightSpan => Covered(Right, RightNameSpan);
+
+    private SourceSpan Covered(JsonAstNode? node, SourceSpan nameSpan)
+    {
+        var value = node?.Span ?? SourceSpan.None;
+
+        return Kind is ChangeKind.Inserted or ChangeKind.Deleted || IsReorder
+            ? nameSpan.Union(value)
+            : value;
+    }
+
+    /// <summary>
     /// True when this is a property that only moved. Reported solely when
     /// <see cref="JsonComparisonOptions.ReportPropertyOrder"/> is on, and kept distinguishable so the
     /// UI can present it differently from a value that actually changed.

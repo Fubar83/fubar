@@ -378,27 +378,29 @@ public partial class DiffPaneViewModel : ObservableObject
     /// <summary>Every view mode that exists.</summary>
     public static IReadOnlyList<DiffViewMode> ViewModeOptions { get; } = Enum.GetValues<DiffViewMode>();
 
-    /// <summary>
-    /// The modes offered for THIS comparison. Side by side and unified always apply; Json is dropped
-    /// for content that is not JSON rather than offered and then refusing to show anything, which is
-    /// how the selector used to hide itself entirely - it no longer can, because the other two are
-    /// always a real choice.
-    /// </summary>
-    public IReadOnlyList<DiffViewMode> AvailableViewModes => IsSemantic
-        ? ViewModeOptions
-        : [DiffViewMode.SideBySide, DiffViewMode.Unified];
+    /// <summary>Both layouts always apply, so this is simply every mode there is.</summary>
+    public IReadOnlyList<DiffViewMode> AvailableViewModes => ViewModeOptions;
 
-    /// <summary>Whether the side-by-side editors are the visible pane.</summary>
-    public bool IsSideBySideViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.SideBySide;
+    /// <summary>
+    /// Whether the side-by-side editors are the visible pane.
+    ///
+    /// Not while a semantic comparison is showing: the Json view IS the answer for JSON, and the way
+    /// to see JSON as two columns of text is to compare it as text, which the Auto/Text/Json selector
+    /// is for.
+    /// </summary>
+    public bool IsSideBySideViewVisible =>
+        LeftDocument is not null && !IsSemantic && ViewMode == DiffViewMode.SideBySide;
 
     /// <summary>Whether the single-document patch view is the visible pane.</summary>
-    public bool IsUnifiedViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Unified;
+    public bool IsUnifiedViewVisible =>
+        LeftDocument is not null && !IsSemantic && ViewMode == DiffViewMode.Unified;
 
     /// <summary>
-    /// Whether the tree-plus-both-documents view is the visible pane. Requires a semantic comparison -
-    /// it would otherwise show an empty tree next to two documents with nothing to highlight.
+    /// Whether the tree-plus-both-documents view is the visible pane - which is exactly when a
+    /// semantic comparison ran. There is nothing to choose here any more: a JSON comparison shows the
+    /// Json view, and anything else shows text.
     /// </summary>
-    public bool IsJsonViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Json && IsSemantic;
+    public bool IsJsonViewVisible => LeftDocument is not null && IsSemantic;
 
     partial void OnViewModeChanged(DiffViewMode value)
     {
@@ -424,18 +426,9 @@ public partial class DiffPaneViewModel : ObservableObject
 
     partial void OnLeftDocumentChanged(AlignedDocument? value) => RaiseViewVisibility();
 
-    partial void OnIsSemanticChanged(bool value)
-    {
-        // Safety net for IsSemantic changing outside Show (it currently never does, but Show already
-        // sets ViewMode explicitly for every comparison, so this only matters if that ever changes):
-        // leaving Json selected for content that is not semantic would show an empty pane.
-        if (!value && ViewMode == DiffViewMode.Json)
-        {
-            ViewMode = DiffViewMode.SideBySide;
-        }
-
-        RaiseViewVisibility();
-    }
+    // Whether the Json view is showing is now a consequence of this alone, so there is nothing to
+    // correct here - only the visibilities to re-raise.
+    partial void OnIsSemanticChanged(bool value) => RaiseViewVisibility();
 
     // ---- Json view --------------------------------------------------------------------------------
 
@@ -472,11 +465,17 @@ public partial class DiffPaneViewModel : ObservableObject
             ? _semanticChanges[CurrentSemanticChangeIndex]
             : null;
 
-    /// <summary>Where to highlight on the left - the change's own span into <see cref="LeftRawText"/>.</summary>
-    public SourceSpan? LeftHighlightSpan => CurrentSemanticChange?.Left?.Span is { IsKnown: true } span ? span : null;
+    /// <summary>
+    /// Where to highlight on the left - everything the change covers in <see cref="LeftRawText"/>.
+    ///
+    /// <c>JsonChange.LeftSpan</c> rather than the value's own span, which is what this used to be: for
+    /// a property that was added or removed the KEY is part of what changed, and highlighting only the
+    /// value left the name beside it looking untouched.
+    /// </summary>
+    public SourceSpan? LeftHighlightSpan => CurrentSemanticChange?.LeftSpan is { IsKnown: true } span ? span : null;
 
     /// <summary>Where to highlight on the right.</summary>
-    public SourceSpan? RightHighlightSpan => CurrentSemanticChange?.Right?.Span is { IsKnown: true } span ? span : null;
+    public SourceSpan? RightHighlightSpan => CurrentSemanticChange?.RightSpan is { IsKnown: true } span ? span : null;
 
     // ---- Json detail (close-up) ------------------------------------------------------------------
 
@@ -692,12 +691,10 @@ public partial class DiffPaneViewModel : ObservableObject
         CurrentSemanticChangeIndex = -1;
         CurrentTreeNode = null;
 
-        // JSON opens in the view built for it rather than requiring a manual switch every time; a
-        // non-JSON comparison lands on the one view that always works. This runs on every comparison,
-        // not just the first, so re-comparing content that changed format (e.g. toggling Mode) cannot
-        // leave Json selected for a document that no longer parses as JSON.
-        ViewMode = isSemantic ? DiffViewMode.Json : DiffViewMode.SideBySide;
-
+        // ViewMode is deliberately NOT reset here any more. It only chooses between two text layouts
+        // now, and someone who prefers unified prefers it for the next comparison too - resetting it
+        // per comparison was only ever needed to stop Json being selected for content that is not
+        // JSON, which is no longer possible.
         RebuildDetail();
         RaiseDerived();
         RaiseJsonDerived();
