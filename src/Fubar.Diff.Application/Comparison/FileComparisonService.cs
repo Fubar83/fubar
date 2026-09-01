@@ -28,6 +28,7 @@ public sealed class FileComparisonService : IFileComparisonService
     private readonly IInlineDiffEngine _inlineEngine;
     private readonly ILineNormalizer _normalizer;
     private readonly JsonSemanticPass _semanticPass;
+    private readonly CodeStructurePass _structurePass;
 
     public FileComparisonService(
         ITextFileReader reader,
@@ -35,13 +36,19 @@ public sealed class FileComparisonService : IFileComparisonService
         IInlineDiffEngine inlineEngine,
         ILineNormalizer normalizer,
         JsonSemanticPass semanticPass,
-        IBinaryFileReader? binaryReader = null)
+        IBinaryFileReader? binaryReader = null,
+        CodeStructurePass? structurePass = null)
     {
         _reader = reader;
         _engine = engine;
         _inlineEngine = inlineEngine;
         _normalizer = normalizer;
         _semanticPass = semanticPass;
+
+        // Optional for the same reason the binary reader is: a caller that only compares text should
+        // not have to supply a compiler front end to do it. Without one the structural panel is simply
+        // never populated, which is what every non-C# comparison gets anyway.
+        _structurePass = structurePass ?? new CodeStructurePass();
 
         // Optional so a caller that only ever compares text - and every test that only cares about
         // text - is not made to supply one. Without it a binary file is refused exactly as it was
@@ -305,9 +312,17 @@ public sealed class FileComparisonService : IFileComparisonService
             ? _semanticPass.TryCompareOriginalText(trueOriginalLeftText, trueOriginalRightText, options, leftFormat, rightFormat) ?? semantic.Changes
             : [];
 
+        // On the text exactly as given, never the canonicalized copy: a structural answer about a
+        // document the user cannot see would name members at lines that are not there, and
+        // "reformatted" would be reporting the reformatting this pipeline just did.
+        var structure = _structurePass.Apply(trueOriginalLeftText, trueOriginalRightText, language, options);
+
         return new FileComparison(leftDoc, rightDoc, options, semantic.Result)
         {
             Language = language,
+            CodeChanges = structure.Changes,
+            CodeSummary = structure.Summary,
+            CodeStructureSkippedReason = structure.SkippedReason,
 
             // What each side was actually READ as, and only when the pass ran - so "compared as text"
             // stays distinguishable from "compared as JSON that happened to have no differences".

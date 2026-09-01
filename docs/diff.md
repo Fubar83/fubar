@@ -9,9 +9,10 @@ side by side, with the panes locked in alignment and changes highlighted line by
 It is a sibling of [Fubar API Studio](https://github.com/Fubar83/fubar) and shares its
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 
-> **Status: early.** Two-way file comparison, semantic JSON and YAML, source-code comparison, three-way merge
-> with an editable result, folder comparison, editing and save all work end to end. Editing the three-way
-> merge's three INPUT panes, and the other formats, are not built yet — see [Roadmap](#roadmap).
+> **Status: early.** Two-way file comparison, semantic JSON and YAML, source-code comparison, structural
+> C# comparison, three-way merge with an editable result, folder comparison, editing and save all work
+> end to end. Editing the three-way merge's three INPUT panes, structural comparison for languages other
+> than C#, and the other formats, are not built yet — see [Roadmap](#roadmap).
 
 ## Features
 
@@ -83,6 +84,33 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   blank lines. Block comments, verbatim and raw strings, and template literals are tracked across lines,
   so the inside of a multi-line comment is treated as a comment even where it reads like code. Both
   options are off by default and say so on screen when the pair is not a language they apply to.
+- **Structural C# comparison** — the thing no other diff tool does. For a pair of C# files, Fubar Diff
+  parses both with Roslyn and works out what happened **member by member**, in a panel beside the
+  ordinary diff: *`Total` — method · changed and moved*, *`Render → Draw` — method · renamed*,
+  *`Add` — method · reformatted*. Click one and both panes scroll to it, so a large file is navigated
+  by meaning rather than by pressing Next through fourteen hunks.
+
+  The answer worth the whole feature is the one at the top: **"No functional changes."** A file that
+  someone ran a formatter over, reordered three methods in and rewrapped the comments of produces
+  hundreds of changed lines, and looks *exactly* like a file with a bug fixed in it. Today the only
+  way to tell them apart is to read every hunk. This says it in one sentence, in the panel and in the
+  status bar. In CI, `--functional` makes it an exit code:
+
+  ```bash
+  FubarDiff --functional -q old/Api.cs new/Api.cs   # 0 if only formatting, order and comments changed
+  ```
+
+  Members are matched by signature first, then by name, then by an identical body — which is what
+  turns a renamed method into *renamed* rather than into one large deletion beside one large
+  insertion, and a moved one into *moved* rather than both. A member is only claimed to be a rename
+  when its body appears exactly once on each side; where the answer is ambiguous, nothing is claimed.
+  Move detection runs a longest-increasing-subsequence, so inserting a method at the top of a file
+  does not mark every method below it as having moved.
+
+  It **changes nothing about the text diff beside it**. A reformatted C# file genuinely differs on
+  disk, a review is about those bytes, and a tool that quietly called the two identical would be lying
+  about what it was shown. The line diff keeps saying exactly what changed; this says what it meant.
+  On by default, and free for everything that is not C# — see Settings → General to turn it off.
 - **Ambiguous change groups are placed where they read best.** When a run of added or removed lines is
   bounded by lines identical to the ones just inside it, several placements describe the same two files
   and all are equally minimal — which is why a moved method so often shows up as a closing brace plus
@@ -300,15 +328,24 @@ use exit codes, and means something different by them — "these files differ", 
 
 The same executable answers without opening anything, as long as the arguments say so. Two file names
 still open a window — that is what a difftool passes — so the headless modes are the flags that have
-no meaning on screen: `--check`, `--quiet`, `--report`, `--help`, `--version`.
+no meaning on screen: `--check`, `--quiet`, `--functional`, `--report`, `--help`, `--version`.
 
 ```bash
 FubarDiff --check expected.json actual.json      # 0 same, 1 different, 2 could not tell
 FubarDiff -q a.txt b.txt                         # the same, silently
+FubarDiff --functional -q old/Api.cs new/Api.cs  # 0 unless the behaviour changed (C#)
 FubarDiff --report diff.html src/a.cs src/b.cs   # a self-contained page for a build artifact
 FubarDiff --report result.json a.json b.json     # fields a gate can test
 FubarDiff --report - --report-format patch a b > changes.patch
 ```
+
+`--functional` changes the question from "do these files differ" to "did anything *meaningful*
+change" — see **Structural C# comparison** above. It is opt-in and separate from `--check` on purpose:
+the default has to stay "do these bytes differ", because that is what a script author will assume, and
+a check that quietly passed on a changed file is the worst thing a diff tool can do. It only answers
+where the structural pass actually ran; anything else falls through to the ordinary answer rather than
+being guessed at. A JSON report carries the same thing as a `code` object with a `noFunctionalChange`
+flag, for a gate that wants to say more than pass/fail.
 
 The exit codes are `diff`'s: **0** the files are the same, **1** they differ, **2** something went
 wrong — a file that could not be read is never reported as a clean result. A format-only difference
@@ -358,6 +395,15 @@ The diff algorithm itself is [DiffPlex](https://github.com/mmanela/diffplex) (MI
 the `IDiffEngine` port in Infrastructure — swapping it is a one-file change, and a test enforces that.
 
 ## Roadmap
+
+**Structural comparison is C# only, and the shape is built to take a second language.** The parser sits
+behind `ICodeStructureParser` in Core, and the differ, the summary, the panel and `--functional` all
+work on a language-neutral tree — a second language arrives as one adapter and nothing above it
+changes. TypeScript and Java are the obvious next two. What is *not* free is the parser itself: the
+value of this feature comes entirely from being right about what a member is and where it ends, and a
+regex-shaped approximation would produce a confidently wrong answer, which is worse than no answer.
+So a language is added when a real parser for it is, not before — the same rule `SourceLanguage`
+already holds itself to.
 
 **Open.** Editing is now built, but only in the side-by-side view of a text comparison — the unified
 view has its own row numbering, the Json view shows each side unaligned, and a hex dump cannot be

@@ -34,6 +34,20 @@ public sealed record CodeComparisonOptions
     /// </summary>
     public bool IgnoreBlankLines { get; init; }
 
+    /// <summary>
+    /// Work out what changed member by member - which methods, which properties, which of those were
+    /// only reformatted or only moved - alongside the ordinary text diff.
+    ///
+    /// On by default, unlike the two rules above, and the difference is the point. Those two change
+    /// what COUNTS as a difference, which is a decision only the user can make; this one changes
+    /// nothing about the comparison at all. It reads the same two files a second time and produces a
+    /// separate answer beside them, so the worst case of having it on is a panel with nothing in it.
+    ///
+    /// Needs a parser for the language, which today means C# - see
+    /// <see cref="Code.ICodeStructureParser"/>. Inert for everything else.
+    /// </summary>
+    public bool Structure { get; init; } = true;
+
     /// <summary>Whether either rule is actually in play - the cheap check before doing any scanning.</summary>
     public bool Any => IgnoreComments || IgnoreBlankLines;
 }

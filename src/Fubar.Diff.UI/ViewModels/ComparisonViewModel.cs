@@ -107,6 +107,11 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.Navigated += OnPaneNavigated;
         Pane.SideEdited += OnSideEdited;
 
+        // Picking a member in the structure panel is navigation like any other - it selects the hunk
+        // containing that row, so Prev/Next carry on from where the user just looked rather than from
+        // wherever they were before.
+        Structure.JumpRequested += (_, row) => Pane.JumpToRow(row);
+
         // Whether the Pretty buttons are offered is decided per comparison, in Refresh: this host has
         // a JSON formatter behind them and no YAML one.
         Pane.FormattingChanged += (_, _) => Refresh();
@@ -671,6 +676,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             LiveDiff = settings.LiveDiff;
             IgnoreComments = settings.IgnoreComments;
             IgnoreBlankLines = settings.IgnoreBlankLines;
+            CodeStructure = settings.CodeStructure;
             SyntaxHighlighting = settings.SyntaxHighlighting;
             ReportPropertyOrder = settings.ReportPropertyOrder;
             MatchArraysByPosition = settings.MatchArraysByPosition;
@@ -720,6 +726,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         LiveDiff = LiveDiff,
         IgnoreComments = IgnoreComments,
         IgnoreBlankLines = IgnoreBlankLines,
+        CodeStructure = CodeStructure,
         SyntaxHighlighting = SyntaxHighlighting,
         ReportPropertyOrder = ReportPropertyOrder,
         MatchArraysByPosition = MatchArraysByPosition,
@@ -755,6 +762,37 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// which produces its comparisons from memory rather than from files.
     /// </summary>
     public DiffPaneViewModel Pane { get; } = new();
+
+    /// <summary>
+    /// What changed member by member, when the pair is source code the structure parser can read.
+    ///
+    /// Beside <see cref="Pane"/> and not inside it, for the same reason <see cref="Images"/> is: the
+    /// diff pane is the embeddable widget, shared with API Studio, and it is about aligned rows. This
+    /// is an answer ABOUT a comparison rather than a way of drawing one, and it belongs to the window
+    /// that opened two files.
+    /// </summary>
+    public CodeStructureViewModel Structure { get; } = new();
+
+    /// <summary>Whether the structure panel is on screen. See <see cref="Structure"/>.</summary>
+    [ObservableProperty]
+    public partial bool IsStructureVisible { get; set; }
+
+    /// <summary>
+    /// Whether the panel is still following the comparison rather than the user.
+    ///
+    /// It opens by itself when there is something to show, because a panel nobody knows about is a
+    /// feature nobody uses - but the moment the user closes it, it stays closed for this tab. An
+    /// affordance that keeps reopening itself is worse than one that never opens.
+    /// </summary>
+    private bool _structureFollowsComparison = true;
+
+    /// <summary>Shows or hides the structure panel, and stops it opening itself again.</summary>
+    [RelayCommand]
+    private void ToggleStructure()
+    {
+        _structureFollowsComparison = false;
+        IsStructureVisible = !IsStructureVisible;
+    }
 
     /// <summary>
     /// The two pictures, when the compared files turned out to be images. Empty otherwise, and hidden.
@@ -980,6 +1018,16 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     public partial bool IgnoreBlankLines { get; set; }
 
     /// <summary>
+    /// Work out what changed member by member, for the structure panel.
+    ///
+    /// On by default and separate from the two rules above, because it is a different kind of thing:
+    /// those decide what COUNTS as a difference, and this only produces an extra answer beside the
+    /// comparison. Off is for someone who does not want to pay for the parse at all.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CodeStructure { get; set; } = true;
+
+    /// <summary>
     /// Names the language the code rules are being read with, for the settings window.
     ///
     /// Worth saying out loud: both code options are silently inert for a pair the scanner cannot read,
@@ -1176,6 +1224,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     partial void OnIgnoreCommentsChanged(bool value) => OptionChanged();
 
     partial void OnIgnoreBlankLinesChanged(bool value) => OptionChanged();
+
+    partial void OnCodeStructureChanged(bool value) => OptionChanged();
 
     /// <summary>
     /// An option was toggled: re-run the comparison and remember the choice. Both are skipped while
@@ -1561,6 +1611,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         {
             IgnoreComments = IgnoreComments,
             IgnoreBlankLines = IgnoreBlankLines,
+            Structure = CodeStructure,
         },
         Json = new JsonComparisonOptions
         {
@@ -1831,6 +1882,19 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             json.LeftText,
             json.RightText,
             json.Changes);
+
+        // After Show, because the panel resolves each member to an aligned ROW as it is filled and
+        // those rows belong to the result the pane has just been handed.
+        Structure.Show(
+            _comparison.CodeChanges,
+            _comparison.CodeSummary,
+            result,
+            _comparison.CodeStructureSkippedReason);
+
+        if (_structureFollowsComparison)
+        {
+            IsStructureVisible = Structure.HasItems;
+        }
 
         // A skipped semantic pass is only worth mentioning when the user explicitly asked for JSON;
         // the service decides that and leaves the reason null otherwise.

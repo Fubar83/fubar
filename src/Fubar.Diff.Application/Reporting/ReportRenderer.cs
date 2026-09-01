@@ -140,6 +140,24 @@ public static class ReportRenderer
 
             writer.WriteEndObject();
 
+            // The member-level answer, for a pipeline that wants to ask "did anything MEANINGFUL
+            // change" rather than "how many lines differ". Written only when the structural pass
+            // actually ran, so an absent object means "not source code we can read" rather than
+            // "nothing changed" - the same distinction the null on SemanticChanges draws.
+            if (report.CodeStructure.Any)
+            {
+                writer.WriteStartObject("code");
+                writer.WriteString("summary", report.CodeStructure.Caption());
+                writer.WriteBoolean("noFunctionalChange", report.CodeStructure.NoFunctionalChange);
+                writer.WriteNumber("added", report.CodeStructure.Added);
+                writer.WriteNumber("removed", report.CodeStructure.Removed);
+                writer.WriteNumber("changed", report.CodeStructure.Modified);
+                writer.WriteNumber("renamed", report.CodeStructure.Renamed);
+                writer.WriteNumber("reformatted", report.CodeStructure.Cosmetic);
+                writer.WriteNumber("moved", report.CodeStructure.Moved);
+                writer.WriteEndObject();
+            }
+
             if (report.FormatDifference is { } format)
             {
                 writer.WriteString("formatDifference", format);

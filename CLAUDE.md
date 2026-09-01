@@ -30,6 +30,7 @@ dotnet test  Fubar.slnx                # every suite
 dotnet run --project src/Fubar.Studio.UI                   # API Studio
 dotnet run --project src/Fubar.Diff.UI -- left.json right.json
 dotnet run --project src/Fubar.Diff.UI -- --check left.json right.json   # headless; 0 same, 1 differ, 2 failed
+dotnet run --project src/Fubar.Diff.UI -- --functional -q a.cs b.cs      # 0 unless the C# behaviour changed
 dotnet run --project src/Fubar.Controls.Gallery            # component sandbox
 
 ./build/publish-api-studio.ps1         # self-contained per-RID binaries (pwsh 7+)
@@ -56,7 +57,8 @@ Infrastructure ── *.Infrastructure  Adapters implementing the ports
   an allowlist for this, and it matters MORE here than it did across repositories: with everything a
   project reference away, a stray `using Fubar.Studio.Core` in the library would compile fine and
   nothing else would object.
-- **DiffPlex is confined to `Fubar.Diff.Infrastructure`**, behind `IDiffEngine`. The *language*
+- **DiffPlex is confined to `Fubar.Diff.Infrastructure`**, behind `IDiffEngine`, and **Roslyn**
+  (`Microsoft.CodeAnalysis.CSharp`, syntax only) likewise, behind `ICodeStructureParser`. The *language*
   scanner is not an engine and lives in `Fubar.Diff.Core/Languages` - it is hand-written, BCL-only
   domain policy (what a comment is), not an adapter over anything.
 
@@ -90,6 +92,30 @@ two one-scalar documents. The format is tracked per side, so a `.json` can be co
 `.yaml`. YAML scalar typing is the 1.2 core schema only - never 1.1's `yes`/`no` booleans, which is
 the Norway problem - and a quoted number stays a string, because `port: 8080` differing from
 `port: "8080"` is the change most likely to break something.
+
+**Structural C# comparison ADDS an answer and changes nothing about the diff** (Diff). This is the one
+rule that separates it from the JSON semantic pass, and the two look similar enough that "making them
+consistent" is a live risk. `JsonSemanticPass` is allowed to decide which text rows COUNT as
+differences, because two JSON documents in a different property order genuinely are the same document.
+`CodeStructurePass` is not, because two C# files in a different member order are NOT the same file -
+the bytes differ, a review is about those bytes, and quietly reporting them as equal would be the tool
+lying about what it was shown. So it marks no rows, filters nothing and changes no count; it produces
+`FileComparison.CodeChanges` and `CodeSummary` BESIDE the result. Everything else follows from that:
+it is on by default (worst case is an empty panel), it runs on the ORIGINAL text rather than the
+canonicalized copy (a structural answer about a document the user cannot see would name members at
+lines that are not there), and `--functional` is a separate flag from `--check` rather than a change
+to what `--check` means. Roslyn lives in Infrastructure behind `ICodeStructureParser`, held to the
+same confinement rule as DiffPlex and for a stronger reason: the differ, the summary, the panel and
+the CLI all work on a language-neutral `CodeNode`, which is what makes a second language one adapter.
+Three implementation rules were each found by a failing test, not by design. A node's own TOKENS
+exclude everything belonging to a child node, or every ancestor of every edit reports as changed and
+the tree says "the file changed, the class changed, the method changed" where only the last is
+information. A node's own TEXT additionally drops whitespace at its very start and end, or inserting a
+method marks its neighbour as reformatted because the blank line above it moved - while whitespace
+BETWEEN its own tokens is kept, which is where re-indentation actually lives. And the own-token walk
+must not descend into excluded children (`OwnTokens`, not a filter over `DescendantTokens()`): the
+filtering version enumerates the whole file once per level of nesting and measured 1.3 s on a 2 MB
+file against a few ms.
 
 **Semantic JSON is a refinement, not a second pipeline** (Diff). The text differ decides how lines
 line up; `JsonSemanticPass` decides which of them matter. One `DiffResult` shape means every renderer,

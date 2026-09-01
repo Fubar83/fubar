@@ -81,6 +81,11 @@
                         <ToggleSwitch IsChecked="{Binding IgnoreBlankLines}" />
                     </fc:SettingRow>
 
+                    <fc:SettingRow Header="Work out what changed, member by member"
+                                   Description="For C# files, shows which methods and properties differ - and which were only moved or reformatted - in a panel beside the diff. It changes nothing about the comparison itself; turn it off only to skip the extra work.">
+                        <ToggleSwitch IsChecked="{Binding CodeStructure}" />
+                    </fc:SettingRow>
+
                     <!-- Which language, if any, the two rules above apply to. Without it, ticking
                          "Ignore comments" on a log file looks like a broken feature. -->
                     <TextBlock Text="{Binding CodeLanguageDescription}"

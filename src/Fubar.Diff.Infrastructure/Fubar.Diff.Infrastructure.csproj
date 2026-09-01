@@ -14,6 +14,9 @@
          The representation model is what carries per-node line and column, which a deserialiser does
          not. -->
     <PackageReference Include="YamlDotNet" />
+    <!-- The C# syntax parser, behind ICodeStructureParser - see RoslynCodeStructureParser. Only the
+         syntax half of Roslyn is used: no semantic model, no project, no compilation. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 

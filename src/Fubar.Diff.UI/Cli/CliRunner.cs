@@ -93,7 +93,17 @@ public static class CliRunner
             // Format-only differences count as different, and this is the one place that is easy to
             // get wrong: the panes would show two identical documents, but the files are not
             // interchangeable on disk and a check that passed on them would be lying.
-            return report.AreIdentical && report.FormatDifference is null ? Same : Different;
+            if (report.AreIdentical && report.FormatDifference is null)
+            {
+                return Same;
+            }
+
+            // --functional changes the QUESTION, from "do these files differ" to "did anything
+            // meaningful change", and it can only be answered where the structural pass actually ran.
+            // Where it did not, the answer falls through to the ordinary one rather than being guessed
+            // at: a check that passed because the tool could not read the language would be the same
+            // lie as one that passed on a changed file.
+            return request.FunctionalOnly && report.CodeStructure.NoFunctionalChange ? Same : Different;
         }
         catch (TextFileReadException failure)
         {

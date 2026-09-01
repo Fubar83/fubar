@@ -8,6 +8,42 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Structural C# comparison: what changed, member by member.** Every diff tool in existence compares
+  two C# files as lines of text, which means none of them can tell a reformatted method from a
+  rewritten one - both are a block of red beside a block of green. A file someone ran a formatter
+  over, reordered three methods in and rewrapped the comments of produces hundreds of changed lines
+  and looks exactly like a file with a bug fixed in it, and the only way to tell them apart is to read
+  every hunk.
+
+  Both sides are now parsed with Roslyn (syntax only - there is no project around two files on a disk,
+  and none is needed) and matched member to member, producing a panel beside the diff: *`Total` -
+  method · changed and moved*, *`Render → Draw` - method · renamed*, *`Add` - method · reformatted*.
+  Clicking a row scrolls both panes to it, so a large file is navigated by meaning rather than by
+  pressing Next through fourteen hunks.
+
+  The headline is the point: **"No functional changes."** Said in the panel, in the status bar, in
+  every report, and as an exit code - `--functional` exits 0 when the only differences are formatting,
+  comments and declaration order. That flag is deliberately separate from `--check`: the default has
+  to stay "do these bytes differ", and it only answers where the structural pass actually ran, because
+  a check that passed because the tool could not read the language would be the same lie as one that
+  passed on a changed file.
+
+  Members are matched by signature, then by name, then by an identical body - which is what turns a
+  rename into one change rather than an unrelated deletion and insertion, and a field promoted to a
+  property into one change rather than two. A rename is only claimed when the body occurs exactly once
+  on each side, the same bar `MoveDetector` holds itself to. Move detection runs a
+  longest-increasing-subsequence, so inserting one method at the top of a file does not mark every
+  method below it as moved.
+
+  It changes NOTHING about the text diff beside it, and that is a rule rather than an omission: a
+  reformatted C# file genuinely differs on disk, a review is about those bytes, and a tool that
+  quietly reported the two as identical would be lying about what it was shown. The line diff keeps
+  saying exactly what changed; this says what it meant.
+
+  Roslyn is confined to `Fubar.Diff.Infrastructure` behind `ICodeStructureParser`, enforced by the
+  architecture tests - the differ, the summary, the panel and the CLI all work on a language-neutral
+  tree, so a second language is one adapter rather than a change to any of them.
+
 - **The merged result of a three-way merge is now a pane you can type into.** A merge tool whose only
   verbs are "take left" and "take right" is a tool for choosing between two answers, and the answer to
   a real conflict is regularly neither: two people edited the same line, and what belongs there is a

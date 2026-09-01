@@ -1,8 +1,10 @@
+using Fubar.Diff.Core.Code;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Folders;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Settings;
+using Fubar.Diff.Infrastructure.Code;
 using Fubar.Diff.Infrastructure.Comparison;
 using Fubar.Diff.Infrastructure.Files;
 using Fubar.Diff.Infrastructure.Folders;
@@ -31,6 +33,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITextFileWriter, TextFileWriter>();
         services.AddSingleton<IJsonParser, JsonAstParser>();
         services.AddSingleton<IYamlParser, YamlAstParser>();
+
+        // Syntax-only Roslyn, behind the port - see RoslynCodeStructureParser. Bound here like every
+        // other adapter, so nothing above Infrastructure ever names it.
+        services.AddSingleton<ICodeStructureParser, RoslynCodeStructureParser>();
         services.AddSingleton<IFolderScanner, FileSystemFolderScanner>();
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
         services.AddSingleton<IProjectConfigStore, FileSystemProjectConfigStore>();

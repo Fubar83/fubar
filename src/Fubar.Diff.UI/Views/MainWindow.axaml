@@ -5,6 +5,7 @@
         xmlns:fc="using:Fubar.Controls"
         xmlns:vm="using:Fubar.Diff.UI.ViewModels"
         xmlns:dv="using:Fubar.Diff.Controls.Views"
+        xmlns:views="using:Fubar.Diff.UI.Views"
         xmlns:settings="using:Fubar.Diff.Core.Settings"
         xmlns:comparison="using:Fubar.Diff.Core.Comparison"
         xmlns:dvm="using:Fubar.Diff.Controls.ViewModels"
@@ -268,6 +269,17 @@
                               ToolTip.Tip="Hide long stretches both files agree on, keeping a few lines either side of each change. Click any fold to expand it."
                               IsChecked="{Binding CollapseUnchanged}" />
 
+                <!-- Hidden when there is nothing to show, per the hide-don't-disable rule: for every
+                     comparison that is not source code this would be a permanently greyed button in a
+                     row where each one costs a column of diff. Command rather than a two-way IsChecked
+                     binding, because closing it by hand also stops it opening itself again - see
+                     ComparisonViewModel.ToggleStructure. -->
+                <ToggleButton Classes="toolbar-btn" Content="Structure"
+                              IsVisible="{Binding Structure.HasItems}"
+                              IsChecked="{Binding IsStructureVisible, Mode=OneWay}"
+                              Command="{Binding ToggleStructureCommand}"
+                              ToolTip.Tip="What changed member by member - which methods and properties differ, and which were only moved or reformatted. C# only." />
+
                 <!-- Editing is off by default and asked for explicitly. A diff tool is a reading
                      tool most of the time, and a caret blinking in someone's source file is an
                      invitation to change it by accident. Only the side-by-side view can offer it -
@@ -415,6 +427,17 @@
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
 
+                    <!-- The one answer worth stating even with the panel closed: hundreds of changed
+                         lines and not one of them changes what the code does. In the status bar as
+                         well as the panel, because the panel can be shut and this is the conclusion
+                         somebody would otherwise reach by reading every hunk. -->
+                    <TextBlock Text="No functional changes"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{DynamicResource MethodPostBrush}"
+                               ToolTip.Tip="Every difference between these files is formatting, comments or declaration order. Open the Structure panel to see which members moved and which were reformatted."
+                               IsVisible="{Binding Structure.NoFunctionalChange}" />
+
                     <!-- Encodings, BOMs and line endings never reach the panes - the reader consumes
                          them - so a file pair that differs only in those shows two identical-looking
                          documents and no rows. This is the only place that difference is reported. -->
@@ -501,6 +524,20 @@
             <dv:ImagePairView DataContext="{Binding Images}" />
         </Border>
 
+        <!-- The structure panel beside the diff, in a SplitView rather than a Grid column: an inline
+             pane collapses to nothing on its own, where a column would need its width zeroed from
+             code-behind the way DiffView's close-up row is. It wraps every view mode rather than
+             sitting inside one, because "what changed, member by member" is true of the comparison
+             and not of a particular way of drawing it. -->
+        <SplitView IsPaneOpen="{Binding IsStructureVisible}"
+                   DisplayMode="Inline"
+                   PanePlacement="Left"
+                   OpenPaneLength="260"
+                   PaneBackground="{DynamicResource BgSidebar}">
+            <SplitView.Pane>
+                <views:CodeStructurePanel DataContext="{Binding Structure}" />
+            </SplitView.Pane>
+
         <Panel>
             <!-- The empty state carries the Open button too. With the picker row gone this is the
                  only thing on screen on first run, and telling someone to choose files while showing
@@ -536,6 +573,7 @@
                          ShowToolbar="False"
                          IsVisible="{Binding IsJsonViewVisible}" />
         </Panel>
+        </SplitView>
         </DockPanel>
         </ContentControl>
     </Grid>

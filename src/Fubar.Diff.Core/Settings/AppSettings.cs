@@ -95,6 +95,13 @@ public sealed record AppSettings
     public bool IgnoreBlankLines { get; init; }
 
     /// <summary>
+    /// Work out what changed member by member for source code - see
+    /// <c>CodeComparisonOptions.Structure</c>. On by default, unlike the two rules above, because it
+    /// changes nothing about the comparison itself.
+    /// </summary>
+    public bool CodeStructure { get; init; } = true;
+
+    /// <summary>
     /// Colour the panes by the file's own grammar. On by default - it is the difference between
     /// reading a diff of code and reading a diff of text that happens to be code - and persisted like
     /// the theme, since it is a preference about how someone reads rather than about one comparison.

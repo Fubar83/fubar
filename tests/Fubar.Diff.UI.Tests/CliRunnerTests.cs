@@ -2,6 +2,7 @@ using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Models;
+using Fubar.Diff.Infrastructure.Code;
 using Fubar.Diff.Infrastructure.Comparison;
 using Fubar.Diff.Infrastructure.Json;
 using Fubar.Diff.UI.Cli;
@@ -154,5 +155,89 @@ public class CliRunnerTests
             new StringWriter());
 
         Assert.Equal(CliRunner.Same, code);
+    }
+
+    // ---- Functional changes only -------------------------------------------------------------
+
+    private static async Task<(int Code, string Output)> RunCodeAsync(string[] left, string[] right, params string[] flags)
+    {
+        var service = new FileComparisonService(
+            new Files(new() { ["l.cs"] = left, ["r.cs"] = right }),
+            new DiffPlexDiffEngine(),
+            new DiffPlexInlineDiffEngine(),
+            new TextLineNormalizer(),
+            new JsonSemanticPass(new JsonAstParser()),
+            structurePass: new CodeStructurePass(new RoslynCodeStructureParser()));
+
+        var output = new StringWriter();
+
+        var code = await CliRunner.RunAsync(
+            CommandLine.Parse([.. flags, "l.cs", "r.cs"]), service, output, new StringWriter());
+
+        return (code, output.ToString());
+    }
+
+    private static readonly string[] Method =
+    [
+        "public class Report",
+        "{",
+        "    public int Total()",
+        "    {",
+        "        return 0;",
+        "    }",
+        "}",
+    ];
+
+    [Fact]
+    public async Task The_summary_says_what_the_changed_lines_MEANT()
+    {
+        // The line counts are what the files did; this is the sentence a reviewer would otherwise
+        // have to work out by reading every hunk.
+        string[] reindented = [.. Method];
+        reindented[4] = "            return 0;";
+
+        var (code, output) = await RunCodeAsync(Method, reindented, "--check");
+
+        Assert.Equal(CliRunner.Different, code);
+        Assert.Contains("No functional changes", output);
+    }
+
+    [Fact]
+    public async Task Functional_only_passes_a_file_that_was_merely_reformatted()
+    {
+        string[] reindented = [.. Method];
+        reindented[4] = "            return 0;";
+
+        var (code, _) = await RunCodeAsync(Method, reindented, "--functional", "-q");
+
+        Assert.Equal(CliRunner.Same, code);
+    }
+
+    [Fact]
+    public async Task Functional_only_still_fails_a_real_change()
+    {
+        string[] changed = [.. Method];
+        changed[4] = "        return 1;";
+
+        var (code, _) = await RunCodeAsync(Method, changed, "--functional", "-q");
+
+        Assert.Equal(CliRunner.Different, code);
+    }
+
+    [Fact]
+    public async Task Functional_only_falls_back_to_the_ordinary_answer_for_anything_it_cannot_read()
+    {
+        // A check that passed because the tool could not read the language would be the same lie as
+        // one that passed on a changed file.
+        var (code, _, _) = await RunAsync("--functional", "-q", "a.txt", "b.txt");
+
+        Assert.Equal(CliRunner.Different, code);
+    }
+
+    [Fact]
+    public void Functional_only_is_a_headless_flag()
+    {
+        // Otherwise it would open a window and never report anything.
+        Assert.True(CommandLine.IsHeadless(["--functional", "a.cs", "b.cs"]));
     }
 }

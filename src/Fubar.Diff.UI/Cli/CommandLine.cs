@@ -41,6 +41,20 @@ public sealed record CliRequest
     /// <summary>Say nothing at all; the exit code is the answer. What -q means to grep and diff.</summary>
     public bool Quiet { get; init; }
 
+    /// <summary>
+    /// Answer the question "did anything MEANINGFUL change" rather than "do these files differ".
+    ///
+    /// The exit code then reports functional changes only: a file that was reformatted, had its
+    /// members reordered or its comments rewritten exits 0. Opt-in and separate from
+    /// <c>--check</c> on purpose - the default must stay "do these bytes differ", because that is
+    /// what every script author will assume a diff tool means, and a check that quietly passed on a
+    /// changed file would be the worst possible default.
+    ///
+    /// Only source the structure parser can read can answer it; anything else falls back to the
+    /// ordinary comparison, so a mixed run never claims more than it knows.
+    /// </summary>
+    public bool FunctionalOnly { get; init; }
+
     /// <summary>Unchanged lines to keep either side of each change in the report.</summary>
     public int ContextLines { get; init; } = 3;
 
@@ -60,7 +74,7 @@ public static class CommandLine
     /// <summary>Flags that mean "do not open a window".</summary>
     private static readonly string[] Headless =
     [
-        "--check", "--quiet", "-q", "--report", "--report-format", "--help", "-h", "-?", "/?", "--version",
+        "--check", "--quiet", "-q", "--functional", "--report", "--report-format", "--help", "-h", "-?", "/?", "--version",
     ];
 
     /// <summary>
@@ -115,6 +129,10 @@ public static class CommandLine
 
                 case "--quiet" or "-q":
                     request = request with { Quiet = true };
+                    break;
+
+                case "--functional":
+                    request = request with { FunctionalOnly = true };
                     break;
 
                 case "--report":
@@ -258,11 +276,15 @@ public static class CommandLine
           --ignore-path <path>                  never report this JSON path; repeatable
           --check                               print the summary line (the default headless mode)
           --quiet, -q                           print nothing; the exit code is the answer
+          --functional                          exit 0 when the only differences are formatting,
+                                                comments and declaration order (C# only; anything
+                                                else answers the ordinary way)
           --help, --version
 
         Examples:
           FubarDiff --check old.json new.json --ignore-path '$.timestamp'
           FubarDiff --report diff.html src/a.cs src/b.cs
           FubarDiff --report - --report-format patch a.txt b.txt > changes.patch
+          FubarDiff --functional -q old/Api.cs new/Api.cs   # did the behaviour change?
         """;
 }

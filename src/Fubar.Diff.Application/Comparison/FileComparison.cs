@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Fubar.Diff.Core.Code;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Json;
@@ -51,6 +52,30 @@ public sealed record FileComparison(
 
     /// <summary>Whether the semantic JSON pass ran, as opposed to a plain text comparison.</summary>
     public bool IsSemantic { get; init; }
+
+    /// <summary>
+    /// What happened to each member, when both sides are source the structure parser can read.
+    ///
+    /// Sits BESIDE <see cref="Result"/> rather than changing it. The text diff still reports every
+    /// line that differs, because it must - a reformatted C# file is genuinely different on disk, and
+    /// a tool that quietly called it identical would be lying about what it was shown. This says what
+    /// those lines MEANT: which members changed, which were only moved, and which were only rewrapped.
+    /// Empty for everything that is not source, does not parse, or was too large to bother with.
+    /// </summary>
+    public IReadOnlyList<CodeChange> CodeChanges { get; init; } = [];
+
+    /// <summary>The counts, and the headline - see <see cref="CodeStructureSummary.NoFunctionalChange"/>.</summary>
+    public CodeStructureSummary CodeSummary { get; init; } = CodeStructureSummary.None;
+
+    /// <summary>True when the structural comparison ran and found something to say.</summary>
+    public bool HasCodeStructure => CodeChanges.Count > 0;
+
+    /// <summary>
+    /// Why the structural comparison did not run, when that is worth saying out loud - a file too
+    /// large, or one that would not parse. Null for the ordinary cases: not source code, or turned
+    /// off. Neither of those is news.
+    /// </summary>
+    public string? CodeStructureSkippedReason { get; init; }
 
     /// <summary>
     /// The semantic changes, for the JSON tree view. Empty for a text comparison.

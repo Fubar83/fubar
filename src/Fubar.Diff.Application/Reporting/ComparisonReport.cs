@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Fubar.Diff.Application.Comparison;
+using Fubar.Diff.Core.Code;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Models;
 
@@ -51,6 +52,19 @@ public sealed record ComparisonReport(
     string? FormatDifference,
     IReadOnlyList<ReportHunk> Hunks)
 {
+    /// <summary>
+    /// What the structural comparison found, when the pair was source code it could read.
+    ///
+    /// <see cref="CodeStructureSummary.None"/> otherwise, which reads as "not looked at" - the same
+    /// distinction <see cref="SemanticChanges"/> draws with its null.
+    ///
+    /// This is arguably the report's most useful field, and certainly the one a CI gate wants: the
+    /// line counts say a hundred lines differ, and this says whether any of them matter. A pipeline
+    /// that fails a build on "the generated client changed" can ask instead whether it changed in a
+    /// way that changes what it does.
+    /// </summary>
+    public CodeStructureSummary CodeStructure { get; init; } = CodeStructureSummary.None;
+
     /// <summary>
     /// Reduces a comparison to a report.
     ///
@@ -110,7 +124,10 @@ public sealed record ComparisonReport(
             comparison.FormatDifference.Any
                 ? TextFormatComparer.Describe(comparison.Left.Format, comparison.Right.Format)
                 : null,
-            hunks);
+            hunks)
+        {
+            CodeStructure = comparison.CodeSummary,
+        };
     }
 
     private static int CountReported(IReadOnlyList<Core.Json.JsonChange> changes)
@@ -146,7 +163,12 @@ public sealed record ComparisonReport(
         var moved = Moved > 0 ? $", {Moved} moved" : string.Empty;
         var semantic = SemanticChanges is { } count ? $" ({count} structural)" : string.Empty;
 
-        return $"{Hunks.Count} change(s){semantic} - {Added} added, {Removed} removed, {Changed} changed{moved}";
+        // Appended rather than replacing the counts. The line numbers are what the files actually did
+        // and a report must not stop saying them; this says what they meant, which is the sentence a
+        // reviewer was going to have to work out for themselves.
+        var structure = CodeStructure.Any ? $"\n{CodeStructure.Caption()}." : string.Empty;
+
+        return $"{Hunks.Count} change(s){semantic} - {Added} added, {Removed} removed, {Changed} changed{moved}{structure}";
     }
 }
 

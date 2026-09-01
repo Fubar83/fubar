@@ -30,6 +30,7 @@ internal static class Composition
                 services.AddSingleton<IThreeWayComparisonService, ThreeWayComparisonService>();
                 services.AddSingleton<IFolderComparisonService, FolderComparisonService>();
                 services.AddSingleton<JsonSemanticPass>();
+                services.AddSingleton<CodeStructurePass>();
                 services.AddSingleton<IMergeService, MergeService>();
 
                 services.AddSingleton<IFilePickerService, FilePickerService>();
