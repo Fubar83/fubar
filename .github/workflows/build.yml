@@ -1,16 +1,90 @@
 name: build
 
-# Builds self-contained, single-file, cross-platform binaries. Each OS is built on its NATIVE runner so
-# packaging is correct (macOS .app keeps its executable bit / symlinks; Linux tar keeps +x). Every
-# artifact gets a Sigstore build-provenance attestation (verifiable with `gh attestation verify`); a
-# version tag also publishes a GitHub Release with SHA-256 checksums attached.
+# Builds self-contained, single-file, cross-platform binaries for ONE app at a time. Each OS is built
+# on its NATIVE runner so packaging is correct (macOS .app keeps its executable bit / symlinks; Linux
+# tar keeps +x). Every artifact gets a Sigstore build-provenance attestation (verifiable with
+# `gh attestation verify`); a version tag also publishes a GitHub Release with SHA-256 checksums.
+#
+# ONE APP PER TAG, and the tag says which:
+#
+#   diff-v0.1.0-beta.1     -> Fubar Diff
+#   studio-v0.1.0-beta.1   -> Fubar API Studio
+#
+# The two ship on their own schedules and are at very different stages of maturity, so a single `v*`
+# tag would have forced them to release together - meaning either holding the ready one back or
+# shipping the unready one. A prerelease is detected from the version itself (anything with a hyphen,
+# per semver), so a beta can never be published as the latest stable release by forgetting a flag.
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'diff-v*'
+      - 'studio-v*'
   workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to build
+        type: choice
+        options: [diff, api-studio]
+        default: diff
+      version:
+        description: 'Version to stamp, e.g. 0.1.0-beta.1 (blank = 1.0.0). No release is published from a manual run.'
+        type: string
+        default: ''
 
 jobs:
+  # Works out what is being released before anything is built, so the three build legs and the release
+  # job cannot disagree about it. A tag is the source of truth when there is one; a manual run says so
+  # through its inputs and publishes nothing.
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.pick.outputs.app }}
+      name: ${{ steps.pick.outputs.name }}
+      version: ${{ steps.pick.outputs.version }}
+      prerelease: ${{ steps.pick.outputs.prerelease }}
+    steps:
+      - id: pick
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+            case "$tag" in
+              diff-v*)   app=diff;       version="${tag#diff-v}"   ;;
+              studio-v*) app=api-studio; version="${tag#studio-v}" ;;
+              *)
+                echo "::error::Tag '$tag' names no app. Use diff-v<version> or studio-v<version>."
+                exit 1
+                ;;
+            esac
+          else
+            app="${{ inputs.app }}"
+            version="${{ inputs.version }}"
+          fi
+
+          case "$app" in
+            diff)       name='Fubar Diff'       ;;
+            api-studio) name='Fubar API Studio' ;;
+          esac
+
+          # Semver: a hyphen introduces the prerelease part. Derived rather than asked for, because a
+          # beta published as the latest stable release is the one mistake here that reaches users.
+          case "$version" in
+            *-*) prerelease=true  ;;
+            *)   prerelease=false ;;
+          esac
+
+          {
+            echo "app=$app"
+            echo "name=$name"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Building $name ${version:-1.0.0} (prerelease=$prerelease)"
+
   build:
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
@@ -33,13 +107,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Each app has its own script; there is no combined one. The two differ in more than a project
+      # path (executable name, display name, macOS bundle id), which is why they were never merged.
       - name: Publish + package
         shell: pwsh
-        run: ./build/publish.ps1 -Runtimes ($env:RIDS -split ',') -Version "$env:VERSION"
+        run: ./build/publish-${{ needs.resolve.outputs.app }}.ps1 -Runtimes ($env:RIDS -split ',') -Version "$env:VERSION"
         env:
           RIDS: ${{ matrix.rids }}
-          # Empty on workflow_dispatch (script falls back to 1.0.0); the tag name (e.g. v1.2.3) otherwise.
-          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          VERSION: ${{ needs.resolve.outputs.version }}
 
       # Cryptographically attests that these exact archives were built by this workflow from this commit
       # (Sigstore-backed, free). Consumers verify with:
@@ -51,16 +126,18 @@ jobs:
             artifacts/*.zip
             artifacts/*.tar.gz
 
+      # Named per app as well as per OS: two releases can be in flight at once, and artifact names are
+      # per repository rather than per run for anything that later downloads them.
       - uses: actions/upload-artifact@v7
         with:
-          name: fubar-${{ matrix.os }}
+          name: ${{ needs.resolve.outputs.app }}-${{ matrix.os }}
           path: |
             artifacts/*.zip
             artifacts/*.tar.gz
           if-no-files-found: error
 
   release:
-    needs: build
+    needs: [resolve, build]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
@@ -68,6 +145,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
+          pattern: ${{ needs.resolve.outputs.app }}-*
           path: dist
 
       - name: Generate SHA-256 checksums
@@ -78,9 +156,16 @@ jobs:
           done | sort -k2 > ../SHA256SUMS.txt
           echo "== SHA256SUMS.txt =="; cat ../SHA256SUMS.txt
 
+      # generate_release_notes compares against the PREVIOUS TAG IN THE REPOSITORY, which with per-app
+      # tags may well be the other app's. The notes are a starting point to edit, not the release.
       - uses: softprops/action-gh-release@v3
         with:
+          name: ${{ needs.resolve.outputs.name }} ${{ needs.resolve.outputs.version }}
           files: |
             dist/**/*
             SHA256SUMS.txt
           generate_release_notes: true
+          prerelease: ${{ needs.resolve.outputs.prerelease }}
+          # A prerelease must never become the repository's "Latest release" - that is the download
+          # button on the front page.
+          make_latest: ${{ needs.resolve.outputs.prerelease == 'false' }}
