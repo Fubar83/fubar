@@ -33,7 +33,14 @@ dotnet run --project src/Fubar.Controls.Gallery            # component sandbox
 
 ./build/publish-api-studio.ps1         # self-contained per-RID binaries (pwsh 7+)
 ./build/publish-diff.ps1
+
+git tag diff-v0.1.0-beta.1             # release ONE app; the tag prefix picks it (studio-v… for the other)
 ```
+
+**Releases are per app.** `.github/workflows/build.yml` fires on `diff-v*` and `studio-v*` only, and a
+tag naming no app is rejected rather than guessed at. Whether a release is a prerelease is DERIVED from
+the version (a hyphen means one, per semver) rather than set by a flag, because a beta published as the
+repository's "Latest release" is the one mistake here that reaches users. See README → Releasing.
 
 ## Architecture
 

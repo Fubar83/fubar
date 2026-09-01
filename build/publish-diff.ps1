@@ -13,9 +13,9 @@
         ready-to-launch .app. This is why the CI workflow builds each OS on its native runner.
 
 .EXAMPLE
-    ./build/publish.ps1                         # all default runtimes
-    ./build/publish.ps1 -Runtimes osx-arm64     # just one
-    ./build/publish.ps1 -Version 1.2.3
+    ./build/publish-diff.ps1                    # all default runtimes
+    ./build/publish-diff.ps1 -Runtimes osx-arm64  # just one
+    ./build/publish-diff.ps1 -Version 0.1.0-beta.1
 #>
 param(
     [string[]] $Runtimes = @('win-x64', 'win-arm64', 'linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64'),
@@ -33,7 +33,10 @@ $displayName = 'Fubar Diff'
 $bundleId    = 'dev.fubar.diff'
 
 if ($Version) { $Version = $Version.TrimStart('v') }
-$plistVersion = if ($Version) { $Version } else { '1.0.0' }
+# CFBundleShortVersionString takes one to three integers and nothing else, so a semver prerelease
+# suffix ("0.1.0-beta.1") is not a legal value there. Only the plist is trimmed - the full version,
+# suffix included, still reaches the assembly through -p:Version below and is what `--version` prints.
+$plistVersion = if ($Version) { ($Version -split '-')[0] } else { '1.0.0' }
 
 $artifacts = Join-Path $repoRoot $ArtifactDir
 $publishRoot = Join-Path $artifacts 'publish'

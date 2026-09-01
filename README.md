@@ -52,6 +52,31 @@ Each app has its own publish script, producing self-contained per-runtime binari
 ./build/publish-diff.ps1
 ```
 
+### Releasing
+
+**One app per tag, and the tag says which.** The two ship on their own schedules and are at different
+stages of maturity, so a single `v*` tag would force them to release together — meaning either holding
+the ready one back or shipping the unready one.
+
+```bash
+git tag diff-v0.1.0-beta.1   && git push origin diff-v0.1.0-beta.1     # Fubar Diff
+git tag studio-v0.1.0-beta.1 && git push origin studio-v0.1.0-beta.1   # Fubar API Studio
+```
+
+That builds six runtimes on their native runners, attaches a Sigstore build-provenance attestation and
+SHA-256 checksums, and publishes a GitHub Release. **A version containing a hyphen is treated as a
+prerelease** (semver), so `0.1.0-beta.1` is marked as one and never becomes the repository's *Latest
+release* — that is derived from the version rather than from a flag someone has to remember.
+
+A tag that names no app is rejected rather than guessed at. To rehearse without publishing anything,
+run the workflow manually from the Actions tab: it builds and uploads artifacts, and the release step
+is skipped for anything that is not a tag.
+
+> **Binaries are unsigned.** No Authenticode certificate, no macOS notarization — Windows SmartScreen
+> and macOS Gatekeeper will both warn. On macOS, `xattr -d com.apple.quarantine "Fubar Diff.app"`.
+> Every archive does carry a verifiable provenance attestation:
+> `gh attestation verify <file> --repo Fubar83/fubar`.
+
 ## Layout
 
 ```
