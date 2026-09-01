@@ -17,7 +17,16 @@ public class CodeStructureTests
 {
     private static readonly RoslynCodeStructureParser Parser = new();
 
-    private static IReadOnlyList<CodeChange> Compare(string left, string right)
+    /// <summary>
+    /// Compares two sources, forcing both to LF first - see <see cref="Lf"/>. Every test here except
+    /// the CRLF one wants line endings to be a non-question, and the literals below inherit whatever
+    /// this file was checked out with.
+    /// </summary>
+    private static IReadOnlyList<CodeChange> Compare(string left, string right) =>
+        CompareExactly(Lf(left), Lf(right));
+
+    /// <summary>Compares the given text byte for byte, for the one test that is ABOUT line endings.</summary>
+    private static IReadOnlyList<CodeChange> CompareExactly(string left, string right)
     {
         Assert.True(Parser.TryParse(left, SourceLanguage.CSharp, out var leftRoot), "left did not parse");
         Assert.True(Parser.TryParse(right, SourceLanguage.CSharp, out var rightRoot), "right did not parse");
@@ -32,7 +41,36 @@ public class CodeStructureTests
         return changes[0];
     }
 
-    private const string OneClass = """
+    /// <summary>
+    /// The shared fixture, forced to LF.
+    ///
+    /// A raw string literal keeps the line endings of the SOURCE FILE, and this repository checks out
+    /// `* text=auto` - so the same literal is LF on a Linux CI agent and CRLF on a Windows developer's
+    /// clone. Without this, the CRLF test below builds "\r\r\n" out of an already-CRLF fixture and
+    /// fails on Windows only, which is the worst shape a test failure can have.
+    /// </summary>
+    private static string Lf(string text) => text.Replace("\r\n", "\n");
+
+    /// <summary>
+    /// Builds the right-hand side by editing the left, with both the text and the edit forced to LF,
+    /// and FAILS when the search text was not found.
+    ///
+    /// The assertion is the important half. A Replace that matches nothing produces a right-hand side
+    /// identical to the left, and a structural test then compares a file with itself - which reports
+    /// "the collection was empty" and sends the reader looking for a bug in the differ rather than in
+    /// the fixture. That is exactly what a CRLF checkout did here.
+    /// </summary>
+    private static string Rewrite(string text, string find, string replacement)
+    {
+        var source = Lf(text);
+        var rewritten = source.Replace(Lf(find), Lf(replacement), StringComparison.Ordinal);
+
+        Assert.NotEqual(source, rewritten);
+
+        return rewritten;
+    }
+
+    private const string OneClassSource = """
         namespace Reporting;
 
         public class Report
@@ -51,6 +89,8 @@ public class CodeStructureTests
         }
         """;
 
+    private static readonly string OneClass = Lf(OneClassSource);
+
     // ---- Nothing changed ------------------------------------------------------------------------
 
     [Fact]
@@ -66,7 +106,8 @@ public class CodeStructureTests
     {
         // The answer nothing else gives. To a line differ this is a block of red beside a block of
         // green, indistinguishable from the method having been rewritten.
-        var right = OneClass.Replace(
+        var right = Rewrite(
+            OneClass,
             """
                 public int Total()
                 {
@@ -89,8 +130,8 @@ public class CodeStructureTests
     [Fact]
     public void Editing_a_comment_is_cosmetic()
     {
-        var left = OneClass.Replace("public int Total()", "// counts things\n    public int Total()");
-        var right = OneClass.Replace("public int Total()", "// counts all the things\n    public int Total()");
+        var left = Rewrite(OneClass, "public int Total()", "// counts things\n    public int Total()");
+        var right = Rewrite(OneClass, "public int Total()", "// counts all the things\n    public int Total()");
 
         var change = Single(Compare(left, right));
 
@@ -100,7 +141,7 @@ public class CodeStructureTests
     [Fact]
     public void Changing_a_body_is_functional()
     {
-        var right = OneClass.Replace("return 0;", "return 1;");
+        var right = Rewrite(OneClass, "return 0;", "return 1;");
 
         var change = Single(Compare(OneClass, right));
 
@@ -115,7 +156,7 @@ public class CodeStructureTests
         // What the parser's token subtraction buys. Without it every ancestor of every edit is a
         // change, and the tree says "the file changed, the class changed, the method changed" where
         // only the last of those is information.
-        var right = OneClass.Replace("return 0;", "return 1;");
+        var right = Rewrite(OneClass, "return 0;", "return 1;");
 
         var change = Single(Compare(OneClass, right));
 
@@ -159,7 +200,8 @@ public class CodeStructureTests
         // The reason move detection runs a longest-increasing-subsequence rather than comparing
         // indices: without it, one insertion marks every member after it, which is both wrong and
         // exactly the noise a structural view exists to remove.
-        var right = OneClass.Replace(
+        var right = Rewrite(
+            OneClass,
             "    public string Title { get; set; }",
             """
                 public int Version => 2;
@@ -207,7 +249,7 @@ public class CodeStructureTests
     [Fact]
     public void A_renamed_method_with_an_identical_body_is_a_rename_rather_than_a_pair_of_unrelated_changes()
     {
-        var right = OneClass.Replace("public void Print()", "public void Render()");
+        var right = Rewrite(OneClass, "public void Print()", "public void Render()");
 
         var change = Single(Compare(OneClass, right));
 
@@ -249,7 +291,7 @@ public class CodeStructureTests
     [Fact]
     public void Adding_a_parameter_is_a_change_to_the_method_rather_than_a_new_one()
     {
-        var right = OneClass.Replace("public int Total()", "public int Total(int seed)");
+        var right = Rewrite(OneClass, "public int Total()", "public int Total(int seed)");
 
         var change = Single(Compare(OneClass, right));
 
@@ -291,7 +333,7 @@ public class CodeStructureTests
             }
             """;
 
-        var right = left.Replace("public int Total(int seed) => seed;", "public int Total(int seed) => seed + 1;");
+        var right = Rewrite(left, "public int Total(int seed) => seed;", "public int Total(int seed) => seed + 1;");
 
         var change = Single(Compare(left, right));
 
@@ -343,9 +385,13 @@ public class CodeStructureTests
     [Fact]
     public void A_reformatted_file_says_so_in_one_sentence()
     {
-        var right = OneClass
-            .Replace("    public int Total()\n    {\n        return 0;\n    }", "    public int Total()\n    {\n            return 0;\n    }")
-            .Replace("        Console.WriteLine(Title);", "        Console.WriteLine( Title );");
+        var right = Rewrite(
+            Rewrite(
+                OneClass,
+                "    public int Total()\n    {\n        return 0;\n    }",
+                "    public int Total()\n    {\n            return 0;\n    }"),
+            "        Console.WriteLine(Title);",
+            "        Console.WriteLine( Title );");
 
         var summary = CodeStructureSummary.Of(Compare(OneClass, right));
 
@@ -356,7 +402,7 @@ public class CodeStructureTests
     [Fact]
     public void A_real_change_is_never_called_cosmetic()
     {
-        var right = OneClass.Replace("return 0;", "return 1;");
+        var right = Rewrite(OneClass, "return 0;", "return 1;");
 
         var summary = CodeStructureSummary.Of(Compare(OneClass, right));
 
@@ -419,16 +465,18 @@ public class CodeStructureTests
     {
         // TextFormatDifference already says this once about the whole file. Saying it again once per
         // member would bury every real answer underneath it.
+        //
+        // CompareExactly, because this is the one test the normalisation in Compare would erase.
         var right = OneClass.Replace("\n", "\r\n");
 
-        Assert.Empty(Compare(OneClass, right));
+        Assert.Empty(CompareExactly(OneClass, right));
     }
 
     [Fact]
     public void A_span_points_at_the_member_it_describes()
     {
         // What lets a click in the structure tree scroll the text view to the right place.
-        var right = OneClass.Replace("return 0;", "return 1;");
+        var right = Rewrite(OneClass, "return 0;", "return 1;");
         var change = Single(Compare(OneClass, right));
 
         Assert.True(change.Right!.Span.IsKnown);
