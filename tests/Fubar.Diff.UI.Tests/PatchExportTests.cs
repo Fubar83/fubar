@@ -126,6 +126,23 @@ public class PatchExportTests
         new DiffLine(1, "same", 1, "same", ChangeKind.Unchanged),
     ]);
 
+    /// <summary>
+    /// A directory named the way the RUNNING platform names one.
+    ///
+    /// These tests are about a patch carrying bare file names rather than someone's absolute paths,
+    /// which means they turn on <see cref="Path.GetFileName"/> actually splitting the fixture. A
+    /// hard-coded <c>C:\one\before.cs</c> does not split on Linux - a backslash is an ordinary
+    /// filename character there, so the whole string comes back as the "file name" and the patch
+    /// header reads <c>--- a/C:\one\before.cs</c>. The product is right on both platforms; it was the
+    /// fixture that only existed on one.
+    /// </summary>
+    private static string Dir(string name) =>
+        Path.Combine(Path.GetPathRoot(Path.GetTempPath()) ?? Path.DirectorySeparatorChar.ToString(), name);
+
+    private static readonly string LeftFile = Path.Combine(Dir("one"), "before.cs");
+
+    private static readonly string RightFile = Path.Combine(Dir("two"), "after.cs");
+
     private static (ComparisonViewModel Tab, Clipboard Clip, Writer Out) Build(DiffResult result, string? savePath = null)
     {
         var clip = new Clipboard();
@@ -135,8 +152,8 @@ public class PatchExportTests
             new StubComparison(result), new NoopMerge(), new Picker(savePath), new Watcher(),
             clip, writer, new ThemeManagerViewModel())
         {
-            LeftPath = @"C:\one\before.cs",
-            RightPath = @"C:\two\after.cs",
+            LeftPath = LeftFile,
+            RightPath = RightFile,
         };
 
         return (tab, clip, writer);
@@ -178,7 +195,10 @@ public class PatchExportTests
 
         await tab.CopyPatchCommand.ExecuteAsync(null);
 
-        Assert.DoesNotContain(@"C:\one", clip.Text!, StringComparison.Ordinal);
+        // The DIRECTORY must not appear - only the file name. Asserted against the fixture's own
+        // directory rather than a literal, so this keeps testing the thing it names on every platform.
+        Assert.DoesNotContain(Dir("one"), clip.Text!, StringComparison.Ordinal);
+        Assert.Contains("before.cs", clip.Text!, StringComparison.Ordinal);
     }
 
     [AvaloniaFact]
