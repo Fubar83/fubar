@@ -30,6 +30,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileCopier, FileCopier>();
         services.AddSingleton<ITextFileWriter, TextFileWriter>();
         services.AddSingleton<IJsonParser, JsonAstParser>();
+        services.AddSingleton<IYamlParser, YamlAstParser>();
         services.AddSingleton<IFolderScanner, FileSystemFolderScanner>();
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
 

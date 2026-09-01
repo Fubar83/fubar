@@ -9,7 +9,7 @@ side by side, with the panes locked in alignment and changes highlighted line by
 It is a sibling of [Fubar API Studio](https://github.com/Fubar83/fubar) and shares its
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 
-> **Status: early.** Two-way file comparison, semantic JSON, source-code comparison, three-way merge,
+> **Status: early.** Two-way file comparison, semantic JSON and YAML, source-code comparison, three-way merge,
 > folder comparison, editing and save all work end to end. Editing the three-way merge's panes, and the
 > other formats, are not built yet — see [Roadmap](#roadmap).
 
@@ -150,6 +150,18 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   the aligned Text view but built from the change's own location in each side's raw text rather than
   an aligned row range. Set **Compare** to **Text** for the aligned side-by-side view instead — which
   is also the only mode for anything that does not parse as JSON.
+- **Semantic YAML**, through the same machinery. A `.yaml` or `.yml` file is read as structure, so a
+  manifest whose keys were reordered between two branches reports the two things that changed rather
+  than the whole file. Multi-document files (`---` separated, as Kubernetes manifests usually are)
+  compare document by document; lists of objects are matched by an identity field like everything
+  else; ignore paths, the change tree, the highlighting and the headless `--check` all work exactly as
+  they do for JSON, because YAML is parsed into the same tree. `port: 8080` and `port: "8080"` are a
+  number and a string and are reported as different — the change most likely to break something — and
+  `country: NO` stays the string it was written as. YAML is chosen by **file name**, never guessed at:
+  almost any text is valid YAML, so sniffing it would turn every log comparison into a comparison of
+  two one-line documents. Force it with **View → Compare as → Yaml** (or `--mode yaml`) for a file
+  that has no extension. Comments are not part of YAML's data model, so a change to one shows in Text
+  mode and not here.
 - **Right-click an array in the change tree** to choose how its elements are matched: by position, or
   by any field that could identify them — the auto-detected one first, then every other field that
   would actually work, plus a dotted path like `meta.id` for identity that is nested. A field missing

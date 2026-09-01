@@ -97,8 +97,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.Navigated += OnPaneNavigated;
         Pane.SideEdited += OnSideEdited;
 
-        // This host has the parser behind it, so it can offer the Json view's pretty buttons.
-        Pane.CanReformat = true;
+        // Whether the Pretty buttons are offered is decided per comparison, in Refresh: this host has
+        // a JSON formatter behind them and no YAML one.
         Pane.FormattingChanged += (_, _) => Refresh();
 
         // The pane asks; this owns the comparison options, so it answers and re-compares.
@@ -1028,6 +1028,8 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
     public bool IsModeJson => Mode == ComparisonMode.Json;
 
+    public bool IsModeYaml => Mode == ComparisonMode.Yaml;
+
     /// <summary>Layout, the other half of the View menu. Side by side or unified - text views only.</summary>
     [RelayCommand]
     private void SetSideBySide() => Pane.ViewMode = DiffViewMode.SideBySide;
@@ -1155,6 +1157,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsModeAuto));
         OnPropertyChanged(nameof(IsModeText));
         OnPropertyChanged(nameof(IsModeJson));
+        OnPropertyChanged(nameof(IsModeYaml));
 
         OptionChanged();
     }
@@ -1720,6 +1723,11 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         // MergeService still takes one, and it is always empty - which makes MergedDocument.Build
         // round-trip the base side exactly, i.e. save what the pane holds.
         _mergeState = MergeState.Empty;
+
+        // The Pretty button re-lays-out JSON, and there is no YAML emitter behind it - so it is
+        // offered exactly where it would do something, rather than being a control that quietly does
+        // nothing on a manifest.
+        Pane.CanReformat = _comparison.IsJsonPair;
 
         // Before Show, like the renderer metadata it resembles: Show replaces both documents, and a
         // pane that learned its grammar afterwards would repaint the new content with the previous

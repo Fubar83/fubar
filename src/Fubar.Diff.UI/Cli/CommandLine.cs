@@ -152,12 +152,12 @@ public static class CommandLine
                 case "--mode":
                     if (Next(args, ref i) is not { } modeName)
                     {
-                        return Fail("--mode needs one of: auto, text, json.");
+                        return Fail("--mode needs one of: auto, text, json, yaml.");
                     }
 
                     if (!Enum.TryParse<ComparisonMode>(modeName, ignoreCase: true, out var mode))
                     {
-                        return Fail($"'{modeName}' is not a comparison mode. Use auto, text or json.");
+                        return Fail($"'{modeName}' is not a comparison mode. Use auto, text, json or yaml.");
                     }
 
                     options = options with { Mode = mode };
@@ -249,7 +249,8 @@ public static class CommandLine
         Options:
           --report-format text|html|json|patch  override the format the extension implies
           --context, -c <n>                     unchanged lines to keep around each change (default 3)
-          --mode auto|text|json                 how to compare; auto reads JSON as structure
+          --mode auto|text|json|yaml            how to compare; auto reads JSON as structure, and
+                                                anything named .yaml or .yml as YAML
           --ignore-whitespace, -w               leading and trailing whitespace stops counting
           --ignore-case, -i
           --ignore-comments                     code files only

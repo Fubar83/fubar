@@ -78,6 +78,19 @@ offset copy rather than a line-mapping scheme. **This invariant is deliberately 
 filler at all, since a stacked layout has no row-count-parity requirement to protect. Only the
 side-by-side main panes (`AlignedText.Build`) need fillers; do not "fix" `BuildCompact` to add them.
 
+**YAML goes through the JSON pipeline, and the `Json*` names stayed** (Diff). `YamlAstParser` produces
+`JsonAstNode`s, so the differ, ignore rules, array identity keys, the change tree, the spans, the
+reports and `--check` all work on YAML without knowing it exists. The names describe the SHAPE - a
+document of objects, arrays and scalars - which is exactly what YAML's data model is; renaming the
+family (`JsonAstNode`, `JsonChange`, `JsonSemanticPass`, `JsonSemanticDiffer`, …) was judged more risk
+than value, so read `Json*` as "structured" where it matters. The asymmetry to respect is in
+`StructuredFormatDetector`: **JSON is detected by trying to parse, YAML only by file extension**,
+because nearly all text is valid YAML and sniffing it would make every log comparison a comparison of
+two one-scalar documents. The format is tracked per side, so a `.json` can be compared against a
+`.yaml`. YAML scalar typing is the 1.2 core schema only - never 1.1's `yes`/`no` booleans, which is
+the Norway problem - and a quoted number stays a string, because `port: 8080` differing from
+`port: "8080"` is the change most likely to break something.
+
 **Semantic JSON is a refinement, not a second pipeline** (Diff). The text differ decides how lines
 line up; `JsonSemanticPass` decides which of them matter. One `DiffResult` shape means every renderer,
 the diff map, navigation and merge work in both modes. The trap here: `SemanticChanges` (from

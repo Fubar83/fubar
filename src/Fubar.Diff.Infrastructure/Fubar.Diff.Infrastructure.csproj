@@ -10,6 +10,10 @@
 
   <ItemGroup>
     <PackageReference Include="DiffPlex" />
+    <!-- For semantic YAML, parsed into the same AST the JSON parser produces - see YamlAstParser.
+         The representation model is what carries per-node line and column, which a deserialiser does
+         not. -->
+    <PackageReference Include="YamlDotNet" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 

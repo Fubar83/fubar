@@ -8,6 +8,33 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Semantic YAML.** A `.yaml` or `.yml` file is compared as structure, not as lines: a manifest whose
+  keys were reordered between two branches reports the two values that changed rather than the whole
+  file. Multi-document files compare document by document, lists of objects are matched by an identity
+  field, ignore paths work, the change tree works, the highlighting works, and `--check` works — all of
+  it inherited rather than written, because YAML is parsed into the same AST as JSON. The new code is
+  one parser and a rule for choosing it.
+
+  That rule is the interesting part. JSON is recognised by TRYING to parse it, since almost nothing
+  else is valid JSON. YAML cannot be recognised that way at all — a plain English sentence is a valid
+  YAML document, and so is a log file — so it is taken from the file's name and never guessed at.
+  Sniffing would have turned every text comparison in the app into a comparison of two one-scalar
+  documents with nothing to report. `--mode yaml`, or View → Compare as → Yaml, is there for the
+  manifest that came out of a pipeline with no extension.
+
+  Two scalar rules are deliberate. `port: 8080` and `port: "8080"` are a number and a string and are
+  reported as different — it is the change most likely to break something, and a resolver that treated
+  them alike would hide it. And `country: NO` stays the string somebody wrote, rather than becoming
+  `false` the way YAML 1.1 would have it.
+
+  What does not survive the parse is comments, because they are not part of YAML's data model. A
+  comparison that differs only in comments is a Text-mode question, and the fallback says so.
+
+  The format is tracked per SIDE, which costs nothing and means a JSON config can be compared against
+  its YAML translation — YAML being a superset, both land in the same tree. The Pretty button is
+  offered only for a JSON pair: it re-lays-out JSON and there is no YAML emitter behind it, and a
+  control that quietly does nothing is worse than one that is not there.
+
 - **Manual alignment.** Put the caret on a line in each pane, press **Ctrl+Shift+A**, and those two
   lines are paired — the regions either side of the pairing are then compared independently of each
   other.

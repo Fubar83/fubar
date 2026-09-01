@@ -311,6 +311,12 @@
                                           Command="{Binding SetCompareModeCommand}"
                                           CommandParameter="{x:Static comparison:ComparisonMode.Json}"
                                           ToolTip.Tip="Compare structure, ignoring formatting and key order" />
+                                <MenuItem Header="Yaml"
+                                          ToggleType="Radio" GroupName="CompareMode"
+                                          IsChecked="{Binding IsModeYaml, Mode=OneWay}"
+                                          Command="{Binding SetCompareModeCommand}"
+                                          CommandParameter="{x:Static comparison:ComparisonMode.Yaml}"
+                                          ToolTip.Tip="Compare structure, for a manifest with no .yaml extension. Auto already does this for one that has." />
                             </MenuItem>
 
                             <!-- Two LAYOUTS of a text comparison, and nothing more. Hidden in Json

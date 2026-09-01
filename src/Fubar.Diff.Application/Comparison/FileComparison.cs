@@ -32,6 +32,23 @@ public sealed record FileComparison(
     /// </summary>
     public SourceLanguage Language { get; init; } = SourceLanguage.None;
 
+    /// <summary>
+    /// How each side was READ when a structural comparison ran - JSON, YAML, or neither.
+    ///
+    /// Per side because they can differ: a JSON config compared against its YAML translation is a
+    /// real thing to want, and YAML being a superset of JSON means both parse into the same tree.
+    /// What consumes this is anything that can only work on one of them - the Json view's Pretty
+    /// button re-lays-out JSON and has no YAML emitter behind it, so it is offered only where it
+    /// would do something.
+    /// </summary>
+    public StructuredFormat LeftFormat { get; init; } = StructuredFormat.None;
+
+    /// <summary>How the right side was read. See <see cref="LeftFormat"/>.</summary>
+    public StructuredFormat RightFormat { get; init; } = StructuredFormat.None;
+
+    /// <summary>True when both sides were read as JSON, which is what the Pretty button needs.</summary>
+    public bool IsJsonPair => LeftFormat == StructuredFormat.Json && RightFormat == StructuredFormat.Json;
+
     /// <summary>Whether the semantic JSON pass ran, as opposed to a plain text comparison.</summary>
     public bool IsSemantic { get; init; }
 

@@ -16,9 +16,35 @@ namespace Fubar.Diff.Application.Comparison;
 /// </summary>
 public sealed class JsonSemanticPass
 {
-    private readonly IJsonParser _parser;
+    private readonly IJsonParser _json;
+    private readonly IYamlParser? _yaml;
 
-    public JsonSemanticPass(IJsonParser parser) => _parser = parser;
+    /// <summary>
+    /// The YAML parser is optional so a host that never compares YAML - or a test that does not care -
+    /// need not supply one. Where it is missing, a YAML file simply falls back to a text comparison,
+    /// which is what happens for any unparseable file anyway.
+    /// </summary>
+    public JsonSemanticPass(IJsonParser json, IYamlParser? yaml = null)
+    {
+        _json = json;
+        _yaml = yaml;
+    }
+
+    /// <summary>
+    /// Parses one side in whichever format it was decided to be - see <see cref="StructuredFormatDetector"/>.
+    /// </summary>
+    private bool TryParse(string text, StructuredFormat format, out JsonAstNode? node, out JsonParseException? error)
+    {
+        node = null;
+        error = null;
+
+        return format switch
+        {
+            StructuredFormat.Json => _json.TryParse(text, out node, out error),
+            StructuredFormat.Yaml => _yaml is not null && _yaml.TryParse(text, out node, out error),
+            _ => false,
+        };
+    }
 
     /// <summary>
     /// Applies the semantic pass, or explains why it did not run.
@@ -31,21 +57,25 @@ public sealed class JsonSemanticPass
         DiffResult textResult,
         string leftText,
         string rightText,
-        ComparisonOptions options)
+        ComparisonOptions options,
+        StructuredFormat leftFormat = StructuredFormat.Json,
+        StructuredFormat rightFormat = StructuredFormat.Json)
     {
-        if (options.Mode == ComparisonMode.Text)
+        if (options.Mode == ComparisonMode.Text
+            || leftFormat == StructuredFormat.None
+            || rightFormat == StructuredFormat.None)
         {
             return JsonSemanticOutcome.NotAttempted(textResult);
         }
 
-        if (!_parser.TryParse(leftText, out var left, out var leftError) || left is null)
+        if (!TryParse(leftText, leftFormat, out var left, out var leftError) || left is null)
         {
-            return Skipped(textResult, options, "left", leftError);
+            return Skipped(textResult, options, "left", leftFormat, leftError);
         }
 
-        if (!_parser.TryParse(rightText, out var right, out var rightError) || right is null)
+        if (!TryParse(rightText, rightFormat, out var right, out var rightError) || right is null)
         {
-            return Skipped(textResult, options, "right", rightError);
+            return Skipped(textResult, options, "right", rightFormat, rightError);
         }
 
         var changes = JsonSemanticDiffer.Compare(left, right, options.Json);
@@ -81,19 +111,24 @@ public sealed class JsonSemanticPass
     /// Text mode, or either side failing to parse - so a caller can tell "did not run" apart from
     /// "ran and found nothing", exactly as with <see cref="JsonSemanticOutcome.Applied"/>.
     /// </summary>
-    public IReadOnlyList<JsonChange>? TryCompareOriginalText(string leftText, string rightText, ComparisonOptions options)
+    public IReadOnlyList<JsonChange>? TryCompareOriginalText(
+        string leftText,
+        string rightText,
+        ComparisonOptions options,
+        StructuredFormat leftFormat = StructuredFormat.Json,
+        StructuredFormat rightFormat = StructuredFormat.Json)
     {
         if (options.Mode == ComparisonMode.Text)
         {
             return null;
         }
 
-        if (!_parser.TryParse(leftText, out var left, out _) || left is null)
+        if (!TryParse(leftText, leftFormat, out var left, out _) || left is null)
         {
             return null;
         }
 
-        if (!_parser.TryParse(rightText, out var right, out _) || right is null)
+        if (!TryParse(rightText, rightFormat, out var right, out _) || right is null)
         {
             return null;
         }
@@ -109,11 +144,13 @@ public sealed class JsonSemanticPass
     public IReadOnlyDictionary<string, ArrayKeyChoices> ScanArrays(
         string leftText,
         string rightText,
-        ComparisonOptions options)
+        ComparisonOptions options,
+        StructuredFormat leftFormat = StructuredFormat.Json,
+        StructuredFormat rightFormat = StructuredFormat.Json)
     {
         if (options.Mode == ComparisonMode.Text
-            || !_parser.TryParse(leftText, out var left, out _)
-            || !_parser.TryParse(rightText, out var right, out _))
+            || !TryParse(leftText, leftFormat, out var left, out _)
+            || !TryParse(rightText, rightFormat, out var right, out _))
         {
             return new Dictionary<string, ArrayKeyChoices>();
         }
@@ -128,7 +165,7 @@ public sealed class JsonSemanticPass
     /// JSON" - the second means the pretty button should not have been offered at all.
     /// </summary>
     public string? TryFormat(string text, JsonFormatOptions format) =>
-        _parser.TryParse(text, out var root, out _) && root is not null
+        _json.TryParse(text, out var root, out _) && root is not null
             ? JsonFormatter.Format(root, format)
             : null;
 
@@ -137,15 +174,22 @@ public sealed class JsonSemanticPass
     /// files are not JSON - so no reason is reported and the UI stays quiet. When the user explicitly
     /// asked for JSON, the parse error is worth surfacing.
     /// </summary>
+    /// <summary>
+    /// Says why nothing structural happened, but only when the user ASKED for a structural comparison.
+    /// In Auto, a file that does not parse is the ordinary case - most files are not JSON - and
+    /// announcing it every time would be noise.
+    /// </summary>
     private static JsonSemanticOutcome Skipped(
         DiffResult textResult,
         ComparisonOptions options,
         string side,
+        StructuredFormat format,
         JsonParseException? error) =>
-        options.Mode == ComparisonMode.Json
+        options.Mode is ComparisonMode.Json or ComparisonMode.Yaml
             ? JsonSemanticOutcome.NotAttempted(textResult) with
             {
-                FallbackReason = $"The {side}-hand file is not valid JSON, so the files were compared as text. "
+                FallbackReason = $"The {side}-hand file is not valid {(format == StructuredFormat.Yaml ? "YAML" : "JSON")}, "
+                                 + "so the files were compared as text. "
                                  + (error?.Message ?? string.Empty),
             }
             : JsonSemanticOutcome.NotAttempted(textResult);

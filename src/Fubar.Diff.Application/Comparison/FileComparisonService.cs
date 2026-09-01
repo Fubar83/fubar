@@ -244,6 +244,12 @@ public sealed class FileComparisonService : IFileComparisonService
         // no-op rather than into a wrong answer.
         var language = LanguageDetector.ForPair(leftDoc.Path, rightDoc.Path);
 
+        // How each side should be READ, which is a different question from what language it is:
+        // JSON is recognised by trying to parse, YAML only by its name. Per side, so a JSON config
+        // can be compared against its YAML translation - see StructuredFormatDetector.
+        var leftFormat = StructuredFormatDetector.For(leftDoc.Path, options.Mode);
+        var rightFormat = StructuredFormatDetector.For(rightDoc.Path, options.Mode);
+
         // Null unless a code rule is actually switched on, so an ordinary comparison never pays for
         // a scan it will not consult.
         var leftCode = CodeLines.Analyze(leftDoc.Lines, language, options.Code);
@@ -288,18 +294,25 @@ public sealed class FileComparisonService : IFileComparisonService
             textResult,
             string.Join('\n', leftDoc.Lines),
             string.Join('\n', rightDoc.Lines),
-            options);
+            options,
+            leftFormat,
+            rightFormat);
 
         // Original text parses whenever the canonicalized text did: canonicalization either changed
         // nothing (same text, so the same parse result) or it succeeded, which requires the original
         // to have parsed in the first place to produce that output. The ?? is defensive, not expected.
         var originalSemanticChanges = semantic.Applied
-            ? _semanticPass.TryCompareOriginalText(trueOriginalLeftText, trueOriginalRightText, options) ?? semantic.Changes
+            ? _semanticPass.TryCompareOriginalText(trueOriginalLeftText, trueOriginalRightText, options, leftFormat, rightFormat) ?? semantic.Changes
             : [];
 
         return new FileComparison(leftDoc, rightDoc, options, semantic.Result)
         {
             Language = language,
+
+            // What each side was actually READ as, and only when the pass ran - so "compared as text"
+            // stays distinguishable from "compared as JSON that happened to have no differences".
+            LeftFormat = semantic.Applied ? leftFormat : StructuredFormat.None,
+            RightFormat = semantic.Applied ? rightFormat : StructuredFormat.None,
             IsSemantic = semantic.Applied,
             SemanticChanges = semantic.Changes,
             SemanticFallbackReason = semantic.FallbackReason,
@@ -311,7 +324,7 @@ public sealed class FileComparisonService : IFileComparisonService
             // structural either way, but scanning the same documents keeps the two in step if that
             // ever stops being true.
             ArrayKeys = semantic.Applied
-                ? _semanticPass.ScanArrays(trueOriginalLeftText, trueOriginalRightText, options)
+                ? _semanticPass.ScanArrays(trueOriginalLeftText, trueOriginalRightText, options, leftFormat, rightFormat)
                 : new Dictionary<string, ArrayKeyChoices>(),
 
             // Invisible in the lines by construction (the reader consumes the BOM and splits on every
