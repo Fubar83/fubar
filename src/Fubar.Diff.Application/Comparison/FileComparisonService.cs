@@ -363,6 +363,15 @@ public sealed class FileComparisonService : IFileComparisonService
     }
 
     /// <summary>
+    /// Longest line the character-level differ is asked about.
+    ///
+    /// Far above any line a person writes - the longest lines in real source are a few thousand
+    /// characters - and far below a minified file, which is one line holding the whole bundle. See
+    /// <see cref="WithInlineSpans"/> for the measurements.
+    /// </summary>
+    internal const int MaxInlineDiffLength = 20_000;
+
+    /// <summary>
     /// Adds intra-line spans to modified rows, computed on the DISPLAY text.
     ///
     /// Only <see cref="ChangeKind.Modified"/> rows get spans: on a wholly inserted or deleted line the
@@ -375,6 +384,17 @@ public sealed class FileComparisonService : IFileComparisonService
         {
             var row = rows[i];
             if (row.Kind != ChangeKind.Modified || row.LeftText is not { } left || row.RightText is not { } right)
+            {
+                continue;
+            }
+
+            // A line too long to pick words out of. Character diffing is O(length x edits), which is
+            // free on source code and ruinous on a minified bundle: measured at 340 ms for a heavily
+            // changed 250,000-character line and 8.3 SECONDS at 1.3 million - per row, on a file that
+            // may be nothing but such rows. The row still gets its change tint, so the difference is
+            // reported; what is skipped is the character-level refinement, which on one line holding
+            // an entire bundle would have highlighted most of it anyway.
+            if (left.Length > MaxInlineDiffLength || right.Length > MaxInlineDiffLength)
             {
                 continue;
             }

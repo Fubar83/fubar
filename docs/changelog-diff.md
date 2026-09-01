@@ -349,6 +349,41 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Large files are between four and five thousand times faster, depending on how you break them.**
+  Measured, then fixed, in that order — the first measurement said the obvious plan was wrong.
+
+  | | before | after |
+  | --- | --- | --- |
+  | 1,000,000 lines, 50,000 scattered changes | 15.8 s | 1.4 s |
+  | 1,000,000 lines, one localised change | 1.6 s | 0.37 s |
+  | 1.8 MB minified (one line), as text | 68 s | 13 ms |
+  | 1.8 MB minified (one line), as JSON | 124 s | 0.3 s |
+
+  The plan had been to virtualise the aligned document, on the reasoning that a million rows of
+  metadata are built and only fifty are ever looked at. That is true and it was worth about 110 MB,
+  but it was not the problem: of the 15.8 seconds, 15.5 were inside a single call to the diff engine
+  and everything else in the pipeline came to under 800 ms between them.
+
+  Three things were actually wrong. **The engine was given the whole file at once** — it now trims the
+  identical head and tail, splits what remains at lines that occur exactly once on each side (a
+  method signature, a key, a timestamp: a line unique in both documents has exactly one plausible
+  counterpart), and aligns each piece independently. Below 10,000 lines nothing is split at all, so
+  ordinary comparisons produce byte-identical output to before.
+
+  **Every modified line was being word-diffed twice**, once by DiffPlex's side-by-side builder to fill
+  in sub-pieces nobody read, and once by our own inline engine on the display text. Dropping the
+  builder is where the minified numbers come from: 68 seconds to 13 milliseconds, for output that was
+  being discarded.
+
+  **A JSON property lookup was a linear scan**, and every caller sits inside a loop over the other
+  document's properties. A 120,000-property document spent 45 seconds in the array-key scanner alone,
+  looking for arrays it never found. Large objects now index themselves on first use.
+
+  Two smaller guards came with it: character-level diffing is skipped on lines over 20,000 characters
+  (the line still shows as changed — a bundle on one line would have highlighted most of itself
+  anyway), and the per-row metadata behind each pane is derived on access rather than stored, which
+  is the virtualisation that was planned, kept because it is 110 MB and one less copy of the document.
+
 - **Every difference now has a background, and the one you are on stands out from it.** Two gaps,
   either side of the same idea.
 

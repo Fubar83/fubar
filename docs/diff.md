@@ -19,6 +19,12 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   numbers still match what is on disk across insertions.
 - **Aligned panes.** Insertions and deletions get a placeholder row opposite them, and the two
   editors scroll in lockstep, so the columns cannot drift apart.
+- **Big files.** A million-line pair compares in about 1.4 seconds even with fifty thousand separate
+  changes in it, and in a third of a second when the changes are in one place. Two 1.8 MB minified
+  documents — one line each — take milliseconds as text and about 300 ms compared as JSON. The work is
+  split rather than skipped: identical heads and tails are trimmed, what remains is cut at lines unique
+  to both sides, and each piece is aligned on its own. The character-level highlight is the one thing
+  given up on a line long enough to be a whole bundle; the line is still marked as changed.
 - **Every difference is tinted, quietly.** Each changed row carries a low-contrast background — the
   removal colour on the left, the addition colour on the right — so a glance down either pane shows
   where the changes are, including lines that were merely edited rather than added or removed. The
@@ -273,9 +279,10 @@ to a destination you pick, not the three files it read. Fix the first of those (
 a re-merge, keyed by content rather than index) and this becomes worth doing; until then, edit the file
 in a two-way comparison and start the merge again.
 
-Virtualised diffing for very large files is the other gap: the whole aligned document is materialised
-per side, under a 64 MB reader cap. It is also why *Update the diff while you type* is a setting — see
-Settings → General — rather than always on.
+Very large files used to be the other gap and are now largely closed — see **Big files** below. What
+remains is memory rather than time: both documents, the alignment and both editors are held at once,
+which is why the reader still refuses anything over 64 MB. It is also why *Update the diff while you
+type* is a setting — see Settings → General — rather than always on.
 
 The three-way view has no diff map, unlike the two-way one — a merge asks "which of these needs me"
 rather than "where are the changes", which the conflict count and next/previous answer directly, and a

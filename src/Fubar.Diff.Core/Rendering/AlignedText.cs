@@ -41,16 +41,10 @@ public static class AlignedText
         var to = Math.Clamp(from + Math.Max(count, 0), from, lines.Count);
 
         var builder = new StringBuilder();
-        var meta = new AlignedLine[to - from];
 
         for (var i = from; i < to; i++)
         {
             var row = lines[i];
-            var isLeft = side == DiffSide.Left;
-
-            var text = (isLeft ? row.LeftText : row.RightText) ?? string.Empty;
-            var number = isLeft ? row.LeftNumber : row.RightNumber;
-            var spans = isLeft ? row.LeftSpans : row.RightSpans;
 
             if (i > from)
             {
@@ -59,22 +53,36 @@ public static class AlignedText
                 builder.Append('\n');
             }
 
-            builder.Append(text);
-
-            var kind = KindFor(row, side);
-
-            meta[i - from] = new AlignedLine(number, kind, spans)
-            {
-                IsIgnored = row.IsIgnored,
-
-                // This side's own answer. A row can be a move on one side and an ordinary change on
-                // the other - two methods swapping places is exactly that - and the filler half of a
-                // one-sided row has no text to have moved at all.
-                IsMoved = kind != ChangeKind.Filler && row.IsMovedOn(side),
-            };
+            builder.Append((side == DiffSide.Left ? row.LeftText : row.RightText) ?? string.Empty);
         }
 
-        return new AlignedDocument(builder.ToString(), meta);
+        // The text has to be built - an editor needs a document - but the per-line METADATA does not.
+        // It is a pure function of the row it describes, so it is computed on access instead of stored:
+        // the renderers ask for the fifty lines actually on screen, and a million-line comparison stops
+        // paying for two million AlignedLines nobody looks at (about 110 MB of them, measured).
+        return new AlignedDocument(builder.ToString(), new AlignedLineWindow(lines, side, from, to - from));
+    }
+
+    /// <summary>
+    /// One side's metadata for one row: what <see cref="Build(DiffResult,DiffSide,int,int)"/> would
+    /// have stored, derived on demand.
+    /// </summary>
+    internal static AlignedLine Project(DiffLine row, DiffSide side)
+    {
+        var kind = KindFor(row, side);
+
+        return new AlignedLine(
+            side == DiffSide.Left ? row.LeftNumber : row.RightNumber,
+            kind,
+            side == DiffSide.Left ? row.LeftSpans : row.RightSpans)
+        {
+            IsIgnored = row.IsIgnored,
+
+            // This side's own answer. A row can be a move on one side and an ordinary change on
+            // the other - two methods swapping places is exactly that - and the filler half of a
+            // one-sided row has no text to have moved at all.
+            IsMoved = kind != ChangeKind.Filler && row.IsMovedOn(side),
+        };
     }
 
     /// <summary>
@@ -144,8 +152,43 @@ public static class AlignedText
 
 /// <summary>One side's flattened document: the text an editor shows, and metadata per display line.</summary>
 /// <param name="Text">The full document text, lines joined with '\n'.</param>
-/// <param name="Lines">Per-line metadata, indexed by 0-based display line.</param>
+/// <param name="Lines">
+/// Per-line metadata, indexed by 0-based display line. Usually a lazy window over the comparison
+/// rather than a stored array - see <see cref="AlignedLineWindow"/> - so indexing it is cheap and
+/// holding it costs nothing per row.
+/// </param>
 public sealed record AlignedDocument(string Text, IReadOnlyList<AlignedLine> Lines);
+
+/// <summary>
+/// One side's per-line metadata, derived from the comparison on access rather than stored.
+///
+/// The rows are already in memory as <see cref="DiffLine"/>s and the projection to an
+/// <see cref="AlignedLine"/> is pure, so storing the result as well was two more arrays the size of
+/// the document, for data that is read fifty lines at a time. <see cref="AlignedLine"/> is a struct,
+/// so indexing this allocates nothing at all.
+///
+/// The comparison it reads must not change underneath it, which is the rule everywhere else too: a
+/// <see cref="DiffResult"/> is finished when it is built, and an edit produces a new one.
+/// </summary>
+public sealed class AlignedLineWindow(IReadOnlyList<DiffLine> rows, DiffSide side, int start, int count)
+    : IReadOnlyList<AlignedLine>
+{
+    public int Count => count;
+
+    public AlignedLine this[int index] => index >= 0 && index < count
+        ? AlignedText.Project(rows[start + index], side)
+        : throw new ArgumentOutOfRangeException(nameof(index));
+
+    public IEnumerator<AlignedLine> GetEnumerator()
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return AlignedText.Project(rows[start + i], side);
+        }
+    }
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
 
 /// <summary>
 /// What the renderers need to know about one display line.
@@ -157,7 +200,7 @@ public sealed record AlignedDocument(string Text, IReadOnlyList<AlignedLine> Lin
 /// </param>
 /// <param name="Kind">How to tint the line on this side.</param>
 /// <param name="Spans">Character ranges to highlight within the line; empty unless modified.</param>
-public sealed record AlignedLine(int? SourceNumber, ChangeKind Kind, IReadOnlyList<CharSpan> Spans)
+public readonly record struct AlignedLine(int? SourceNumber, ChangeKind Kind, IReadOnlyList<CharSpan> Spans)
 {
     /// <summary>True when this row differs only at ignored paths - drawn as a faint band, nothing more.</summary>
     public bool IsIgnored { get; init; }

@@ -203,4 +203,66 @@ public class PipelineScaleTests
 
         Assert.True(stopwatch.ElapsedMilliseconds < BudgetMs, $"scanning one huge line took {stopwatch.ElapsedMilliseconds} ms");
     }
+
+    [Fact]
+    public async Task Comparing_two_minified_files_does_not_hang()
+    {
+        // The scanner survives one huge line (above); the CHARACTER differ is the other half, and it
+        // did not. Two versions of a bundle differ all the way along, and character diffing costs
+        // O(length x edits) - measured at 8.3 seconds for a single 1.3-million-character line, per
+        // row. FileComparisonService.MaxInlineDiffLength is what stops that; this is the test that
+        // notices if the cap is ever removed.
+        var left = "{" + string.Join(',', Enumerable.Range(0, 120_000).Select(i => $"\"k{i}\":{i}")) + "}";
+        var right = "{" + string.Join(',', Enumerable.Range(0, 120_000).Select(i => $"\"k{i}\":{i + 1}")) + "}";
+
+        var service = Service(new() { ["a.min.js"] = [left], ["b.min.js"] = [right] });
+
+        await WithinBudget("minified comparison", async () =>
+        {
+            var comparison = await service.CompareFilesAsync("a.min.js", "b.min.js", ComparisonOptions.Default, Token);
+
+            // Still reported as a difference - the row tint says so. Only the word-level refinement is
+            // given up, and on a line holding an entire bundle it would have highlighted most of it.
+            var row = Assert.Single(comparison.Result.Lines);
+            Assert.Equal(ChangeKind.Modified, row.Kind);
+            Assert.Empty(row.LeftSpans);
+        });
+    }
+
+    [Fact]
+    public async Task A_line_just_under_the_cap_still_gets_character_spans()
+    {
+        // The other side of the cap, so it cannot quietly become "never diff characters at all".
+        var left = new string('a', FileComparisonService.MaxInlineDiffLength - 10) + " left";
+        var right = new string('a', FileComparisonService.MaxInlineDiffLength - 10) + " right";
+
+        var service = Service(new() { ["a.txt"] = [left], ["b.txt"] = [right] });
+
+        var comparison = await service.CompareFilesAsync("a.txt", "b.txt", ComparisonOptions.Default, Token);
+
+        Assert.NotEmpty(Assert.Single(comparison.Result.Lines).LeftSpans);
+    }
+
+    [Fact]
+    public async Task A_million_line_comparison_is_not_a_frozen_window()
+    {
+        // The reason SegmentedLineAligner exists. Scattered changes are what make an LCS engine work
+        // hardest: this shape took 15.5 seconds in the aligner before it, and about 1.4 after. The
+        // budget here is the usual enormous one - what it catches is the segmenting being lost, which
+        // puts this back over ten seconds rather than merely slowing it down.
+        var left = new string[1_000_000];
+        var right = new string[1_000_000];
+
+        for (var i = 0; i < left.Length; i++)
+        {
+            var text = $"    public void Method{i % 997}(int argument{i % 13}) // note {i}";
+            left[i] = text;
+            right[i] = i % 20 == 0 ? text.Replace("argument", "parameter") : text;
+        }
+
+        var service = Service(new() { ["a.cs"] = left, ["b.cs"] = right });
+
+        await WithinBudget("a million lines", async () =>
+            await service.CompareFilesAsync("a.cs", "b.cs", ComparisonOptions.Default, Token));
+    }
 }

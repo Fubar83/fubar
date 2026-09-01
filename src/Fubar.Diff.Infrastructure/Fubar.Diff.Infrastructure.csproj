@@ -17,4 +17,10 @@
     <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- So the large-document alignment path can be tested at its real threshold rather than at a
+         number a test made up - see DiffPlexDiffEngine.SegmentedFrom and SegmentedLineAligner. -->
+    <InternalsVisibleTo Include="Fubar.Diff.Infrastructure.Tests" />
+  </ItemGroup>
+
 </Project>

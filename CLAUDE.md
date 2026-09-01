@@ -626,6 +626,27 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   two out as soon as "Reformat for display" is on. The close-up (`JsonDetailPane`) passes no changes at
   all: it shows an excerpt renumbered from line 1, so whole-document spans would land on whatever text
   happened to sit at those numbers.
+- **The cost of a big comparison is the ALIGNMENT, not the rendering** (Diff). Measured before
+  guessing, and the guess was wrong: on a 1,000,000-line pair the pipeline took 15.8 s, of which 15.5
+  was one call into the diff engine - reading, normalising, inline spans, building both aligned
+  documents and computing folds came to under 800 ms between them. `SegmentedLineAligner` is the fix
+  (trim the identical head and tail, split the rest at lines unique to both sides, align each piece),
+  used only above `DiffPlexDiffEngine.SegmentedFrom` so ordinary comparisons keep byte-identical
+  output. Before optimising anything here, measure - the scratch benchmark shape is in the commit that
+  added this.
+- **Never ask `SideBySideDiffBuilder` for an alignment** (Diff). It runs a WORD-level diff for every
+  modified line to fill in sub-pieces this codebase does not read (character spans come from
+  `DiffPlexInlineDiffEngine`, computed on display text rather than comparison keys). Two 1.8 MB
+  minified documents took 68 seconds, essentially all of it inside a word diff whose output was
+  discarded; going straight to `IDiffer.CreateDiffs` with a `LineChunker` and pairing the blocks up
+  by hand is 13 ms. The pairing rule - first min(deleted, inserted) lines of a block become modified
+  rows, the remainder one-sided - is the builder's own, and must stay that way.
+- **Anything that walks one document's properties against the other's must not use `Find` naively**
+  (Diff). It looks like an O(1) lookup and was a linear scan; every caller is inside a loop over the
+  other side, so a 120,000-property minified document spent 45 SECONDS in `ArrayKeyScanner` alone,
+  looking for arrays it never found. `JsonAstObject.Find` now indexes itself above
+  `JsonAstObject.IndexFrom` properties (lazily, first-wins so duplicate names keep their documented
+  meaning). `JsonSemanticDiffer.CompareObjects` builds its own dictionary and is fine.
 - **`TextEditor.ScrollToVerticalOffset` silently clamps to the CURRENTLY KNOWN extent, not the whole
   document** (Diff). Calling it for a line AvaloniaEdit has never scrolled towards is a no-op - the
   ScrollViewer only learns the document is that tall once something (`ScrollToLine`) asks it to make
