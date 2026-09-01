@@ -29,6 +29,7 @@ dotnet test  Fubar.slnx                # every suite
 
 dotnet run --project src/Fubar.Studio.UI                   # API Studio
 dotnet run --project src/Fubar.Diff.UI -- left.json right.json
+dotnet run --project src/Fubar.Diff.UI -- --check left.json right.json   # headless; 0 same, 1 differ, 2 failed
 dotnet run --project src/Fubar.Controls.Gallery            # component sandbox
 
 ./build/publish-api-studio.ps1         # self-contained per-RID binaries (pwsh 7+)
@@ -626,6 +627,14 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   two out as soon as "Reformat for display" is on. The close-up (`JsonDetailPane`) passes no changes at
   all: it shows an excerpt renumbered from line 1, so whole-document spans would land on whatever text
   happened to sit at those numbers.
+- **The same executable is a window AND a batch tool, and only unambiguous flags choose the second**
+  (Diff). `CommandLine.IsHeadless` is checked in `Program.Main` before Avalonia is configured, because
+  a run that must exit with a status code cannot also be showing a window. The list is deliberately
+  short - `--check`, `--quiet`/`-q`, `--report`, `--report-format`, `--help`, `--version` - and two
+  bare file names or `--merge` are NOT on it: those are what `git difftool` and `git mergetool` pass,
+  and turning one into a silent batch job would break every git integration with no error to go on.
+  Exit codes are `diff`'s (0 same, 1 different, 2 could not tell) and a format-only difference counts
+  as different. On Windows a GUI executable has no console at all until `ParentConsole.Attach` runs.
 - **The cost of a big comparison is the ALIGNMENT, not the rendering** (Diff). Measured before
   guessing, and the guess was wrong: on a 1,000,000-line pair the pipeline took 15.8 s, of which 15.5
   was one call into the diff engine - reading, normalising, inline spans, building both aligned

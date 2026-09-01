@@ -19,6 +19,13 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   numbers still match what is on disk across insertions.
 - **Aligned panes.** Insertions and deletions get a placeholder row opposite them, and the two
   editors scroll in lockstep, so the columns cannot drift apart.
+- **It runs without a window.** `FubarDiff --check old.json new.json` compares and exits — 0 if they
+  match, 1 if they differ, 2 if the question could not be answered, which is what `diff` and
+  `git diff --exit-code` mean and what a script author will assume. `--report out.html` writes a
+  self-contained page; `--report out.json` writes something a gate can test; `--report - --report-format
+  patch` pipes a unified diff. Every comparison option has a flag, including `--ignore-path`, so the
+  CI check that matters — *"is this response the same apart from the request id and the timestamp?"* —
+  is one line. `--help` for the rest.
 - **Big files.** A million-line pair compares in about 1.4 seconds even with fifty thousand separate
   changes in it, and in a third of a second when the changes are in one place. Two 1.8 MB minified
   documents — one line each — take milliseconds as text and about 300 ms compared as JSON. The work is
@@ -232,7 +239,39 @@ per conflict. Save into **Right (mine)**, which is the working-tree file git is 
 resolve — that is why `$LOCAL` lands on the right and it is the default destination.
 
 `trustExitCode false` is deliberate: the app does not yet report resolution success through its exit
-code, so git asks you whether the merge went well rather than assuming.
+code, so git asks you whether the merge went well rather than assuming. (The headless mode below does
+use exit codes, and means something different by them — "these files differ", not "the merge worked".)
+
+### On the command line
+
+The same executable answers without opening anything, as long as the arguments say so. Two file names
+still open a window — that is what a difftool passes — so the headless modes are the flags that have
+no meaning on screen: `--check`, `--quiet`, `--report`, `--help`, `--version`.
+
+```bash
+FubarDiff --check expected.json actual.json      # 0 same, 1 different, 2 could not tell
+FubarDiff -q a.txt b.txt                         # the same, silently
+FubarDiff --report diff.html src/a.cs src/b.cs   # a self-contained page for a build artifact
+FubarDiff --report result.json a.json b.json     # fields a gate can test
+FubarDiff --report - --report-format patch a b > changes.patch
+```
+
+The exit codes are `diff`'s: **0** the files are the same, **1** they differ, **2** something went
+wrong — a file that could not be read is never reported as a clean result. A format-only difference
+(encoding, BOM, line endings) counts as different, because the files are not interchangeable even
+though the panes would show the same text.
+
+Every comparison option has a flag — `--ignore-whitespace`, `--ignore-case`, `--ignore-comments`,
+`--mode json`, and `--ignore-path` as many times as needed. That last one is what makes this useful as
+a gate rather than a curiosity:
+
+```bash
+FubarDiff --check --ignore-path '$.requestId' --ignore-path '$.timestamp' expected.json actual.json
+```
+
+Reordered keys are not differences, the two volatile fields are ignored, and the exit code answers the
+only question that was being asked. A report goes to standard output with `--report -`, and the
+summary line moves to standard error there so a piped patch stays a patch.
 
 The shared UI components live alongside this app in `src/Fubar.Controls`, referenced directly - a
 change to a control and a change to the app that uses it go in one build and one commit.

@@ -8,6 +8,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A command line, with exit codes and reports.** The same executable now answers without opening
+  anything: `FubarDiff --check expected.json actual.json` compares and exits 0 if they match, 1 if
+  they differ, 2 if the question could not be answered. Those are `diff`'s codes, because a script
+  author will assume them without reading anything — and the third matters most, since a file that
+  could not be read must never come back as a clean result.
+
+  `--report <file>` writes the comparison out, in a format taken from the extension: a self-contained
+  HTML page for a build artifact (no scripts, no external anything, still readable years later), JSON
+  for a gate to test, plain text for a log, or a unified diff. `--report -` writes to standard output
+  and moves the summary line to standard error, so `--report - --report-format patch > changes.patch`
+  produces a patch rather than a patch with a sentence on the end.
+
+  Every comparison option has a flag, and `--ignore-path` may be repeated, which is what turns this
+  into a usable CI check: *"is this response the same apart from the request id and the timestamp?"*
+  is one line, with reordered keys already not counting as differences.
+
+  Two file names still open a window, and so does `--merge` — those are what a difftool and a
+  mergetool configuration pass, and quietly turning one of them into a batch job would break every git
+  integration with no error to go on. Only flags that mean nothing on screen run headless. On Windows
+  the process attaches to the console that launched it, so a GUI executable can still print.
+
 - **F5 refreshes the comparison, and the window says when it needs to.** With something typed into a
   pane, F5 re-compares what the panes now hold; with nothing typed it re-reads both files from disk.
   The distinction is the whole command: going to disk over unsaved edits would discard text that exists
