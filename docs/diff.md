@@ -9,9 +9,9 @@ side by side, with the panes locked in alignment and changes highlighted line by
 It is a sibling of [Fubar API Studio](https://github.com/Fubar83/fubar) and shares its
 design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 
-> **Status: early.** Two-way file comparison, semantic JSON and YAML, source-code comparison, three-way merge,
-> folder comparison, editing and save all work end to end. Editing the three-way merge's panes, and the
-> other formats, are not built yet — see [Roadmap](#roadmap).
+> **Status: early.** Two-way file comparison, semantic JSON and YAML, source-code comparison, three-way merge
+> with an editable result, folder comparison, editing and save all work end to end. Editing the three-way
+> merge's three INPUT panes, and the other formats, are not built yet — see [Roadmap](#roadmap).
 
 ## Features
 
@@ -161,6 +161,15 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   writes the merged file to whichever of the three you choose, in that file's own encoding and line
   endings. An unresolved conflict keeps the ancestor's text and says so in the status bar, both before
   saving and after.
+- **The merged result is editable, not a preview.** A **Result** pane sits under the three columns
+  showing the merged file as it currently stands, updated on every decision — and you can type into it.
+  That matters because the answer to a real conflict is regularly *neither* side: two people edited the
+  same line, and what belongs there is a third line that exists in neither file. Until there was
+  somewhere to write it, the only way through was to resolve the conflict badly, save, and fix it in an
+  editor afterwards. Once you have typed into it, Save writes **what that pane holds** rather than
+  rebuilding from the decisions, and the status bar says *Hand-edited* so it is never a surprise.
+  Clicking a resolve button after that would rebuild the document and discard what you wrote, so it
+  asks first — and *Keep my edits* is the default, including if you dismiss the dialog.
 - **Semantic JSON**: compares structure, not text. Reordered properties and reformatting are not
   differences; array elements are matched by an auto-detected identity key, so an element inserted
   mid-array marks only itself. JSON opens in the **Json** view by default - the change tree plus both
@@ -354,14 +363,16 @@ the `IDiffEngine` port in Infrastructure — swapping it is a one-file change, a
 view has its own row numbering, the Json view shows each side unaligned, and a hex dump cannot be
 written back as text.
 
-The three-way merge window is still **resolve-only**, deliberately rather than for want of plumbing.
-Its panes could be made editable with the same machinery the two-way ones use, but a merge's decisions
-are keyed by region index and any edit to an input needs a full re-merge, which renumbers those regions
-and so discards every decision made so far — an edit half way through a long merge would quietly throw
-the work away. There is also nowhere to save an edited *input* to: the window writes the merged result
-to a destination you pick, not the three files it read. Fix the first of those (decisions that survive
-a re-merge, keyed by content rather than index) and this becomes worth doing; until then, edit the file
-in a two-way comparison and start the merge again.
+The three-way merge's **result** is now editable — see *The merged result is editable* above. Its three
+**input** panes are still read-only, and that half of the argument still holds: a merge's decisions are
+keyed by region index, any edit to an input needs a full re-merge, and a re-merge renumbers those
+regions and so discards every decision made so far — an edit half way through a long merge would
+quietly throw the work away. There is also nowhere to save an edited input to; the window writes the
+merged result to a destination you pick, not the three files it read. The result pane sidesteps all of
+that by being downstream of the decisions rather than upstream of them, and it is what people actually
+wanted from editing here: somewhere to write the line neither side has. Fix the decisions (keyed by
+content rather than index, so they survive a re-merge) and editing the inputs becomes worth doing too;
+until then, edit an input in a two-way comparison and start the merge again.
 
 Very large files used to be the other gap and are now largely closed — see **Big files** below. What
 remains is memory rather than time: both documents, the alignment and both editors are held at once,

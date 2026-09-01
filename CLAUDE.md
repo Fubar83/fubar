@@ -204,6 +204,21 @@ opposite reasons - an ignored row would otherwise get no tint (its Kind is `Unch
 conflicting row would otherwise get the SAME tint as the changes that need no decision, which is the
 one thing a merge view must not do.
 
+**A hand-edited merge result is saved as TEXT, and the decisions become vestigial the moment it is
+touched** (Diff). The three-way window's Result pane is editable because the answer to a real conflict
+is regularly neither side. From the first keystroke the decisions and the document disagree, and the
+document is the one that is right - so `MergeViewModel` switches from `SaveThreeWayAsync` (build from
+`ThreeWayMergeState`) to `SaveThreeWayTextAsync` (write these lines), which takes only the PATH and the
+FILE FORMAT from the destination. Three rules hold it together and none is optional. The pane
+distinguishes its own writes from the user's (`DiffEditorPane._applying`), or `RefreshOutput`'s rewrite
+after every decision would be read back as a hand edit and the flag would never clear. A resolve after
+a hand edit ASKS, with *Keep my edits* first so it is both the primary button and what a dismissed
+dialog (-1) returns - the same "a prompt that cannot be shown is a NO" rule as everywhere else - and
+with no `IConfirmationService` at all the resolve buttons decline rather than rebuilding. And the three
+INPUT columns stay read-only on purpose: editing one needs a full re-merge, which renumbers the regions
+every decision is keyed by. The Result pane is downstream of the decisions rather than upstream of
+them, which is the whole reason it could be made editable and they could not.
+
 **An unresolved conflict saves the ANCESTOR, and the UI must say so** (Diff).
 `ThreeWayMergedDocument` has a defined answer for a region nobody decided, and `MergeService` does not
 refuse to write one - stopping half way through a long merge to save what you have is legitimate, and

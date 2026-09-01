@@ -16,10 +16,14 @@
          merge asks a different question - "which of these needs me" - which the conflict count and
          next/previous answer directly. A map of three columns would also have to pick one column's
          rows to colour by, and any choice would be wrong for the other two. -->
-    <!-- Rows: the three columns, a drag handle, and the close-up of the current region. The bottom two
-         collapse to zero height when the close-up is off - code-behind sets the row heights, because a
-         GridSplitter needs real definitions to resize and cannot be told to ignore a hidden one. -->
-    <Grid x:Name="Root" RowDefinitions="*,Auto,240">
+    <!-- Rows: the three columns, then two independently collapsible sections, each behind its own drag
+         handle - the merged result (1, 2) and the close-up of the current region (3, 4). Both pairs
+         collapse to zero HEIGHT rather than to IsVisible alone, because a GridSplitter needs real
+         definitions to resize and a hidden child still leaves its row occupying its height. The
+         indices are load-bearing: ApplyOutputVisibility and ApplyDetailVisibility address them
+         directly, and swapping the two sections here without moving them there collapses the wrong
+         one. -->
+    <Grid x:Name="Root" RowDefinitions="*,Auto,220,Auto,240">
 
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto,*,Auto,*">
 
@@ -68,12 +72,41 @@
         </DockPanel>
     </Grid>
 
-        <GridSplitter x:Name="DetailSplitter"
+        <GridSplitter x:Name="OutputSplitter"
                       Grid.Row="1"
                       Height="4"
                       ResizeDirection="Rows"
                       Background="{DynamicResource BorderSubtle}" />
 
-        <views:MergeDetailPane x:Name="Detail" Grid.Row="2" />
+        <!-- The result, and the only pane here that can be typed into. A merge tool without one is a
+             tool for choosing between two answers, and the answer is regularly neither: two people
+             edited the same line, and what belongs there is a third line that exists in neither file.
+             Editable rather than a preview for exactly that. -->
+        <DockPanel Grid.Row="2" x:Name="Output">
+            <Border DockPanel.Dock="Top"
+                    Background="{DynamicResource BgHeader}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="0,1,0,1"
+                    Padding="8,3">
+                <TextBlock Text="Merged result - type here to write something neither side has"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontSize="10" />
+            </Border>
+
+            <views:DiffEditorPane x:Name="OutputPane"
+                                  Document="{Binding OutputDocument}"
+                                  IsEditable="True"
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding SyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+        </DockPanel>
+
+        <GridSplitter x:Name="DetailSplitter"
+                      Grid.Row="3"
+                      Height="4"
+                      ResizeDirection="Rows"
+                      Background="{DynamicResource BorderSubtle}" />
+
+        <views:MergeDetailPane x:Name="Detail" Grid.Row="4" />
     </Grid>
 </UserControl>

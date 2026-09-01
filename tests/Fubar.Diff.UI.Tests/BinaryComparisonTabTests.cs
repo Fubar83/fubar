@@ -75,6 +75,10 @@ public class BinaryComparisonTabTests
             ThreeWayComparison comparison, ThreeWayMergeState state, MergeSide destination,
             string? targetPath = null, CancellationToken cancellationToken = default) => Task.FromResult("x");
 
+        public Task<string> SaveThreeWayTextAsync(
+            ThreeWayComparison comparison, MergeSide destination, IReadOnlyList<string> lines,
+            string? targetPath = null, CancellationToken cancellationToken = default) => Task.FromResult("x");
+
         public string PreviewThreeWay(ThreeWayComparison c, ThreeWayMergeState s, MergeSide d) => string.Empty;
     }
 

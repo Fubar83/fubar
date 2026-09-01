@@ -47,16 +47,22 @@ public class ThreeWayViewTests
     }
 
     /// <summary>
-    /// The three COLUMN editors. Since the close-up arrived there are six panes in the tree, and the
-    /// two sets answer different questions - the columns show the whole document, the close-up shows
-    /// one region - so a test has to say which it means.
+    /// The three COLUMN editors. Since the close-up and the merged output arrived there are seven
+    /// panes in the tree, and they answer different questions - the columns show the whole document,
+    /// the close-up shows one region, the output shows the result - so a test has to say which it
+    /// means.
     /// </summary>
     private static IReadOnlyList<DiffEditorPane> Columns(ThreeWayView view) =>
     [
         .. view.GetVisualDescendants()
             .OfType<DiffEditorPane>()
-            .Where(pane => !pane.GetVisualAncestors().OfType<MergeDetailPane>().Any()),
+            .Where(pane => !pane.GetVisualAncestors().OfType<MergeDetailPane>().Any())
+            .Where(pane => pane.Name != "OutputPane"),
     ];
+
+    /// <summary>The merged output editor - the one pane in this view the user may type into.</summary>
+    private static DiffEditorPane Output(ThreeWayView view) =>
+        view.GetVisualDescendants().OfType<DiffEditorPane>().Single(pane => pane.Name == "OutputPane");
 
     /// <summary>The three stacked editors inside the close-up.</summary>
     private static IReadOnlyList<DiffEditorPane> DetailPanes(ThreeWayView view) =>
@@ -147,9 +153,10 @@ public class ThreeWayViewTests
         Assert.Equal("cr", pane.DetailRight!.Text);
         Assert.True(pane.HasDetail);
 
-        // Six editors in total: three columns, plus the three stacked in the close-up. Its own
-        // bindings are separate from the columns' and can be wrong independently, so they get their
-        // own assertion rather than riding on the view model's properties.
+        // Seven editors in total: three columns, the three stacked in the close-up, and the merged
+        // output. The close-up's bindings are separate from the columns' and can be wrong
+        // independently, so they get their own assertion rather than riding on the view model's
+        // properties.
         Assert.Equal(3, Columns(view).Count);
 
         var detail = DetailPanes(view);
@@ -185,10 +192,10 @@ public class ThreeWayViewTests
         pane.IsDetailVisible = false;
         window.UpdateLayout();
 
-        var root = view.GetVisualDescendants().OfType<Grid>().First(g => g.RowDefinitions.Count == 3);
+        var root = Root(view);
 
-        Assert.Equal(0, root.RowDefinitions[1].Height.Value);
-        Assert.Equal(0, root.RowDefinitions[2].Height.Value);
+        Assert.Equal(0, root.RowDefinitions[3].Height.Value);
+        Assert.Equal(0, root.RowDefinitions[4].Height.Value);
     }
 
     [AvaloniaFact]
@@ -202,10 +209,92 @@ public class ThreeWayViewTests
         pane.IsDetailVisible = true;
         window.UpdateLayout();
 
-        var root = view.GetVisualDescendants().OfType<Grid>().First(g => g.RowDefinitions.Count == 3);
-
-        Assert.True(root.RowDefinitions[2].Height.Value > 0);
+        Assert.True(Root(view).RowDefinitions[4].Height.Value > 0);
     }
+
+    // ---- The merged output ------------------------------------------------------------------------
+
+    [AvaloniaFact]
+    public void The_merged_output_is_shown_and_is_the_only_editable_pane()
+    {
+        // Editing a column would be editing one of the three INPUTS to the merge, which the next
+        // resolve would overwrite; the result is the thing there is any point typing into.
+        var (_, view) = Show(Populated());
+
+        Assert.True(Output(view).IsEditable);
+        Assert.All(Columns(view), pane => Assert.False(pane.IsEditable));
+    }
+
+    [AvaloniaFact]
+    public void The_merged_output_shows_what_the_view_model_put_there()
+    {
+        var pane = Populated();
+        var (window, view) = Show(pane);
+
+        pane.OutputDocument = Core.Rendering.AlignedText.Plain(["merged", "text"]);
+        window.UpdateLayout();
+
+        Assert.Equal(2, Output(view).Document?.Lines.Count);
+    }
+
+    [AvaloniaFact]
+    public void Hiding_the_output_collapses_its_row_rather_than_leaving_a_blank_band()
+    {
+        var pane = Populated();
+        var (window, view) = Show(pane);
+
+        pane.IsOutputVisible = false;
+        window.UpdateLayout();
+
+        var root = Root(view);
+
+        Assert.Equal(0, root.RowDefinitions[1].Height.Value);
+        Assert.Equal(0, root.RowDefinitions[2].Height.Value);
+
+        // The close-up must not be collapsed with it - the two are independent, and sharing an index
+        // by accident is exactly the mistake this arrangement of five rows invites.
+        Assert.True(root.RowDefinitions[4].Height.Value > 0);
+    }
+
+    [AvaloniaFact]
+    public void Showing_the_output_again_restores_its_height()
+    {
+        var pane = Populated();
+        var (window, view) = Show(pane);
+
+        pane.IsOutputVisible = false;
+        window.UpdateLayout();
+        pane.IsOutputVisible = true;
+        window.UpdateLayout();
+
+        Assert.True(Root(view).RowDefinitions[2].Height.Value > 0);
+    }
+
+    [AvaloniaFact]
+    public void Typing_in_the_output_tells_the_view_model()
+    {
+        // What makes a hand-edited merge save the text rather than the decisions. The pane tells its
+        // own writes apart from the user's, so filling it in above must NOT count as an edit.
+        var pane = Populated();
+        var (window, view) = Show(pane);
+
+        pane.OutputDocument = Core.Rendering.AlignedText.Plain(["merged"]);
+        window.UpdateLayout();
+
+        var edits = 0;
+        pane.OutputEdited += (_, _) => edits++;
+
+        Assert.Equal(0, edits);
+
+        Output(view).TextEditor.Document.Insert(0, "hand ");
+
+        Assert.Equal(1, edits);
+        Assert.Equal(["hand merged"], pane.OutputLinesReader!());
+    }
+
+    /// <summary>The five-row grid the columns, the output and the close-up share.</summary>
+    private static Grid Root(ThreeWayView view) =>
+        view.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "Root");
 
     [AvaloniaFact]
     public void Navigation_reaches_the_view()

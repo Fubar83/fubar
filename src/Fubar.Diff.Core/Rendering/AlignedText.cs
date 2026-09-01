@@ -64,6 +64,28 @@ public static class AlignedText
     }
 
     /// <summary>
+    /// A document that is not a comparison of anything: plain lines, numbered from one, nothing
+    /// tinted.
+    ///
+    /// For the three-way merge's OUTPUT pane, which shows a result rather than a side. It is still an
+    /// <see cref="AlignedDocument"/> because the editor pane takes one, and every renderer it feeds
+    /// then does the right thing by doing nothing - no change tint, no character spans, and a gutter
+    /// showing the merged file's own line numbers, which is exactly what someone editing a merge
+    /// result wants to see.
+    /// </summary>
+    public static AlignedDocument Plain(IReadOnlyList<string> lines)
+    {
+        var meta = new AlignedLine[lines.Count];
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            meta[i] = new AlignedLine(i + 1, ChangeKind.Unchanged, []);
+        }
+
+        return new AlignedDocument(string.Join('\n', lines), meta);
+    }
+
+    /// <summary>
     /// One side's metadata for one row: what <see cref="Build(DiffResult,DiffSide,int,int)"/> would
     /// have stored, derived on demand.
     /// </summary>

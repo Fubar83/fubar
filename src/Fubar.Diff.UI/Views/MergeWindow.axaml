@@ -103,6 +103,10 @@
                                   IsChecked="{Binding Pane.ConflictsOnly}"
                                   ToolTip.Tip="Stop only on regions both sides changed. A merge of any size is mostly regions only one side touched, and those are already decided." />
 
+                    <ToggleButton Classes="toolbar-btn" Content="Result"
+                                  IsChecked="{Binding Pane.IsOutputVisible}"
+                                  ToolTip.Tip="Show the merged file below the three columns. It is editable: anything you type there is what gets saved." />
+
                     <ToggleButton Classes="toolbar-btn" Content="Diff pane"
                                   IsChecked="{Binding Pane.IsDetailVisible}"
                                   ToolTip.Tip="Show the three versions of the current region stacked below, so they can be read together instead of across three columns." />
@@ -155,13 +159,21 @@
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,1,0,0"
                 Padding="10,5">
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto">
                 <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondary}"
                            FontSize="11" TextTrimming="CharacterEllipsis" />
 
-                <TextBlock Grid.Column="1" Text="{Binding UnresolvedDetail}"
+                <TextBlock Grid.Column="1" Text="Hand-edited"
+                           VerticalAlignment="Center"
+                           Margin="10,0,0,0"
+                           ToolTip.Tip="The merged result has been typed into, so Save writes what that pane holds rather than rebuilding it from the region decisions. Resolving a region asks before discarding your edits."
+                           Foreground="{DynamicResource PostmanAmberBrush}"
+                           FontSize="11"
+                           IsVisible="{Binding HasHandEdits}" />
+
+                <TextBlock Grid.Column="2" Text="{Binding UnresolvedDetail}"
                            VerticalAlignment="Center"
                            Margin="10,0,0,0"
                            ToolTip.Tip="Saving now resolves these the way the merge already shows them. Nothing is blocked - stopping half way through a long merge is legitimate; being surprised by it is not."

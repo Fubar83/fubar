@@ -130,6 +130,37 @@ public partial class ThreeWayPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsDetailVisible { get; set; } = true;
 
+    // ---- The merged output ----------------------------------------------------------------------
+
+    /// <summary>
+    /// The merged result, as it currently stands - and the one pane here that can be typed into.
+    ///
+    /// A merge tool without this is a tool for choosing between two answers, and the answer is
+    /// regularly neither: two people edited the same line and the resolution is a third line that
+    /// exists in neither file. Until there was somewhere to write it, the only way through was to
+    /// resolve the conflict badly, save, and fix it in an editor afterwards.
+    /// </summary>
+    [ObservableProperty]
+    public partial AlignedDocument? OutputDocument { get; set; }
+
+    /// <summary>Whether the output pane is shown at all. On, because it is what the window produces.</summary>
+    [ObservableProperty]
+    public partial bool IsOutputVisible { get; set; } = true;
+
+    /// <summary>
+    /// Raised when the USER typed into the output - never for the host's own updates, which is the
+    /// same distinction <c>DiffPaneViewModel.SideEdited</c> makes and for the same reason: applying a
+    /// region decision rewrites this document, and a host that could not tell the two apart would
+    /// treat its own write as an edit and refuse to ever rewrite it again.
+    /// </summary>
+    public event EventHandler? OutputEdited;
+
+    /// <summary>Reads the output pane's current lines. Handed over by the view - see <see cref="OutputEdited"/>.</summary>
+    public Func<IReadOnlyList<string>>? OutputLinesReader { get; set; }
+
+    /// <summary>Raises <see cref="OutputEdited"/>. Called by the view when the user types.</summary>
+    public void ReportOutputEdit() => OutputEdited?.Invoke(this, EventArgs.Empty);
+
     /// <summary>The current region's rows on the left, with fillers dropped.</summary>
     [ObservableProperty]
     public partial AlignedDocument? DetailLeft { get; set; }

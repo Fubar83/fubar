@@ -88,8 +88,28 @@ public class MergeViewModelTests
             return Task.FromResult(targetPath ?? comparison.DocumentFor(destination).Path);
         }
 
+        /// <summary>What a hand-edited merge is saved through - see <see cref="SavedLines"/>.</summary>
+        public IReadOnlyList<string>? SavedLines { get; private set; }
+
+        public Task<string> SaveThreeWayTextAsync(
+            ThreeWayComparison comparison,
+            MergeSide destination,
+            IReadOnlyList<string> lines,
+            string? targetPath = null,
+            CancellationToken cancellationToken = default)
+        {
+            SavedLines = lines;
+            Destination = destination;
+            TargetPath = targetPath;
+
+            return Task.FromResult(targetPath ?? comparison.DocumentFor(destination).Path);
+        }
+
+        /// <summary>The merged text, which the output pane is filled from.</summary>
+        public string MergedText { get; set; } = string.Empty;
+
         public string PreviewThreeWay(ThreeWayComparison comparison, ThreeWayMergeState state, MergeSide destination) =>
-            string.Empty;
+            MergedText;
 
         // Not exercised here - the two-way half of the port belongs to ComparisonViewModel.
         public Task<string> SaveAsync(
@@ -125,10 +145,30 @@ public class MergeViewModelTests
         new ThreeWayLine(1, "a", 1, "a", 1, "a", MergeKind.Unchanged, -1),
     ]);
 
+    /// <summary>Answers <see cref="IConfirmationService.ChooseAsync"/> with a fixed index.</summary>
+    private sealed class StubConfirmation(int choice) : IConfirmationService
+    {
+        public int Asked { get; private set; }
+
+        public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
+            Task.FromResult(false);
+
+        public Task<int> ChooseAsync(string title, string message, IReadOnlyList<string> choices)
+        {
+            Asked++;
+
+            return Task.FromResult(choice);
+        }
+
+        public Task<string?> AskForTextAsync(string title, string message, string initial = "") =>
+            Task.FromResult<string?>(null);
+    }
+
     private static (MergeViewModel Merge, RecordingMergeService Writer) Build(
         Func<ThreeWayResult>? result = null,
         IThreeWayComparisonService? comparison = null,
-        IFilePickerService? picker = null)
+        IFilePickerService? picker = null,
+        IConfirmationService? confirmation = null)
     {
         var writer = new RecordingMergeService();
 
@@ -136,7 +176,8 @@ public class MergeViewModelTests
             comparison ?? new StubComparisonService(result ?? OneAutoOneConflict),
             writer,
             picker ?? new StubPicker(),
-            new ThemeManagerViewModel())
+            new ThemeManagerViewModel(),
+            confirmation)
         {
             BasePath = "base.cs",
             LeftPath = "left.cs",
@@ -373,5 +414,148 @@ public class MergeViewModelTests
         await merge.MergeAsync();
 
         Assert.Equal(1, merge.UnresolvedConflicts);
+    }
+
+    // ---- The editable merged output -------------------------------------------------------------
+
+    [Fact]
+    public async Task Merging_fills_the_output_pane_with_the_result()
+    {
+        var (merge, writer) = Build();
+        writer.MergedText = "one\ntwo\n";
+
+        await merge.MergeAsync();
+
+        Assert.Equal("one\ntwo", merge.Pane.OutputDocument!.Text);
+        Assert.False(merge.HasHandEdits);
+    }
+
+    [Fact]
+    public async Task Resolving_a_region_rewrites_the_output()
+    {
+        // What makes the pane a live result rather than a preview someone has to refresh.
+        var (merge, writer) = Build();
+        writer.MergedText = "before";
+        await merge.MergeAsync();
+
+        writer.MergedText = "after";
+        merge.TakeLeftCommand.Execute(null);
+
+        Assert.Equal("after", merge.Pane.OutputDocument!.Text);
+    }
+
+    [Fact]
+    public async Task A_hand_edited_result_is_saved_as_TEXT_rather_than_rebuilt_from_the_decisions()
+    {
+        // The whole point of the pane being editable: at this moment the decisions and the document
+        // disagree, and the document is the one the user is looking at.
+        var (merge, writer) = Build();
+        await merge.MergeAsync();
+
+        merge.Pane.OutputLinesReader = () => ["hand", "written"];
+        merge.Pane.ReportOutputEdit();
+
+        Assert.True(merge.HasHandEdits);
+
+        await merge.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(["hand", "written"], writer.SavedLines);
+        Assert.Null(writer.State); // never through the decisions
+    }
+
+    [Fact]
+    public async Task An_untouched_result_still_saves_through_the_decisions()
+    {
+        var (merge, writer) = Build();
+        await merge.MergeAsync();
+
+        merge.Pane.OutputLinesReader = () => ["should not be used"];
+
+        await merge.SaveCommand.ExecuteAsync(null);
+
+        Assert.NotNull(writer.State);
+        Assert.Null(writer.SavedLines);
+    }
+
+    [Fact]
+    public async Task Resolving_after_a_hand_edit_asks_first_and_keeps_the_edits_when_refused()
+    {
+        var confirmation = new StubConfirmation(0); // "Keep my edits"
+        var (merge, writer) = Build(confirmation: confirmation);
+        writer.MergedText = "before";
+        await merge.MergeAsync();
+
+        merge.Pane.ReportOutputEdit();
+        writer.MergedText = "rebuilt";
+
+        merge.TakeLeftCommand.Execute(null);
+
+        Assert.Equal(1, confirmation.Asked);
+        Assert.True(merge.HasHandEdits);
+        Assert.Equal(1, merge.UnresolvedConflicts); // the decision was not taken
+        Assert.Equal("before", merge.Pane.OutputDocument!.Text);
+    }
+
+    [Fact]
+    public async Task Resolving_after_a_hand_edit_rebuilds_when_agreed()
+    {
+        var confirmation = new StubConfirmation(1); // "Rebuild and discard them"
+        var (merge, writer) = Build(confirmation: confirmation);
+        writer.MergedText = "before";
+        await merge.MergeAsync();
+
+        merge.Pane.ReportOutputEdit();
+        writer.MergedText = "rebuilt";
+
+        merge.TakeLeftCommand.Execute(null);
+
+        Assert.False(merge.HasHandEdits);
+        Assert.Equal(0, merge.UnresolvedConflicts);
+        Assert.Equal("rebuilt", merge.Pane.OutputDocument!.Text);
+    }
+
+    [Fact]
+    public async Task A_dismissed_prompt_keeps_the_edits()
+    {
+        // -1 is "none of these", which every caller in this codebase treats as the safe answer -
+        // here, the one that cannot lose the only copy of what was typed.
+        var (merge, writer) = Build(confirmation: new StubConfirmation(-1));
+        writer.MergedText = "before";
+        await merge.MergeAsync();
+
+        merge.Pane.ReportOutputEdit();
+        merge.TakeLeftCommand.Execute(null);
+
+        Assert.True(merge.HasHandEdits);
+        Assert.Equal(1, merge.UnresolvedConflicts);
+    }
+
+    [Fact]
+    public async Task With_no_way_to_ask_a_hand_edit_stops_the_resolve_buttons_rather_than_losing_work()
+    {
+        var (merge, writer) = Build(); // no confirmation service at all
+        writer.MergedText = "before";
+        await merge.MergeAsync();
+
+        merge.Pane.ReportOutputEdit();
+        merge.TakeLeftCommand.Execute(null);
+
+        Assert.True(merge.HasHandEdits);
+        Assert.Equal(1, merge.UnresolvedConflicts);
+        Assert.Contains("Undo", merge.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Re_merging_drops_the_hand_edits_with_the_document_they_belonged_to()
+    {
+        var (merge, writer) = Build();
+        await merge.MergeAsync();
+
+        merge.Pane.ReportOutputEdit();
+        Assert.True(merge.HasHandEdits);
+
+        await merge.MergeAsync();
+
+        Assert.False(merge.HasHandEdits);
     }
 }

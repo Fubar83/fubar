@@ -10,6 +10,7 @@ using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Merge;
+using Fubar.Diff.Core.Rendering;
 using Fubar.Diff.Core.Settings;
 using Fubar.Diff.UI.Services;
 
@@ -53,15 +54,24 @@ public partial class MergeViewModel : ViewModelBase
         IThreeWayComparisonService comparisonService,
         IMergeService mergeService,
         IFilePickerService filePicker,
-        ThemeManagerViewModel themeManager)
+        ThemeManagerViewModel themeManager,
+        IConfirmationService? confirmation = null)
     {
         _comparisonService = comparisonService;
         _mergeService = mergeService;
         _filePicker = filePicker;
         ThemeManager = themeManager;
 
+        // Optional, as everywhere else it is taken: without one, a decision that would discard hand
+        // edits declines rather than asking - keeping the user's work is the answer that cannot lose
+        // any.
+        _confirmation = confirmation;
+
         Pane.Navigated += (_, _) => StatusMessage = Pane.RegionCaption;
+        Pane.OutputEdited += OnOutputEdited;
     }
+
+    private readonly IConfirmationService? _confirmation;
 
     public ThemeManagerViewModel ThemeManager { get; }
 
@@ -234,21 +244,21 @@ public partial class MergeViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void TakeBase() => Resolve(MergeChoice.TakeBase);
+    private Task TakeBase() => ResolveAsync(MergeChoice.TakeBase);
 
     [RelayCommand]
-    private void TakeLeft() => Resolve(MergeChoice.TakeLeft);
+    private Task TakeLeft() => ResolveAsync(MergeChoice.TakeLeft);
 
     [RelayCommand]
-    private void TakeRight() => Resolve(MergeChoice.TakeRight);
+    private Task TakeRight() => ResolveAsync(MergeChoice.TakeRight);
 
     /// <summary>Keeps both versions, left first - see <see cref="MergeChoice.TakeBoth"/>.</summary>
     [RelayCommand]
-    private void TakeBoth() => Resolve(MergeChoice.TakeBoth);
+    private Task TakeBoth() => ResolveAsync(MergeChoice.TakeBoth);
 
     /// <summary>Undoes the decision on the current region, putting it back to whatever the merge implies.</summary>
     [RelayCommand]
-    private void ResetRegion() => Resolve(MergeChoice.Unresolved);
+    private Task ResetRegion() => ResolveAsync(MergeChoice.Unresolved);
 
     [RelayCommand]
     private Task SaveAsync() => SaveToAsync(targetPath: null);
@@ -282,9 +292,16 @@ public partial class MergeViewModel : ViewModelBase
 
     // ---- Internals ------------------------------------------------------------------------------
 
-    private void Resolve(MergeChoice choice)
+    private async Task ResolveAsync(MergeChoice choice)
     {
         if (Pane.CurrentRegion < 0 || Pane.CurrentRegion >= _comparison.Result.Regions.Count)
+        {
+            return;
+        }
+
+        // Resolving rebuilds the merged document from the decisions, which is exactly what would
+        // throw away anything typed into it.
+        if (!await ConfirmRebuildAsync().ConfigureAwait(true))
         {
             return;
         }
@@ -301,6 +318,7 @@ public partial class MergeViewModel : ViewModelBase
         };
 
         RaiseMergeState();
+        RefreshOutput();
 
         // Straight on to the next thing needing attention. Resolving a conflict is never the end of
         // the task, and making the user press Next after every single one is the difference between a
@@ -325,9 +343,17 @@ public partial class MergeViewModel : ViewModelBase
         {
             var unresolved = UnresolvedConflicts;
 
-            var path = await _mergeService
-                .SaveThreeWayAsync(_comparison, _state, MergeDestination, targetPath)
-                .ConfigureAwait(true);
+            // What the OUTPUT PANE holds, once it has been typed into: at that point the decisions
+            // and the document disagree, and the document is the one the user is looking at and means
+            // to save. Without hand edits the two are identical, and going through the decisions is
+            // the more direct route - it also works with no view attached at all.
+            var path = HasHandEdits && Pane.OutputLinesReader is { } read
+                ? await _mergeService
+                    .SaveThreeWayTextAsync(_comparison, MergeDestination, read(), targetPath)
+                    .ConfigureAwait(true)
+                : await _mergeService
+                    .SaveThreeWayAsync(_comparison, _state, MergeDestination, targetPath)
+                    .ConfigureAwait(true);
 
             // Says out loud what was written for the regions nobody decided. Saving past a conflict is
             // allowed; being unaware of having done it is not.
@@ -357,6 +383,7 @@ public partial class MergeViewModel : ViewModelBase
         OnPropertyChanged(nameof(FileSummary));
         OnPropertyChanged(nameof(CanSave));
         RaiseMergeState();
+        RefreshOutput();
     }
 
     private string BuildStatus()
@@ -382,6 +409,7 @@ public partial class MergeViewModel : ViewModelBase
         OnPropertyChanged(nameof(FileSummary));
         OnPropertyChanged(nameof(CanSave));
         RaiseMergeState();
+        RefreshOutput();
     }
 
     private void RaiseMergeState()
@@ -389,5 +417,114 @@ public partial class MergeViewModel : ViewModelBase
         OnPropertyChanged(nameof(UnresolvedConflicts));
         OnPropertyChanged(nameof(HasUnresolvedConflicts));
         OnPropertyChanged(nameof(UnresolvedDetail));
+    }
+
+    // ---- The merged output ----------------------------------------------------------------------
+
+    /// <summary>
+    /// True once the user has typed into the merged result.
+    ///
+    /// It matters because the two ways of producing that document then disagree: the decisions say
+    /// one thing and the pane holds another, and rebuilding from the decisions would silently discard
+    /// what was typed. From here on the PANE is what gets saved, and a decision that would rewrite it
+    /// asks first.
+    /// </summary>
+    public bool HasHandEdits { get; private set; }
+
+    /// <summary>
+    /// Rewrites the output pane from the current decisions.
+    ///
+    /// Called after every merge and every resolution, which is what makes the pane a live result
+    /// rather than a preview someone has to remember to refresh.
+    /// </summary>
+    private void RefreshOutput()
+    {
+        if (!_comparison.HasAllSides)
+        {
+            Pane.OutputDocument = null;
+            HasHandEdits = false;
+            OnPropertyChanged(nameof(HasHandEdits));
+
+            return;
+        }
+
+        var merged = _mergeService.PreviewThreeWay(_comparison, _state, MergeDestination);
+
+        Pane.OutputDocument = AlignedText.Plain(SplitLines(merged));
+
+        // The pane's own edit event fires only for the user's typing, not for this write, so nothing
+        // here can be mistaken for a hand edit - but the flag is cleared explicitly anyway, because
+        // this document IS the decisions again.
+        HasHandEdits = false;
+        OnPropertyChanged(nameof(HasHandEdits));
+    }
+
+    /// <summary>
+    /// The user typed into the merged result. Recorded rather than acted on: what they wrote is now
+    /// what will be saved, and the only thing that can take it away is a decision that rebuilds the
+    /// document - which asks first.
+    /// </summary>
+    private void OnOutputEdited(object? sender, EventArgs e)
+    {
+        if (HasHandEdits)
+        {
+            return;
+        }
+
+        HasHandEdits = true;
+        OnPropertyChanged(nameof(HasHandEdits));
+
+        StatusMessage = "Editing the merged result. Saving writes what is in that pane.";
+    }
+
+    /// <summary>
+    /// Asks before a region decision throws away what the user typed into the result.
+    ///
+    /// Both answers are reasonable and neither is safe to assume: someone who has hand-written a
+    /// resolution and then clicks "take left" may well mean it, and may equally have clicked the
+    /// wrong button. Refusing outright would make the merge unfinishable; rebuilding silently would
+    /// lose work that exists nowhere else.
+    /// </summary>
+    private async Task<bool> ConfirmRebuildAsync()
+    {
+        if (!HasHandEdits)
+        {
+            return true;
+        }
+
+        if (_confirmation is null)
+        {
+            // Nothing to ask with, so the safe answer: keep what was typed. The decision buttons stop
+            // working rather than the work being lost, and the status line says why.
+            StatusMessage = "The merged result has been edited by hand. Undo those edits to use the resolve buttons again.";
+
+            return false;
+        }
+
+        var choice = await _confirmation
+            .ChooseAsync(
+                "Discard your edits?",
+                "You have edited the merged result. Resolving this region rebuilds it from the decisions, "
+                + "which discards what you typed.",
+                ["Keep my edits", "Rebuild and discard them"])
+            .ConfigureAwait(true);
+
+        return choice == 1;
+    }
+
+    /// <summary>
+    /// Splits the merged text back into lines, matching how the reader treats a file so a saved merge
+    /// has the same line count either way.
+    /// </summary>
+    private static string[] SplitLines(string text)
+    {
+        if (text.Length == 0)
+        {
+            return [];
+        }
+
+        var lines = text.Split(["\r\n", "\n", "\r"], StringSplitOptions.None);
+
+        return lines.Length > 1 && lines[^1].Length == 0 ? lines[..^1] : lines;
     }
 }

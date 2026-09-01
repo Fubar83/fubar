@@ -8,6 +8,31 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **The merged result of a three-way merge is now a pane you can type into.** A merge tool whose only
+  verbs are "take left" and "take right" is a tool for choosing between two answers, and the answer to
+  a real conflict is regularly neither: two people edited the same line, and what belongs there is a
+  third line that exists in neither file. Until now the way through that was to resolve the conflict
+  badly, save, and fix it in an editor afterwards - which is exactly the moment a merge tool is meant
+  to save you from.
+
+  A **Result** pane sits under the three columns, showing the merged file as it currently stands and
+  rewritten on every decision, so it is a live result rather than a preview someone has to remember to
+  refresh. It is editable; the three input columns are not, deliberately, because editing an input
+  needs a full re-merge and a re-merge renumbers the regions every decision is keyed by - see the
+  Roadmap note in `docs/diff.md`, half of which this closes and half of which still stands.
+
+  Once it has been typed into, the decisions and the document disagree, and the document is the one
+  that is right: it is what the user is looking at and what they mean to save. `SaveThreeWayTextAsync`
+  writes those lines directly, taking only the path and the file format from the destination, so a
+  hand-finished merge is written with the same encoding and line endings as one that was only clicked
+  through. The status bar says *Hand-edited* while that is true.
+
+  Resolving a region after a hand edit would rebuild the document and throw the typing away, so it
+  asks - and *Keep my edits* is first, which makes it the primary button and the answer a dismissed
+  dialog gives. With no confirmation service wired up at all the resolve buttons stop working rather
+  than the work being lost, and the status line says why. The pane tells its own writes apart from the
+  user's, which is what stops a decision's rewrite being read back as a hand edit.
+
 - **Rules that travel with the repository: `.fubardiff.json`.** The interesting rules in this app are
   facts about particular files - "the requestId in our snapshots changes every run", "our users array
   is keyed by id", "the generated client is minified, compare it as text". Every one of those is true

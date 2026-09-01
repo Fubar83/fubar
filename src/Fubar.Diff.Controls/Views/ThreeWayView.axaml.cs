@@ -28,6 +28,11 @@ public partial class ThreeWayView : UserControl
     {
         InitializeComponent();
 
+        // The output pane's own edits, and only the user's - the pane already tells its own writes
+        // apart from theirs, which is what stops a region decision rewriting the document and being
+        // read back as a hand edit.
+        OutputPane.Edited += (_, _) => _viewModel?.ReportOutputEdit();
+
         LeftPane.TextView.ScrollOffsetChanged += (_, _) => SyncScroll(LeftPane);
         BasePane.TextView.ScrollOffsetChanged += (_, _) => SyncScroll(BasePane);
         RightPane.TextView.ScrollOffsetChanged += (_, _) => SyncScroll(RightPane);
@@ -47,13 +52,22 @@ public partial class ThreeWayView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+            // The pane owns its document and its edits; the view model has no business holding a
+            // control to ask for them - the same arrangement DiffView makes for the two-way panes.
+            _viewModel.OutputLinesReader = OutputPane.ReadFileLines;
+
             ApplyCurrentRegion();
             ApplyDetailVisibility();
+            ApplyOutputVisibility();
         }
     }
 
     /// <summary>Row height the splitter starts from, restored when the close-up is shown again.</summary>
     private GridLength _detailHeight = new(240);
+
+    /// <summary>The same, for the merged output pane.</summary>
+    private GridLength _outputHeight = new(220);
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -75,6 +89,10 @@ public partial class ThreeWayView : UserControl
             case nameof(ThreeWayPaneViewModel.IsDetailVisible):
                 ApplyDetailVisibility();
                 break;
+
+            case nameof(ThreeWayPaneViewModel.IsOutputVisible):
+                ApplyOutputVisibility();
+                break;
         }
     }
 
@@ -87,8 +105,8 @@ public partial class ThreeWayView : UserControl
     {
         var visible = _viewModel?.IsDetailVisible ?? true;
 
-        var splitterRow = Root.RowDefinitions[1];
-        var detailRow = Root.RowDefinitions[2];
+        var splitterRow = Root.RowDefinitions[3];
+        var detailRow = Root.RowDefinitions[4];
 
         if (visible)
         {
@@ -109,6 +127,34 @@ public partial class ThreeWayView : UserControl
 
         DetailSplitter.IsVisible = visible;
         Detail.IsVisible = visible;
+    }
+
+    /// <summary>The merged output, collapsed the same way and for the same reason.</summary>
+    private void ApplyOutputVisibility()
+    {
+        var visible = _viewModel?.IsOutputVisible ?? true;
+
+        var splitterRow = Root.RowDefinitions[1];
+        var outputRow = Root.RowDefinitions[2];
+
+        if (visible)
+        {
+            splitterRow.Height = GridLength.Auto;
+            outputRow.Height = _outputHeight;
+        }
+        else
+        {
+            if (outputRow.Height.Value > 0)
+            {
+                _outputHeight = outputRow.Height;
+            }
+
+            splitterRow.Height = new GridLength(0);
+            outputRow.Height = new GridLength(0);
+        }
+
+        OutputSplitter.IsVisible = visible;
+        Output.IsVisible = visible;
     }
 
     /// <summary>Copies one pane's vertical offset to the other two.</summary>

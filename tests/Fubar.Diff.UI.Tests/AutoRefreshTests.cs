@@ -142,6 +142,10 @@ public class AutoRefreshTests
             string? targetPath = null, CancellationToken cancellationToken = default) =>
             Task.FromResult("merged");
 
+        public Task<string> SaveThreeWayTextAsync(
+            ThreeWayComparison comparison, MergeSide destination, IReadOnlyList<string> lines,
+            string? targetPath = null, CancellationToken cancellationToken = default) => Task.FromResult("x");
+
         public string PreviewThreeWay(ThreeWayComparison comparison, ThreeWayMergeState state, MergeSide destination) =>
             string.Empty;
     }
