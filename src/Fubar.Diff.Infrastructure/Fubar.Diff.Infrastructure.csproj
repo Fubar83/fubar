@@ -10,11 +10,24 @@
 
   <ItemGroup>
     <PackageReference Include="DiffPlex" />
+    <!-- For semantic YAML, parsed into the same AST the JSON parser produces - see YamlAstParser.
+         The representation model is what carries per-node line and column, which a deserialiser does
+         not. -->
+    <PackageReference Include="YamlDotNet" />
+    <!-- The C# syntax parser, behind ICodeStructureParser - see RoslynCodeStructureParser. Only the
+         syntax half of Roslyn is used: no semantic model, no project, no compilation. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- So the large-document alignment path can be tested at its real threshold rather than at a
+         number a test made up - see DiffPlexDiffEngine.SegmentedFrom and SegmentedLineAligner. -->
+    <InternalsVisibleTo Include="Fubar.Diff.Infrastructure.Tests" />
   </ItemGroup>
 
 </Project>

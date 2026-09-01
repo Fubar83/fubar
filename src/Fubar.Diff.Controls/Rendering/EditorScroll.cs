@@ -31,7 +31,13 @@ internal static class EditorScroll
         // offset lands where asked instead of getting clamped to (near) zero.
         editor.ScrollToLine(lineNumber);
 
-        var target = ((lineNumber - 1) * lineHeight) - ((textView.Bounds.Height - lineHeight) / 2);
-        editor.ScrollToVerticalOffset(Math.Max(0, target));
+        // The line's real position, asked of the editor rather than computed as line x height. Lines
+        // are only uniformly tall when nothing is folded and nothing wraps, and both of those are on
+        // in the views that use this - a collapsed region above the target subtracts its rows, and a
+        // wrapped line adds visual rows the arithmetic knows nothing about. Getting it wrong is silent:
+        // the pane scrolls somewhere plausible and simply does not centre the difference.
+        var visualTop = textView.GetVisualTopByDocumentLine(lineNumber);
+
+        editor.ScrollToVerticalOffset(Math.Max(0, visualTop - ((textView.Bounds.Height - lineHeight) / 2)));
     }
 }

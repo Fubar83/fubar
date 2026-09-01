@@ -39,16 +39,19 @@ public static class ArrayKeyResolver
         JsonPath path,
         JsonComparisonOptions options)
     {
-        if (options.MatchArraysByPosition)
-        {
-            return null;
-        }
+        var key = path.ToString();
 
-        // An explicit override wins outright - including over a key the heuristic would have rejected.
-        // Someone who names a key has a reason, and second-guessing them here would be unhelpful.
-        if (options.ArrayKeyOverrides.TryGetValue(path.ToString(), out var overridden))
+        // An explicit override wins outright - including over a key the heuristic would have rejected,
+        // and including when everything else is set to positional. Someone who names a key for THIS
+        // array has said what they want about it, and second-guessing them here would be unhelpful.
+        if (options.ArrayKeyOverrides.TryGetValue(key, out var overridden))
         {
             return overridden;
+        }
+
+        if (options.MatchArraysByPosition || Contains(options.PositionalArrays, key))
+        {
+            return null;
         }
 
         // Matching by key is meaningless when there is nothing on one side to match against.
@@ -68,6 +71,44 @@ public static class ArrayKeyResolver
         return null;
     }
 
+    private static bool Contains(IReadOnlyList<string> paths, string path)
+    {
+        foreach (var candidate in paths)
+        {
+            if (string.Equals(candidate, path, System.StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The value a key names within one element, following <c>.</c> through nested objects.
+    ///
+    /// A dotted path rather than a bare name because identity is not always at the top level -
+    /// <c>meta.id</c> and <c>attributes.sku</c> are ordinary shapes, and an array keyed on one of them
+    /// is exactly the case the auto-detection cannot help with. A single name is just a path of one
+    /// segment, so nothing about the common case changes.
+    /// </summary>
+    public static JsonAstScalar? ValueFor(JsonAstObject element, string keyPath)
+    {
+        JsonAstNode? current = element;
+
+        foreach (var segment in keyPath.Split('.'))
+        {
+            if (current is not JsonAstObject obj || obj.Find(segment) is not { } property)
+            {
+                return null;
+            }
+
+            current = property.Value;
+        }
+
+        return current as JsonAstScalar;
+    }
+
     /// <summary>
     /// Whether every element of one array carries this key with a distinct scalar value.
     /// </summary>
@@ -82,7 +123,7 @@ public static class ArrayKeyResolver
                 return false;
             }
 
-            if (obj.Find(candidate)?.Value is not JsonAstScalar scalar)
+            if (ValueFor(obj, candidate) is not { } scalar)
             {
                 return false;
             }

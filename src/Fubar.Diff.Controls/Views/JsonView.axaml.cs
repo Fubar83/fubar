@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
 using Fubar.Diff.Controls.ViewModels;
 
@@ -14,6 +15,25 @@ namespace Fubar.Diff.Controls.Views;
 /// </summary>
 public partial class JsonView : UserControl
 {
+    /// <summary>
+    /// Whether this view draws its own Prev/Next strip. On by default, for a host that has nowhere
+    /// else to put them - API Studio embeds this view inside a response pane with no toolbar of its
+    /// own.
+    ///
+    /// Fubar Diff turns it off: its window toolbar already has Prev/Next, and
+    /// <see cref="DiffPaneViewModel.NextDifferenceCommand"/> makes those walk semantic changes when
+    /// this view is on screen. Two strips of buttons stacked on top of each other, doing subtly
+    /// different things, was the price of the old arrangement.
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowToolbarProperty =
+        AvaloniaProperty.Register<JsonView, bool>(nameof(ShowToolbar), true);
+
+    public bool ShowToolbar
+    {
+        get => GetValue(ShowToolbarProperty);
+        set => SetValue(ShowToolbarProperty, value);
+    }
+
     private DiffPaneViewModel? _viewModel;
 
     /// <summary>Row height the splitter starts from, restored when the detail pane is shown again.</summary>

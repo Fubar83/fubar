@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using Fubar.Diff.Core.Code;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Json;
+using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Application.Comparison;
@@ -21,8 +23,59 @@ public sealed record FileComparison(
     ComparisonOptions Options,
     DiffResult Result)
 {
+    /// <summary>
+    /// The source language the pair was compared as, from their file extensions.
+    ///
+    /// <see cref="SourceLanguage.None"/> for everything the scanner does not know, which is most files
+    /// and is not a failure - it just means the code rules had nothing to apply and the comparison ran
+    /// as plain text. Carried on the result so the UI can say which rules were in play without
+    /// re-deriving it from the paths and risking a different answer.
+    /// </summary>
+    public SourceLanguage Language { get; init; } = SourceLanguage.None;
+
+    /// <summary>
+    /// How each side was READ when a structural comparison ran - JSON, YAML, or neither.
+    ///
+    /// Per side because they can differ: a JSON config compared against its YAML translation is a
+    /// real thing to want, and YAML being a superset of JSON means both parse into the same tree.
+    /// What consumes this is anything that can only work on one of them - the Json view's Pretty
+    /// button re-lays-out JSON and has no YAML emitter behind it, so it is offered only where it
+    /// would do something.
+    /// </summary>
+    public StructuredFormat LeftFormat { get; init; } = StructuredFormat.None;
+
+    /// <summary>How the right side was read. See <see cref="LeftFormat"/>.</summary>
+    public StructuredFormat RightFormat { get; init; } = StructuredFormat.None;
+
+    /// <summary>True when both sides were read as JSON, which is what the Pretty button needs.</summary>
+    public bool IsJsonPair => LeftFormat == StructuredFormat.Json && RightFormat == StructuredFormat.Json;
+
     /// <summary>Whether the semantic JSON pass ran, as opposed to a plain text comparison.</summary>
     public bool IsSemantic { get; init; }
+
+    /// <summary>
+    /// What happened to each member, when both sides are source the structure parser can read.
+    ///
+    /// Sits BESIDE <see cref="Result"/> rather than changing it. The text diff still reports every
+    /// line that differs, because it must - a reformatted C# file is genuinely different on disk, and
+    /// a tool that quietly called it identical would be lying about what it was shown. This says what
+    /// those lines MEANT: which members changed, which were only moved, and which were only rewrapped.
+    /// Empty for everything that is not source, does not parse, or was too large to bother with.
+    /// </summary>
+    public IReadOnlyList<CodeChange> CodeChanges { get; init; } = [];
+
+    /// <summary>The counts, and the headline - see <see cref="CodeStructureSummary.NoFunctionalChange"/>.</summary>
+    public CodeStructureSummary CodeSummary { get; init; } = CodeStructureSummary.None;
+
+    /// <summary>True when the structural comparison ran and found something to say.</summary>
+    public bool HasCodeStructure => CodeChanges.Count > 0;
+
+    /// <summary>
+    /// Why the structural comparison did not run, when that is worth saying out loud - a file too
+    /// large, or one that would not parse. Null for the ordinary cases: not source code, or turned
+    /// off. Neither of those is news.
+    /// </summary>
+    public string? CodeStructureSkippedReason { get; init; }
 
     /// <summary>
     /// The semantic changes, for the JSON tree view. Empty for a text comparison.
@@ -43,6 +96,17 @@ public sealed record FileComparison(
     /// comparison did not run.
     /// </summary>
     public IReadOnlyList<JsonChange> OriginalSemanticChanges { get; init; } = [];
+
+    /// <summary>
+    /// What each array in the pair could be matched by, keyed by JSON path.
+    ///
+    /// Carried on the result so the change tree can offer the choice on a right-click without going
+    /// back to the parser: it needs to know which tree rows ARE arrays and what fields their elements
+    /// share, and neither is answerable from the change list alone - a change tells you a value
+    /// differed, not what else was in the object beside it.
+    /// </summary>
+    public IReadOnlyDictionary<string, ArrayKeyChoices> ArrayKeys { get; init; } =
+        new Dictionary<string, ArrayKeyChoices>();
 
     /// <summary>The left side's text exactly as given, before any canonicalisation for alignment.</summary>
     public string OriginalLeftText { get; init; } = string.Empty;
@@ -66,6 +130,24 @@ public sealed record FileComparison(
     /// unhelpful, so this case gets said out loud instead.
     /// </summary>
     public bool DiffersOnlyByFormat => Result.AreIdentical && FormatDifference.Any;
+
+    /// <summary>
+    /// The byte-level comparison, when at least one side turned out not to be text. Null for the
+    /// ordinary case.
+    ///
+    /// Carried on the same result rather than returned from a separate service so that everything the
+    /// UI already does with a comparison - open it in a tab, name it, watch its files, reload it -
+    /// keeps working without learning about a second kind of comparison. What differs is only what is
+    /// DRAWN, which is one more view mode.
+    ///
+    /// When this is set, <see cref="Left"/> and <see cref="Right"/> carry the paths and no lines, and
+    /// <see cref="Result"/> is empty: there is no text to align, and inventing rows for bytes would put
+    /// a diff on screen that means nothing.
+    /// </summary>
+    public BinaryComparison? Binary { get; init; }
+
+    /// <summary>True when this comparison is of bytes rather than of text.</summary>
+    public bool IsBinary => Binary is not null;
 
     /// <summary>Nothing loaded yet - the app's initial state.</summary>
     public static FileComparison Empty { get; } = new(

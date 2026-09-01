@@ -10,4 +10,10 @@
     <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- So the line-length cap on character diffing can be tested at its real value rather than at a
+         number a test made up - see FileComparisonService.MaxInlineDiffLength. -->
+    <InternalsVisibleTo Include="Fubar.Diff.Application.Tests" />
+  </ItemGroup>
+
 </Project>

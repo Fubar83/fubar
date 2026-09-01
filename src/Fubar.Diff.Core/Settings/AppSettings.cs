@@ -39,6 +39,75 @@ public sealed record AppSettings
     /// </summary>
     public bool ShowInvisibles { get; init; }
 
+    /// <summary>
+    /// Hide long stretches of unchanged context behind a collapsed placeholder. On by default - see
+    /// <c>DiffPaneViewModel.CollapseUnchanged</c> for why that default is the opposite way round from
+    /// the "never change what the user is shown" rule that governs reformatting.
+    /// </summary>
+    public bool CollapseUnchanged { get; init; } = true;
+
+    /// <summary>
+    /// Wrap long lines in the unified view. Off by default, and unified-only - see
+    /// <c>DiffPaneViewModel.WordWrap</c> for why the side-by-side panes cannot have it.
+    /// </summary>
+    public bool WordWrap { get; init; }
+
+    /// <summary>
+    /// Let the panes be typed into. Off by default - see <c>ComparisonViewModel.IsEditing</c> for why
+    /// a reading tool should not open with a caret in someone's source file.
+    /// </summary>
+    public bool Editing { get; init; }
+
+    /// <summary>
+    /// How the Json view lays a document out when the pretty button is on. Display only - see
+    /// <c>JsonFormatOptions</c>, and note that none of this changes what the comparison found.
+    /// </summary>
+    public int JsonIndentSize { get; init; } = 2;
+
+    public bool JsonUseTabs { get; init; }
+
+    public bool JsonInlineSimpleContainers { get; init; } = true;
+
+    public bool JsonSortProperties { get; init; }
+
+    /// <summary>
+    /// Re-run a comparison when its files change on disk. On by default - see
+    /// <c>ComparisonViewModel.AutoRefresh</c>.
+    /// </summary>
+    public bool AutoRefresh { get; init; } = true;
+
+    /// <summary>
+    /// Re-run the comparison as an editable pane is typed into, shortly after typing stops. On by
+    /// default; with it off the diff waits for F5 - see <c>ComparisonViewModel.LiveDiff</c>.
+    /// </summary>
+    public bool LiveDiff { get; init; } = true;
+
+    /// <summary>
+    /// Regular expressions whose matches are ignored when comparing - a build timestamp, a generated
+    /// GUID, a version stamp. See <c>LinePatternMask</c>.
+    /// </summary>
+    public IReadOnlyList<string> IgnoredLinePatterns { get; init; } = [];
+
+    /// <summary>Treat comments as absent - see <c>CodeComparisonOptions.IgnoreComments</c>.</summary>
+    public bool IgnoreComments { get; init; }
+
+    /// <summary>Treat added or removed blank lines as noise - see <c>CodeComparisonOptions.IgnoreBlankLines</c>.</summary>
+    public bool IgnoreBlankLines { get; init; }
+
+    /// <summary>
+    /// Work out what changed member by member for source code - see
+    /// <c>CodeComparisonOptions.Structure</c>. On by default, unlike the two rules above, because it
+    /// changes nothing about the comparison itself.
+    /// </summary>
+    public bool CodeStructure { get; init; } = true;
+
+    /// <summary>
+    /// Colour the panes by the file's own grammar. On by default - it is the difference between
+    /// reading a diff of code and reading a diff of text that happens to be code - and persisted like
+    /// the theme, since it is a preference about how someone reads rather than about one comparison.
+    /// </summary>
+    public bool SyntaxHighlighting { get; init; } = true;
+
     public bool ReportPropertyOrder { get; init; }
 
     public bool MatchArraysByPosition { get; init; }
@@ -62,6 +131,27 @@ public sealed record AppSettings
     /// e.g. a <c>requestId</c> or <c>timestamp</c> field that changes on every call.
     /// </summary>
     public IReadOnlyList<string> IgnoredPaths { get; init; } = [];
+
+    /// <summary>
+    /// Show identical files in a folder comparison. Off by default - see
+    /// <c>FolderViewModel.ShowIdentical</c> for why that default is what makes the feature usable.
+    /// </summary>
+    public bool FolderShowIdentical { get; init; }
+
+    /// <summary>
+    /// Names a folder comparison never descends into or compares. Empty means "use the defaults", which
+    /// is how a settings file written before this existed keeps working.
+    /// </summary>
+    public IReadOnlyList<string> FolderExclude { get; init; } = [];
+
+    /// <summary>Pair files within ONE folder by name, rather than comparing two folders.</summary>
+    public bool FolderLinkedMode { get; init; }
+
+    /// <summary>
+    /// The name markers that pair two files in one folder, each written <c>left = right</c>. Empty
+    /// means "never customised" and keeps the built-in conventions - see <c>LinkRule.Defaults</c>.
+    /// </summary>
+    public IReadOnlyList<string> FolderLinkRules { get; init; } = [];
 
     /// <summary>How many entries <see cref="Recent"/> keeps.</summary>
     public const int MaxRecent = 10;

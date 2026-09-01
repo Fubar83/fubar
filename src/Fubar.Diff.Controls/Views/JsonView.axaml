@@ -14,11 +14,14 @@
          never needing an alignment in the first place - which is also why it is the default for JSON
          (DiffPaneViewModel.Show), with Text as the one fallback for everything else. -->
     <DockPanel>
+        <!-- Only for a host with no toolbar of its own - see JsonView.ShowToolbar. A hidden docked
+             child takes no space, so this collapses cleanly. -->
         <Border DockPanel.Dock="Top"
                 Background="{DynamicResource BgHeader}"
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,0,0,1"
-                Padding="10,6">
+                Padding="10,6"
+                IsVisible="{Binding $parent[views:JsonView].ShowToolbar}">
             <fc:Toolbar>
                 <Button Classes="toolbar-btn" Content="◀ Prev" ToolTip.Tip="Previous difference"
                         Command="{Binding PreviousSemanticChangeCommand}" />
@@ -43,15 +46,46 @@
 
                 <GridSplitter Grid.Column="1" Width="4" Background="{DynamicResource BorderSubtle}" />
 
-                <views:RawJsonPane Grid.Column="2"
-                                   Text="{Binding LeftRawText}"
-                                   HighlightSpan="{Binding LeftHighlightSpan}" />
+                <!-- The pretty toggle sits ON the document rather than in the toolbar, because it is
+                     about THIS side: a minified file next to a formatted one is the case it exists
+                     for, and a single toolbar button could not say which of the two it meant. Hidden
+                     when the host cannot reformat - re-deriving the highlight spans against the new
+                     text needs a parser, which not every host has. -->
+                <Panel Grid.Column="2">
+                    <!-- Changes as well as HighlightSpan: every difference in the document is marked
+                         quietly, the current one strongly. Showing only the current one left a
+                         document with eleven differences displaying one, with no way to see where the
+                         others were short of pressing Next eleven times. -->
+                    <views:RawJsonPane Text="{Binding LeftRawText}"
+                                       Changes="{Binding SemanticChanges}"
+                                       Side="Left"
+                                       HighlightSpan="{Binding LeftHighlightSpan}" />
+
+                    <ToggleButton Classes="toolbar-btn"
+                                  Content="Pretty"
+                                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                                  Margin="0,4,16,0" Padding="6,2" FontSize="11"
+                                  ToolTip.Tip="Re-lay-out this document for reading. Changes nothing about the comparison, and nothing on disk."
+                                  IsVisible="{Binding CanReformat}"
+                                  IsChecked="{Binding PrettyLeft}" />
+                </Panel>
 
                 <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderSubtle}" />
 
-                <views:RawJsonPane Grid.Column="4"
-                                   Text="{Binding RightRawText}"
-                                   HighlightSpan="{Binding RightHighlightSpan}" />
+                <Panel Grid.Column="4">
+                    <views:RawJsonPane Text="{Binding RightRawText}"
+                                       Changes="{Binding SemanticChanges}"
+                                       Side="Right"
+                                       HighlightSpan="{Binding RightHighlightSpan}" />
+
+                    <ToggleButton Classes="toolbar-btn"
+                                  Content="Pretty"
+                                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                                  Margin="0,4,16,0" Padding="6,2" FontSize="11"
+                                  ToolTip.Tip="Re-lay-out this document for reading. Changes nothing about the comparison, and nothing on disk."
+                                  IsVisible="{Binding CanReformat}"
+                                  IsChecked="{Binding PrettyRight}" />
+                </Panel>
             </Grid>
 
             <GridSplitter x:Name="DetailSplitter"

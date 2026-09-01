@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -19,16 +20,22 @@ namespace Fubar.Diff.UI.ViewModels;
 public partial class ShellViewModel : ViewModelBase
 {
     private readonly Func<ComparisonViewModel> _newTab;
+    private readonly Func<MergeViewModel> _newMerge;
+    private readonly Func<FolderViewModel> _newFolders;
     private readonly ISettingsStore _settingsStore;
 
     private AppSettings _settings = AppSettings.Default;
 
     public ShellViewModel(
         Func<ComparisonViewModel> newTab,
+        Func<MergeViewModel> newMerge,
+        Func<FolderViewModel> newFolders,
         ISettingsStore settingsStore,
         ThemeManagerViewModel themeManager)
     {
         _newTab = newTab;
+        _newMerge = newMerge;
+        _newFolders = newFolders;
         _settingsStore = settingsStore;
         ThemeManager = themeManager;
 
@@ -63,8 +70,10 @@ public partial class ShellViewModel : ViewModelBase
     [ObservableProperty]
     public partial IReadOnlyList<RecentComparison> Recent { get; set; } = [];
 
-    /// <summary>True once more than one tab is open, so the strip can stay hidden until it is useful.</summary>
-    public bool HasMultipleTabs => Tabs.Count > 1;
+    // HasMultipleTabs used to live here, hiding the tab strip until a second tab existed - a strip
+    // below the toolbar cost a row of window, so one tab was not worth it. The strip is IN the title
+    // bar now, in space the window already spends on decoration, so there is nothing to buy back and
+    // a single tab shows like any other.
 
     /// <summary>
     /// Opens the first tab and, if two files were named on the command line, compares them.
@@ -86,7 +95,6 @@ public partial class ShellViewModel : ViewModelBase
 
         Tabs.Add(tab);
         SelectedTab = tab;
-        OnPropertyChanged(nameof(HasMultipleTabs));
 
         return tab;
     }
@@ -96,14 +104,25 @@ public partial class ShellViewModel : ViewModelBase
     /// to show and no way back.
     /// </summary>
     [RelayCommand]
-    public void CloseTab(ComparisonViewModel? tab)
+    public async Task CloseTabAsync(ComparisonViewModel? tab)
     {
         if (tab is null || !Tabs.Contains(tab))
         {
             return;
         }
 
+        // Ask before anything is torn down. A tab holding typed changes is the only thing in this app
+        // that can lose work by being closed, and the answer may well be "no, don't".
+        if (!await tab.ConfirmDiscardAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
         tab.ComparisonSucceeded -= OnComparisonSucceeded;
+
+        // A tab owns a file-system watcher, which owns OS handles. Closing without this leaks one per
+        // comparison for as long as the window is open.
+        tab.Dispose();
 
         if (Tabs.Count == 1)
         {
@@ -118,7 +137,30 @@ public partial class ShellViewModel : ViewModelBase
         // Select the neighbour rather than jumping to the first tab, which is what every tabbed
         // application does and what the user's eye expects.
         SelectedTab = Tabs[Math.Min(index, Tabs.Count - 1)];
-        OnPropertyChanged(nameof(HasMultipleTabs));
+    }
+
+    /// <summary>
+    /// Asks every tab whether it is alright to close, for the window shutting down.
+    ///
+    /// Stops at the first refusal and SELECTS that tab, so the user is looking at the thing they are
+    /// being asked about rather than at whichever tab happened to be in front.
+    /// </summary>
+    public async Task<bool> ConfirmCloseAsync()
+    {
+        foreach (var tab in Tabs.ToList())
+        {
+            if (tab.HasUnsavedEdits)
+            {
+                SelectedTab = tab;
+            }
+
+            if (!await tab.ConfirmDiscardAsync().ConfigureAwait(true))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Opens a remembered pair in a new tab.</summary>
@@ -138,6 +180,46 @@ public partial class ShellViewModel : ViewModelBase
     /// <summary>Opens an empty tab, for the toolbar button.</summary>
     [RelayCommand]
     private void NewTab() => AddTab();
+
+    /// <summary>
+    /// Builds a three-way merge, seeded with the persisted comparison and display preferences.
+    ///
+    /// Not a tab and not tracked here: a merge lives in its own window, has its own lifetime, and the
+    /// shell's only stake in it is handing over the settings it should start from. The window itself
+    /// owns it from then on.
+    /// </summary>
+    public MergeViewModel CreateMerge()
+    {
+        var merge = _newMerge();
+        merge.ApplyDefaults(_settings);
+
+        return merge;
+    }
+
+    /// <summary>
+    /// Builds a folder comparison, seeded with the persisted defaults, and wires its "open this pair"
+    /// event to a new tab.
+    ///
+    /// That wiring is the whole reason a folder comparison belongs to the shell rather than standing
+    /// alone: it exists to lead somewhere. A folder comparison that could not open a file would be a
+    /// listing, not a diff tool.
+    /// </summary>
+    public FolderViewModel CreateFolderComparison()
+    {
+        var folders = _newFolders();
+        folders.ApplyDefaults(_settings);
+
+        folders.CompareRequested += (_, request) =>
+            _ = AddTab().InitializeAsync(request.LeftPath, request.RightPath);
+
+        folders.OptionsChanged += (_, _) =>
+        {
+            _settings = folders.CaptureOptions(_settings);
+            _ = _settingsStore.SaveAsync(_settings);
+        };
+
+        return folders;
+    }
 
     /// <summary>Loads dropped files into the current tab, opening one if there is none.</summary>
     public Task OpenFilesAsync(IReadOnlyList<string> paths) =>

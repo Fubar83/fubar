@@ -45,7 +45,8 @@ public class LayeringTests
     /// </summary>
     [Fact]
     public void Core_depends_on_no_third_party_framework() =>
-        AssertNoDependency(CoreAsm, "Core", "Avalonia", "DiffPlex", "CommunityToolkit", "Microsoft.Extensions");
+        AssertNoDependency(
+            CoreAsm, "Core", "Avalonia", "DiffPlex", "CommunityToolkit", "Microsoft.Extensions", "Microsoft.CodeAnalysis");
 
     /// <summary>
     /// DiffPlex is an implementation detail of one adapter. If it leaks anywhere else, swapping the
@@ -65,6 +66,29 @@ public class LayeringTests
         };
 
         AssertNoDependency(assembly, layer, "DiffPlex");
+    }
+
+    /// <summary>
+    /// Roslyn is held to exactly the same rule, and it matters more here than it does for DiffPlex.
+    /// The C# parser is by far the largest dependency in the app, and it is one AMONG SEVERAL possible
+    /// structure parsers - the point of <c>ICodeStructureParser</c> is that a second language arrives
+    /// as one more adapter rather than as a change to the differ, the tree and the UI. A syntax type
+    /// reaching Core or Application would end that quietly.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(Core))]
+    [InlineData(nameof(Application))]
+    [InlineData(nameof(Ui))]
+    public void Roslyn_is_confined_to_infrastructure(string layer)
+    {
+        var assembly = layer switch
+        {
+            nameof(Core) => CoreAsm,
+            nameof(Application) => ApplicationAsm,
+            _ => UiAsm,
+        };
+
+        AssertNoDependency(assembly, layer, "Microsoft.CodeAnalysis");
     }
 
     /// <summary>

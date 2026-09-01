@@ -1,4 +1,3 @@
-using System;
 using Avalonia;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
@@ -28,33 +27,16 @@ internal sealed class SpanTextColorizer : DocumentColorizingTransformer
 
     protected override void ColorizeLine(DocumentLine line)
     {
-        if (_span is not { IsKnown: true } span)
-        {
-            return;
-        }
-
-        var lineNumber = line.LineNumber;
-        if (lineNumber < span.StartLine || lineNumber > span.EndLine)
-        {
-            return;
-        }
-
-        // Columns are 1-based and only meaningful on the span's own first/last line - a line the span
-        // merely passes through (a multi-line object or array) is covered in full.
-        var startColumn = lineNumber == span.StartLine ? span.StartColumn : 1;
-        var endColumn = lineNumber == span.EndLine ? span.EndColumn : line.Length + 1;
-
-        var start = Math.Clamp(startColumn - 1, 0, line.Length);
-        var end = Math.Clamp(endColumn - 1, start, line.Length);
-
-        if (end <= start || DiffLineColors.CurrentSpanBackground(_host) is not { } brush)
+        if (_span is not { } span
+            || SpanRange.Within(line, span) is not { } range
+            || DiffLineColors.CurrentSpanBackground(_host) is not { } brush)
         {
             return;
         }
 
         ChangeLinePart(
-            line.Offset + start,
-            line.Offset + end,
+            line.Offset + range.Start,
+            line.Offset + range.End,
             element => element.TextRunProperties.SetBackgroundBrush(brush));
     }
 }

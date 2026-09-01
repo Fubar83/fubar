@@ -37,6 +37,12 @@ internal static class Composition
                 // normalizer) exactly as it does inside Fubar Diff.
                 services.AddFubarDiffInfrastructure();
                 services.AddSingleton<JsonSemanticPass>();
+
+                // CodeStructurePass is deliberately NOT registered here. It is optional on
+                // FileComparisonService, so leaving it out makes the structural pass inert - and
+                // API Studio compares HTTP responses and OpenAPI documents, never source files, so
+                // wiring it would mean paying for a C# parse whose answer nothing in this app can
+                // show. It belongs to Fubar Diff's structure panel; see docs/diff.md.
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();
                 services.AddSingleton<IDiffPreviewService, DiffPreviewService>();
                 // Singleton on purpose: a response pinned on one request must survive opening another.

@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:views="using:Fubar.Diff.Controls.Views"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="220"
+             x:Class="Fubar.Diff.Controls.Views.MergeDetailPane"
+             x:DataType="vm:ThreeWayPaneViewModel">
+
+    <!-- A close-up of just the current region, the three-way counterpart of DiffDetailPane.
+
+         Stacked rather than side by side, for the same reason that one is: the columns above already
+         show these three versions side by side at full width, and putting them directly one above the
+         other instead is what lets the character-level highlights read at a glance rather than asking
+         the eye to cross a whole pane to compare two short strings. It matters more here - three
+         columns is two jumps, not one.
+
+         Left / Base / Right keeps the vertical order the columns use horizontally, so each edit stays
+         adjacent to the ancestor it is a change TO, which is the comparison a reader is actually making.
+
+         Emphasized="True" has the same two effects it has in the two-way close-up (see DiffLineColors
+         and ChangeLineBackgroundRenderer): no full-row wash, since a pane showing nothing but the
+         current region has no "where" left for one to answer, and a stronger character highlight,
+         since it is now the only signal rather than one layered over a tint. -->
+
+    <Border Background="{DynamicResource BgHeader}"
+            BorderBrush="{DynamicResource BorderSubtle}"
+            BorderThickness="0,1,0,0">
+
+        <DockPanel>
+            <TextBlock DockPanel.Dock="Top"
+                       Text="{Binding RegionCaption}"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="11"
+                       Margin="8,4" />
+
+            <Grid RowDefinitions="*,1,*,1,*">
+                <DockPanel Grid.Row="0">
+                    <TextBlock DockPanel.Dock="Top" Text="Left (theirs)"
+                               Foreground="{DynamicResource TextSecondary}"
+                               FontSize="10" Margin="8,2" />
+                    <views:DiffEditorPane Document="{Binding DetailLeft}" Emphasized="True"
+                                          ShowInvisibles="{Binding ShowInvisibles}"
+                                          SyntaxExtension="{Binding SyntaxExtension}"
+                                          SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+                </DockPanel>
+
+                <Border Grid.Row="1" Background="{DynamicResource BorderSubtle}" />
+
+                <DockPanel Grid.Row="2">
+                    <TextBlock DockPanel.Dock="Top" Text="Base (common ancestor)"
+                               Foreground="{DynamicResource TextSecondary}"
+                               FontSize="10" Margin="8,2" />
+                    <views:DiffEditorPane Document="{Binding DetailBase}" Emphasized="True"
+                                          ShowInvisibles="{Binding ShowInvisibles}"
+                                          SyntaxExtension="{Binding SyntaxExtension}"
+                                          SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+                </DockPanel>
+
+                <Border Grid.Row="3" Background="{DynamicResource BorderSubtle}" />
+
+                <DockPanel Grid.Row="4">
+                    <TextBlock DockPanel.Dock="Top" Text="Right (mine)"
+                               Foreground="{DynamicResource TextSecondary}"
+                               FontSize="10" Margin="8,2" />
+                    <views:DiffEditorPane Document="{Binding DetailRight}" Emphasized="True"
+                                          ShowInvisibles="{Binding ShowInvisibles}"
+                                          SyntaxExtension="{Binding SyntaxExtension}"
+                                          SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+                </DockPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+
+</UserControl>

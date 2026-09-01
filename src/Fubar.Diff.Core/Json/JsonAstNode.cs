@@ -45,12 +45,37 @@ public sealed class JsonAstObject : JsonAstNode
     public IReadOnlyList<JsonAstProperty> Properties { get; }
 
     /// <summary>
+    /// Properties above which a lookup builds an index instead of scanning.
+    ///
+    /// Every caller of <see cref="Find"/> is inside a loop over the OTHER document's properties, so a
+    /// linear scan makes those loops quadratic. That is invisible on the objects JSON usually holds -
+    /// a handful of keys, where scanning beats allocating a dictionary - and ruinous on the ones it
+    /// sometimes holds: a minified document of 120,000 properties spent 45 SECONDS in
+    /// <c>ArrayKeyScanner</c>, which was looking for arrays it never found.
+    /// </summary>
+    private const int IndexFrom = 16;
+
+    /// <summary>
+    /// Built on the first lookup of a large object and kept - the node is immutable, so it can never
+    /// go stale. Two threads racing to build it both produce the same map and one wins; nothing
+    /// observes a half-built one, because each builds its own before assigning.
+    /// </summary>
+    private Dictionary<string, JsonAstProperty>? _byName;
+
+    /// <summary>
     /// Looks up a property by name. Returns the FIRST match: duplicate names are legal JSON but
     /// ill-defined, and every mainstream parser resolves them one way or the other rather than
     /// failing.
     /// </summary>
     public JsonAstProperty? Find(string name)
     {
+        if (Properties.Count >= IndexFrom)
+        {
+            _byName ??= BuildIndex();
+
+            return _byName.TryGetValue(name, out var indexed) ? indexed : null;
+        }
+
         foreach (var property in Properties)
         {
             if (string.Equals(property.Name, name, System.StringComparison.Ordinal))
@@ -60,6 +85,19 @@ public sealed class JsonAstObject : JsonAstNode
         }
 
         return null;
+    }
+
+    /// <summary>TryAdd, so a duplicate name resolves to the first one exactly as the scan above does.</summary>
+    private Dictionary<string, JsonAstProperty> BuildIndex()
+    {
+        var index = new Dictionary<string, JsonAstProperty>(Properties.Count, System.StringComparer.Ordinal);
+
+        foreach (var property in Properties)
+        {
+            index.TryAdd(property.Name, property);
+        }
+
+        return index;
     }
 }
 

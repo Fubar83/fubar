@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+             x:Class="Fubar.Diff.UI.Views.CodeStructurePanel"
+             x:DataType="vm:CodeStructureViewModel">
+
+    <!-- What changed member by member, beside the text diff rather than instead of it.
+
+         A flat list with an indent, not a tree. Every row here is already something that changed, so
+         there is nothing to collapse away, and making the reader open three nodes to find the one
+         method that differs would defeat the point of the panel. -->
+    <UserControl.Styles>
+        <!-- The same palette tokens the editors tint rows with, so a change reads the same colour
+             whichever half of the window it is read in. -->
+        <Style Selector="TextBlock.added">
+            <Setter Property="Foreground" Value="{DynamicResource MethodPostBrush}" />
+        </Style>
+        <Style Selector="TextBlock.removed">
+            <Setter Property="Foreground" Value="{DynamicResource MethodDeleteBrush}" />
+        </Style>
+        <Style Selector="TextBlock.modified">
+            <Setter Property="Foreground" Value="{DynamicResource MethodPutBrush}" />
+        </Style>
+        <Style Selector="TextBlock.renamed">
+            <Setter Property="Foreground" Value="{DynamicResource MethodOtherBrush}" />
+        </Style>
+
+        <!-- Last, so it wins over the four above. A reformatted or moved member is exactly what the
+             reader is trying to see past, so it is listed and made quiet rather than hidden: "this
+             file was also run through a formatter" is worth knowing and must not compete with the one
+             line that actually changed. -->
+        <Style Selector="StackPanel.presentational TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+            <Setter Property="Opacity" Value="0.6" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+        <!-- The headline. Its own band rather than a first row of the list, because it is an answer
+             about the whole file and the list is a set of answers about members. -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <StackPanel Spacing="2">
+                <TextBlock Text="Structure"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <TextBlock Text="{Binding Caption}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding Caption, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Foreground="{DynamicResource TextPrimary}" />
+            </StackPanel>
+        </Border>
+
+        <!-- The one thing this panel exists to be able to say, so it says it where it cannot be
+             missed rather than as one more line of grey text. -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHover}"
+                Padding="10,6"
+                IsVisible="{Binding NoFunctionalChange}">
+            <TextBlock Text="Nothing here changes what the code does."
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource MethodPostBrush}" />
+        </Border>
+
+        <Panel>
+            <fc:EmptyState Title="No structural changes"
+                           Description="{Binding Message}"
+                           IsVisible="{Binding !HasItems}" />
+
+            <ListBox ItemsSource="{Binding Items}"
+                     SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     IsVisible="{Binding HasItems}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CodeChangeItemViewModel">
+                        <StackPanel Margin="{Binding Indent}"
+                                    Spacing="1"
+                                    Classes.presentational="{Binding IsPresentational}">
+                            <TextBlock Text="{Binding Name}"
+                                       FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
+                                       FontSize="12"
+                                       TextTrimming="CharacterEllipsis"
+                                       Classes.added="{Binding IsAdded}"
+                                       Classes.removed="{Binding IsRemoved}"
+                                       Classes.modified="{Binding IsModified}"
+                                       Classes.renamed="{Binding IsRenamed}" />
+
+                            <!-- What kind of thing and what happened to it, on one quiet line: the
+                                 name answers "where" and this answers "what", which are the two
+                                 questions a reviewer asks in that order. -->
+                            <TextBlock FontSize="10"
+                                       Foreground="{DynamicResource TextSecondary}"
+                                       TextTrimming="CharacterEllipsis">
+                                <Run Text="{Binding Kind}" />
+                                <Run Text="·" />
+                                <Run Text="{Binding Description}" />
+                            </TextBlock>
+
+                            <TextBlock Text="{Binding Container}"
+                                       FontSize="10"
+                                       Opacity="0.55"
+                                       TextTrimming="CharacterEllipsis"
+                                       IsVisible="{Binding HasContainer}"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Panel>
+    </DockPanel>
+</UserControl>

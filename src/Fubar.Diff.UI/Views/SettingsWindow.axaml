@@ -4,145 +4,268 @@
         xmlns:vm="using:Fubar.Diff.UI.ViewModels"
         x:Class="Fubar.Diff.UI.Views.SettingsWindow"
         x:DataType="vm:ComparisonViewModel"
-        Title="Comparison settings"
-        Width="580" Height="680"
-        MinWidth="480" MinHeight="420"
+        Title="Settings"
+        Width="560" Height="700"
+        MinWidth="460" MinHeight="420"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BgEditorCanvas}">
 
-    <!-- Everything the toolbar's old "Options" flyout held, plus the two settings that were built in
-         Core (IgnoreNullVsMissing, ArrayKeyOverrides - see AppSettings and ArrayKeyResolver) but never
-         actually reachable from Fubar Diff's UI, and a manual editor for JSON ignore rules (the
-         click-to-ignore affordance in the tree is API-Studio-only - DiffPaneViewModel.IgnorePathCommand
-         is left null here on purpose, see its own doc comment - so this is Fubar Diff's only way to
-         set one). Grouped by what they compare, not by control type, since that is the question a user
-         actually has ("what does JSON do differently"), not "which of these are checkboxes". -->
-    <Grid RowDefinitions="Auto,*,Auto">
-        <Border Grid.Row="0"
-                Background="{DynamicResource BgHeader}"
-                BorderBrush="{DynamicResource BorderSubtle}"
-                BorderThickness="0,0,0,1"
-                Padding="16,14">
-            <TextBlock Text="Comparison settings" FontSize="16" FontWeight="SemiBold" />
-        </Border>
+    <!-- Every option in the app that is not on the toolbar.
+         Two rules hold this window together. First: each row says in one plain sentence what turning
+         it on does (fc:SettingRow's Description), because an explanation that only exists in a tooltip
+         is an explanation most people never read - and "Normalize Unicode (NFC)" is not a question
+         anyone can answer from the label alone. Second: the rules that need a regular expression or a
+         JSON path are behind ADVANCED, collapsed, because they are for particular files rather than
+         for a way of working, and having them open by default made a page of ordinary switches look
+         like a configuration language. -->
 
-        <ScrollViewer Grid.Row="1" Padding="16">
-            <StackPanel Spacing="20">
+    <Grid RowDefinitions="*,Auto">
 
-                <!-- Appearance first: it is the one thing here that is not about comparison at all, and
-                     burying a set-once preference below three screens of JSON options would be worse
-                     than the toolbar slot it used to hold. -->
-                <StackPanel Spacing="8">
-                    <TextBlock Text="APPEARANCE" FontSize="11" FontWeight="SemiBold"
+        <ScrollViewer Grid.Row="0" Padding="20,16">
+            <StackPanel Spacing="18">
+
+                <StackPanel>
+                    <TextBlock Text="GENERAL" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
                                Foreground="{DynamicResource TextSecondary}" />
-                    <Grid ColumnDefinitions="Auto,*">
-                        <TextBlock Grid.Column="0" Text="Theme" VerticalAlignment="Center" Margin="0,0,10,0" />
-                        <ComboBox Grid.Column="1" HorizontalAlignment="Left" MinWidth="140"
+
+                    <fc:SettingRow Header="Theme" Description="Dark, light, or follow your system.">
+                        <ComboBox MinWidth="140"
                                   ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
                                   SelectedItem="{Binding ThemeManager.CurrentTheme}" />
-                    </Grid>
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Reload when a file changes on disk"
+                                   Description="Picks up edits made in another program. Never discards anything you have typed here - it asks first.">
+                        <ToggleSwitch IsChecked="{Binding AutoRefresh}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Update the diff while you type"
+                                   Description="Off: the diff waits for F5, and says &quot;Diff out of date&quot; until you press it. Worth turning off for very large files.">
+                        <ToggleSwitch IsChecked="{Binding LiveDiff}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Syntax highlighting"
+                                   Description="Colour each side by the file's own language. Never changes what the comparison found.">
+                        <ToggleSwitch IsChecked="{Binding SyntaxHighlighting}" />
+                    </fc:SettingRow>
                 </StackPanel>
 
                 <fc:Divider />
 
-                <StackPanel Spacing="8">
-                    <TextBlock Text="TEXT COMPARE" FontSize="11" FontWeight="SemiBold"
+                <StackPanel>
+                    <TextBlock Text="WHAT COUNTS AS A DIFFERENCE" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
                                Foreground="{DynamicResource TextSecondary}" />
 
-                    <CheckBox Content="Ignore leading/trailing whitespace" IsChecked="{Binding IgnoreWhitespace}" />
-                    <CheckBox Content="Ignore case" IsChecked="{Binding IgnoreCase}" />
-                    <CheckBox Content="Normalize Unicode (NFC)"
-                              IsChecked="{Binding NormalizeUnicode}"
-                              ToolTip.Tip="Treat text that renders identically as equal - é written as one character and as e plus a combining accent. macOS decomposes where Windows and Linux compose, so the same edit on two machines can differ in every accented word and look identical everywhere." />
-                    <CheckBox Content="Reveal invisible characters"
-                              IsChecked="{Binding ShowInvisibles}"
-                              ToolTip.Tip="Mark non-breaking spaces, zero-width characters and bidirectional controls - the ones that make two identical-looking lines compare as different." />
-                    <CheckBox Content="Reformat for display"
-                              IsChecked="{Binding NormalizeStructure}"
-                              ToolTip.Tip="Pretty-print JSON or XML in the Text view for display - off by default, and the file on disk is never touched unless you then save. The Json view always shows both sides exactly as given, regardless of this." />
+                    <fc:SettingRow Header="Ignore whitespace"
+                                   Description="Spaces and tabs at the start or end of a line stop counting.">
+                        <ToggleSwitch IsChecked="{Binding IgnoreWhitespace}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Ignore case"
+                                   Description="Name and name count as the same word.">
+                        <ToggleSwitch IsChecked="{Binding IgnoreCase}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Ignore invisible encoding differences"
+                                   Description="Text that looks identical counts as identical. An accented é can be stored two ways, and macOS and Windows disagree about which - so the same edit on two machines can differ in every accented word.">
+                        <ToggleSwitch IsChecked="{Binding NormalizeUnicode}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Ignore comments"
+                                   Description="A line whose only change is inside a comment stops being a difference. The code on it still compares normally.">
+                        <ToggleSwitch IsChecked="{Binding IgnoreComments}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Ignore blank lines"
+                                   Description="Added or removed blank lines stop counting - for a file whose spacing was reformatted and nothing else.">
+                        <ToggleSwitch IsChecked="{Binding IgnoreBlankLines}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Work out what changed, member by member"
+                                   Description="For C# files, shows which methods and properties differ - and which were only moved or reformatted - in a panel beside the diff. It changes nothing about the comparison itself; turn it off only to skip the extra work.">
+                        <ToggleSwitch IsChecked="{Binding CodeStructure}" />
+                    </fc:SettingRow>
+
+                    <!-- Which language, if any, the two rules above apply to. Without it, ticking
+                         "Ignore comments" on a log file looks like a broken feature. -->
+                    <TextBlock Text="{Binding CodeLanguageDescription}"
+                               Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,4,0,0" />
                 </StackPanel>
 
                 <fc:Divider />
 
-                <StackPanel Spacing="8">
-                    <TextBlock Text="JSON COMPARE" FontSize="11" FontWeight="SemiBold"
+                <StackPanel>
+                    <TextBlock Text="JSON" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
                                Foreground="{DynamicResource TextSecondary}" />
-                    <TextBlock Text="Applies whenever a comparison turns out to be JSON, whatever Compare mode says above - reordering keys and reformatting are never differences here regardless of these options."
-                               Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap" />
+                    <TextBlock Text="Applies whenever a comparison turns out to be JSON. Reordered keys and reformatting are never differences, whatever these say."
+                               Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,0,0,4" />
 
-                    <CheckBox Content="Report key order"
-                              IsChecked="{Binding ReportPropertyOrder}"
-                              ToolTip.Tip="JSON objects are unordered, so reordering is not a difference by default" />
-                    <CheckBox Content="Compare arrays by position"
-                              IsChecked="{Binding MatchArraysByPosition}"
-                              ToolTip.Tip="Match array elements by index instead of by an identity key" />
-                    <CheckBox Content="Treat null and missing as the same"
-                              IsChecked="{Binding IgnoreNullVsMissing}"
-                              ToolTip.Tip="An explicit &quot;x&quot;: null and an absent &quot;x&quot; are reported as equal" />
+                    <fc:SettingRow Header="Count reordered keys as a difference"
+                                   Description="JSON objects have no order, so this is off by default.">
+                        <ToggleSwitch IsChecked="{Binding ReportPropertyOrder}" />
+                    </fc:SettingRow>
 
-                    <!-- Array key overrides -->
-                    <StackPanel Spacing="6" Margin="0,10,0,0">
-                        <TextBlock Text="Array key overrides" FontWeight="SemiBold" />
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
-                                   Text="Which field identifies an array's elements, for the arrays where auto-detection (id, _id, uuid, guid, key, name, tried in that order) guesses wrong or finds nothing." />
+                    <fc:SettingRow Header="Match list items by position"
+                                   Description="Off, items are matched by an id field, so inserting one marks only that one. On, item 1 is compared with item 1 - which is what you want when the order is the content.">
+                        <ToggleSwitch IsChecked="{Binding MatchArraysByPosition}" />
+                    </fc:SettingRow>
 
-                        <ItemsControl ItemsSource="{Binding ArrayKeyOverrides}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ArrayKeyOverrideEntry">
-                                    <Grid ColumnDefinitions="*,*,Auto" Margin="0,3">
-                                        <TextBlock Grid.Column="0" Text="{Binding Path}" VerticalAlignment="Center"
-                                                   FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
-                                        <TextBlock Grid.Column="1" Text="{Binding Key}" VerticalAlignment="Center"
-                                                   Margin="8,0,0,0"
-                                                   FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
-                                        <Button Grid.Column="2" Classes="secondary-btn" Content="Remove"
-                                                Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveArrayKeyOverrideCommand}"
-                                                CommandParameter="{Binding}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <Grid ColumnDefinitions="*,*,Auto">
-                            <TextBox Grid.Column="0" PlaceholderText="Path, e.g. $.users" Text="{Binding NewOverridePath}" />
-                            <TextBox Grid.Column="1" PlaceholderText="Key, e.g. id" Margin="8,0,0,0"
-                                     Text="{Binding NewOverrideKey}" />
-                            <Button Grid.Column="2" Classes="toolbar-btn" Content="Add" Margin="8,0,0,0"
-                                    Command="{Binding AddArrayKeyOverrideCommand}" />
-                        </Grid>
-                    </StackPanel>
-
-                    <!-- Ignored paths -->
-                    <StackPanel Spacing="6" Margin="0,14,0,0">
-                        <TextBlock Text="Ignored paths" FontWeight="SemiBold" />
-                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
-                                   Text="Differences at these paths are never reported - for a field that changes on every run, like a requestId or timestamp. $.a.b for one field, $.items[*].x for it in every array element, $..name to match anywhere." />
-
-                        <ItemsControl ItemsSource="{Binding IgnoredPaths}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="x:String">
-                                    <Grid ColumnDefinitions="*,Auto" Margin="0,3">
-                                        <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center"
-                                                   FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
-                                        <Button Grid.Column="1" Classes="secondary-btn" Content="Remove"
-                                                Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveIgnoredPathCommand}"
-                                                CommandParameter="{Binding}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" PlaceholderText="$.requestId" Text="{Binding NewIgnoredPath}" />
-                            <Button Grid.Column="1" Classes="toolbar-btn" Content="Add" Margin="8,0,0,0"
-                                    Command="{Binding AddIgnoredPathCommand}" />
-                        </Grid>
-                    </StackPanel>
+                    <fc:SettingRow Header="Treat null and missing as the same"
+                                   Description="&quot;x&quot;: null and no x at all count as equal.">
+                        <ToggleSwitch IsChecked="{Binding IgnoreNullVsMissing}" />
+                    </fc:SettingRow>
                 </StackPanel>
+
+                <fc:Divider />
+
+                <StackPanel>
+                    <TextBlock Text="DISPLAY" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
+                               Foreground="{DynamicResource TextSecondary}" />
+
+                    <fc:SettingRow Header="Show invisible characters"
+                                   Description="Marks non-breaking spaces, zero-width characters and text-direction marks - the ones that make two identical-looking lines differ.">
+                        <ToggleSwitch IsChecked="{Binding ShowInvisibles}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Reformat JSON and XML in the Text view"
+                                   Description="Display only, and your files are left alone unless you then save. The Json view always shows both sides exactly as given.">
+                        <ToggleSwitch IsChecked="{Binding NormalizeStructure}" />
+                    </fc:SettingRow>
+                </StackPanel>
+
+                <fc:Divider />
+
+                <StackPanel>
+                    <TextBlock Text="THE PRETTY BUTTON" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="How the Json view lays a document out when you press Pretty. Display only - it never changes what was found, and never touches the file."
+                               Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,0,0,4" />
+
+                    <fc:SettingRow Header="Indent" Description="Spaces per level.">
+                        <NumericUpDown Value="{Binding JsonIndentSize}"
+                                       Minimum="0" Maximum="8" Increment="1"
+                                       FormatString="0" Width="120"
+                                       IsEnabled="{Binding !JsonUseTabs}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Indent with tabs">
+                        <ToggleSwitch IsChecked="{Binding JsonUseTabs}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Keep small objects on one line"
+                                   Description="An object or list holding only simple values stays on one line, so ten small items are ten lines rather than forty of mostly braces.">
+                        <ToggleSwitch IsChecked="{Binding JsonInlineSimpleContainers}" />
+                    </fc:SettingRow>
+
+                    <fc:SettingRow Header="Sort keys alphabetically"
+                                   Description="Easier to read two documents against each other, but no longer the order the file actually has.">
+                        <ToggleSwitch IsChecked="{Binding JsonSortProperties}" />
+                    </fc:SettingRow>
+                </StackPanel>
+
+                <fc:Divider />
+
+                <!-- Collapsed on purpose: these are rules for particular files, written in regular
+                     expressions and JSON paths, and most sessions never need one. Open by default they
+                     made a page of ordinary switches look like something you had to configure. -->
+                <Expander Header="Advanced">
+                    <StackPanel Spacing="18" Margin="0,8,0,0">
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Ignored text" FontWeight="SemiBold" />
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       Text="Text matching one of these patterns stops counting as a difference - a build timestamp, a generated id, a version stamp. Only the match is ignored, so a real change elsewhere on the same line is still reported, and your files are never altered." />
+
+                            <ItemsControl ItemsSource="{Binding IgnoredLinePatterns}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                                            <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center"
+                                                       FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                            <Button Grid.Column="1" Classes="secondary-btn" Content="Remove"
+                                                    Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveLinePatternCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" Text="{Binding NewLinePattern}"
+                                         PlaceholderText="\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+                                         ToolTip.Tip="A .NET regular expression. Add stays disabled until it compiles." />
+                                <Button Grid.Column="1" Classes="secondary-btn" Content="Add" Margin="8,0,0,0"
+                                        Command="{Binding AddLinePatternCommand}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="JSON: which field identifies a list's items" FontWeight="SemiBold" />
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       Text="For lists where the guess (id, _id, uuid, guid, key, name - tried in that order) is wrong or finds nothing. Right-clicking a list in the change tree sets these too, which is usually easier." />
+
+                            <ItemsControl ItemsSource="{Binding ArrayKeyOverrides}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ArrayKeyOverrideEntry">
+                                        <Grid ColumnDefinitions="*,*,Auto" Margin="0,3">
+                                            <TextBlock Grid.Column="0" Text="{Binding Path}" VerticalAlignment="Center"
+                                                       FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Key}" VerticalAlignment="Center"
+                                                       Margin="8,0,0,0"
+                                                       FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                            <Button Grid.Column="2" Classes="secondary-btn" Content="Remove"
+                                                    Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveArrayKeyOverrideCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Grid ColumnDefinitions="*,*,Auto">
+                                <TextBox Grid.Column="0" PlaceholderText="List, e.g. $.users" Text="{Binding NewOverridePath}" />
+                                <TextBox Grid.Column="1" PlaceholderText="Field, e.g. id" Margin="8,0,0,0"
+                                         Text="{Binding NewOverrideKey}" />
+                                <Button Grid.Column="2" Classes="secondary-btn" Content="Add" Margin="8,0,0,0"
+                                        Command="{Binding AddArrayKeyOverrideCommand}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="JSON: never report these paths" FontWeight="SemiBold" />
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       Text="For a field that changes on every run, like a request id or a timestamp. $.a.b for one field, $.items[*].x for it in every item, $..name to match wherever it appears." />
+
+                            <ItemsControl ItemsSource="{Binding IgnoredPaths}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                                            <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center"
+                                                       FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                            <Button Grid.Column="1" Classes="secondary-btn" Content="Remove"
+                                                    Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveIgnoredPathCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" PlaceholderText="$.requestId" Text="{Binding NewIgnoredPath}" />
+                                <Button Grid.Column="1" Classes="secondary-btn" Content="Add" Margin="8,0,0,0"
+                                        Command="{Binding AddIgnoredPathCommand}" />
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                </Expander>
             </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Row="2"
+        <!-- Nothing here is applied on Close - every switch takes effect as it is flipped, and is
+             remembered - so this is a dismiss button, not an OK button. -->
+        <Border Grid.Row="1"
                 Background="{DynamicResource BgHeader}"
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="0,1,0,0"

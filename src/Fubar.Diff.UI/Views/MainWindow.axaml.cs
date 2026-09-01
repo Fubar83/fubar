@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -29,18 +30,99 @@ public partial class MainWindow : Window
         // command - it has to know which pane has focus. Tunnelling so it wins before the editor's own
         // handling of the gesture.
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+
+        Closing += OnClosing;
+    }
+
+    /// <summary>
+    /// Set once the tabs have all agreed to close, so the second Close() is not intercepted again.
+    /// </summary>
+    private bool _closeConfirmed;
+
+    // No full-screen support, for the same reason API Studio has none: Avalonia's extended-client-area
+    // chrome draws a full-screen caption button this version exposes no way to remove, and the button
+    // is outside the window's own visual tree, so no style or tree walk can hide it either. Removed at
+    // the state level instead - anything driving the window into FullScreen snaps back to Maximized.
+    // Minimize / maximize / restore / close are untouched.
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == WindowStateProperty && WindowState == WindowState.FullScreen)
+        {
+            WindowState = WindowState.Maximized;
+        }
+    }
+
+    // The title-bar row is our own content (ExtendClientAreaToDecorationsHint), so none of the usual
+    // drag-to-move / double-click-to-maximize behaviour exists unless it is implemented here.
+    private void TitleBarDragArea_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            BeginMoveDrag(e);
+        }
+    }
+
+    private void TitleBarDragArea_OnDoubleTapped(object? sender, TappedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    /// <summary>
+    /// Stops the window closing over unsaved changes.
+    ///
+    /// The prompt is asynchronous and Closing is not, so the close is cancelled first and re-issued
+    /// once the answer is in - which is the standard shape for this and the only one that works
+    /// without blocking the UI thread inside an event handler.
+    /// </summary>
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_closeConfirmed || DataContext is not ShellViewModel shell)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+
+        _ = ConfirmThenCloseAsync(shell);
+    }
+
+    private async System.Threading.Tasks.Task ConfirmThenCloseAsync(ShellViewModel shell)
+    {
+        if (!await shell.ConfirmCloseAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
+        _closeConfirmed = true;
+        Close();
     }
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e is { Key: Key.F, KeyModifiers: KeyModifiers.Control } && Diff.IsVisible)
+        if (e is not { Key: Key.F, KeyModifiers: KeyModifiers.Control })
+        {
+            return;
+        }
+
+        // Whichever view is actually on screen owns the find bar. Routing to the side-by-side one
+        // unconditionally would open a search over panes nobody is looking at.
+        if (Diff.IsVisible)
         {
             Diff.OpenSearch();
             e.Handled = true;
         }
+        else if (Unified.IsVisible)
+        {
+            Unified.OpenSearch();
+            e.Handled = true;
+        }
     }
 
-    private void OnActualThemeVariantChanged(object? sender, EventArgs e) => Diff.OnThemeChanged();
+    private void OnActualThemeVariantChanged(object? sender, EventArgs e)
+    {
+        Diff.OnThemeChanged();
+        Unified.OnThemeChanged();
+    }
 
     /// <summary>
     /// Opens the detailed settings window for the CURRENT tab. Read off the button's own DataContext
@@ -51,12 +133,52 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Control { DataContext: ComparisonViewModel tab })
+        // The menu item's own DataContext first (it inherits the per-tab scope), falling back to the
+        // shell's selection: a flyout lives in a popup, and a popup's inherited DataContext is one
+        // more thing that could be changed by a future refactor without anything failing loudly.
+        var tab = (sender as Control)?.DataContext as ComparisonViewModel
+            ?? (DataContext as ShellViewModel)?.SelectedTab;
+
+        if (tab is null)
         {
             return;
         }
 
         new SettingsWindow { DataContext = tab }.ShowDialog(this);
+    }
+
+    /// <summary>
+    /// Opens a three-way merge in its own window.
+    ///
+    /// Shown rather than shown-as-dialog: resolving a merge is a long task, and blocking the
+    /// comparison window for its duration would take away the one thing most likely to be wanted
+    /// alongside it - a two-way diff of the same files.
+    /// </summary>
+    private void OnMergeClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel shell)
+        {
+            return;
+        }
+
+        new MergeWindow { DataContext = shell.CreateMerge() }.Show(this);
+    }
+
+    /// <summary>
+    /// Opens a folder comparison in its own window.
+    ///
+    /// Shown rather than modal, and deliberately: opening a file pair from it creates a TAB in this
+    /// window, so the two are used together - blocking this one would make the feature's entire point
+    /// unreachable.
+    /// </summary>
+    private void OnFoldersClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel shell)
+        {
+            return;
+        }
+
+        new FolderWindow { DataContext = shell.CreateFolderComparison() }.Show(this);
     }
 
     private static void OnDragOver(object? sender, DragEventArgs e)

@@ -9,7 +9,7 @@ they share.
 | | |
 | --- | --- |
 | **[Fubar API Studio](docs/api-studio.md)** | An API client — a native, open-source Postman/Insomnia alternative. Request builder, environments, OAuth 2.0, OpenAPI import, assertions and captures. Ships as `FubarAPIStudio`. |
-| **[Fubar Diff](docs/diff.md)** | A diff tool. Two-editor side-by-side comparison with character-level highlighting, semantic JSON, and hunk-level merge. Ships as `FubarDiff`. |
+| **[Fubar Diff](docs/diff.md)** | A diff tool. Side-by-side comparison with character-level highlighting, semantic JSON and YAML, folder comparison, three-way merge with an editable result, and a **structural C# comparison** that says which members changed and which were only reformatted or moved. Runs headless for CI. Ships as `FubarDiff`. |
 | **Fubar.Controls** | The shared design system: colour tokens with Dark/Light variants, and a catalog of composable Avalonia controls. Has its own sandbox app, the Gallery. |
 
 ## Why one repository
@@ -39,6 +39,7 @@ dotnet test  Fubar.slnx
 dotnet run --project src/Fubar.Studio.UI          # API Studio
 dotnet run --project src/Fubar.Diff.UI            # Diff, empty
 dotnet run --project src/Fubar.Diff.UI -- a.json b.json   # Diff, two files
+dotnet run --project src/Fubar.Diff.UI -- --check a.json b.json    # headless; 0 same, 1 differ, 2 failed
 dotnet run --project src/Fubar.Controls.Gallery   # the component sandbox
 ```
 

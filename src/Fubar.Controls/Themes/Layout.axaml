@@ -180,6 +180,35 @@
         </Style>
     </ControlTheme>
 
+    <!-- SettingRow: header + plain-language description on the left, the control itself on the right.
+         The description is a real element rather than a tooltip, so a settings page can be read
+         top-to-bottom without hovering anything. -->
+    <ControlTheme x:Key="{x:Type fc:SettingRow}" TargetType="fc:SettingRow">
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,7">
+                    <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                        <ContentPresenter Content="{TemplateBinding Header}"
+                                          ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                          TextElement.Foreground="{DynamicResource TextPrimary}"
+                                          TextElement.FontSize="13" />
+                        <TextBlock Text="{TemplateBinding Description}"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{TemplateBinding Description, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+
+                    <ContentPresenter Grid.Column="1"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Margin="16,0,0,0"
+                                      VerticalAlignment="Center" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
     <!-- Toolbar: horizontal items strip with consistent spacing. -->
     <ControlTheme x:Key="{x:Type fc:Toolbar}" TargetType="fc:Toolbar">
         <Setter Property="Background" Value="{DynamicResource BgHeader}" />

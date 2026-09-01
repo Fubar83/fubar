@@ -18,10 +18,18 @@
              problem. -->
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,*">
 
+            <!-- Side is what lets a MODIFIED row be tinted in this column's own colour - the removal
+                 colour on the left, the addition colour on the right - rather than both columns
+                 sharing one "something changed here" wash. -->
             <views:DiffEditorPane x:Name="LeftPane"
                                   Grid.Column="0"
+                                  Side="Left"
                                   Document="{Binding LeftDocument}"
-                                  ShowInvisibles="{Binding ShowInvisibles}" />
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding LeftSyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  IsEditable="{Binding IsEditable}"
+                                  Folds="{Binding Folds}" />
 
             <!-- The map sits between the panes so it reads as belonging to both. -->
             <controls:DiffMap x:Name="Map"
@@ -37,8 +45,13 @@
 
             <views:DiffEditorPane x:Name="RightPane"
                                   Grid.Column="3"
+                                  Side="Right"
                                   Document="{Binding RightDocument}"
-                                  ShowInvisibles="{Binding ShowInvisibles}" />
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding RightSyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  IsEditable="{Binding IsEditable}"
+                                  Folds="{Binding Folds}" />
         </Grid>
 
         <GridSplitter x:Name="DetailSplitter"

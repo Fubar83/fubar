@@ -2,6 +2,7 @@ using Fubar.Diff.Infrastructure.Json;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
+using Fubar.Diff.Core.Languages;
 using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Application.Tests;
@@ -75,10 +76,17 @@ public class FileComparisonServiceTests
 
         public string? LastRight { get; private set; }
 
-        public (IReadOnlyList<CharSpan> Left, IReadOnlyList<CharSpan> Right) DiffWithinLine(string left, string right)
+        /// <summary>The language the service decided the pair was, so a test can assert it was detected.</summary>
+        public SourceLanguage LastLanguage { get; private set; } = SourceLanguage.None;
+
+        public (IReadOnlyList<CharSpan> Left, IReadOnlyList<CharSpan> Right) DiffWithinLine(
+            string left,
+            string right,
+            SourceLanguage language = SourceLanguage.None)
         {
             LastLeft = left;
             LastRight = right;
+            LastLanguage = language;
 
             return (
                 left.Length > 0 ? [new CharSpan(0, left.Length, ChangeKind.Deleted)] : [],

@@ -41,16 +41,10 @@ public static class AlignedText
         var to = Math.Clamp(from + Math.Max(count, 0), from, lines.Count);
 
         var builder = new StringBuilder();
-        var meta = new AlignedLine[to - from];
 
         for (var i = from; i < to; i++)
         {
             var row = lines[i];
-            var isLeft = side == DiffSide.Left;
-
-            var text = (isLeft ? row.LeftText : row.RightText) ?? string.Empty;
-            var number = isLeft ? row.LeftNumber : row.RightNumber;
-            var spans = isLeft ? row.LeftSpans : row.RightSpans;
 
             if (i > from)
             {
@@ -59,11 +53,58 @@ public static class AlignedText
                 builder.Append('\n');
             }
 
-            builder.Append(text);
-            meta[i - from] = new AlignedLine(number, KindFor(row, side), spans) { IsIgnored = row.IsIgnored };
+            builder.Append((side == DiffSide.Left ? row.LeftText : row.RightText) ?? string.Empty);
         }
 
-        return new AlignedDocument(builder.ToString(), meta);
+        // The text has to be built - an editor needs a document - but the per-line METADATA does not.
+        // It is a pure function of the row it describes, so it is computed on access instead of stored:
+        // the renderers ask for the fifty lines actually on screen, and a million-line comparison stops
+        // paying for two million AlignedLines nobody looks at (about 110 MB of them, measured).
+        return new AlignedDocument(builder.ToString(), new AlignedLineWindow(lines, side, from, to - from));
+    }
+
+    /// <summary>
+    /// A document that is not a comparison of anything: plain lines, numbered from one, nothing
+    /// tinted.
+    ///
+    /// For the three-way merge's OUTPUT pane, which shows a result rather than a side. It is still an
+    /// <see cref="AlignedDocument"/> because the editor pane takes one, and every renderer it feeds
+    /// then does the right thing by doing nothing - no change tint, no character spans, and a gutter
+    /// showing the merged file's own line numbers, which is exactly what someone editing a merge
+    /// result wants to see.
+    /// </summary>
+    public static AlignedDocument Plain(IReadOnlyList<string> lines)
+    {
+        var meta = new AlignedLine[lines.Count];
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            meta[i] = new AlignedLine(i + 1, ChangeKind.Unchanged, []);
+        }
+
+        return new AlignedDocument(string.Join('\n', lines), meta);
+    }
+
+    /// <summary>
+    /// One side's metadata for one row: what <see cref="Build(DiffResult,DiffSide,int,int)"/> would
+    /// have stored, derived on demand.
+    /// </summary>
+    internal static AlignedLine Project(DiffLine row, DiffSide side)
+    {
+        var kind = KindFor(row, side);
+
+        return new AlignedLine(
+            side == DiffSide.Left ? row.LeftNumber : row.RightNumber,
+            kind,
+            side == DiffSide.Left ? row.LeftSpans : row.RightSpans)
+        {
+            IsIgnored = row.IsIgnored,
+
+            // This side's own answer. A row can be a move on one side and an ordinary change on
+            // the other - two methods swapping places is exactly that - and the filler half of a
+            // one-sided row has no text to have moved at all.
+            IsMoved = kind != ChangeKind.Filler && row.IsMovedOn(side),
+        };
     }
 
     /// <summary>
@@ -109,7 +150,11 @@ public static class AlignedText
             // No KindFor remapping needed here: that exists purely to produce Filler on the side with
             // no content, which this method skips instead of keeping. A row that reaches this point
             // has real text on this side, so its own Kind is already correct as-is.
-            meta.Add(new AlignedLine(number, row.Kind, spans) { IsIgnored = row.IsIgnored });
+            meta.Add(new AlignedLine(number, row.Kind, spans)
+            {
+                IsIgnored = row.IsIgnored,
+                IsMoved = row.IsMovedOn(side),
+            });
         }
 
         return new AlignedDocument(builder.ToString(), meta);
@@ -129,8 +174,43 @@ public static class AlignedText
 
 /// <summary>One side's flattened document: the text an editor shows, and metadata per display line.</summary>
 /// <param name="Text">The full document text, lines joined with '\n'.</param>
-/// <param name="Lines">Per-line metadata, indexed by 0-based display line.</param>
+/// <param name="Lines">
+/// Per-line metadata, indexed by 0-based display line. Usually a lazy window over the comparison
+/// rather than a stored array - see <see cref="AlignedLineWindow"/> - so indexing it is cheap and
+/// holding it costs nothing per row.
+/// </param>
 public sealed record AlignedDocument(string Text, IReadOnlyList<AlignedLine> Lines);
+
+/// <summary>
+/// One side's per-line metadata, derived from the comparison on access rather than stored.
+///
+/// The rows are already in memory as <see cref="DiffLine"/>s and the projection to an
+/// <see cref="AlignedLine"/> is pure, so storing the result as well was two more arrays the size of
+/// the document, for data that is read fifty lines at a time. <see cref="AlignedLine"/> is a struct,
+/// so indexing this allocates nothing at all.
+///
+/// The comparison it reads must not change underneath it, which is the rule everywhere else too: a
+/// <see cref="DiffResult"/> is finished when it is built, and an edit produces a new one.
+/// </summary>
+public sealed class AlignedLineWindow(IReadOnlyList<DiffLine> rows, DiffSide side, int start, int count)
+    : IReadOnlyList<AlignedLine>
+{
+    public int Count => count;
+
+    public AlignedLine this[int index] => index >= 0 && index < count
+        ? AlignedText.Project(rows[start + index], side)
+        : throw new ArgumentOutOfRangeException(nameof(index));
+
+    public IEnumerator<AlignedLine> GetEnumerator()
+    {
+        for (var i = 0; i < count; i++)
+        {
+            yield return AlignedText.Project(rows[start + i], side);
+        }
+    }
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
 
 /// <summary>
 /// What the renderers need to know about one display line.
@@ -142,8 +222,27 @@ public sealed record AlignedDocument(string Text, IReadOnlyList<AlignedLine> Lin
 /// </param>
 /// <param name="Kind">How to tint the line on this side.</param>
 /// <param name="Spans">Character ranges to highlight within the line; empty unless modified.</param>
-public sealed record AlignedLine(int? SourceNumber, ChangeKind Kind, IReadOnlyList<CharSpan> Spans)
+public readonly record struct AlignedLine(int? SourceNumber, ChangeKind Kind, IReadOnlyList<CharSpan> Spans)
 {
     /// <summary>True when this row differs only at ignored paths - drawn as a faint band, nothing more.</summary>
     public bool IsIgnored { get; init; }
+
+    /// <summary>
+    /// True when this row belongs to a three-way merge region both sides changed differently.
+    ///
+    /// A flag rather than a <see cref="ChangeKind"/> of its own, for the same reason
+    /// <see cref="IsIgnored"/> is one: a conflicting row is still an ordinary changed row to every
+    /// renderer, hunk-grouper and navigator in the two-way path, and adding a fifth kind would land it
+    /// in every exhaustive switch over the four that exist. What it needs is one more thing DRAWN over
+    /// it, which is exactly what a flag buys.
+    /// </summary>
+    public bool IsConflict { get; init; }
+
+    /// <summary>
+    /// True when this row is one half of a block that moved rather than being written or removed.
+    ///
+    /// A flag for the same reason as the two above, and drawn instead of the ordinary change tint
+    /// rather than over it: the point of marking a move is that the reader can stop reading it.
+    /// </summary>
+    public bool IsMoved { get; init; }
 }

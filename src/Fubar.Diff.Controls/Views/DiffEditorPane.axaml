@@ -6,10 +6,12 @@
              mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="400"
              x:Class="Fubar.Diff.Controls.Views.DiffEditorPane">
 
-    <!-- One side of the diff. Read-only on purpose: the document contains filler lines to keep the
-         panes aligned, so it is NOT the file's text - typing into it would desynchronise the two
-         sides and there is no offset map yet to put it back. Merging happens through hunk commands
-         on the domain model instead (see MergedDocument). Selection, copy and search still work. -->
+    <!-- One side of the diff. Read-only until the host says otherwise (IsEditable), because the
+         document contains filler rows to keep the panes aligned and so is NOT the file's text. An
+         editable pane earns the right to be edited by tracking those fillers with anchors, so the
+         file's own lines can be handed back afterwards - see ReadFileLines. Every pane that shows
+         something other than a plain text file, the close-ups and the hex view included, leaves it
+         off. -->
     <ae:TextEditor x:Name="Editor"
                    IsReadOnly="True"
                    ShowLineNumbers="False"

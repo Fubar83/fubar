@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:fc="using:Fubar.Controls">
 
     <!-- Shared app-shell styles so every app on Fubar.Controls looks identical without defining any
          styles of its own: the window font, the request-tree row look, and the flat list-row look
@@ -36,6 +37,16 @@
     </Style>
     <Style Selector="Border.ListRow:pointerover Button.RowActionGlyph">
         <Setter Property="IsVisible" Value="True" />
+    </Style>
+
+    <!-- The switch in a SettingRow. Fluent writes "On"/"Off" beside the knob by default, which in a
+         column of rows is the same word repeated fifteen times to say what the knob already shows.
+         Scoped to SettingRow (a descendant selector, so it cannot live in the ControlTheme) rather
+         than styling every ToggleSwitch an app might have. -->
+    <Style Selector="fc|SettingRow ToggleSwitch">
+        <Setter Property="OnContent" Value="" />
+        <Setter Property="OffContent" Value="" />
+        <Setter Property="MinWidth" Value="0" />
     </Style>
 
 </Styles>

@@ -115,7 +115,7 @@ public sealed class DiffMap : Control
             // vanish, which defeats the point of a map you scan for changes.
             var tickHeight = Math.Max(rawHeight, MinimumTickHeight);
 
-            if (DiffLineColors.LineBackground(this, KindOf(hunk)) is { } brush)
+            if (BrushFor(hunk) is { } brush)
             {
                 var isCurrent = i == CurrentHunk;
 
@@ -141,6 +141,18 @@ public sealed class DiffMap : Control
     /// fit exactly as before.
     /// </summary>
     private int Scale => Math.Max(TotalLines, ViewportLength);
+
+    /// <summary>
+    /// The tick's colour: blue for a hunk that only moved, otherwise the ordinary tint for its kind.
+    ///
+    /// The map is where the reason for marking moves pays off most - it is read as "how much is left
+    /// to review", and a reordered file that fills it end to end is answering that question wrongly
+    /// until the moves are a different colour.
+    /// </summary>
+    private IBrush? BrushFor(DiffHunk hunk) =>
+        DiffLines is { Count: > 0 } lines && hunk.StartIndex < lines.Count && lines[hunk.StartIndex].IsMoved
+            ? DiffLineColors.MovedBackground(this)
+            : DiffLineColors.LineBackground(this, KindOf(hunk));
 
     /// <summary>
     /// The kind used to colour a hunk. A hunk can mix kinds; the first row's kind is a good enough

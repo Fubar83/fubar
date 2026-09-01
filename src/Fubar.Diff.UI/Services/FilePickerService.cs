@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -27,6 +29,28 @@ public sealed class FilePickerService : IFilePickerService
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
+    public async Task<IReadOnlyList<string>> PickFilesAsync(string title)
+    {
+        if (MainWindow is not { } window)
+        {
+            return [];
+        }
+
+        var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = true,
+        }).ConfigureAwait(true);
+
+        // The order the picker reports is the order the platform chose, not the order the user
+        // clicked, so "the first two" is as good as this can be - and the caller's Swap is how a pair
+        // that came back the wrong way round is fixed in one click.
+        return [.. files
+            .Select(file => file.TryGetLocalPath())
+            .Where(path => !string.IsNullOrEmpty(path))
+            .Select(path => path!)];
+    }
+
     public async Task<string?> PickSaveFileAsync(string title)
     {
         if (MainWindow is not { } window)
@@ -41,6 +65,22 @@ public sealed class FilePickerService : IFilePickerService
         }).ConfigureAwait(true);
 
         return file?.TryGetLocalPath();
+    }
+
+    public async Task<string?> PickFolderAsync(string title)
+    {
+        if (MainWindow is not { } window)
+        {
+            return null;
+        }
+
+        var folders = await window.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+        }).ConfigureAwait(true);
+
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 
     private static Window? MainWindow =>

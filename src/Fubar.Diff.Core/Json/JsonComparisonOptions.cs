@@ -57,4 +57,15 @@ public sealed record JsonComparisonOptions
     /// changelog), matching by key hides the fact that something moved.
     /// </summary>
     public bool MatchArraysByPosition { get; init; }
+
+    /// <summary>
+    /// Specific arrays to compare by position, by JSON path - the per-array form of
+    /// <see cref="MatchArraysByPosition"/>.
+    ///
+    /// Both forms exist because the answer genuinely varies within one document: a file can hold a
+    /// list of users, where order means nothing and matching by id is the only way to read a diff of
+    /// it, alongside a list of migration steps, where order is the entire content. A single switch
+    /// forces the wrong answer on one of them.
+    /// </summary>
+    public IReadOnlyList<string> PositionalArrays { get; init; } = [];
 }

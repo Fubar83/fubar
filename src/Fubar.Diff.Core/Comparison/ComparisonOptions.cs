@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Fubar.Diff.Core.Json;
 
 namespace Fubar.Diff.Core.Comparison;
@@ -6,12 +7,17 @@ namespace Fubar.Diff.Core.Comparison;
 public enum ComparisonMode
 {
     /// <summary>
-    /// Use semantic comparison when both files parse as JSON, otherwise plain text. The default: it
-    /// gives the better answer where it can, and never fails because of it.
+    /// Structure where the files have one, plain text otherwise. The default: it gives the better
+    /// answer where it can, and never fails because of it.
+    ///
+    /// JSON is recognised by TRYING to parse, because almost nothing else is valid JSON. YAML is
+    /// recognised by file extension and never guessed at, because very nearly everything is valid
+    /// YAML - a plain English sentence parses as a YAML string - and sniffing it would quietly turn
+    /// every log file in the world into a one-scalar document with no differences worth reporting.
     /// </summary>
     Auto,
 
-    /// <summary>Always compare as plain text, even for JSON.</summary>
+    /// <summary>Always compare as plain text, even for JSON or YAML.</summary>
     Text,
 
     /// <summary>
@@ -19,6 +25,12 @@ public enum ComparisonMode
     /// exactly when a diff is most wanted.
     /// </summary>
     Json,
+
+    /// <summary>
+    /// Always compare as YAML, whatever the file is called. For the one that came out of a pipeline
+    /// with no extension at all, and for a <c>.txt</c> that is a manifest by any other name.
+    /// </summary>
+    Yaml,
 }
 
 /// <summary>
@@ -57,9 +69,35 @@ public sealed record ComparisonOptions
     /// </summary>
     public bool NormalizeUnicode { get; init; }
 
+    /// <summary>
+    /// Regular expressions whose matches are blanked out before two lines are compared - see
+    /// <see cref="LinePatternMask"/>.
+    ///
+    /// For the text that changes on every run and that nobody can act on: a build timestamp, a
+    /// generated GUID, a version stamp in a header. Masking the MATCH rather than the whole line is
+    /// deliberate, so a real change elsewhere on the same line is still reported.
+    /// </summary>
+    public IReadOnlyList<string> IgnoredLinePatterns { get; init; } = [];
+
     /// <summary>Text or semantic comparison. See <see cref="ComparisonMode"/>.</summary>
     public ComparisonMode Mode { get; init; } = ComparisonMode.Auto;
 
+    /// <summary>
+    /// Pairings the user made by hand, which the aligner must honour - see
+    /// <see cref="AlignmentAnchor"/>.
+    ///
+    /// Belongs to the comparison rather than to the app's settings: an instruction about two
+    /// particular files means nothing for the next two.
+    /// </summary>
+    public IReadOnlyList<AlignmentAnchor> Alignments { get; init; } = [];
+
     /// <summary>Settings for the semantic JSON pass, used when it runs.</summary>
     public JsonComparisonOptions Json { get; init; } = JsonComparisonOptions.Default;
+
+    /// <summary>
+    /// Settings that apply when the files are source code in a language the scanner knows. Inert for
+    /// everything else - the language comes from the file extension, so a pair the scanner cannot read
+    /// simply never consults these.
+    /// </summary>
+    public CodeComparisonOptions Code { get; init; } = CodeComparisonOptions.Default;
 }

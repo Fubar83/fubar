@@ -1,0 +1,112 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Fubar.Diff.Controls.Views"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             x:Class="Fubar.Diff.Controls.Views.ThreeWayView"
+             x:DataType="vm:ThreeWayPaneViewModel">
+
+    <!-- Three columns: the two edits either side of what they both started from.
+
+         The ancestor sits in the MIDDLE rather than at the left, which is the layout every merge tool
+         converges on for one reason: a conflict is read by comparing each edit against the ancestor,
+         and putting it between them makes both of those comparisons a glance at an adjacent column
+         instead of one glance and one jump across the window.
+
+         No diff map here, unlike DiffView. The map answers "where are the changes in this file", and a
+         merge asks a different question - "which of these needs me" - which the conflict count and
+         next/previous answer directly. A map of three columns would also have to pick one column's
+         rows to colour by, and any choice would be wrong for the other two. -->
+    <!-- Rows: the three columns, then two independently collapsible sections, each behind its own drag
+         handle - the merged result (1, 2) and the close-up of the current region (3, 4). Both pairs
+         collapse to zero HEIGHT rather than to IsVisible alone, because a GridSplitter needs real
+         definitions to resize and a hidden child still leaves its row occupying its height. The
+         indices are load-bearing: ApplyOutputVisibility and ApplyDetailVisibility address them
+         directly, and swapping the two sections here without moving them there collapses the wrong
+         one. -->
+    <Grid x:Name="Root" RowDefinitions="*,Auto,220,Auto,240">
+
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,*,Auto,*">
+
+        <DockPanel Grid.Column="0">
+            <TextBlock DockPanel.Dock="Top" Text="Left (theirs)"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="10" Margin="8,3" />
+            <!-- Side only decides how a modified row is tinted (removal colour on the left, addition
+                 colour on the right). The base column is deliberately left unset: it is neither. -->
+            <views:DiffEditorPane x:Name="LeftPane"
+                                  Side="Left"
+                                  Document="{Binding LeftDocument}"
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding SyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  Folds="{Binding Folds}" />
+        </DockPanel>
+
+        <Border Grid.Column="1" Width="1" Background="{DynamicResource BorderSubtle}" />
+
+        <DockPanel Grid.Column="2">
+            <TextBlock DockPanel.Dock="Top" Text="Base (common ancestor)"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="10" Margin="8,3" />
+            <views:DiffEditorPane x:Name="BasePane"
+                                  Document="{Binding BaseDocument}"
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding SyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  Folds="{Binding Folds}" />
+        </DockPanel>
+
+        <Border Grid.Column="3" Width="1" Background="{DynamicResource BorderSubtle}" />
+
+        <DockPanel Grid.Column="4">
+            <TextBlock DockPanel.Dock="Top" Text="Right (mine)"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="10" Margin="8,3" />
+            <views:DiffEditorPane x:Name="RightPane"
+                                  Side="Right"
+                                  Document="{Binding RightDocument}"
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding SyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}"
+                                  Folds="{Binding Folds}" />
+        </DockPanel>
+    </Grid>
+
+        <GridSplitter x:Name="OutputSplitter"
+                      Grid.Row="1"
+                      Height="4"
+                      ResizeDirection="Rows"
+                      Background="{DynamicResource BorderSubtle}" />
+
+        <!-- The result, and the only pane here that can be typed into. A merge tool without one is a
+             tool for choosing between two answers, and the answer is regularly neither: two people
+             edited the same line, and what belongs there is a third line that exists in neither file.
+             Editable rather than a preview for exactly that. -->
+        <DockPanel Grid.Row="2" x:Name="Output">
+            <Border DockPanel.Dock="Top"
+                    Background="{DynamicResource BgHeader}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="0,1,0,1"
+                    Padding="8,3">
+                <TextBlock Text="Merged result - type here to write something neither side has"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontSize="10" />
+            </Border>
+
+            <views:DiffEditorPane x:Name="OutputPane"
+                                  Document="{Binding OutputDocument}"
+                                  IsEditable="True"
+                                  ShowInvisibles="{Binding ShowInvisibles}"
+                                  SyntaxExtension="{Binding SyntaxExtension}"
+                                  SyntaxHighlighting="{Binding SyntaxHighlighting}" />
+        </DockPanel>
+
+        <GridSplitter x:Name="DetailSplitter"
+                      Grid.Row="3"
+                      Height="4"
+                      ResizeDirection="Rows"
+                      Background="{DynamicResource BorderSubtle}" />
+
+        <views:MergeDetailPane x:Name="Detail" Grid.Row="4" />
+    </Grid>
+</UserControl>

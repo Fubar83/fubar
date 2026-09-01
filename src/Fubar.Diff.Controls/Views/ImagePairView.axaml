@@ -1,0 +1,64 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Diff.Controls.ViewModels"
+             x:Class="Fubar.Diff.Controls.Views.ImagePairView"
+             x:DataType="vm:ImagePairViewModel">
+
+    <!-- Two pictures, side by side, at the same scale.
+
+         Stretch="Uniform" in columns of equal width, so the two are shown at the SAME size however
+         different their pixel dimensions are - which is what makes "the drawing changed" readable at a
+         glance. It is also why the dimensions are written under each one: at equal display size a
+         rescale and a redraw look identical, and the caption is the only thing separating them. The
+         banner says it a second time, because that is the case the picture alone is most likely to be
+         misread in.
+
+         Each image sits on a neutral mid-grey rather than on the theme's own background, so a
+         transparent region reads the same in both themes. An icon whose background changed from white
+         to transparent is otherwise invisible on a light theme and dramatic on a dark one - the same
+         two files, two different stories, depending on a preference that has nothing to do with them. -->
+    <DockPanel>
+
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource BgHover}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6"
+                IsVisible="{Binding !SameDimensions}">
+            <TextBlock Text="These images are different sizes - both are scaled to fit, so compare the dimensions below them."
+                       Foreground="{DynamicResource TextSecondary}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <Grid ColumnDefinitions="*,Auto,*" Margin="10">
+
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Bottom"
+                           Text="{Binding LeftCaption}"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11"
+                           HorizontalAlignment="Center"
+                           Margin="0,6,0,0" />
+                <Border Background="#40808080" CornerRadius="2" Padding="6">
+                    <Image Source="{Binding Left}" Stretch="Uniform" />
+                </Border>
+            </DockPanel>
+
+            <Border Grid.Column="1" Width="1" Margin="10,0"
+                    Background="{DynamicResource BorderSubtle}" />
+
+            <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Bottom"
+                           Text="{Binding RightCaption}"
+                           Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11"
+                           HorizontalAlignment="Center"
+                           Margin="0,6,0,0" />
+                <Border Background="#40808080" CornerRadius="2" Padding="6">
+                    <Image Source="{Binding Right}" Stretch="Uniform" />
+                </Border>
+            </DockPanel>
+
+        </Grid>
+    </DockPanel>
+</UserControl>

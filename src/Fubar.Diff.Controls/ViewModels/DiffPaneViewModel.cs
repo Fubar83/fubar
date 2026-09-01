@@ -30,6 +30,25 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial AlignedDocument? RightDocument { get; set; }
 
+    /// <summary>
+    /// The whole comparison as ONE patch-style document, for the unified view.
+    ///
+    /// Its rows do not correspond to <see cref="Lines"/> one for one - a modified row becomes two, a
+    /// filler becomes none - so it carries its own hunk ranges and a row mapping. See
+    /// <see cref="UnifiedText"/> for why that is kept here rather than by weakening the side-by-side
+    /// invariant for everybody.
+    /// </summary>
+    [ObservableProperty]
+    public partial UnifiedDocument UnifiedDocument { get; set; } = UnifiedDocument.Empty;
+
+    /// <summary>The unified document's own folds, computed in its own row coordinates.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<FoldRange> UnifiedFolds { get; set; } = [];
+
+    /// <summary>Row to bring into view in the UNIFIED document; -1 means nothing pending.</summary>
+    [ObservableProperty]
+    public partial int UnifiedScrollToRow { get; set; } = -1;
+
     /// <summary>Total display rows - the denominator the diff map scales positions against.</summary>
     public int TotalLines => _result.Lines.Count;
 
@@ -95,6 +114,140 @@ public partial class DiffPaneViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     public partial bool ShowInvisibles { get; set; }
+
+    /// <summary>
+    /// The file extension each side should be syntax-highlighted with (<c>.cs</c>, <c>.ts</c>), or
+    /// null for none.
+    ///
+    /// Per side rather than one for the comparison: comparing a file against its rewrite in another
+    /// language is a real thing people do, and it is precisely the case where colouring both halves
+    /// with one grammar would be most misleading.
+    ///
+    /// Supplied by the host, like <see cref="LeftRawText"/>, because this view model deliberately knows
+    /// nothing about where its content came from - a host comparing two in-memory strings has no
+    /// extension to offer and simply leaves these null.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? LeftSyntaxExtension { get; set; }
+
+    /// <summary>The right side's extension for highlighting - see <see cref="LeftSyntaxExtension"/>.</summary>
+    [ObservableProperty]
+    public partial string? RightSyntaxExtension { get; set; }
+
+    /// <summary>
+    /// Whether the panes colour their content at all. On by default, and a DISPLAY setting like
+    /// <see cref="ShowInvisibles"/> - it changes nothing about what the comparison found, so toggling
+    /// it never re-runs a diff.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool SyntaxHighlighting { get; set; } = true;
+
+    /// <summary>
+    /// Whether the two side-by-side panes can be typed into.
+    ///
+    /// Off by default, and off for every host that is not the diff app: API Studio compares things
+    /// that are not files - a request against what an OpenAPI spec would import, two response bodies -
+    /// and there is nowhere for an edit to go.
+    ///
+    /// Only the side-by-side view honours it. The unified view has its own row coordinates, the Json
+    /// view shows each side unaligned, the close-ups show an excerpt, and a hex view of a binary file
+    /// is not text that can be written back - none of those can accept an edit and none of them offer
+    /// to.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsEditable { get; set; }
+
+    /// <summary>
+    /// Raised when the user has typed into one of the panes. Carries the side, not the text: reading
+    /// the text back costs a pass over the document, and this fires on every keystroke.
+    /// </summary>
+    public event EventHandler<DiffSide>? SideEdited;
+
+    /// <summary>
+    /// Reads one side's current content as the FILE's own lines, or null before a view has offered to.
+    ///
+    /// Handed over by the view rather than computed here, for the same reason the folder window pushes
+    /// its selection up: the document, its fillers and the anchors tracking them belong to the editor,
+    /// and a view model that reached for them would be reaching for a control.
+    /// </summary>
+    public Func<DiffSide, IReadOnlyList<string>>? FileLinesReader { get; set; }
+
+    /// <summary>
+    /// Where each side's caret is, as a FILE line number, or null when it is on a filler. Handed over
+    /// by the view for the same reason as <see cref="FileLinesReader"/>.
+    ///
+    /// What a host does with it: aligning two lines by hand needs to know which two lines the user is
+    /// pointing at, and the only coordinate that means the same thing to a comparison as it does to a
+    /// pane is the file's own numbering.
+    /// </summary>
+    public Func<DiffSide, int?>? CaretLineReader { get; set; }
+
+    /// <summary>Called by the view when the user edits a pane.</summary>
+    public void ReportEdit(DiffSide side) => SideEdited?.Invoke(this, side);
+
+    /// <summary>
+    /// Replaces a row range in one pane, as an ordinary edit - how taking a side is applied.
+    ///
+    /// Handed over by the view for the same reason <see cref="FileLinesReader"/> is: the document and
+    /// its undo stack belong to the editor. Null until a view offers one, and null forever in a host
+    /// that does not edit.
+    /// </summary>
+    public Action<DiffSide, int, int, IReadOnlyList<string>>? RowReplacer { get; set; }
+
+    /// <summary>
+    /// Whether long lines wrap in the UNIFIED view.
+    ///
+    /// Unified only, and that is a constraint rather than an oversight. The side-by-side panes rest on
+    /// "editor line i is the same row in both", which is what makes scroll sync a plain offset copy;
+    /// wrapping breaks it the moment one side's line is long enough to take two visual lines and the
+    /// other's is not, and the columns drift apart by a line for every wrap above the viewport. The
+    /// unified view has one document and nothing to keep in step with, so it can simply wrap - and it
+    /// is the view people are in when the lines are too long to read anyway, which is why the option
+    /// belongs to it rather than being a global that does nothing half the time.
+    ///
+    /// Off by default: a wrapped line has no fixed height, so a screen of diff holds fewer changes,
+    /// and the reader loses the ability to scan down a column.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool WordWrap { get; set; }
+
+    /// <summary>
+    /// Whether long stretches of unchanged context are hidden behind a collapsed placeholder.
+    ///
+    /// On by default, which is what every review tool does and the reason they are pleasant to read: a
+    /// 3,000-line file with two changes is otherwise 3,000 lines of scrolling to see two. Nothing is
+    /// hidden irrecoverably - each fold is one click, and the setting is remembered - so the usual
+    /// argument against changing what the user is shown does not apply here the way it does to
+    /// reformatting their content.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CollapseUnchanged { get; set; } = true;
+
+    /// <summary>How many unchanged rows stay visible either side of a change.</summary>
+    [ObservableProperty]
+    public partial int ContextLines { get; set; } = 3;
+
+    /// <summary>
+    /// The rows to fold, or empty when collapsing is off. Both panes are given this SAME list, which
+    /// is what keeps them aligned - see <c>DiffEditorPane.FoldsProperty</c>.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<FoldRange> Folds { get; set; } = [];
+
+    partial void OnCollapseUnchangedChanged(bool value) => RebuildFolds();
+
+    partial void OnContextLinesChanged(int value) => RebuildFolds();
+
+    private void RebuildFolds()
+    {
+        Folds = CollapseUnchanged ? CollapsedRegions.Compute(_result.Lines, ContextLines) : [];
+
+        // The unified document has its own row coordinates, so its folds have to be computed against
+        // its own lines rather than remapped from the side-by-side ones.
+        UnifiedFolds = CollapseUnchanged
+            ? CollapsedRegions.Compute(UnifiedDocument.Document.Lines, ContextLines)
+            : [];
+    }
 
     /// <summary>The current hunk's rows, left side, or null when no hunk is selected.</summary>
     [ObservableProperty]
@@ -224,42 +377,136 @@ public partial class DiffPaneViewModel : ObservableObject
         new Dictionary<string, JsonChangeNodeViewModel>();
 
     /// <summary>
-    /// Which view the pane shows. Defaults to Text, but <see cref="Show"/> resets it on every
-    /// comparison - Json when semantic comparison ran, Text otherwise - so it is never left showing
-    /// Json for a document that turned out not to be JSON, and JSON always opens in the view built
-    /// for it rather than requiring a manual switch every time.
+    /// Which view the pane shows. Defaults to side by side, but <see cref="Show"/> resets it on every
+    /// comparison - Json when semantic comparison ran, side by side otherwise - so it is never left
+    /// showing Json for a document that turned out not to be JSON, and JSON always opens in the view
+    /// built for it rather than requiring a manual switch every time.
     /// </summary>
     [ObservableProperty]
-    public partial DiffViewMode ViewMode { get; set; } = DiffViewMode.Text;
+    public partial DiffViewMode ViewMode { get; set; } = DiffViewMode.SideBySide;
 
-    /// <summary>The values offered by a view selector - just Text and Json; there is nothing else to pick.</summary>
+    /// <summary>Every view mode that exists.</summary>
     public static IReadOnlyList<DiffViewMode> ViewModeOptions { get; } = Enum.GetValues<DiffViewMode>();
 
-    /// <summary>Whether the side-by-side editors are the visible pane.</summary>
-    public bool IsTextViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Text;
+    /// <summary>Both layouts always apply, so this is simply every mode there is.</summary>
+    public IReadOnlyList<DiffViewMode> AvailableViewModes => ViewModeOptions;
 
     /// <summary>
-    /// Whether the tree-plus-both-documents view is the visible pane. Requires a semantic comparison -
-    /// it would otherwise show an empty tree next to two documents with nothing to highlight.
+    /// Whether the side-by-side editors are the visible pane.
+    ///
+    /// Not while a semantic comparison is showing: the Json view IS the answer for JSON, and the way
+    /// to see JSON as two columns of text is to compare it as text, which the Auto/Text/Json selector
+    /// is for.
     /// </summary>
-    public bool IsJsonViewVisible => LeftDocument is not null && ViewMode == DiffViewMode.Json && IsSemantic;
+    public bool IsSideBySideViewVisible =>
+        LeftDocument is not null && !IsSemantic && ViewMode == DiffViewMode.SideBySide;
 
-    partial void OnViewModeChanged(DiffViewMode value) => RaiseViewVisibility();
+    /// <summary>Whether the single-document patch view is the visible pane.</summary>
+    public bool IsUnifiedViewVisible =>
+        LeftDocument is not null && !IsSemantic && ViewMode == DiffViewMode.Unified;
 
-    partial void OnLeftDocumentChanged(AlignedDocument? value) => RaiseViewVisibility();
+    /// <summary>
+    /// Whether the tree-plus-both-documents view is the visible pane - which is exactly when a
+    /// semantic comparison ran. There is nothing to choose here any more: a JSON comparison shows the
+    /// Json view, and anything else shows text.
+    /// </summary>
+    public bool IsJsonViewVisible => LeftDocument is not null && IsSemantic;
 
-    partial void OnIsSemanticChanged(bool value)
+    partial void OnViewModeChanged(DiffViewMode value)
     {
-        // Safety net for IsSemantic changing outside Show (it currently never does, but Show already
-        // sets ViewMode explicitly for every comparison, so this only matters if that ever changes):
-        // leaving Json selected for content that is not semantic would show an empty pane.
-        if (!value && ViewMode == DiffViewMode.Json)
+        // The close-up exists to put a change's two versions next to each other; in the unified view
+        // they already ARE next to each other, one line apart, so it would be showing a copy of what is
+        // on screen. Hidden rather than merely empty, and remembered, so switching back restores it.
+        if (value == DiffViewMode.Unified)
         {
-            ViewMode = DiffViewMode.Text;
+            _detailBeforeUnified = IsDetailVisible;
+            IsDetailVisible = false;
+        }
+        else if (_detailBeforeUnified is { } previous)
+        {
+            IsDetailVisible = previous;
+            _detailBeforeUnified = null;
         }
 
         RaiseViewVisibility();
     }
+
+    /// <summary>What the close-up's visibility was before the unified view turned it off.</summary>
+    private bool? _detailBeforeUnified;
+
+    partial void OnLeftDocumentChanged(AlignedDocument? value) => RaiseViewVisibility();
+
+    // Whether the Json view is showing is now a consequence of this alone, so there is nothing to
+    // correct here - only the visibilities to re-raise.
+    partial void OnIsSemanticChanged(bool value) => RaiseViewVisibility();
+
+    // ---- Array matching ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// What each array in the comparison could be matched by, keyed by JSON path. Supplied by the host
+    /// BEFORE <see cref="Show"/>, like the syntax extensions - the tree is annotated as it is built.
+    ///
+    /// Empty in a host that cannot act on the choice, which leaves the right-click menu off.
+    /// </summary>
+    public IReadOnlyDictionary<string, ArrayKeyChoices> ArrayKeys { get; set; } =
+        new Dictionary<string, ArrayKeyChoices>();
+
+    /// <summary>
+    /// Raised when the user picks how an array should be matched. The host owns the comparison
+    /// options, so it applies the choice and re-compares; this view model only asks.
+    /// </summary>
+    public event EventHandler<ArrayKeyOption>? ArrayKeyChosen;
+
+    /// <summary>Raised when the user asks to name a field the menu did not offer.</summary>
+    public event EventHandler<string>? CustomArrayKeyRequested;
+
+    [RelayCommand]
+    private void ChooseArrayKey(ArrayKeyOption? option)
+    {
+        if (option is not null)
+        {
+            ArrayKeyChosen?.Invoke(this, option);
+        }
+    }
+
+    [RelayCommand]
+    private void RequestCustomArrayKey(string? path)
+    {
+        if (!string.IsNullOrEmpty(path))
+        {
+            CustomArrayKeyRequested?.Invoke(this, path);
+        }
+    }
+
+    // ---- Json formatting --------------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether the host can re-lay-out a document for reading. False leaves the pretty buttons hidden.
+    ///
+    /// Asked of the host rather than assumed, for the same reason <see cref="CanIgnorePaths"/> is:
+    /// re-deriving the change spans against reformatted text needs a parser, which this view model
+    /// does not have and should not acquire. A host that cannot do it does not offer it.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CanReformat { get; set; }
+
+    /// <summary>Whether the left document is shown pretty-printed rather than as it is on disk.</summary>
+    [ObservableProperty]
+    public partial bool PrettyLeft { get; set; }
+
+    /// <summary>Whether the right document is shown pretty-printed.</summary>
+    [ObservableProperty]
+    public partial bool PrettyRight { get; set; }
+
+    /// <summary>
+    /// Raised when a pretty toggle moved, so the host can supply the reformatted text AND the change
+    /// spans that go with it. The two must arrive together - see <c>JsonDisplay</c>.
+    /// </summary>
+    public event EventHandler? FormattingChanged;
+
+    partial void OnPrettyLeftChanged(bool value) => FormattingChanged?.Invoke(this, EventArgs.Empty);
+
+    partial void OnPrettyRightChanged(bool value) => FormattingChanged?.Invoke(this, EventArgs.Empty);
 
     // ---- Json view --------------------------------------------------------------------------------
 
@@ -290,17 +537,32 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial JsonChangeNodeViewModel? CurrentTreeNode { get; set; }
 
+    /// <summary>
+    /// Every semantic change, for the panes that mark all of them rather than only the current one.
+    ///
+    /// These are the ORIGINAL changes - spans into each side's text exactly as given, which is what
+    /// the Json panes display. The other list (spans into the canonicalized copy the aligner worked
+    /// on) would be a line or two out the moment a user turned on "Reformat for display".
+    /// </summary>
+    public IReadOnlyList<JsonChange> SemanticChanges => _semanticChanges;
+
     /// <summary>The change the Json view is currently showing, or null when nothing is selected.</summary>
     public JsonChange? CurrentSemanticChange =>
         CurrentSemanticChangeIndex >= 0 && CurrentSemanticChangeIndex < _semanticChanges.Count
             ? _semanticChanges[CurrentSemanticChangeIndex]
             : null;
 
-    /// <summary>Where to highlight on the left - the change's own span into <see cref="LeftRawText"/>.</summary>
-    public SourceSpan? LeftHighlightSpan => CurrentSemanticChange?.Left?.Span is { IsKnown: true } span ? span : null;
+    /// <summary>
+    /// Where to highlight on the left - everything the change covers in <see cref="LeftRawText"/>.
+    ///
+    /// <c>JsonChange.LeftSpan</c> rather than the value's own span, which is what this used to be: for
+    /// a property that was added or removed the KEY is part of what changed, and highlighting only the
+    /// value left the name beside it looking untouched.
+    /// </summary>
+    public SourceSpan? LeftHighlightSpan => CurrentSemanticChange?.LeftSpan is { IsKnown: true } span ? span : null;
 
     /// <summary>Where to highlight on the right.</summary>
-    public SourceSpan? RightHighlightSpan => CurrentSemanticChange?.Right?.Span is { IsKnown: true } span ? span : null;
+    public SourceSpan? RightHighlightSpan => CurrentSemanticChange?.RightSpan is { IsKnown: true } span ? span : null;
 
     // ---- Json detail (close-up) ------------------------------------------------------------------
 
@@ -454,7 +716,9 @@ public partial class DiffPaneViewModel : ObservableObject
 
     private void RaiseJsonDerived()
     {
+        OnPropertyChanged(nameof(SemanticChanges));
         OnPropertyChanged(nameof(CurrentSemanticChange));
+        OnPropertyChanged(nameof(HasDifferences));
         OnPropertyChanged(nameof(LeftHighlightSpan));
         OnPropertyChanged(nameof(RightHighlightSpan));
         OnPropertyChanged(nameof(JsonCaption));
@@ -485,8 +749,17 @@ public partial class DiffPaneViewModel : ObservableObject
     {
         _result = result;
 
+        // Before the documents: the panes apply their folds when the document arrives, so a list
+        // computed afterwards would leave the first frame unfolded.
+        RebuildFolds();
+
         LeftDocument = AlignedText.Build(result, DiffSide.Left);
         RightDocument = AlignedText.Build(result, DiffSide.Right);
+
+        UnifiedDocument = UnifiedText.Build(result);
+        UnifiedFolds = CollapseUnchanged
+            ? CollapsedRegions.Compute(UnifiedDocument.Document.Lines, ContextLines)
+            : [];
 
         IsSemantic = isSemantic;
         _changeIndex = JsonChangeIndex.Build(semanticChanges);
@@ -494,7 +767,7 @@ public partial class DiffPaneViewModel : ObservableObject
         // The tree (paths, kinds, ignore status) is identical either way, so it is built from the
         // canonicalized list like everything else in Text mode; only navigation/highlighting needs
         // spans into the ORIGINAL text.
-        var (roots, byPath) = JsonChangeNodeViewModel.Build(semanticChanges ?? []);
+        var (roots, byPath) = JsonChangeNodeViewModel.Build(semanticChanges ?? [], ArrayKeys);
         SemanticTree = roots;
         _treeNodesByPath = byPath;
         _semanticChanges = originalSemanticChanges ?? semanticChanges ?? [];
@@ -507,12 +780,10 @@ public partial class DiffPaneViewModel : ObservableObject
         CurrentSemanticChangeIndex = -1;
         CurrentTreeNode = null;
 
-        // JSON opens in the view built for it rather than requiring a manual switch every time; a
-        // non-JSON comparison lands on the one view that always works. This runs on every comparison,
-        // not just the first, so re-comparing content that changed format (e.g. toggling Mode) cannot
-        // leave Json selected for a document that no longer parses as JSON.
-        ViewMode = isSemantic ? DiffViewMode.Json : DiffViewMode.Text;
-
+        // ViewMode is deliberately NOT reset here any more. It only chooses between two text layouts
+        // now, and someone who prefers unified prefers it for the next comparison too - resetting it
+        // per comparison was only ever needed to stop Json being selected for content that is not
+        // JSON, which is no longer possible.
         RebuildDetail();
         RaiseDerived();
         RaiseJsonDerived();
@@ -528,6 +799,68 @@ public partial class DiffPaneViewModel : ObservableObject
 
     [RelayCommand]
     public void PreviousChange() => MoveTo(HunkNavigator.Previous(_result.Hunks, CurrentHunk));
+
+    /// <summary>
+    /// Next difference, whichever kind of difference this view is showing: a hunk in the text views, a
+    /// semantic change in the Json one.
+    ///
+    /// The two really are different things - a hunk is a run of rows the aligner paired up, a semantic
+    /// change is one value that differs - which is why the Json view used to bring its own Prev/Next
+    /// buttons and the host hid its own to avoid two "next" buttons that disagreed. Deciding here
+    /// instead leaves one pair of buttons in one place, and moves the choice to the only object that
+    /// knows which view is on screen.
+    /// </summary>
+    [RelayCommand]
+    public void NextDifference()
+    {
+        if (IsJsonViewVisible)
+        {
+            NextSemanticChange();
+        }
+        else
+        {
+            NextChange();
+        }
+    }
+
+    [RelayCommand]
+    public void PreviousDifference()
+    {
+        if (IsJsonViewVisible)
+        {
+            PreviousSemanticChange();
+        }
+        else
+        {
+            PreviousChange();
+        }
+    }
+
+    /// <summary>
+    /// Whether there is anything to walk, counted the same way the buttons walk it. Ignored semantic
+    /// changes do not count: navigation skips them, so a document whose only differences are ignored
+    /// has nothing to step through however many the tree lists.
+    /// </summary>
+    public bool HasDifferences
+    {
+        get
+        {
+            if (!IsJsonViewVisible)
+            {
+                return HasChanges;
+            }
+
+            foreach (var change in _semanticChanges)
+            {
+                if (!change.IsIgnored)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 
     /// <summary>Jumps to a row, e.g. from a diff-map click, syncing the hunk selection to match.</summary>
     public void JumpToRow(int rowIndex)
@@ -548,13 +881,42 @@ public partial class DiffPaneViewModel : ObservableObject
 
         CurrentHunk = index;
         ScrollToRow = _result.Hunks[index].StartIndex;
+
+        // The unified view is scrolled by its OWN row index, which is a different number for the same
+        // hunk. Both are set unconditionally so switching view mid-navigation lands in the right place
+        // in whichever one is showing.
+        UnifiedScrollToRow = index < UnifiedDocument.Hunks.Count
+            ? UnifiedDocument.Hunks[index].StartIndex
+            : -1;
+
         Navigated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Jumps from a row of the UNIFIED document, e.g. a click in that view. Translated through the
+    /// document's own row mapping, since its indices are not the comparison's.
+    /// </summary>
+    public void JumpToUnifiedRow(int unifiedRow)
+    {
+        if (unifiedRow < 0 || unifiedRow >= UnifiedDocument.SourceRows.Count)
+        {
+            return;
+        }
+
+        JumpToRow(UnifiedDocument.SourceRows[unifiedRow]);
+        UnifiedScrollToRow = unifiedRow;
     }
 
     private void RaiseViewVisibility()
     {
-        OnPropertyChanged(nameof(IsTextViewVisible));
+        OnPropertyChanged(nameof(IsSideBySideViewVisible));
+        OnPropertyChanged(nameof(IsUnifiedViewVisible));
         OnPropertyChanged(nameof(IsJsonViewVisible));
+        OnPropertyChanged(nameof(AvailableViewModes));
+
+        // Which kind of difference Next/Previous walk changes with the view, and so does whether
+        // there is one to walk.
+        OnPropertyChanged(nameof(HasDifferences));
     }
 
     /// <summary>
@@ -565,6 +927,7 @@ public partial class DiffPaneViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Result));
         OnPropertyChanged(nameof(HasChanges));
+        OnPropertyChanged(nameof(HasDifferences));
         OnPropertyChanged(nameof(HasCurrentHunk));
         OnPropertyChanged(nameof(CurrentIgnorePath));
         OnPropertyChanged(nameof(CanIgnoreCurrent));

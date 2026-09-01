@@ -29,4 +29,39 @@ public interface IMergeService
     /// the merge rules without touching a disk.
     /// </summary>
     string Preview(FileComparison comparison, MergeState state, DiffSide baseSide);
+
+    /// <summary>
+    /// Writes the result of a three-way merge.
+    /// </summary>
+    /// <param name="destination">
+    /// Whose path and file format the result takes. NOT where the content comes from - that is decided
+    /// entirely by <paramref name="state"/> and the merge itself. Right by default in the UI ("mine",
+    /// the file in front of you), but the ancestor is a legitimate choice when the merge is being
+    /// produced for somewhere else entirely.
+    /// </param>
+    /// <param name="targetPath">Somewhere other than the destination document's own path (Save As).</param>
+    Task<string> SaveThreeWayAsync(
+        ThreeWayComparison comparison,
+        ThreeWayMergeState state,
+        MergeSide destination,
+        string? targetPath = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>The merged three-way content as it would be saved, without writing anything.</summary>
+    string PreviewThreeWay(ThreeWayComparison comparison, ThreeWayMergeState state, MergeSide destination);
+
+    /// <summary>
+    /// Writes LINES the caller already has, rather than lines built from the decisions.
+    ///
+    /// For a merged result the user has typed into: at that point the decisions and the document
+    /// disagree, and the document is the one that is right - it is what they are looking at and what
+    /// they mean to save. The destination still decides the path and the file format, so a hand-edited
+    /// merge is written with the same encoding and line endings as one that was only clicked.
+    /// </summary>
+    Task<string> SaveThreeWayTextAsync(
+        ThreeWayComparison comparison,
+        MergeSide destination,
+        IReadOnlyList<string> lines,
+        string? targetPath = null,
+        CancellationToken cancellationToken = default);
 }
