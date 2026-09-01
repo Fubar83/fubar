@@ -3,8 +3,10 @@ using System.IO;
 using System.Threading.Tasks;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Reporting;
+using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
 using Fubar.Diff.Core.Patch;
+using Fubar.Diff.Core.Settings;
 
 namespace Fubar.Diff.UI.Cli;
 
@@ -31,7 +33,8 @@ public static class CliRunner
         CliRequest request,
         IFileComparisonService comparisons,
         TextWriter output,
-        TextWriter error)
+        TextWriter error,
+        IProjectConfigStore? projectConfig = null)
     {
         if (request.ShowVersion)
         {
@@ -56,10 +59,16 @@ public static class CliRunner
             return request.ShowHelp ? Same : Failed;
         }
 
+        // The repository's own rules, if it has any. This matters more here than in the window: a
+        // check that runs in CI is exactly where "our snapshots have a requestId that changes every
+        // run" should be a fact about the repository rather than a flag every pipeline has to
+        // remember to pass.
+        var options = WithProjectRules(request.Options, left, right, projectConfig, error);
+
         try
         {
             var comparison = await comparisons
-                .CompareFilesAsync(left, right, request.Options)
+                .CompareFilesAsync(left, right, options)
                 .ConfigureAwait(false);
 
             var report = ComparisonReport.Build(comparison, request.ContextLines);
@@ -106,6 +115,41 @@ public static class CliRunner
 
             return Failed;
         }
+    }
+
+    /// <summary>
+    /// Lays any <c>.fubardiff.json</c> rules over the options the command line asked for.
+    ///
+    /// Found from the LEFT file, falling back to the right - the two are usually in the same tree, and
+    /// when they are not (a build output compared against a checked-in expectation) the one under
+    /// version control is the one carrying the rules, which is almost always the left.
+    ///
+    /// A rule set that could not be read is reported to standard error and then ignored: a config with
+    /// a trailing comma in it must not turn a comparison into a failure, but nor should it silently
+    /// stop working.
+    /// </summary>
+    private static ComparisonOptions WithProjectRules(
+        ComparisonOptions options,
+        string left,
+        string right,
+        IProjectConfigStore? store,
+        TextWriter error)
+    {
+        if (store is null)
+        {
+            return options;
+        }
+
+        var config = store.Find(left, out var problem) is { IsEmpty: false } found
+            ? found
+            : store.Find(right, out problem);
+
+        if (problem is not null)
+        {
+            error.WriteLine(problem);
+        }
+
+        return config.For(right).ApplyTo(config.For(left).ApplyTo(options));
     }
 
     /// <summary>

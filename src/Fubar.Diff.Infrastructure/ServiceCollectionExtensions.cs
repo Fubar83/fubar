@@ -33,6 +33,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IYamlParser, YamlAstParser>();
         services.AddSingleton<IFolderScanner, FileSystemFolderScanner>();
         services.AddSingleton<ISettingsStore, JsonSettingsStore>();
+        services.AddSingleton<IProjectConfigStore, FileSystemProjectConfigStore>();
 
         // NOT a singleton, unlike everything above: a watcher owns OS handles and is bound to one
         // comparison's files, so each tab and each merge window needs its own to dispose when it closes.

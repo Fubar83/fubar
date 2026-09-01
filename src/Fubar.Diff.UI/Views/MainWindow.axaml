@@ -425,6 +425,17 @@
                                ToolTip.Tip="These files differ in encoding, byte-order mark or line endings - a difference the panes cannot show, because the reader consumes it before the text is compared."
                                IsVisible="{Binding HasFormatDifference}" />
 
+                    <!-- The repository has rules of its own. Worth saying for the same reason as the
+                         alignment count below: the diff is not only what the aligner and this
+                         session's toggles decided, and someone reading it should know that. -->
+                    <TextBlock Text=".fubardiff.json"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               FontFamily="Cascadia Mono,Consolas,monospace"
+                               Foreground="{DynamicResource TextSecondary}"
+                               ToolTip.Tip="This comparison is using rules checked in beside the files - ignored fields, array keys, how to compare them. See .fubardiff.json in the repository."
+                               IsVisible="{Binding ProjectRulesApply}" />
+
                     <!-- Hand-made pairings are in force. Worth saying because they change what the
                          diff SAYS and are invisible otherwise: someone returning to a tab needs to
                          know the alignment is theirs rather than the tool's. -->

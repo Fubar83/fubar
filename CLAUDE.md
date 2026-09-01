@@ -648,6 +648,14 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   and turning one into a silent batch job would break every git integration with no error to go on.
   Exit codes are `diff`'s (0 same, 1 different, 2 could not tell) and a format-only difference counts
   as different. On Windows a GUI executable has no console at all until `ParentConsole.Attach` runs.
+- **`.fubardiff.json` is for facts about FILES, not preferences about reading** (Diff). Ignored paths,
+  array keys, ignored patterns, the comparison mode - things that are true for the whole team and
+  every checkout. The theme, auto-reload and the Pretty button's layout stay in `AppSettings`, which
+  is per machine. It is applied in two places (`ComparisonViewModel.CurrentOptions` and `CliRunner`)
+  rather than inside `FileComparisonService`, because the service is also entered by paths that carry
+  options captured earlier (a re-diff after an edit) and applying it there would make the rules come
+  and go. Composition rule: single values are overridden by the later rule, lists ADD - including to
+  whatever the session already has. A broken config is reported and ignored, never fatal.
 - **A user's alignment anchor is an instruction, not a hint** (Diff). `ComparisonOptions.Alignments`
   is honoured absolutely by `DiffPlexDiffEngine`, at any size, by splitting the documents there and
   aligning each region independently (`SegmentedLineAligner.AlignAround` - the same machinery as the

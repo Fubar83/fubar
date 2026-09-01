@@ -8,6 +8,34 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Rules that travel with the repository: `.fubardiff.json`.** The interesting rules in this app are
+  facts about particular files - "the requestId in our snapshots changes every run", "our users array
+  is keyed by id", "the generated client is minified, compare it as text". Every one of those is true
+  for the whole team and for every checkout, and until now each person had to discover it and set it
+  up again by hand, on every machine. Beyond Compare's rules are per-machine for the same reason:
+  nobody thought to make them travel.
+
+  A config is found by walking up from the file being compared, the way .editorconfig and .gitignore
+  are, and the nearest one wins outright - "the file you are looking at is the file that applies" is
+  the simpler promise than merging a chain of them. Defaults apply to everything; rules name a file
+  pattern and are laid over them in order.
+
+  Single-value settings (the mode, ignore whitespace) are overridden by a later rule, because there
+  is one answer to "how should this be compared". Lists (ignored paths, ignored patterns, array keys)
+  ADD, because two rules each naming a field to ignore both meant it - and they add to whatever the
+  session already has, since a path the user ignored for this comparison and a path the repository
+  says is never worth reporting are both true at once.
+
+  It applies in the window and in `--check`, which is where it matters most: a CI gate should not have
+  to pass the same six flags every pipeline. Comments and trailing commas are allowed, because it is a
+  file people edit by hand. A broken one is reported and then ignored - refusing to compare two files
+  because a rules file has a typo would be the wrong trade every time, but so would letting it fail
+  silently. A rule with no `files` pattern is dropped rather than applied to everything, which is what
+  a typo in that key would otherwise do.
+
+  What is deliberately NOT in it: the theme, whether to reload on change, how the Pretty button lays a
+  document out. Those are true of the reader, not of the files, and belong to the machine.
+
 - **Semantic YAML.** A `.yaml` or `.yml` file is compared as structure, not as lines: a manifest whose
   keys were reordered between two branches reports the two values that changed rather than the whole
   file. Multi-document files compare document by document, lists of objects are matched by an identity

@@ -28,6 +28,30 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   thing wrong with the diff. Pairing two lines does not claim they match — a rewritten line still
   reads as changed — and the pairings are dropped when either file is replaced, since they were a
   statement about those two files.
+- **Rules that live with the repository.** Drop a `.fubardiff.json` beside your code and everyone
+  comparing those files — in the window, in CI, on a new laptop — gets the same answer:
+
+  ```json
+  {
+    "ignoreWhitespace": true,
+    "rules": [
+      {
+        "files": "*.json",
+        "ignoredPaths": ["$.requestId", "$.timestamp"],
+        "arrayKeys": { "$.users": "id" }
+      },
+      { "files": "*.min.js", "mode": "text" }
+    ]
+  }
+  ```
+
+  It is found by walking up from the file being compared, like `.editorconfig`, and the nearest one
+  wins. What belongs in it is what is true of the *files* — which fields change on every run, what
+  identifies a list's items, how a generated file should be read. What stays in Settings is what is
+  true of the *reader*: the theme, reloading, how the Pretty button lays things out. Comments and
+  trailing commas are allowed, because it is a file people edit by hand; a broken one is reported and
+  then ignored, because a trailing comma should not cost you a comparison. The status bar says when a
+  config is in force.
 - **It runs without a window.** `FubarDiff --check old.json new.json` compares and exits — 0 if they
   match, 1 if they differ, 2 if the question could not be answered, which is what `diff` and
   `git diff --exit-code` mean and what a script author will assume. `--report out.html` writes a

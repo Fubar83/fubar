@@ -70,6 +70,14 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     private bool _loadingSettings;
 
     private readonly IConfirmationService? _confirmation;
+    private readonly IProjectConfigStore? _projectConfig;
+
+    /// <summary>
+    /// The rules the repository being compared supplies - see <see cref="ProjectConfig"/>. Resolved
+    /// per FILE, because a rule can name the files it applies to and the two sides need not be alike.
+    /// </summary>
+    private ProjectRule _leftRules = new();
+    private ProjectRule _rightRules = new();
 
     public ComparisonViewModel(
         IFileComparisonService comparisonService,
@@ -79,8 +87,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         IClipboardService clipboard,
         ITextFileWriter patchWriter,
         ThemeManagerViewModel themeManager,
-        IConfirmationService? confirmation = null)
+        IConfirmationService? confirmation = null,
+        IProjectConfigStore? projectConfig = null)
     {
+        _projectConfig = projectConfig;
         _comparisonService = comparisonService;
         _mergeService = mergeService;
         _filePicker = filePicker;
@@ -811,6 +821,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     private void OnPathChanged()
     {
         RaiseSideState();
+        ResolveProjectRules();
 
         // A hand-made pairing is a statement about two particular files - "line 40 here is line 62
         // there" - so it cannot survive one of them being replaced. Dropped silently rather than
@@ -1288,6 +1299,44 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Rules the repository supplies for these two files, and whether any were found.
+    ///
+    /// Resolved when the FILES change rather than on every comparison: the config is read from disk,
+    /// and re-reading it because someone ticked a checkbox would be work for nothing. Toggling an
+    /// option the config also sets is allowed and wins for the session - the file is the team's
+    /// starting point, not a lock.
+    /// </summary>
+    private void ResolveProjectRules()
+    {
+        if (_projectConfig is null)
+        {
+            return;
+        }
+
+        var config = _projectConfig.Find(LeftPath, out var problem)
+                     is { IsEmpty: false } found
+            ? found
+            : _projectConfig.Find(RightPath, out problem);
+
+        _leftRules = config.For(LeftPath);
+        _rightRules = config.For(RightPath);
+
+        ProjectRulesApply = !_leftRules.IsEmpty || !_rightRules.IsEmpty;
+        OnPropertyChanged(nameof(ProjectRulesApply));
+
+        // A config with a typo in it is reported and then ignored. Refusing to compare two files
+        // because a rules file has a trailing comma would be the wrong trade every time - but so
+        // would leaving the user to wonder why their rules stopped working.
+        if (problem is not null)
+        {
+            StatusMessage = problem;
+        }
+    }
+
+    /// <summary>True when a .fubardiff.json is in force, so the status bar can say so.</summary>
+    public bool ProjectRulesApply { get; private set; }
+
     /// <summary>Runs the comparison. A no-op until both sides have been chosen.</summary>
     [RelayCommand]
     public async Task CompareAsync()
@@ -1486,7 +1535,20 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
     // ---- Internals ----------------------------------------------------------------------------
 
-    private ComparisonOptions CurrentOptions() => new()
+    /// <summary>
+    /// The options this comparison runs with: the session's, with the repository's rules laid over
+    /// them.
+    ///
+    /// The two sides' rules are applied one after the other, so a rule naming <c>*.json</c> and one
+    /// naming <c>*.yaml</c> both take effect on a pair that has one of each. Order does not matter
+    /// for the list settings (they add up) and barely can for the rest: two rules disagreeing about
+    /// the mode of a two-file comparison is a config saying something contradictory about the same
+    /// comparison, and the second file's answer is as good as the first's.
+    /// </summary>
+    private ComparisonOptions CurrentOptions() =>
+        _rightRules.ApplyTo(_leftRules.ApplyTo(SessionOptions()));
+
+    private ComparisonOptions SessionOptions() => new()
     {
         IgnoreWhitespace = IgnoreWhitespace,
         IgnoreCase = IgnoreCase,

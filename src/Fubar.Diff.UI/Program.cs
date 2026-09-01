@@ -1,6 +1,7 @@
 using System;
 using Avalonia;
 using Fubar.Diff.Application.Comparison;
+using Fubar.Diff.Core.Settings;
 using Fubar.Diff.UI.Cli;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -40,7 +41,8 @@ internal sealed class Program
                 CommandLine.Parse(args),
                 host.Services.GetRequiredService<IFileComparisonService>(),
                 Console.Out,
-                Console.Error)
+                Console.Error,
+                host.Services.GetRequiredService<IProjectConfigStore>())
             .GetAwaiter()
             .GetResult();
     }
