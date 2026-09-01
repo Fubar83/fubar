@@ -19,6 +19,15 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   numbers still match what is on disk across insertions.
 - **Aligned panes.** Insertions and deletions get a placeholder row opposite them, and the two
   editors scroll in lockstep, so the columns cannot drift apart.
+- **Align two lines by hand** when the aligner pairs the wrong ones. Put the caret on a line in each
+  pane and press **Ctrl+Shift+A** (or View → *Align the two carets*): those two lines are paired, the
+  regions either side of them are compared independently, and the status bar says how many pairings
+  are in force — click it to clear them. This is the one thing no option can express. Ignore
+  whitespace, ignore case, ignore comments all change what *counts* as a difference; none of them
+  changes which lines *correspond*, and on a rewritten block or a reordered config that is the only
+  thing wrong with the diff. Pairing two lines does not claim they match — a rewritten line still
+  reads as changed — and the pairings are dropped when either file is replaced, since they were a
+  statement about those two files.
 - **It runs without a window.** `FubarDiff --check old.json new.json` compares and exits — 0 if they
   match, 1 if they differ, 2 if the question could not be answered, which is what `diff` and
   `git diff --exit-code` mean and what a script author will assume. `--report out.html` writes a

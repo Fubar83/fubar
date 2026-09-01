@@ -618,6 +618,24 @@ public partial class DiffEditorPane : UserControl
     }
 
     /// <summary>
+    /// The FILE line the caret is on, or null when it is parked on a filler.
+    ///
+    /// The file's own numbering, not the editor's: the document has blank rows interleaved, so row 40
+    /// on screen is rarely line 40 of anything. Null for a filler is the honest answer - there is no
+    /// line there to point at - and the one place it matters is aligning by hand, where "line up with
+    /// the blank" is not an instruction that means anything.
+    /// </summary>
+    public int? CaretSourceLine()
+    {
+        var index = Editor.TextArea.Caret.Line - 1;
+        var lines = Document?.Lines;
+
+        return lines is not null && index >= 0 && index < lines.Count
+            ? lines[index].SourceNumber
+            : null;
+    }
+
+    /// <summary>
     /// Moves this pane's filler rows to where the new alignment wants them, leaving the user's own
     /// text - and their place in it - alone. Returns false when that cannot be done, so the caller
     /// falls back to replacing the document.

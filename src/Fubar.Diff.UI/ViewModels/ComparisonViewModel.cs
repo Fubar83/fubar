@@ -164,6 +164,80 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         DisplayOptionChanged();
     }
 
+    // ---- Manual alignment ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Pairings the user made by hand - see <see cref="AlignmentAnchor"/>.
+    ///
+    /// Per comparison and never persisted: "line 40 here is line 62 there" is a statement about two
+    /// particular files, and carrying it to the next pair would be carrying nonsense.
+    /// </summary>
+    public IReadOnlyList<AlignmentAnchor> Alignments { get; private set; } = [];
+
+    /// <summary>How many pairings are in force, for the status bar.</summary>
+    public int AlignmentCount => Alignments.Count;
+
+    public bool HasAlignments => Alignments.Count > 0;
+
+    /// <summary>
+    /// Pairs the line the left caret is on with the line the right caret is on, and re-compares.
+    ///
+    /// The one thing no option can express. Every "ignore whitespace, ignore case, ignore comments"
+    /// switch changes what COUNTS as a difference; none of them changes which lines correspond, and
+    /// when an aligner pairs the wrong two - a rewritten block, a reordered config, a file of
+    /// boilerplate that matches everywhere - there is nothing else the user can do about it.
+    ///
+    /// Both carets, rather than a selection: a pairing is two positions, and the two panes already
+    /// have one caret each. Refused when either caret is on a filler row, because there is no line
+    /// there to pair with.
+    /// </summary>
+    [RelayCommand]
+    private async Task AlignCaretsAsync()
+    {
+        if (Pane.CaretLineReader is not { } caret)
+        {
+            return;
+        }
+
+        if (caret(DiffSide.Left) is not { } left || caret(DiffSide.Right) is not { } right)
+        {
+            StatusMessage = "Put the caret on a real line in each pane to align them.";
+
+            return;
+        }
+
+        Alignments = AlignmentAnchors.Add(Alignments, new AlignmentAnchor(left, right));
+        RaiseAlignmentState();
+
+        StatusMessage = $"Aligned left line {left} with right line {right}.";
+
+        await RecompareAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Drops every hand-made pairing and re-compares, back to what the aligner thinks.</summary>
+    [RelayCommand]
+    private async Task ClearAlignmentsAsync()
+    {
+        if (Alignments.Count == 0)
+        {
+            return;
+        }
+
+        Alignments = [];
+        RaiseAlignmentState();
+
+        StatusMessage = "Manual alignment cleared.";
+
+        await RecompareAsync().ConfigureAwait(true);
+    }
+
+    private void RaiseAlignmentState()
+    {
+        OnPropertyChanged(nameof(Alignments));
+        OnPropertyChanged(nameof(AlignmentCount));
+        OnPropertyChanged(nameof(HasAlignments));
+    }
+
     // ---- Array matching --------------------------------------------------------------------------
 
     /// <summary>
@@ -730,9 +804,24 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         }
     }
 
-    partial void OnLeftPathChanged(string value) => RaiseSideState();
+    partial void OnLeftPathChanged(string value) => OnPathChanged();
 
-    partial void OnRightPathChanged(string value) => RaiseSideState();
+    partial void OnRightPathChanged(string value) => OnPathChanged();
+
+    private void OnPathChanged()
+    {
+        RaiseSideState();
+
+        // A hand-made pairing is a statement about two particular files - "line 40 here is line 62
+        // there" - so it cannot survive one of them being replaced. Dropped silently rather than
+        // re-checked: a comparison always follows a path change, and an anchor that happened to fall
+        // inside the new file would be honoured while meaning nothing.
+        if (Alignments.Count > 0)
+        {
+            Alignments = [];
+            RaiseAlignmentState();
+        }
+    }
 
     private void RaiseSideState()
     {
@@ -1402,6 +1491,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         NormalizeUnicode = NormalizeUnicode,
         Mode = Mode,
         IgnoredLinePatterns = [.. IgnoredLinePatterns],
+        Alignments = Alignments,
         Code = new CodeComparisonOptions
         {
             IgnoreComments = IgnoreComments,

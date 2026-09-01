@@ -37,6 +37,9 @@
         <KeyBinding Gesture="F5" Command="{Binding SelectedTab.RefreshDiffCommand}" />
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SelectedTab.SaveCommand}" />
         <KeyBinding Gesture="Ctrl+O" Command="{Binding SelectedTab.OpenFilesDialogCommand}" />
+        <!-- Align the two carets. Ctrl+Shift+A because it is an alignment, and because the pane it
+             acts on is wherever the user last put a caret rather than whichever has focus now. -->
+        <KeyBinding Gesture="Ctrl+Shift+A" Command="{Binding SelectedTab.AlignCaretsCommand}" />
         <KeyBinding Gesture="Alt+Left" Command="{Binding SelectedTab.TakeLeftCommand}" />
         <KeyBinding Gesture="Alt+Right" Command="{Binding SelectedTab.TakeRightCommand}" />
         <KeyBinding Gesture="Ctrl+T" Command="{Binding NewTabCommand}" />
@@ -326,6 +329,18 @@
 
                             <Separator />
 
+                            <!-- The one thing no option can express: which lines correspond. Every
+                                 other switch changes what COUNTS as a difference; when the aligner
+                                 pairs the wrong two lines, nothing but saying so directly will do. -->
+                            <MenuItem Header="Align the two carets"
+                                      InputGesture="Ctrl+Shift+A"
+                                      IsVisible="{Binding Pane.IsSideBySideViewVisible}"
+                                      Command="{Binding AlignCaretsCommand}"
+                                      ToolTip.Tip="Pair the line the left caret is on with the line the right caret is on, and compare again around it" />
+                            <MenuItem Header="Clear manual alignment"
+                                      IsVisible="{Binding HasAlignments}"
+                                      Command="{Binding ClearAlignmentsCommand}" />
+
                             <MenuItem Header="Diff pane"
                                       ToggleType="CheckBox"
                                       IsChecked="{Binding Pane.IsDetailVisible, Mode=TwoWay}"
@@ -403,6 +418,16 @@
                                Foreground="{DynamicResource PostmanAmberBrush}"
                                ToolTip.Tip="These files differ in encoding, byte-order mark or line endings - a difference the panes cannot show, because the reader consumes it before the text is compared."
                                IsVisible="{Binding HasFormatDifference}" />
+
+                    <!-- Hand-made pairings are in force. Worth saying because they change what the
+                         diff SAYS and are invisible otherwise: someone returning to a tab needs to
+                         know the alignment is theirs rather than the tool's. -->
+                    <Button Classes="toolbar-btn"
+                            Padding="8,2" FontSize="11" MinHeight="22"
+                            IsVisible="{Binding HasAlignments}"
+                            Content="{Binding AlignmentCount, StringFormat='{}{0} manual alignment(s)'}"
+                            ToolTip.Tip="Lines you paired by hand. Click to clear them and go back to what the aligner finds."
+                            Command="{Binding ClearAlignmentsCommand}" />
 
                     <!-- A pane has been typed into and the comparison has not caught up yet. It
                          usually catches up on its own within a moment (the settle timer); this is

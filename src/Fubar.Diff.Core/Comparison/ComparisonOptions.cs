@@ -71,6 +71,15 @@ public sealed record ComparisonOptions
     /// <summary>Text or semantic comparison. See <see cref="ComparisonMode"/>.</summary>
     public ComparisonMode Mode { get; init; } = ComparisonMode.Auto;
 
+    /// <summary>
+    /// Pairings the user made by hand, which the aligner must honour - see
+    /// <see cref="AlignmentAnchor"/>.
+    ///
+    /// Belongs to the comparison rather than to the app's settings: an instruction about two
+    /// particular files means nothing for the next two.
+    /// </summary>
+    public IReadOnlyList<AlignmentAnchor> Alignments { get; init; } = [];
+
     /// <summary>Settings for the semantic JSON pass, used when it runs.</summary>
     public JsonComparisonOptions Json { get; init; } = JsonComparisonOptions.Default;
 

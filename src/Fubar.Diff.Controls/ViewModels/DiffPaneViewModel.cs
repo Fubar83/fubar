@@ -172,6 +172,16 @@ public partial class DiffPaneViewModel : ObservableObject
     /// </summary>
     public Func<DiffSide, IReadOnlyList<string>>? FileLinesReader { get; set; }
 
+    /// <summary>
+    /// Where each side's caret is, as a FILE line number, or null when it is on a filler. Handed over
+    /// by the view for the same reason as <see cref="FileLinesReader"/>.
+    ///
+    /// What a host does with it: aligning two lines by hand needs to know which two lines the user is
+    /// pointing at, and the only coordinate that means the same thing to a comparison as it does to a
+    /// pane is the file's own numbering.
+    /// </summary>
+    public Func<DiffSide, int?>? CaretLineReader { get; set; }
+
     /// <summary>Called by the view when the user edits a pane.</summary>
     public void ReportEdit(DiffSide side) => SideEdited?.Invoke(this, side);
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Models;
 
 namespace Fubar.Diff.Infrastructure.Comparison;
@@ -37,6 +38,119 @@ namespace Fubar.Diff.Infrastructure.Comparison;
 /// </summary>
 internal static class SegmentedLineAligner
 {
+    /// <summary>
+    /// Aligns around pairings the user made by hand, honouring every one of them.
+    ///
+    /// The same shape as the anchor splitting below and a different promise: those anchors are found,
+    /// and are a way of going faster; these were given, and are the answer. The regions between them
+    /// are aligned by <paramref name="alignRegion"/> - which may split them again on its own account -
+    /// and the anchored lines themselves are emitted as a pairing, whatever the two lines say.
+    ///
+    /// Marked <see cref="ChangeKind.Modified"/> unless the two lines are actually equal: the user
+    /// said these correspond, not that they match, and calling a rewritten line "unchanged" because
+    /// someone pointed at it would hide the very difference they were lining up to read.
+    /// </summary>
+    public static IReadOnlyList<DiffLine> AlignAround(
+        IReadOnlyList<string> left,
+        IReadOnlyList<string> right,
+        IReadOnlyList<AlignmentAnchor> anchors,
+        Func<IReadOnlyList<string>, IReadOnlyList<string>, IReadOnlyList<DiffLine>> alignRegion)
+    {
+        var leftLines = AsArray(left);
+        var rightLines = AsArray(right);
+
+        var rows = new List<DiffLine>(Math.Max(leftLines.Length, rightLines.Length));
+
+        var leftAt = 0;
+        var rightAt = 0;
+
+        foreach (var anchor in anchors)
+        {
+            // Anchors are 1-based line numbers; the arrays are not.
+            var leftIndex = anchor.LeftLine - 1;
+            var rightIndex = anchor.RightLine - 1;
+
+            AppendRegion(
+                leftLines.AsSpan(leftAt, leftIndex - leftAt).ToArray(),
+                rightLines.AsSpan(rightAt, rightIndex - rightAt).ToArray(),
+                leftAt,
+                rightAt,
+                alignRegion,
+                rows);
+
+            var same = string.Equals(leftLines[leftIndex], rightLines[rightIndex], StringComparison.Ordinal);
+
+            rows.Add(new DiffLine(
+                anchor.LeftLine,
+                null,
+                anchor.RightLine,
+                null,
+                same ? ChangeKind.Unchanged : ChangeKind.Modified));
+
+            leftAt = leftIndex + 1;
+            rightAt = rightIndex + 1;
+        }
+
+        AppendRegion(
+            leftLines.AsSpan(leftAt).ToArray(),
+            rightLines.AsSpan(rightAt).ToArray(),
+            leftAt,
+            rightAt,
+            alignRegion,
+            rows);
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Aligns one region between anchors and renumbers it into the whole document's coordinates.
+    ///
+    /// A region with content on only one side needs no aligner: every line of it is an insertion or a
+    /// deletion, which is also what the user asked for by anchoring across it.
+    /// </summary>
+    private static void AppendRegion(
+        string[] left,
+        string[] right,
+        int leftOffset,
+        int rightOffset,
+        Func<IReadOnlyList<string>, IReadOnlyList<string>, IReadOnlyList<DiffLine>> alignRegion,
+        List<DiffLine> rows)
+    {
+        if (left.Length == 0 && right.Length == 0)
+        {
+            return;
+        }
+
+        if (right.Length == 0)
+        {
+            for (var i = 0; i < left.Length; i++)
+            {
+                rows.Add(new DiffLine(leftOffset + i + 1, null, null, null, ChangeKind.Deleted));
+            }
+
+            return;
+        }
+
+        if (left.Length == 0)
+        {
+            for (var i = 0; i < right.Length; i++)
+            {
+                rows.Add(new DiffLine(null, null, rightOffset + i + 1, null, ChangeKind.Inserted));
+            }
+
+            return;
+        }
+
+        foreach (var row in alignRegion(left, right))
+        {
+            rows.Add(row with
+            {
+                LeftNumber = row.LeftNumber is { } l ? l + leftOffset : null,
+                RightNumber = row.RightNumber is { } r ? r + rightOffset : null,
+            });
+        }
+    }
+
     /// <summary>
     /// Aligns using <paramref name="alignSegment"/> for each sub-problem.
     ///

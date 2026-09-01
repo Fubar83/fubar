@@ -8,6 +8,26 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Manual alignment.** Put the caret on a line in each pane, press **Ctrl+Shift+A**, and those two
+  lines are paired — the regions either side of the pairing are then compared independently of each
+  other.
+
+  This closes the one gap nothing else in the app could. Every option here changes what *counts* as a
+  difference; not one of them changes which lines *correspond*, and when an aligner pairs the wrong
+  two — a rewritten block, a reordered config, a generated file whose boilerplate matches everywhere —
+  the user has no move to make. Now they do.
+
+  A pairing is honoured absolutely, at any file size, but it is not a claim that the two lines match:
+  a rewritten line still reads as changed, because calling it unchanged would hide the very
+  difference someone was lining up to read. A second pairing that would need the lines between them to
+  run backwards replaces the first rather than being refused — the newest instruction is the one the
+  user is looking at. They are dropped when either file is replaced, and never persisted: "line 40
+  here is line 62 there" means nothing about a different pair of files.
+
+  It reuses the anchor splitting that made large files fast, which is the same idea arrived at from
+  the other end: there, anchors are *found* and are a way of going faster; here they are *given* and
+  are the answer.
+
 - **A command line, with exit codes and reports.** The same executable now answers without opening
   anything: `FubarDiff --check expected.json actual.json` compares and exits 0 if they match, 1 if
   they differ, 2 if the question could not be answered. Those are `diff`'s codes, because a script

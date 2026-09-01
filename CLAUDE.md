@@ -635,6 +635,15 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   and turning one into a silent batch job would break every git integration with no error to go on.
   Exit codes are `diff`'s (0 same, 1 different, 2 could not tell) and a format-only difference counts
   as different. On Windows a GUI executable has no console at all until `ParentConsole.Attach` runs.
+- **A user's alignment anchor is an instruction, not a hint** (Diff). `ComparisonOptions.Alignments`
+  is honoured absolutely by `DiffPlexDiffEngine`, at any size, by splitting the documents there and
+  aligning each region independently (`SegmentedLineAligner.AlignAround` - the same machinery as the
+  large-file path, which finds its anchors instead of being given them). Two rules that look like
+  details and are not: the anchored row is `Modified` unless the two lines are genuinely equal,
+  because "these correspond" is not "these match" and marking a rewritten line unchanged would hide
+  the difference the user was lining up to read; and anchors are dropped when a PATH changes, because
+  they describe two particular files. `AlignmentAnchors.Add` resolves conflicts by dropping what the
+  new anchor crosses - refusing it would leave the user hunting for a forgotten decision.
 - **The cost of a big comparison is the ALIGNMENT, not the rendering** (Diff). Measured before
   guessing, and the guess was wrong: on a 1,000,000-line pair the pipeline took 15.8 s, of which 15.5
   was one call into the diff engine - reading, normalising, inline spans, building both aligned

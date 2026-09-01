@@ -79,6 +79,9 @@ public partial class DiffView : UserControl
             _viewModel.RowReplacer = (side, first, last, lines) =>
                 (side == DiffSide.Left ? LeftPane : RightPane).ReplaceRows(first, last, lines);
 
+            _viewModel.CaretLineReader = side =>
+                (side == DiffSide.Left ? LeftPane : RightPane).CaretSourceLine();
+
             ApplyCurrentHunk();
             ApplyDetailVisibility();
         }

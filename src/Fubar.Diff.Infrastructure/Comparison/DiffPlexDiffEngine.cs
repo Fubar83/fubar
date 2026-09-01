@@ -40,7 +40,26 @@ public sealed class DiffPlexDiffEngine : IDiffEngine
     public IReadOnlyList<DiffLine> Align(
         IReadOnlyList<string> left,
         IReadOnlyList<string> right,
-        ComparisonOptions options) =>
+        ComparisonOptions options)
+    {
+        // A pairing the user made by hand is an anchor in exactly the sense the large-document path
+        // already means: a point both sides agree on, with independent problems either side of it.
+        // The difference is that this one is not a guess and is honoured at any size.
+        var forced = AlignmentAnchors.Usable(options.Alignments, left.Count, right.Count);
+
+        if (forced.Count > 0)
+        {
+            return SegmentedLineAligner.AlignAround(left, right, forced, AlignRegion);
+        }
+
+        return AlignRegion(left, right);
+    }
+
+    /// <summary>
+    /// One region between - or outside - the user's anchors: either the whole thing, or split further
+    /// when it is big enough to be worth it.
+    /// </summary>
+    private IReadOnlyList<DiffLine> AlignRegion(IReadOnlyList<string> left, IReadOnlyList<string> right) =>
         left.Count >= SegmentedFrom || right.Count >= SegmentedFrom
             ? SegmentedLineAligner.Align(left, right, AlignSegment)
             : AlignWhole(left, right);
