@@ -6,7 +6,27 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Added
+### Fixed
+
+- **`{{variables}}` now resolve when testing OAuth from an auth profile.** Test and Verify in the auth
+  profile editor passed `activeEnvironment: null`, so `{{...}}` resolved against workspace variables
+  only - never the environment. That is precisely backwards for OAuth, where the token URL, client id
+  and client secret are the things that DIFFER between dev, staging and production, and are therefore
+  exactly what people put in an environment. Testing the same profile from a request's Auth tab worked,
+  because that path passed the real environment; the two disagreed with no explanation, which is the
+  worst shape a bug can have.
+
+  A profile genuinely has no environment of its own - that was the original reasoning - but it is only
+  ever *used* from a request, and a request runs under an environment. Testing without one tested
+  something that never happens. The environment is now read at test time rather than captured, so
+  switching environment with the editor open does what it looks like it does.
+
+- **An unresolved variable is now named, instead of being sent.** Substitution leaves what it cannot
+  resolve exactly as it found it, so a token URL of `{{authHost}}/oauth/token` travelled onward as that
+  literal string and came back as an invalid-URI error - or worse, a 404 from a real server. The cause
+  and the symptom were in different places and the symptom named the wrong thing. The token request now
+  stops before it is sent and says which variables are undefined, all of them at once rather than one
+  trip round the loop each.
 
 - **You can create a workspace.** The command to do it existed and was bound to nothing: the only
   route in was *Open Workspace*, which asks you to pick an existing `fubar.json`. On a first run there

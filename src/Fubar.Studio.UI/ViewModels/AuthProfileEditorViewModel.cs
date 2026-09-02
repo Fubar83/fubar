@@ -23,6 +23,7 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
     private readonly IAuthProvider _authProvider;
     private readonly StatusLogViewModel _statusLog;
     private readonly string _profileId;
+    private readonly EnvironmentManagerViewModel _environmentManager;
 
     public static IReadOnlyList<AuthType> TypeOptions { get; } = [AuthType.Bearer, AuthType.ApiKey, AuthType.Basic, AuthType.OAuth2];
 
@@ -36,21 +37,38 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
         IVariableResolver variableResolver,
         IFilePickerService filePickerService,
         IJsonSchemaValidator schemaValidator,
-        StatusLogViewModel statusLog)
+        StatusLogViewModel statusLog,
+        EnvironmentManagerViewModel environmentManager)
     {
         _workspace = workspace;
         _workspaceService = workspaceService;
         _authProvider = authProvider;
         _statusLog = statusLog;
         _profileId = profile.Id;
+        _environmentManager = environmentManager;
 
         OAuth2 = new TokenRequestEditorViewModel(filePickerService, schemaValidator)
         {
-            // A profile has no environment context of its own; Test/Verify resolve against workspace-level
-            // variables only (activeEnvironment: null), matching the previous behavior.
-            TestAuthHandler = async config => (await _authProvider.PrepareAsync(config, _workspace, activeEnvironment: null)).Outcome,
-            PreviewHandler = config => _authProvider.PreviewTokenRequest(config, _workspace, activeEnvironment: null),
-            VariableContext = new VariableTooltipContext(variableResolver, workspace, ActiveEnvironment: null, SecretsRevealed: false),
+            // Test and Verify resolve against the ACTIVE ENVIRONMENT, exactly as a real request will.
+            //
+            // They used to pass null, on the reasoning that a profile has no environment of its own.
+            // True, and beside the point: a profile is only ever used from a request, and a request
+            // runs under an environment - so testing without one tested something that never happens.
+            // It bit hardest on OAuth, where the token URL, client id and client secret are the very
+            // things that differ between dev, staging and production, and are therefore exactly what
+            // people put in an environment. The unresolved {{token}} then travelled into the token
+            // request as literal text and came back as an invalid-URI error that said nothing about
+            // variables.
+            //
+            // Read INSIDE the lambda, never captured: the user can switch environment while an editor
+            // is open, and a Test that quietly used whichever one was selected when the editor opened
+            // is the same class of confusion in a new place.
+            TestAuthHandler = async config =>
+                (await _authProvider.PrepareAsync(config, _workspace, _environmentManager.ActiveEnvironment)).Outcome,
+            PreviewHandler = config =>
+                _authProvider.PreviewTokenRequest(config, _workspace, _environmentManager.ActiveEnvironment),
+            VariableContext = new VariableTooltipContext(
+                variableResolver, workspace, environmentManager.ActiveEnvironment, SecretsRevealed: false),
         };
 
         Name = profile.Name;
