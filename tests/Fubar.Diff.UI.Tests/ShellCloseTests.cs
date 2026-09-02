@@ -151,7 +151,8 @@ public class ShellCloseTests
             () => throw new NotSupportedException(),
             () => throw new NotSupportedException(),
             new Settings(),
-            theme);
+            theme,
+            new NoPicker());
 
         return (shell, prompt, merges);
     }

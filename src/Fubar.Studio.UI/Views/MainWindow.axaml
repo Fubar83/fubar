@@ -73,12 +73,25 @@
                     </fc:TabStrip.ItemTemplate>
                 </fc:TabStrip>
 
+                <!-- Both ways in. The + used to open ONLY an existing fubar.json, which meant the
+                     one action a first-time user needs - making a workspace - had no route to it
+                     anywhere in the window. -->
                 <Button Classes="icon-btn"
                         Content="+"
                         FontSize="15"
                         Margin="2,8,0,0"
-                        ToolTip.Tip="Open Workspace (fubar.json)"
-                        Command="{Binding WorkspaceExplorer.OpenWorkspaceDirectoryCommand}" />
+                        ToolTip.Tip="New or open a workspace">
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <MenuItem Header="New Workspace…"
+                                      Command="{Binding WorkspaceExplorer.NewWorkspaceCommand}"
+                                      ToolTip.Tip="Choose an empty folder; it is set up with a fubar.json, collections and environments" />
+                            <MenuItem Header="Open Workspace…"
+                                      Command="{Binding WorkspaceExplorer.OpenWorkspaceDirectoryCommand}"
+                                      ToolTip.Tip="Open a folder that already contains a fubar.json" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
             </StackPanel>
 
             <!-- Draggable filler: empty title-bar space behaves like a normal window title bar

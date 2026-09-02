@@ -31,6 +31,17 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   thing wrong with the diff. Pairing two lines does not claim they match — a rewritten line still
   reads as changed — and the pairings are dropped when either file is replaced, since they were a
   statement about those two files.
+- **One dialog to open anything.** Files or folders, either side, with drag and drop onto whichever
+  half you mean, a swap button, and the comparison rules on screen before you press Compare. Drop two
+  files at once and both sides fill; drop one and it lands where you dropped it; drop a single folder
+  and it pairs that folder's own contents by name, which is how snapshot review starts. Each side says
+  what it made of what you gave it — *File*, *Folder*, *Not found* — so a typo is visible before the
+  comparison rather than after it. **Ctrl+O**.
+
+  It replaced a bare file picker, which could only answer one of the four questions opening a
+  comparison actually involves: which two things, files or folders, which way round, and under what
+  rules. The other three used to be discovered afterwards, by comparing the wrong pair with the wrong
+  options and starting again.
 - **Rules that live with the repository.** Drop a `.fubardiff.json` beside your code and everyone
   comparing those files — in the window, in CI, on a new laptop — gets the same answer:
 

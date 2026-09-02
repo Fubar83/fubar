@@ -8,6 +8,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **You can create a workspace.** The command to do it existed and was bound to nothing: the only
+  route in was *Open Workspace*, which asks you to pick an existing `fubar.json`. On a first run there
+  is no `fubar.json` to pick, so the app could be installed and then not started - and the empty state
+  said "Open a folder containing a fubar.json to get started", which is a dead end for exactly the
+  person most in need of a way forward.
+
+  **New Workspace…** now sits beside Open in the empty state, and under the `+` in the title bar. It
+  takes an empty folder and lays out `fubar.json`, `collections/`, `environments/` and a `.gitignore`
+  for the local-only execution history, then opens it - ready to build collections and environments
+  in, or to import into with the OpenAPI, Postman and cURL importers that were already there.
+
+  `environments/` is new to that list. Saving an environment creates the folder on demand, so it was
+  never load-bearing - but a workspace whose layout is visible from the first second is what makes
+  "these are ordinary files you can commit" legible before the first save rather than after it.
+
+  What a new workspace CONSISTS OF moved out of the click handler into `IWorkspaceStore`, where it is
+  a fact about the format rather than a decision made by a button - and where it can be tested, which
+  it could not be before. Pointing it at a folder that is already a workspace opens it untouched: the
+  commonest way to get there is browsing to the wrong folder, and rewriting someone's manifest over a
+  misclick is unrecoverable in a way that opening the wrong workspace is not.
+
 - **Comparison settings now inherit from global → folder → request, each setting overridable on its
   own.** Previously the only comparison setting that could be configured or remembered anywhere was the
   ignore-path list, and only on a request; everything else (ignore whitespace, ignore case, reformat,

@@ -300,24 +300,18 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        if (!_workspaceStore.IsWorkspaceRoot(path))
+        var isNew = !_workspaceStore.IsWorkspaceRoot(path);
+
+        // What a new workspace CONSISTS OF is a fact about the format, not a decision for a click
+        // handler - see IWorkspaceStore.CreateWorkspaceAsync. It also could not be tested while it
+        // lived here.
+        var workspace = await _workspaceStore.CreateWorkspaceAsync(path);
+
+        if (isNew)
         {
-            var manifest = new AppManifest { Name = new DirectoryInfo(path).Name };
-            await _workspaceStore.SaveAppManifestAsync(path, manifest);
-            Directory.CreateDirectory(Path.Combine(path, "collections"));
-
-            // .fubar/ holds execution history (IHistoryService) - local-machine scratch state, not
-            // meant to be committed alongside the Git-native collections/environments/auth-profiles.
-            var gitignorePath = Path.Combine(path, ".gitignore");
-            if (!File.Exists(gitignorePath))
-            {
-                await File.WriteAllTextAsync(gitignorePath, ".fubar/\n");
-            }
-
-            _statusLog.Log($"Initialized new workspace \"{manifest.Name}\" at {path}.");
+            _statusLog.Log($"Initialized new workspace \"{workspace.Manifest.Name}\" at {path}.");
         }
 
-        var workspace = await _workspaceStore.LoadWorkspaceAsync(path);
         var root = new WorkspaceRootViewModel(workspace, _requestStore);
         Roots.Add(root);
         ActiveRoot = root;

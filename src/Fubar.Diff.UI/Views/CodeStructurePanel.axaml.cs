@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
 
 namespace Fubar.Diff.UI.Views;
 
@@ -12,6 +11,4 @@ namespace Fubar.Diff.UI.Views;
 public partial class CodeStructurePanel : UserControl
 {
     public CodeStructurePanel() => InitializeComponent();
-
-    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }

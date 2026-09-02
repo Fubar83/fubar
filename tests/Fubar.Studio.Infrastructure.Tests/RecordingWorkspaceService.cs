@@ -34,6 +34,8 @@ internal sealed class RecordingWorkspaceService : IWorkspaceService
 
     public Task<Workspace> LoadWorkspaceAsync(string rootPath, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
+    public Task<Workspace> CreateWorkspaceAsync(string rootPath, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
     public Task SaveAppManifestAsync(string rootPath, AppManifest manifest, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     public Task<RequestModel> LoadRequestAsync(string requestFilePath, CancellationToken cancellationToken = default) => throw new NotSupportedException();

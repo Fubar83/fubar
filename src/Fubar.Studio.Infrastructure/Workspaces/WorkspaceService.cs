@@ -53,6 +53,37 @@ public sealed class WorkspaceService : IWorkspaceService
         await JsonSerializer.SerializeAsync(stream, manifest, FubarJson.Options, cancellationToken);
     }
 
+    public async Task<Workspace> CreateWorkspaceAsync(string rootPath, CancellationToken cancellationToken = default)
+    {
+        // Already a workspace: open it as it stands. The commonest way to arrive here is browsing to
+        // the wrong folder, and rewriting someone's manifest because of a misclick is unrecoverable
+        // in a way that opening the wrong workspace is not.
+        if (!IsWorkspaceRoot(rootPath))
+        {
+            var manifest = new AppManifest { Name = new DirectoryInfo(rootPath).Name };
+
+            await SaveAppManifestAsync(rootPath, manifest, cancellationToken);
+
+            // Both folders, though saving either kind of file would create its own on demand. An
+            // empty workspace whose LAYOUT is visible is what makes "these are ordinary files you can
+            // commit" legible from the first second rather than after the first save - which is the
+            // whole pitch of keeping a workspace in Git.
+            Directory.CreateDirectory(Path.Combine(rootPath, CollectionsDirName));
+            Directory.CreateDirectory(Path.Combine(rootPath, EnvironmentsDirName));
+
+            // .fubar/ is execution history - local-machine scratch state, and the one thing here that
+            // should NOT be committed beside the collections and environments.
+            var gitignorePath = Path.Combine(rootPath, ".gitignore");
+
+            if (!File.Exists(gitignorePath))
+            {
+                await File.WriteAllTextAsync(gitignorePath, ".fubar/\n", cancellationToken);
+            }
+        }
+
+        return await LoadWorkspaceAsync(rootPath, cancellationToken);
+    }
+
     public async Task<RequestModel> LoadRequestAsync(string requestFilePath, CancellationToken cancellationToken = default)
     {
         await using var stream = File.OpenRead(requestFilePath);

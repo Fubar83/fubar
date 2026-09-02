@@ -655,6 +655,38 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     /// re-comparison. Options are per-tab on purpose - a JSON comparison and a log comparison want
     /// different settings - and the persisted values are only the starting point for a new one.
     /// </summary>
+    /// <summary>
+    /// Overrides the options this tab was seeded with, for a comparison the user set up by hand in
+    /// the open dialog.
+    ///
+    /// Only the handful the dialog offers, deliberately. Everything else - the theme, invisibles,
+    /// auto-reload, the Pretty layout - is about READING rather than about this pair of files, and
+    /// belongs to whatever <see cref="ApplyDefaults"/> already put there. This is also why nothing is
+    /// written back to settings afterwards: these were overridden for one comparison, and making them
+    /// the new default is a decision the user did not make.
+    ///
+    /// Under the same suppression flag as ApplyDefaults, so setting five properties queues one
+    /// re-comparison rather than five.
+    /// </summary>
+    public void ApplyOptions(ComparisonOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        _loadingSettings = true;
+        try
+        {
+            IgnoreWhitespace = options.IgnoreWhitespace;
+            IgnoreCase = options.IgnoreCase;
+            Mode = options.Mode;
+            IgnoreComments = options.Code.IgnoreComments;
+            IgnoreBlankLines = options.Code.IgnoreBlankLines;
+        }
+        finally
+        {
+            _loadingSettings = false;
+        }
+    }
+
     public void ApplyDefaults(AppSettings settings)
     {
         _loadingSettings = true;
