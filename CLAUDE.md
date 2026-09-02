@@ -836,3 +836,12 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
 - Commit/push only when asked; branch off `main` first if needed.
 - The design docs in `docs/` (LeftPane / RequestEditorPane / ResponsePane) are the canonical behaviour
   spec for API Studio's panes.
+
+**A hand-written `InitializeComponent` silently breaks every `x:Name` in the file** (both apps). The
+XAML compiler generates one that assigns the named fields; writing
+`private void InitializeComponent() => AvaloniaXamlLoader.Load(this);` overrides it, the fields stay
+null, and the failure is a NullReferenceException in the constructor. `OpenComparisonWindow` did this
+and its drop targets were null - and because the caller was an `async void` click handler, the
+exception took the whole PROCESS down rather than showing an error. Every other window in this
+codebase relies on the generated one; new ones must too. A headless test that merely CONSTRUCTS a
+window catches it, which is why `OpenComparisonTests` has one that does nothing else.

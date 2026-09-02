@@ -5,7 +5,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Settings;
+using Fubar.Diff.UI.Services;
 
 namespace Fubar.Diff.UI.ViewModels;
 
@@ -24,6 +26,9 @@ public partial class ShellViewModel : ViewModelBase
     private readonly Func<FolderViewModel> _newFolders;
     private readonly ISettingsStore _settingsStore;
 
+    /// <summary>Only for the open dialog this shell builds - see CreateOpenDialog.</summary>
+    private readonly IFilePickerService _filePicker;
+
     private AppSettings _settings = AppSettings.Default;
 
     public ShellViewModel(
@@ -31,12 +36,14 @@ public partial class ShellViewModel : ViewModelBase
         Func<MergeViewModel> newMerge,
         Func<FolderViewModel> newFolders,
         ISettingsStore settingsStore,
-        ThemeManagerViewModel themeManager)
+        ThemeManagerViewModel themeManager,
+        IFilePickerService filePicker)
     {
         _newTab = newTab;
         _newMerge = newMerge;
         _newFolders = newFolders;
         _settingsStore = settingsStore;
+        _filePicker = filePicker;
         ThemeManager = themeManager;
 
         _settings = settingsStore.Load();
@@ -224,6 +231,51 @@ public partial class ShellViewModel : ViewModelBase
     /// <summary>Loads dropped files into the current tab, opening one if there is none.</summary>
     public Task OpenFilesAsync(IReadOnlyList<string> paths) =>
         (SelectedTab ?? AddTab()).OpenFilesAsync(paths);
+
+    /// <summary>
+    /// Builds the open dialog, seeded with the saved settings and the recent list.
+    ///
+    /// Seeded rather than started blank, because the dialog's job is to let someone CHECK what is
+    /// about to happen and change the one thing that needs changing - which only works if it opens
+    /// showing what would happen anyway.
+    ///
+    /// What to DO with the answer is left to the caller: a file pair becomes a tab in this window and
+    /// a folder pair becomes a window of its own, and only the view knows how to open a window.
+    /// </summary>
+    public OpenComparisonViewModel CreateOpenDialog()
+    {
+        var dialog = new OpenComparisonViewModel(_filePicker);
+
+        dialog.ApplyDefaults(_settings with { Recent = Recent });
+
+        return dialog;
+    }
+
+    /// <summary>
+    /// Opens what the dialog asked for, when it asked for two FILES.
+    ///
+    /// The options it chose travel with the pair rather than being written back to settings: they were
+    /// overridden for this comparison, and silently making them the new default would be a decision
+    /// the user did not make.
+    /// </summary>
+    public Task OpenAsync(OpenComparisonRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // Reuse the tab already on screen when it is empty, rather than opening a second one beside
+        // it. A window that has just started has one blank tab, and the dialog is the FIRST thing
+        // anyone does in it - always adding would leave "New comparison" sitting next to every
+        // comparison opened from it.
+        var tab = SelectedTab is { } current
+            && string.IsNullOrWhiteSpace(current.LeftPath)
+            && string.IsNullOrWhiteSpace(current.RightPath)
+                ? current
+                : AddTab();
+
+        tab.ApplyOptions(request.Options);
+
+        return tab.InitializeAsync(request.Left, request.Right);
+    }
 
     private void OnComparisonSucceeded(object? sender, EventArgs e)
     {

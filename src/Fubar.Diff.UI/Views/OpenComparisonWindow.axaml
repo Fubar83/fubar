@@ -1,0 +1,218 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+        xmlns:comparison="using:Fubar.Diff.Core.Comparison"
+        xmlns:settings="using:Fubar.Diff.Core.Settings"
+        x:Class="Fubar.Diff.UI.Views.OpenComparisonWindow"
+        x:DataType="vm:OpenComparisonViewModel"
+        Title="Open comparison"
+        Width="760" Height="620"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgEditorCanvas}"
+        DragDrop.AllowDrop="True">
+
+    <!-- Choose two files or two folders, swap them, check the rules, go.
+
+         A bare file picker can only answer one of the four questions opening a comparison actually
+         involves - which two things, files or folders, which way round, and under what rules - and the
+         other three then get discovered afterwards, by comparing the wrong pair with the wrong options
+         and starting again. -->
+
+    <Window.Styles>
+        <!-- The drop targets. A dashed border says "you may drop here" without needing a legend, and
+             the hover state has to be unmistakable: the whole point of two separate targets is knowing
+             which side is about to take the file. -->
+        <Style Selector="Border.drop">
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtle}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="{DynamicResource BgHeader}" />
+            <Setter Property="Padding" Value="10" />
+        </Style>
+        <Style Selector="Border.drop.over">
+            <Setter Property="BorderBrush" Value="{DynamicResource MethodPostBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Background" Value="{DynamicResource BgHover}" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="16">
+
+        <!-- Actions pinned to the bottom, so the dialog reads top to bottom and ends where it acts. -->
+        <Border DockPanel.Dock="Bottom" Margin="0,14,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- The prompt or the complaint. Always present rather than appearing on failure: a
+                     Compare button that is disabled for a reason nobody states is the thing this
+                     replaces. -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding Message}"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           FontSize="11"
+                           Classes.problem="{Binding HasProblem}"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="secondary-btn" Content="Cancel" Command="{Binding CancelCommand}"
+                            IsCancel="True" />
+                    <Button Classes="primary-btn" Content="Compare" Command="{Binding CompareCommand}"
+                            IsDefault="True" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <StackPanel Spacing="12">
+
+            <!-- ===== The two sides ===== -->
+
+            <Grid ColumnDefinitions="*,Auto,*" RowDefinitions="Auto">
+                <Border Grid.Column="0" Classes="drop" x:Name="LeftDrop">
+                    <StackPanel Spacing="6">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="Left" FontWeight="SemiBold" FontSize="12"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Grid.Column="1" Text="{Binding LeftCaption}" FontSize="10"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                        </Grid>
+
+                        <TextBox x:Name="LeftBox"
+                                 Text="{Binding LeftPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Drop a file or folder here, or browse"
+                                 FontFamily="Cascadia Mono,Consolas,monospace"
+                                 FontSize="11" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button Classes="toolbar-btn" Content="File…"
+                                    Command="{Binding BrowseFileCommand}"
+                                    CommandParameter="{x:Static vm:OpenSide.Left}" />
+                            <Button Classes="toolbar-btn" Content="Folder…"
+                                    Command="{Binding BrowseFolderCommand}"
+                                    CommandParameter="{x:Static vm:OpenSide.Left}" />
+                            <Button Classes="secondary-btn" Content="Clear"
+                                    Command="{Binding ClearCommand}"
+                                    CommandParameter="{x:Static vm:OpenSide.Left}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Swap sits between them because that is what it acts on. Which file is "left"
+                     decides which way round every insertion reads, and getting it backwards inverts
+                     the answer rather than breaking it - easy to misread, easy to fix from here. -->
+                <Button Grid.Column="1"
+                        Classes="toolbar-btn"
+                        Content="⇄"
+                        FontSize="16"
+                        Margin="8,0"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="Swap the two sides"
+                        Command="{Binding SwapCommand}" />
+
+                <Border Grid.Column="2" Classes="drop" x:Name="RightDrop">
+                    <StackPanel Spacing="6">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="Right" FontWeight="SemiBold" FontSize="12"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Grid.Column="1" Text="{Binding RightCaption}" FontSize="10"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                        </Grid>
+
+                        <TextBox Text="{Binding RightPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Drop a file or folder here, or browse"
+                                 FontFamily="Cascadia Mono,Consolas,monospace"
+                                 FontSize="11" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button Classes="toolbar-btn" Content="File…"
+                                    Command="{Binding BrowseFileCommand}"
+                                    CommandParameter="{x:Static vm:OpenSide.Right}" />
+                            <Button Classes="toolbar-btn" Content="Folder…"
+                                    Command="{Binding BrowseFolderCommand}"
+                                    CommandParameter="{x:Static vm:OpenSide.Right}" />
+                            <Button Classes="secondary-btn" Content="Clear"
+                                    Command="{Binding ClearCommand}"
+                                    CommandParameter="{x:Static vm:OpenSide.Right}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Said only when it applies, rather than as a permanent mode selector: the pair of paths
+                 already decides this, and a control that could disagree with them would be a second
+                 source of truth. -->
+            <fc:Banner Severity="Info"
+                       Message="Two folders open the folder comparison window. One folder on its own pairs its own contents by name — for reviewing snapshots."
+                       IsVisible="{Binding IsFolderComparison}" />
+
+            <fc:Divider />
+
+            <!-- ===== Settings for this comparison ===== -->
+
+            <TextBlock Text="Rules for this comparison" FontWeight="SemiBold" FontSize="12"
+                       Foreground="{DynamicResource TextPrimary}" />
+            <TextBlock Text="Starts from your saved settings. Changing anything here applies to this comparison only."
+                       FontSize="11" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondary}" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Compare as" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <ComboBox MinWidth="110"
+                          ItemsSource="{x:Static vm:OpenComparisonViewModel.Modes}"
+                          SelectedItem="{Binding Mode}"
+                          ToolTip.Tip="Auto reads JSON as structure, and anything named .yaml or .yml as YAML." />
+
+                <fc:Divider Orientation="Vertical" />
+
+                <ToggleButton Classes="toolbar-btn" Content="Whitespace"
+                              IsChecked="{Binding IgnoreWhitespace}"
+                              ToolTip.Tip="Ignore spaces and tabs at the start and end of a line." />
+                <ToggleButton Classes="toolbar-btn" Content="Case"
+                              IsChecked="{Binding IgnoreCase}"
+                              ToolTip.Tip="Ignore differences in letter case." />
+                <ToggleButton Classes="toolbar-btn" Content="Comments"
+                              IsChecked="{Binding IgnoreComments}"
+                              ToolTip.Tip="Code files only: a line whose only change is inside a comment stops being a difference." />
+                <ToggleButton Classes="toolbar-btn" Content="Blank lines"
+                              IsChecked="{Binding IgnoreBlankLines}"
+                              ToolTip.Tip="Code files only: added or removed blank lines stop counting." />
+            </StackPanel>
+
+            <fc:Divider IsVisible="{Binding HasRecent}" />
+
+            <!-- ===== Recent ===== -->
+
+            <TextBlock Text="Recent" FontWeight="SemiBold" FontSize="12"
+                       IsVisible="{Binding HasRecent}"
+                       Foreground="{DynamicResource TextPrimary}" />
+
+            <ListBox ItemsSource="{Binding Recent}"
+                     MaxHeight="150"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     IsVisible="{Binding HasRecent}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="settings:RecentComparison">
+                        <!-- Fills the boxes rather than opening straight away: the commonest reason to
+                             reach for a recent pair from HERE is to compare against one of them, or to
+                             re-run it with a different setting. -->
+                        <Button Classes="link-btn"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                Command="{Binding $parent[Window].((vm:OpenComparisonViewModel)DataContext).UseRecentCommand}"
+                                CommandParameter="{Binding}">
+                            <StackPanel Spacing="1">
+                                <TextBlock Text="{Binding DisplayName}" FontSize="12" />
+                                <TextBlock Text="{Binding Left}" FontSize="10" Opacity="0.6"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </StackPanel>
+    </DockPanel>
+</Window>

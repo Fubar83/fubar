@@ -8,6 +8,28 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **An open dialog, and drop zones that take folders.** Opening a comparison was a bare file picker,
+  which can only answer one of the four questions the act actually involves: which two things, whether
+  they are files or folders, which way round they go, and under what rules. The other three were
+  discovered afterwards - by comparing the wrong pair with the wrong options and starting again.
+
+  Ctrl+O now opens a dialog with all four on screen. Two sides that each take a file OR a folder, drag
+  and drop onto whichever half you mean, a swap button between them, the comparison rules seeded from
+  your saved settings and overridable for this one comparison, and the recent list. Each side reports
+  what it made of the path - *File*, *Folder*, *Not found* - so a typo shows before Compare rather
+  than after.
+
+  Dropping two files at once fills both sides whichever half they landed on, because dragging a pair
+  out of a file manager is the fastest way in and making someone aim first would throw that away. A
+  single folder with the other side empty opens the one-folder linked comparison, which is the shape a
+  snapshot review already has. A file against a folder is refused with a reason rather than by a
+  greyed-out button with no explanation.
+
+  What a pair of paths MEANS lives in `ComparisonTargets` in Core, not in the window: the same
+  question decides whether Compare is enabled and what it opens, and two answers that could disagree
+  is how a button ends up enabled for something that then fails. Its symmetry is pinned by a test,
+  because the swap button would otherwise be able to change the answer.
+
 - **Structural C# comparison: what changed, member by member.** Every diff tool in existence compares
   two C# files as lines of text, which means none of them can tell a reformatted method from a
   rewritten one - both are a block of red beside a block of green. A file someone ran a formatter

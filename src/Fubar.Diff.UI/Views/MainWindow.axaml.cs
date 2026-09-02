@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Fubar.Diff.Core.Files;
 using Fubar.Diff.UI.ViewModels;
 
 namespace Fubar.Diff.UI.Views;
@@ -99,6 +100,18 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        // Ctrl+O opens the comparison dialog. Handled here rather than as a KeyBinding for the same
+        // reason Ctrl+F is: it opens a WINDOW, which is a view's job, not a command on a view model.
+        // It is also a window-level action now rather than a tab-level one, because the dialog can
+        // open a pair of folders and no tab can hold those.
+        if (e is { Key: Key.O, KeyModifiers: KeyModifiers.Control })
+        {
+            OnOpenClick(sender, new RoutedEventArgs());
+            e.Handled = true;
+
+            return;
+        }
+
         if (e is not { Key: Key.F, KeyModifiers: KeyModifiers.Control })
         {
             return;
@@ -162,6 +175,59 @@ public partial class MainWindow : Window
         }
 
         new MergeWindow { DataContext = shell.CreateMerge() }.Show(this);
+    }
+
+    /// <summary>
+    /// Opens the comparison dialog - the single way in, for files and folders alike.
+    ///
+    /// Modal, unlike the folder and merge windows. Those two are shown alongside this one because
+    /// they are used TOGETHER with it; this one is a question with an answer, and leaving it open
+    /// beside the comparison it just started would be a second place to type paths that no longer
+    /// mean anything.
+    /// </summary>
+    private async void OnOpenClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ShellViewModel shell)
+        {
+            return;
+        }
+
+        var model = shell.CreateOpenDialog();
+        var dialog = new OpenComparisonWindow { DataContext = model };
+
+        OpenComparisonRequest? request = null;
+
+        model.Accepted += (_, r) =>
+        {
+            request = r;
+            dialog.Close();
+        };
+
+        model.Cancelled += (_, _) => dialog.Close();
+
+        await dialog.ShowDialog(this);
+
+        if (request is null)
+        {
+            return;
+        }
+
+        // Folders open their own window, files open a tab. The dialog decided WHICH - see
+        // ComparisonTargets - and this only carries out the answer.
+        if (request.Kind is ComparisonTargetKind.Folders or ComparisonTargetKind.LinkedFolder)
+        {
+            var folders = shell.CreateFolderComparison();
+
+            folders.LeftPath = request.Left;
+            folders.RightPath = request.Right;
+            folders.LinkedMode = request.Kind == ComparisonTargetKind.LinkedFolder;
+
+            new FolderWindow { DataContext = folders }.Show(this);
+
+            return;
+        }
+
+        await shell.OpenAsync(request);
     }
 
     /// <summary>
