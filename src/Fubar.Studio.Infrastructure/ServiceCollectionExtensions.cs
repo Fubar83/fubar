@@ -47,7 +47,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISecretStoreService, KeySharpSecretStoreService>();
         services.AddSingleton<ISessionVariableStore, SessionVariableStore>();
         services.AddSingleton<IVariableResolver, VariableResolver>();
-        services.AddSingleton<IOAuthTokenService, OAuthTokenService>();
         services.AddSingleton<IAuthProvider, AuthProvider>();
         services.AddSingleton<IHistoryService, HistoryService>();
         services.AddSingleton<IResponseTestService, ResponseTestService>();
