@@ -17,6 +17,12 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
 
 ## Features
 
+- **Start from nothing.** *New Workspace…* — from the empty state, or the `+` in the title bar — takes
+  an empty folder and lays out `fubar.json`, `collections/`, `environments/` and a `.gitignore` for
+  the local-only execution history, then opens it. From there you build collections and environments,
+  or import what you already have from OpenAPI, Postman or cURL. A workspace is a folder of plain
+  files, so it belongs in the repository it tests; pointing *New Workspace* at a folder that is
+  already one opens it untouched rather than reinitialising it.
 - **Request builder** — method + URL bar with live `{{variable}}` highlighting, and tabs for
   Params, Headers, Body, Auth, and per-request History/replay. URL and Params stay in two-way sync.
 - **Environments & variables** — `{{key}}` resolves from the active environment. Values can be marked

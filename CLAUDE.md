@@ -845,3 +845,11 @@ and its drop targets were null - and because the caller was an `async void` clic
 exception took the whole PROCESS down rather than showing an error. Every other window in this
 codebase relies on the generated one; new ones must too. A headless test that merely CONSTRUCTS a
 window catches it, which is why `OpenComparisonTests` has one that does nothing else.
+
+**"Built but never wired" is a recurring failure here, and it has now happened twice** (both apps).
+`WorkspaceExplorerViewModel.NewWorkspaceAsync` existed, worked, and was bound to NOTHING - so API
+Studio could be installed and then not started, because the only route in demanded an existing
+`fubar.json`. That is the same shape as the Diff options that were fully built in Core with
+persistence fields waiting while `ComparisonViewModel` never read them. Before concluding a feature is
+missing, grep for it; before concluding one is DONE, grep for a binding to it. A command with no
+`Command="{Binding …}"` anywhere in a `.axaml` is dead code that looks alive.
