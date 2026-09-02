@@ -12,10 +12,41 @@
              x:Name="Root"
              x:DataType="vm:TokenRequestEditorViewModel">
 
+    <UserControl.Styles>
+        <!-- The same token the per-field variable tint uses, so "this variable is missing" reads the
+             same colour whether it is a box border or this summary line. -->
+        <Style Selector="TextBlock.missing">
+            <Setter Property="Foreground" Value="{DynamicResource VariableUndefinedBrush}" />
+        </Style>
+    </UserControl.Styles>
+
     <!-- OAuth 2.0 / login edited as a real request seeded from a template. The token request runs on
          Test/Get token or before a send; its capture rules pull tokens into session variables, and a
          failing token request clears them. -->
     <StackPanel Spacing="10">
+
+        <!-- What this whole editor is FOR, stated before any of the fields.
+
+             Without it the screen is a request builder with no stated relationship to the requests it
+             serves, and the captures grid below reads as a set of unrelated scratch values. This is
+             the sentence the provider already produced inside the Verify preview - behind a button
+             almost nobody presses before they are already lost. -->
+        <Border Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="10,7">
+            <StackPanel Spacing="3">
+                <TextBlock Text="Send a request for a token, capture it into a session variable, and every request using this profile sends it."
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Text="{Binding AppliesAs}"
+                           FontSize="11"
+                           FontFamily="Cascadia Code,Consolas,monospace"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextPrimary}" />
+            </StackPanel>
+        </Border>
 
         <!-- Template picker -->
         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -93,6 +124,16 @@
                          FontFamily="Cascadia Code,Consolas,monospace" />
             </StackPanel>
         </Expander>
+
+        <!-- What this request needs, and whether it is there - said BEFORE Test is pressed rather
+             than as a failure afterwards. The per-field tooltip already tints the box under the
+             pointer; the variable nobody defined is usually in a field they are not looking at. -->
+        <TextBlock Text="{Binding VariableSummary}"
+                   IsVisible="{Binding VariableSummary, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Classes.missing="{Binding HasMissingVariables}"
+                   Foreground="{DynamicResource TextSecondary}" />
 
         <StackPanel Orientation="Horizontal" Spacing="10">
             <Button Classes="secondary-btn" Content="Verify request" ToolTip.Tip="Preview the token request (no call)" Command="{Binding VerifyRequestCommand}" />

@@ -40,7 +40,83 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     /// <summary>Raised on any edit so an owner can mark itself dirty / recompute derived headers.</summary>
     public event Action? Changed;
 
-    private void RaiseChanged() => Changed?.Invoke();
+    private void RaiseChanged()
+    {
+        RefreshGuidance();
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// What a request using this profile will actually send, stated permanently rather than only
+    /// inside the Verify preview.
+    ///
+    /// This is the single most clarifying sentence in the whole feature - it is the link between the
+    /// token request being edited and the requests it exists to serve - and it used to be behind a
+    /// button. Someone who has not pressed that button has no way to know the captured variable is
+    /// what the Bearer header reads, which makes the captures grid look like a set of unrelated
+    /// scratch values.
+    /// </summary>
+    public string AppliesAs
+    {
+        get
+        {
+            var variable = string.IsNullOrWhiteSpace(AccessTokenVariable)
+                ? AuthDefaults.AccessTokenVariable
+                : AccessTokenVariable;
+
+            return $"Requests using this profile send:  Authorization: Bearer {{{{{variable}}}}}";
+        }
+    }
+
+    /// <summary>
+    /// The variables this token request reads, each marked defined or not - see
+    /// <see cref="TokenRequestVariables"/>.
+    ///
+    /// The per-field tooltip already tints one box at a time, which answers for the box under the
+    /// pointer. The variable nobody defined is usually in a field they are not looking at, which is
+    /// what this is for.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<TokenRequestVariable> RequiredVariables { get; private set; } = [];
+
+    /// <summary>A one-line summary of the above, or null when the request reads no variables.</summary>
+    [ObservableProperty]
+    public partial string? VariableSummary { get; private set; }
+
+    /// <summary>True when something the request needs is undefined, so the line can be drawn as a warning.</summary>
+    public bool HasMissingVariables => RequiredVariables.Any(v => !v.IsResolved);
+
+    partial void OnRequiredVariablesChanged(IReadOnlyList<TokenRequestVariable> value) =>
+        OnPropertyChanged(nameof(HasMissingVariables));
+
+    private void RefreshGuidance()
+    {
+        OnPropertyChanged(nameof(AppliesAs));
+
+        // No resolver means no host has given this editor a variable context - the Gallery, a test.
+        // Reporting everything as undefined there would be worse than saying nothing.
+        if (VariableContext is not { } context)
+        {
+            RequiredVariables = [];
+            VariableSummary = null;
+
+            return;
+        }
+
+        var request = new AuthTokenRequest
+        {
+            Method = Method,
+            Url = Url,
+            Headers = Headers.ToModel(),
+            Body = Body.ToModel(),
+        };
+
+        RequiredVariables = TokenRequestVariables.Of(
+            request,
+            text => context.Resolver.Substitute(text, context.Workspace, context.ActiveEnvironment) ?? text);
+
+        VariableSummary = TokenRequestVariables.Describe(RequiredVariables);
+    }
 
     [ObservableProperty]
     public partial AuthTemplate? SelectedTemplate { get; set; }
@@ -70,6 +146,11 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     /// (which knows the workspace/active environment); null disables the {{variable}} affordances.</summary>
     [ObservableProperty]
     public partial VariableTooltipContext? VariableContext { get; set; }
+
+    // The context arrives after construction and can be replaced when the active environment changes,
+    // and it is what decides whether a variable counts as defined - so the guidance has to be
+    // recomputed when it does, not only when the request text is edited.
+    partial void OnVariableContextChanged(VariableTooltipContext? value) => RefreshGuidance();
 
     /// <summary>Set by the owner so Test can acquire a token via the <c>IAuthProvider</c>.</summary>
     public Func<AuthConfig, Task<AuthOutcome>>? TestAuthHandler { get; set; }

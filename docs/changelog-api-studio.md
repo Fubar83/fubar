@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **The OAuth editor now says what it is for, and what it needs, before you press Test.** Two
+  additions, both aimed at the same thing: the editor was a request builder with no stated
+  relationship to the requests it serves.
+
+  A line at the top states the outcome permanently — *"Requests using this profile send:
+  `Authorization: Bearer {{oauth2_access_token}}`"*. The provider already produced that sentence, but
+  only inside the **Verify request** preview, behind a button nobody presses before they are already
+  lost. Without it the captures grid reads as a set of unrelated scratch values rather than the thing
+  that feeds the header.
+
+  A line above **Test / Get token** lists the `{{variables}}` the token request reads and which are
+  undefined — *"Not defined: `{{token_url}}`, `{{client_id}}`, `{{client_secret}}`"*. The per-field
+  tooltip already tints the box under the pointer, which answers for the box you are hovering; the
+  variable nobody defined is usually in a field you are not looking at.
+
 ### Fixed
 
 - **`{{variables}}` now resolve when testing OAuth from an auth profile.** Test and Verify in the auth
