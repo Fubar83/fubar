@@ -3,6 +3,7 @@
              xmlns:vm="using:Fubar.Studio.UI.ViewModels"
              xmlns:views="using:Fubar.Studio.UI.Views"
              xmlns:controls="using:Fubar.Studio.UI.Controls"
+             xmlns:auth="using:Fubar.Studio.Core.Auth"
              xmlns:fc="using:Fubar.Controls"
              xmlns:avc="using:Avalonia.Data.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -12,10 +13,41 @@
              x:Name="Root"
              x:DataType="vm:TokenRequestEditorViewModel">
 
+    <UserControl.Styles>
+        <!-- The same token the per-field variable tint uses, so "this variable is missing" reads the
+             same colour whether it is a box border or this summary line. -->
+        <Style Selector="TextBlock.missing">
+            <Setter Property="Foreground" Value="{DynamicResource VariableUndefinedBrush}" />
+        </Style>
+    </UserControl.Styles>
+
     <!-- OAuth 2.0 / login edited as a real request seeded from a template. The token request runs on
          Test/Get token or before a send; its capture rules pull tokens into session variables, and a
          failing token request clears them. -->
     <StackPanel Spacing="10">
+
+        <!-- What this whole editor is FOR, stated before any of the fields.
+
+             Without it the screen is a request builder with no stated relationship to the requests it
+             serves, and the captures grid below reads as a set of unrelated scratch values. This is
+             the sentence the provider already produced inside the Verify preview - behind a button
+             almost nobody presses before they are already lost. -->
+        <Border Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="10,7">
+            <StackPanel Spacing="3">
+                <TextBlock Text="Send a request for a token, capture it into a session variable, and every request using this profile sends it."
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Text="{Binding AppliesAs}"
+                           FontSize="11"
+                           FontFamily="Cascadia Code,Consolas,monospace"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextPrimary}" />
+            </StackPanel>
+        </Border>
 
         <!-- Template picker -->
         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -27,6 +59,95 @@
             <Button Classes="secondary-btn" Content="Apply" Command="{Binding ApplyTemplateCommand}"
                     ToolTip.Tip="Seed the request below from this template (overwrites the current fields)" />
         </StackPanel>
+
+        <!-- Discovery: paste the issuer, get the token endpoint.
+
+             Setting OAuth up starts by copying an endpoint out of a provider's documentation, and every
+             OIDC provider publishes it - with its scopes - at a predictable URL. This turns "find the
+             docs, find the right page, copy the URL, hope it is current" into pasting one thing. -->
+        <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Grid.Column="0" Text="{Binding Issuer}"
+                         PlaceholderText="Provider issuer, e.g. https://login.example.com  (optional)"
+                         FontSize="11" />
+                <Button Grid.Column="1" Classes="secondary-btn" Content="Discover"
+                        Command="{Binding DiscoverCommand}"
+                        ToolTip.Tip="Read the provider's /.well-known/openid-configuration and fill in the token URL" />
+            </Grid>
+
+            <TextBlock Text="{Binding DiscoveryStatus}"
+                       IsVisible="{Binding DiscoveryStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                       FontSize="11" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondary}" />
+
+            <!-- The provider's own scope list, so scopes are chosen rather than remembered. -->
+            <StackPanel IsVisible="{Binding HasDiscoveredScopes}" Spacing="4">
+                <TextBlock Text="Scopes this provider supports — click to add:"
+                           FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                <ItemsControl ItemsSource="{Binding DiscoveredScopes}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Classes="secondary-btn" Content="{Binding}"
+                                    Padding="8,2" FontSize="11" MinHeight="22" Margin="0,0,4,4"
+                                    Command="{Binding $parent[UserControl].((vm:TokenRequestEditorViewModel)DataContext).AddScopeCommand}"
+                                    CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Signing a PERSON in: the browser half of the authorization-code grant.
+
+             Shown only for that template, because it is the only one where a user has to be present.
+             The two steps are separate on screen because they genuinely are two - a browser round trip,
+             then an ordinary request - and keeping the second half editable is what lets a provider
+             with one extra required field be handled by adding it. -->
+        <Border IsVisible="{Binding IsAuthorizationCode}"
+                Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1" CornerRadius="6" Padding="10">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Step 1 — sign in" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimary}" />
+
+                <TextBox Text="{Binding AuthorizeUrl}"
+                         PlaceholderText="Authorize URL (Discover fills this in)"
+                         FontSize="11"
+                         controls:VariableTooltip.Context="{Binding VariableContext}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="secondary-btn" Content="Sign in with browser"
+                            Command="{Binding SignInCommand}"
+                            ToolTip.Tip="Opens your browser at the provider, then waits for it to redirect back" />
+                    <TextBlock Text="{Binding SignInStatus}"
+                               IsVisible="{Binding SignInStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                               VerticalAlignment="Center" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+
+                <!-- The redirect must be registered with the provider EXACTLY as written. A sign-in
+                     that fails because it was not is the most opaque failure in this grant - the
+                     browser shows the provider's error page and this app never hears anything - so it
+                     is on screen to copy rather than discovered from a failure. -->
+                <StackPanel Spacing="2"
+                            IsVisible="{Binding RedirectUri, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock Text="Register this redirect URI with your provider:"
+                               FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                    <SelectableTextBlock Text="{Binding RedirectUri}"
+                                         FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
+                                         Foreground="{DynamicResource TextPrimary}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="Step 2 — exchange the code for a token" FontSize="11" FontWeight="SemiBold"
+                   IsVisible="{Binding IsAuthorizationCode}"
+                   Foreground="{DynamicResource TextPrimary}" />
 
         <!-- Method + token URL -->
         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
@@ -94,6 +215,16 @@
             </StackPanel>
         </Expander>
 
+        <!-- What this request needs, and whether it is there - said BEFORE Test is pressed rather
+             than as a failure afterwards. The per-field tooltip already tints the box under the
+             pointer; the variable nobody defined is usually in a field they are not looking at. -->
+        <TextBlock Text="{Binding VariableSummary}"
+                   IsVisible="{Binding VariableSummary, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Classes.missing="{Binding HasMissingVariables}"
+                   Foreground="{DynamicResource TextSecondary}" />
+
         <StackPanel Orientation="Horizontal" Spacing="10">
             <Button Classes="secondary-btn" Content="Verify request" ToolTip.Tip="Preview the token request (no call)" Command="{Binding VerifyRequestCommand}" />
             <Button Classes="secondary-btn" Content="Test / Get token" Command="{Binding TestAuthCommand}" />
@@ -110,6 +241,62 @@
                 BorderThickness="1" CornerRadius="6" Padding="10">
             <SelectableTextBlock Text="{Binding RequestPreview}" FontFamily="Cascadia Code,Consolas,monospace"
                                  FontSize="12" Foreground="{DynamicResource TextPrimary}" />
+        </Border>
+
+        <!-- What the endpoint replied, and one click to capture any of it.
+
+             This closes the worst gap in the whole feature: a capture rule is a JSONPath into this
+             response, and until now the response was never shown - so the one step needing exact
+             knowledge of the payload was the one step with nothing to look at. A wrong guess at a
+             field name fails identically to a wrong endpoint, a wrong secret or a wrong grant. -->
+        <Border IsVisible="{Binding HasResponse}"
+                Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1" CornerRadius="6" Padding="10">
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Token response" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="{Binding ResponseStatus}" FontSize="11"
+                               FontFamily="Cascadia Code,Consolas,monospace"
+                               Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+
+                <TextBlock Text="Click Capture to write a field into a session variable — the path comes from the response, so it cannot be a guess."
+                           FontSize="11" TextWrapping="Wrap"
+                           IsVisible="{Binding HasResponseFields}"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <ItemsControl ItemsSource="{Binding ResponseFields}" IsVisible="{Binding HasResponseFields}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="auth:TokenResponseField">
+                            <Grid ColumnDefinitions="2*,3*,Auto" Margin="0,2">
+                                <TextBlock Grid.Column="0" Text="{Binding Path}"
+                                           FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Preview}"
+                                           FontSize="11" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                                <Button Grid.Column="2" Classes="secondary-btn" Content="Capture"
+                                        Padding="8,2" FontSize="11" MinHeight="22"
+                                        Command="{Binding $parent[UserControl].((vm:TokenRequestEditorViewModel)DataContext).CaptureFieldCommand}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- The raw body for everything the field list cannot help with: HTML from a proxy, a
+                     form-encoded reply, XML. Those are exactly the responses that most need looking at. -->
+                <Expander Header="Raw body" IsExpanded="{Binding !HasResponseFields}">
+                    <SelectableTextBlock Text="{Binding ResponseBody}"
+                                         FontFamily="Cascadia Code,Consolas,monospace"
+                                         FontSize="11" TextWrapping="Wrap"
+                                         Foreground="{DynamicResource TextPrimary}" />
+                </Expander>
+            </StackPanel>
         </Border>
 
     </StackPanel>

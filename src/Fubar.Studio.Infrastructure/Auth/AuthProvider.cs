@@ -11,14 +11,12 @@ namespace Fubar.Studio.Infrastructure.Auth;
 
 /// <summary>
 /// The auth prestep: <b>Acquire</b> (OAuth 2.0 only) then <b>Apply</b> (all schemes). Acquire reuses a
-/// cached, unexpired token from the <b>per-(workspace,environment)</b> session, else mints one - two paths:
-/// <list type="bullet">
-/// <item><b>Template</b> (<see cref="AuthConfig.TokenRequest"/> set): runs the editable token/login
-/// request through the normal HTTP executor, applies <see cref="AuthConfig.TokenCaptures"/> (JSONPath →
-/// session variables) on a 2xx, and <b>clears those variables on failure</b>.</item>
-/// <item><b>Legacy</b> (<see cref="AuthConfig.TokenRequest"/> null): the fixed-form
-/// <see cref="IOAuthTokenService"/> path, kept for back-compat.</item>
-/// </list>
+/// cached, unexpired token from the <b>per-(workspace,environment)</b> session, else mints one - down
+/// ONE path. The token request is an ordinary request run through the normal HTTP executor;
+/// <see cref="AuthConfig.TokenCaptures"/> (JSONPath → session variables) are applied on a 2xx and
+/// <b>cleared on failure</b>. A legacy fixed-form config (no <see cref="AuthConfig.TokenRequest"/>) is
+/// upgraded to that shape on the way in - see <c>Upgraded</c> - rather than served by a second engine,
+/// because two engines behind an invisible switch is how a guard ends up on the branch nobody is on.
 /// Apply then resolves each scheme's variables and produces the <see cref="AppliedAuth"/> (Bearer/OAuth2
 /// bearer header, API key header/query, HTTP Basic) the pipeline injects into the request. Also backs the
 /// Auth tab's Test button.
@@ -28,20 +26,17 @@ public sealed class AuthProvider : IAuthProvider
     // Tokens are re-fetched this long before they actually expire, to avoid sending a just-expired one.
     private static readonly TimeSpan ExpiryBuffer = TimeSpan.FromSeconds(30);
 
-    private readonly IOAuthTokenService _tokenService;
     private readonly IVariableResolver _resolver;
     private readonly ISessionVariableStore _session;
     private readonly IExecutorRegistry _executorRegistry;
     private readonly IResponseTestService _testService;
 
     public AuthProvider(
-        IOAuthTokenService tokenService,
         IVariableResolver resolver,
         ISessionVariableStore session,
         IExecutorRegistry executorRegistry,
         IResponseTestService testService)
     {
-        _tokenService = tokenService;
         _resolver = resolver;
         _session = session;
         _executorRegistry = executorRegistry;
@@ -55,13 +50,55 @@ public sealed class AuthProvider : IAuthProvider
         if (auth.Type == AuthType.OAuth2)
         {
             var scope = SessionScope.For(workspace, activeEnvironment);
-            outcome = auth.TokenRequest is not null
-                ? await AcquireTemplateAsync(auth, workspace, activeEnvironment, scope, forceReacquire, cancellationToken)
-                : await AcquireLegacyAsync(auth, workspace, activeEnvironment, scope, forceReacquire, cancellationToken);
+
+            // ONE engine. A config with no TokenRequest is upgraded to one here and run down the same
+            // path as everything else, rather than through a second implementation.
+            //
+            // Two engines behind an invisible switch is how a guard gets added to the branch nobody is
+            // on: the unresolved-variable check went into the legacy path first, and every test for it
+            // built a legacy config, so it passed while the path the editor writes stayed unguarded.
+            // The editor already upgrades on open and persists on save, so this only serves profiles
+            // nobody has edited since the template editor arrived.
+            outcome = await AcquireTemplateAsync(
+                Upgraded(auth, workspace, activeEnvironment), workspace, activeEnvironment, scope, forceReacquire, cancellationToken);
         }
 
         // 2. Apply - resolve every scheme's fields (+ the acquired token) into headers/query.
         return new AuthPreparation(Apply(auth, workspace, activeEnvironment), outcome);
+    }
+
+    /// <summary>
+    /// A config guaranteed to carry a token request, upgrading a legacy fixed-form one if it does not.
+    ///
+    /// The credentials resolver is passed through so an <see cref="OAuth2ClientAuth.BasicHeader"/>
+    /// config keeps sending Basic: that header is base64 of <c>id:secret</c> and cannot be built while
+    /// those are still <c>{{tokens}}</c>, so it can only be produced here, where the environment is
+    /// known. Nothing about this is persisted - it is a view of the config for this one acquisition.
+    /// </summary>
+    private AuthConfig Upgraded(AuthConfig auth, Workspace workspace, WorkspaceEnvironment? activeEnvironment)
+    {
+        if (auth.TokenRequest is not null)
+        {
+            return auth;
+        }
+
+        var (request, captures) = OAuth2LegacyTemplate.FromLegacy(
+            auth,
+            value => _resolver.Substitute(value, workspace, activeEnvironment));
+
+        return new AuthConfig
+        {
+            Type = auth.Type,
+            AccessTokenVariable = auth.AccessTokenVariable,
+            ExpiryVariable = auth.ExpiryVariable,
+            TokenRequest = request,
+            TokenCaptures = captures,
+
+            // The legacy engine read expires_in through the token service rather than a configured
+            // path, so an upgraded config has to be told where it is or every token would look
+            // non-expiring and be cached forever.
+            ExpiresInExpression = auth.ExpiresInExpression ?? "$.expires_in",
+        };
     }
 
     public AppliedAuth Apply(AuthConfig auth, Workspace workspace, WorkspaceEnvironment? activeEnvironment)
@@ -105,6 +142,20 @@ public sealed class AuthProvider : IAuthProvider
             return new AuthOutcome(false, "The token request needs a URL.");
         }
 
+        // The same guard the legacy path has, and this is the one that matters: the EDITOR writes a
+        // TokenRequest, so this is the path nearly every user is on. Without it an unresolved
+        // {{token_url}} is handed to the HTTP executor and comes back as a transport error naming a
+        // malformed URI - the exact confusion the legacy guard was added to remove, still present on
+        // the path people actually take.
+        if (UnresolvedVariables.Describe(
+                [.. TokenRequestVariables
+                    .Of(tokenRequest, text => _resolver.Substitute(text, workspace, activeEnvironment) ?? text)
+                    .Where(v => !v.IsResolved)
+                    .Select(v => v.Name)]) is { } unresolvedInRequest)
+        {
+            return new AuthOutcome(false, $"Token request: {unresolvedInRequest}");
+        }
+
         var model = new RequestModel
         {
             Name = "auth-token",
@@ -134,7 +185,11 @@ public sealed class AuthProvider : IAuthProvider
         {
             ClearCapturedVariables(auth, scope, tokenVariable, expiryVariable);
             var reason = result.ErrorMessage ?? $"token endpoint returned {result.StatusCode}";
-            return new AuthOutcome(false, $"Token request failed: {reason}. Cleared captured variables.");
+            return new AuthOutcome(false, $"Token request failed: {reason}. Cleared captured variables.")
+            {
+                // Especially on failure: this is the body that says invalid_client, and why.
+                Response = new TokenResponse(result.StatusCode, result.Body),
+            };
         }
 
         // Apply the capture rules (forced to session scope - tokens must never touch disk).
@@ -162,11 +217,21 @@ public sealed class AuthProvider : IAuthProvider
         var acquired = _session.Get(scope, tokenVariable);
         if (string.IsNullOrEmpty(acquired))
         {
-            return new AuthOutcome(true, $"Token request succeeded, but no capture wrote {{{{{tokenVariable}}}}}.");
+            // The most confusing success there is: a 200, and nothing to show for it. The response is
+            // attached precisely so the user can look at it and see which field they should have
+            // captured - which is the entire reason the capture step used to be guesswork.
+            return new AuthOutcome(true, $"Token request succeeded, but no capture wrote {{{{{tokenVariable}}}}}.")
+            {
+                Response = new TokenResponse(result.StatusCode, result.Body),
+            };
         }
 
         var expiryText = expiresAt is { } e ? $" (expires {e.UtcDateTime:yyyy-MM-dd HH:mm}Z)" : "";
-        return new AuthOutcome(true, $"Token acquired into {{{{{tokenVariable}}}}}{expiryText}.");
+
+        return new AuthOutcome(true, $"Token acquired into {{{{{tokenVariable}}}}}{expiryText}.")
+        {
+            Response = new TokenResponse(result.StatusCode, result.Body),
+        };
     }
 
     // Remove every capture target plus the access-token/expiry variables from the session scope.
@@ -233,83 +298,6 @@ public sealed class AuthProvider : IAuthProvider
         return DateTimeOffset.UtcNow.AddSeconds(seconds);
     }
 
-    // --- Acquire: legacy path (fixed-form token service) ----------------------------------------------
-
-    private async Task<AuthOutcome> AcquireLegacyAsync(AuthConfig auth, Workspace workspace, WorkspaceEnvironment? activeEnvironment, string scope, bool forceReacquire, CancellationToken cancellationToken)
-    {
-        var tokenVariable = EffectiveTokenVariable(auth);
-        var expiryVariable = EffectiveExpiryVariable(auth);
-        var refreshVariable = $"{tokenVariable}_refresh";
-
-        // Reuse a cached, still-valid token (unless a re-acquire is forced, e.g. after a 401).
-        var cachedToken = _session.Get(scope, tokenVariable);
-        if (!forceReacquire && !string.IsNullOrEmpty(cachedToken) && !IsExpired(_session.Get(scope, expiryVariable)))
-        {
-            return new AuthOutcome(true, "Using the cached token (still valid).");
-        }
-
-        string Resolve(string? value) => _resolver.Substitute(value, workspace, activeEnvironment);
-
-        var tokenUrl = Resolve(auth.TokenUrl);
-        if (string.IsNullOrWhiteSpace(tokenUrl))
-        {
-            return new AuthOutcome(false, "OAuth2: a token URL is required.");
-        }
-
-        // For the refresh grant, prefer a stored refresh token (from a previous acquire), else the configured one.
-        var refreshToken = auth.OAuth2Grant == OAuth2GrantType.RefreshToken
-            ? (_session.Get(scope, refreshVariable) is { Length: > 0 } stored ? stored : Resolve(auth.RefreshToken))
-            : null;
-
-        var clientId = Resolve(auth.ClientId);
-        var clientSecret = Resolve(auth.ClientSecret);
-        var scopes = Resolve(auth.Scopes);
-
-        // Stop BEFORE the request when a variable did not resolve.
-        //
-        // Substitute leaves what it cannot resolve exactly as it found it, so `{{authHost}}/token`
-        // travels on as that literal string and comes back as an invalid-URI error, or worse as a
-        // 404 from a real server - neither of which mentions a variable. This is the single most
-        // confusing failure in setting OAuth up, because the cause and the symptom are in different
-        // places and the symptom names the wrong thing. Naming the variables costs one regex over
-        // text we already have, and only when a `{{` survives.
-        if (UnresolvedVariables.Describe(
-                UnresolvedVariables.In(tokenUrl, clientId, clientSecret, scopes, refreshToken)) is { } unresolved)
-        {
-            return new AuthOutcome(false, $"OAuth2: {unresolved}");
-        }
-
-        var request = new OAuth2TokenRequest(
-            auth.OAuth2Grant,
-            tokenUrl,
-            clientId,
-            clientSecret,
-            scopes,
-            refreshToken,
-            auth.ClientAuthentication);
-
-        try
-        {
-            var result = await _tokenService.AcquireAsync(request, cancellationToken);
-
-            _session.Set(scope, tokenVariable, result.AccessToken);
-            _session.Set(scope, expiryVariable, result.ExpiresAt?.ToUnixTimeSeconds().ToString());
-            if (!string.IsNullOrEmpty(result.RefreshToken))
-            {
-                _session.Set(scope, refreshVariable, result.RefreshToken);
-            }
-
-            var expiryText = result.ExpiresAt is { } expiresAt
-                ? $"expires {expiresAt.UtcDateTime:yyyy-MM-dd HH:mm}Z"
-                : "no expiry reported";
-            return new AuthOutcome(true, $"Token acquired into {{{{{tokenVariable}}}}} ({expiryText}).");
-        }
-        catch (Exception ex)
-        {
-            return new AuthOutcome(false, $"OAuth2 token request failed: {ex.Message}");
-        }
-    }
-
     public string PreviewTokenRequest(AuthConfig auth, Workspace workspace, WorkspaceEnvironment? activeEnvironment)
     {
         if (auth.Type != AuthType.OAuth2)
@@ -317,9 +305,10 @@ public sealed class AuthProvider : IAuthProvider
             return "Request verification is only available for OAuth 2.0.";
         }
 
-        return auth.TokenRequest is not null
-            ? PreviewTemplateRequest(auth, workspace, activeEnvironment)
-            : PreviewLegacyRequest(auth, workspace, activeEnvironment);
+        // Through the same upgrade the acquisition uses, so the preview shows what will ACTUALLY be
+        // sent. A preview rendered by a second code path is a preview that can lie, and this one is
+        // the feature's main troubleshooting tool - the one place it must not.
+        return PreviewTemplateRequest(Upgraded(auth, workspace, activeEnvironment), workspace, activeEnvironment);
     }
 
     private string PreviewTemplateRequest(AuthConfig auth, Workspace workspace, WorkspaceEnvironment? activeEnvironment)
@@ -372,29 +361,6 @@ public sealed class AuthProvider : IAuthProvider
 
         var tokenVariable = EffectiveTokenVariable(auth);
         return $"{builder.ToString().TrimEnd()}\n\n→ each request then sends:  Authorization: Bearer {{{{{tokenVariable}}}}}";
-    }
-
-    private string PreviewLegacyRequest(AuthConfig auth, Workspace workspace, WorkspaceEnvironment? activeEnvironment)
-    {
-        string Resolve(string? value) => _resolver.Substitute(value, workspace, activeEnvironment);
-
-        var tokenUrl = Resolve(auth.TokenUrl);
-        if (string.IsNullOrWhiteSpace(tokenUrl))
-        {
-            return "Set a token URL to preview the request.";
-        }
-
-        var request = new OAuth2TokenRequest(
-            auth.OAuth2Grant,
-            tokenUrl,
-            Resolve(auth.ClientId),
-            Resolve(auth.ClientSecret),
-            Resolve(auth.Scopes),
-            auth.OAuth2Grant == OAuth2GrantType.RefreshToken ? Resolve(auth.RefreshToken) : null,
-            auth.ClientAuthentication);
-
-        var tokenVariable = EffectiveTokenVariable(auth);
-        return $"{_tokenService.Describe(request)}\n\n→ each request then sends:  Authorization: Bearer {{{{{tokenVariable}}}}}";
     }
 
     // Show config values so the user can verify them, but never echo obvious secrets.

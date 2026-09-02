@@ -27,6 +27,13 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   Params, Headers, Body, Auth, and per-request History/replay. URL and Params stay in two-way sync.
 - **Environments & variables** — `{{key}}` resolves from the active environment. Values can be marked
   **secret**, and some variables are **session-only** (held in memory, never written to disk).
+- **Setting OAuth up is guided, not guessed.** Paste your provider's issuer and **Discover** fills
+  the token and authorize endpoints from its `/.well-known/openid-configuration`, with its own scopes
+  offered as buttons. The editor states permanently what requests using the profile will send, and
+  lists the `{{variables}}` the token request needs with which are undefined — before you press Test,
+  not as a failure afterwards. After Test the **token response** is shown, and any field is one click
+  from becoming a capture, so the JSONPath comes from a response that actually arrived rather than a
+  guess at what the provider calls things.
 - **OAuth 2.0 that actually works** — Client Credentials and Refresh Token grants, configurable scopes
   and client-auth method, a one-click **Test / Get token** and a **Verify request** preview. Access
   tokens and expiry are stored as session variables and auto-refreshed when expired.

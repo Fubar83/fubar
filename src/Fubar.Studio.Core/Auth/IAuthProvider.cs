@@ -4,7 +4,29 @@ namespace Fubar.Studio.Core.Auth;
 
 /// <summary>The result of ensuring/testing auth: whether it succeeded and a human-readable message
 /// (e.g. "Token acquired, expires 2026-08-17 12:00Z" or the token-endpoint error).</summary>
-public sealed record AuthOutcome(bool Ok, string Message);
+public sealed record AuthOutcome(bool Ok, string Message)
+{
+    /// <summary>
+    /// What the token endpoint actually replied, when one was called.
+    ///
+    /// Carried on the outcome because a capture rule is a JSONPath into THIS, and until it was shown
+    /// the one step needing exact knowledge of the payload was the one step with no way to see it.
+    /// Present on failure too - especially on failure, since that is when the body says
+    /// <c>invalid_client</c> and what was wrong with it.
+    /// </summary>
+    public TokenResponse? Response { get; init; }
+}
+
+/// <summary>
+/// The token endpoint's reply, kept only long enough to show it.
+/// </summary>
+/// <param name="StatusCode">The HTTP status, so a 200 with a useless body is distinguishable from a 401.</param>
+/// <param name="Body">The raw body, as received.</param>
+public sealed record TokenResponse(int StatusCode, string Body)
+{
+    /// <summary>The paths a capture rule could use - see <see cref="TokenResponseFields"/>.</summary>
+    public IReadOnlyList<TokenResponseField> Fields => TokenResponseFields.From(Body);
+}
 
 /// <summary>The prestep's output: the credential material to inject into the outgoing request, plus a
 /// human-readable outcome (for status logging / the Test button).</summary>

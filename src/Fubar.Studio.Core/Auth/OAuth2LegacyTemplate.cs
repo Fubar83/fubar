@@ -16,11 +16,30 @@ public static class OAuth2LegacyTemplate
     /// <summary>Maps the OAuth2 fields of <paramref name="legacy"/> to a token request + capture rules.
     /// The access-token capture uses the config's effective access-token variable so the
     /// <c>Authorization: Bearer</c> header keeps resolving to the same name.</summary>
-    public static (AuthTokenRequest Request, List<CaptureRule> Captures) FromLegacy(AuthConfig legacy)
+    /// <param name="resolveCredentials">
+    /// Optional. When supplied AND the legacy config asked for HTTP Basic client authentication, the
+    /// credentials are resolved through this and emitted as an <c>Authorization: Basic</c> header
+    /// instead of body fields - which is the only way to preserve that setting, because the header
+    /// value is base64 of <c>id:secret</c> and cannot be built while those are still <c>{{tokens}}</c>.
+    ///
+    /// The EDITOR passes null: it is showing the user an editable request, and baking a resolved
+    /// secret into a header it is about to save to disk would be exactly wrong. The PROVIDER passes
+    /// one, because by then it has the workspace and environment and the result is never persisted.
+    /// </param>
+    public static (AuthTokenRequest Request, List<CaptureRule> Captures) FromLegacy(
+        AuthConfig legacy,
+        Func<string?, string?>? resolveCredentials = null)
     {
         var accessTokenVariable = string.IsNullOrWhiteSpace(legacy.AccessTokenVariable)
             ? AuthDefaults.AccessTokenVariable
             : legacy.AccessTokenVariable!;
+
+        // Basic only when we can actually build it. Without a resolver the credentials may still be
+        // variables, and a header of "Basic {{clientId}}:{{secret}}" base64'd is worse than useless -
+        // so the body form is used, which resolves correctly at send time.
+        var useBasicHeader = legacy.ClientAuthentication == OAuth2ClientAuth.BasicHeader
+            && resolveCredentials is not null
+            && !string.IsNullOrWhiteSpace(legacy.ClientId);
 
         var fields = new List<KeyValueItem>
         {
@@ -41,20 +60,35 @@ public static class OAuth2LegacyTemplate
             fields.Add(new KeyValueItem { Key = "scope", Value = legacy.Scopes! });
         }
 
-        if (!string.IsNullOrWhiteSpace(legacy.ClientId))
+        if (!useBasicHeader && !string.IsNullOrWhiteSpace(legacy.ClientId))
         {
             fields.Add(new KeyValueItem { Key = "client_id", Value = legacy.ClientId! });
         }
 
-        if (!string.IsNullOrWhiteSpace(legacy.ClientSecret))
+        if (!useBasicHeader && !string.IsNullOrWhiteSpace(legacy.ClientSecret))
         {
             fields.Add(new KeyValueItem { Key = "client_secret", Value = legacy.ClientSecret! });
+        }
+
+        var headers = new List<KeyValueItem>();
+
+        if (useBasicHeader)
+        {
+            var id = resolveCredentials!(legacy.ClientId) ?? string.Empty;
+            var secret = resolveCredentials!(legacy.ClientSecret) ?? string.Empty;
+
+            headers.Add(new KeyValueItem
+            {
+                Key = "Authorization",
+                Value = "Basic " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{id}:{secret}")),
+            });
         }
 
         var request = new AuthTokenRequest
         {
             Method = "POST",
             Url = legacy.TokenUrl ?? "",
+            Headers = headers,
             Body = new RequestBody { Type = BodyType.UrlEncoded, UrlEncoded = fields },
         };
 

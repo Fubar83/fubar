@@ -6,6 +6,62 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Sign in as a person: Authorization Code + PKCE.** The grant most people expect was missing, and it
+  is not a template — it needs a browser, a loopback listener, PKCE and a code-for-token exchange. Pick
+  the template, press **Sign in with browser**, approve at your provider, then **Test / Get token**
+  exchanges the code.
+
+  Two steps on screen because they genuinely are two: a browser round trip, then an ordinary request.
+  Keeping the exchange an editable request is what lets a provider needing one extra field be handled
+  by adding it, rather than by waiting for this app to grow a setting. The redirect URI is shown to
+  copy *before* the flow runs, because it has to be registered with your provider exactly as written —
+  and a sign-in that fails for that reason is the most opaque failure in the grant: the browser shows
+  the provider's error page and the app hears nothing at all.
+
+  Always S256; the verifier never appears in the authorize URL; a callback whose `state` does not match
+  is refused. The system browser is used rather than an embedded webview, per RFC 8252 — it already
+  holds your session, and an embedded view asking for corporate credentials is indistinguishable from
+  a phishing page. The code and verifier live in session variables: in memory, never on disk.
+
+- **Discover a provider's endpoints instead of copying them from its docs.** Paste the issuer and press
+  **Discover**: the token and authorize endpoints are filled from `/.well-known/openid-configuration`,
+  and the provider's own scopes become buttons that append to the scope field. The issuer, the issuer
+  with a trailing slash, a bare host and the well-known URL itself all work.
+
+- **The token response is shown, and any field is one click from becoming a capture.** A capture rule
+  is a JSONPath like `$.access_token`, and the response it addresses was never shown — so the one step
+  needing exact knowledge of the payload was the one step with nothing to look at. After Test you now
+  get the status, every capturable path with its value, and the raw body. The response appears on
+  *failure* too, which is where `invalid_client` and its description live. Token values are never
+  printed in full: finding the field is the job, and a pane that spills a live credential into a
+  screenshot is a bad trade for information nobody needed.
+
+### Changed
+
+- **One OAuth engine instead of two behind an invisible switch.** `AuthConfig` carried both a
+  fixed-form shape and a token-request shape, and `TokenRequest == null` silently chose which
+  implementation ran — which is how a guard ended up on the branch nobody was on. Legacy configs are
+  now upgraded on the way in and run down the single path, and the preview goes through the same
+  upgrade so it cannot disagree with what is actually sent. A config asking for HTTP Basic client
+  authentication still sends Basic.
+
+- **The OAuth editor now says what it is for, and what it needs, before you press Test.** Two
+  additions, both aimed at the same thing: the editor was a request builder with no stated
+  relationship to the requests it serves.
+
+  A line at the top states the outcome permanently — *"Requests using this profile send:
+  `Authorization: Bearer {{oauth2_access_token}}`"*. The provider already produced that sentence, but
+  only inside the **Verify request** preview, behind a button nobody presses before they are already
+  lost. Without it the captures grid reads as a set of unrelated scratch values rather than the thing
+  that feeds the header.
+
+  A line above **Test / Get token** lists the `{{variables}}` the token request reads and which are
+  undefined — *"Not defined: `{{token_url}}`, `{{client_id}}`, `{{client_secret}}`"*. The per-field
+  tooltip already tints the box under the pointer, which answers for the box you are hovering; the
+  variable nobody defined is usually in a field you are not looking at.
+
 ### Fixed
 
 - **`{{variables}}` now resolve when testing OAuth from an auth profile.** Test and Verify in the auth
