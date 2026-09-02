@@ -1,4 +1,6 @@
 using System;
+using Avalonia;
+using Avalonia.Controls.Primitives;
 using AvaloniaEdit;
 using AvaloniaEdit.Rendering;
 
@@ -12,6 +14,33 @@ namespace Fubar.Diff.Controls.Rendering;
 /// </summary>
 internal static class EditorScroll
 {
+    /// <summary>
+    /// Scrolls a pane sideways to an absolute offset.
+    ///
+    /// Goes through <see cref="IScrollable"/> on the TEXT VIEW, and that detail cost a diagnostic
+    /// session to find. <c>TextEditor.ScrollToHorizontalOffset</c> looks like the obvious counterpart
+    /// to <c>ScrollToVerticalOffset</c> and is silently useless here: AvaloniaEdit's TextView is an
+    /// <c>ILogicalScrollable</c> that scrolls ITSELF, so the ScrollViewer in the editor's template
+    /// never moves - its <c>Offset.X</c> reads 0.0 on a pane visibly scrolled to 809.8 - and writing
+    /// to it changes nothing anyone can see. The vertical twin works only because AvaloniaEdit routes
+    /// it to the text view internally.
+    ///
+    /// Measured before being believed: the target's extent was never the problem (1270 wide against a
+    /// 450 viewport, so the offset asked for was always reachable). The write was going somewhere
+    /// that does not scroll.
+    /// </summary>
+    public static void ScrollHorizontallyTo(TextView textView, double offset)
+    {
+        if (textView is not IScrollable scrollable)
+        {
+            return;
+        }
+
+        // Clamped by the view itself: a side whose longest line is shorter simply stops at its own
+        // end rather than the pair jamming or throwing.
+        scrollable.Offset = new Vector(Math.Max(0, offset), scrollable.Offset.Y);
+    }
+
     public static void CenterOnLine(TextEditor editor, TextView textView, int lineNumber)
     {
         var lineHeight = textView.DefaultLineHeight;
