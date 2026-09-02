@@ -3,6 +3,7 @@
              xmlns:vm="using:Fubar.Studio.UI.ViewModels"
              xmlns:views="using:Fubar.Studio.UI.Views"
              xmlns:controls="using:Fubar.Studio.UI.Controls"
+             xmlns:auth="using:Fubar.Studio.Core.Auth"
              xmlns:fc="using:Fubar.Controls"
              xmlns:avc="using:Avalonia.Data.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -151,6 +152,62 @@
                 BorderThickness="1" CornerRadius="6" Padding="10">
             <SelectableTextBlock Text="{Binding RequestPreview}" FontFamily="Cascadia Code,Consolas,monospace"
                                  FontSize="12" Foreground="{DynamicResource TextPrimary}" />
+        </Border>
+
+        <!-- What the endpoint replied, and one click to capture any of it.
+
+             This closes the worst gap in the whole feature: a capture rule is a JSONPath into this
+             response, and until now the response was never shown - so the one step needing exact
+             knowledge of the payload was the one step with nothing to look at. A wrong guess at a
+             field name fails identically to a wrong endpoint, a wrong secret or a wrong grant. -->
+        <Border IsVisible="{Binding HasResponse}"
+                Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1" CornerRadius="6" Padding="10">
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Token response" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="{Binding ResponseStatus}" FontSize="11"
+                               FontFamily="Cascadia Code,Consolas,monospace"
+                               Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+
+                <TextBlock Text="Click Capture to write a field into a session variable — the path comes from the response, so it cannot be a guess."
+                           FontSize="11" TextWrapping="Wrap"
+                           IsVisible="{Binding HasResponseFields}"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <ItemsControl ItemsSource="{Binding ResponseFields}" IsVisible="{Binding HasResponseFields}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="auth:TokenResponseField">
+                            <Grid ColumnDefinitions="2*,3*,Auto" Margin="0,2">
+                                <TextBlock Grid.Column="0" Text="{Binding Path}"
+                                           FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Preview}"
+                                           FontSize="11" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                                <Button Grid.Column="2" Classes="secondary-btn" Content="Capture"
+                                        Padding="8,2" FontSize="11" MinHeight="22"
+                                        Command="{Binding $parent[UserControl].((vm:TokenRequestEditorViewModel)DataContext).CaptureFieldCommand}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- The raw body for everything the field list cannot help with: HTML from a proxy, a
+                     form-encoded reply, XML. Those are exactly the responses that most need looking at. -->
+                <Expander Header="Raw body" IsExpanded="{Binding !HasResponseFields}">
+                    <SelectableTextBlock Text="{Binding ResponseBody}"
+                                         FontFamily="Cascadia Code,Consolas,monospace"
+                                         FontSize="11" TextWrapping="Wrap"
+                                         Foreground="{DynamicResource TextPrimary}" />
+                </Expander>
+            </StackPanel>
         </Border>
 
     </StackPanel>

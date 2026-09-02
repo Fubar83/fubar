@@ -185,7 +185,11 @@ public sealed class AuthProvider : IAuthProvider
         {
             ClearCapturedVariables(auth, scope, tokenVariable, expiryVariable);
             var reason = result.ErrorMessage ?? $"token endpoint returned {result.StatusCode}";
-            return new AuthOutcome(false, $"Token request failed: {reason}. Cleared captured variables.");
+            return new AuthOutcome(false, $"Token request failed: {reason}. Cleared captured variables.")
+            {
+                // Especially on failure: this is the body that says invalid_client, and why.
+                Response = new TokenResponse(result.StatusCode, result.Body),
+            };
         }
 
         // Apply the capture rules (forced to session scope - tokens must never touch disk).
@@ -213,11 +217,21 @@ public sealed class AuthProvider : IAuthProvider
         var acquired = _session.Get(scope, tokenVariable);
         if (string.IsNullOrEmpty(acquired))
         {
-            return new AuthOutcome(true, $"Token request succeeded, but no capture wrote {{{{{tokenVariable}}}}}.");
+            // The most confusing success there is: a 200, and nothing to show for it. The response is
+            // attached precisely so the user can look at it and see which field they should have
+            // captured - which is the entire reason the capture step used to be guesswork.
+            return new AuthOutcome(true, $"Token request succeeded, but no capture wrote {{{{{tokenVariable}}}}}.")
+            {
+                Response = new TokenResponse(result.StatusCode, result.Body),
+            };
         }
 
         var expiryText = expiresAt is { } e ? $" (expires {e.UtcDateTime:yyyy-MM-dd HH:mm}Z)" : "";
-        return new AuthOutcome(true, $"Token acquired into {{{{{tokenVariable}}}}}{expiryText}.");
+
+        return new AuthOutcome(true, $"Token acquired into {{{{{tokenVariable}}}}}{expiryText}.")
+        {
+            Response = new TokenResponse(result.StatusCode, result.Body),
+        };
     }
 
     // Remove every capture target plus the access-token/expiry variables from the session scope.

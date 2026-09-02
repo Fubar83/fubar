@@ -212,6 +212,79 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         TestStatus = "Requesting token...";
         var outcome = await TestAuthHandler(ToAuthConfig());
         TestStatus = outcome.Message;
+
+        ShowResponse(outcome.Response);
+    }
+
+    /// <summary>
+    /// What the token endpoint replied, and the paths you could capture from it.
+    ///
+    /// The step this exists for is the one that used to be pure guesswork: a capture rule is a
+    /// JSONPath into this response, and the response was never shown. People guessed at field names,
+    /// and a wrong guess fails identically to a wrong endpoint, a wrong secret or a wrong grant.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<TokenResponseField> ResponseFields { get; private set; } = [];
+
+    /// <summary>The status line of the last token response, e.g. <c>HTTP 400</c>. Empty until one arrives.</summary>
+    [ObservableProperty]
+    public partial string ResponseStatus { get; private set; } = "";
+
+    /// <summary>The raw body, for the cases the field list cannot help with - HTML, XML, form-encoded.</summary>
+    [ObservableProperty]
+    public partial string ResponseBody { get; private set; } = "";
+
+    public bool HasResponse => ResponseStatus.Length > 0;
+
+    public bool HasResponseFields => ResponseFields.Count > 0;
+
+    partial void OnResponseStatusChanged(string value) => OnPropertyChanged(nameof(HasResponse));
+
+    partial void OnResponseFieldsChanged(IReadOnlyList<TokenResponseField> value) =>
+        OnPropertyChanged(nameof(HasResponseFields));
+
+    private void ShowResponse(TokenResponse? response)
+    {
+        ResponseStatus = response is null ? "" : $"HTTP {response.StatusCode}";
+        ResponseBody = response?.Body ?? "";
+        ResponseFields = response?.Fields ?? [];
+    }
+
+    /// <summary>
+    /// Turns a field of the response into a capture rule, naming the variable after the field.
+    ///
+    /// The whole point: the path is taken from a response that actually arrived, so it cannot be a
+    /// typo or a guess at what the provider calls things. An existing rule for the same path is left
+    /// alone rather than duplicated - clicking twice is something people do.
+    /// </summary>
+    [RelayCommand]
+    private void CaptureField(TokenResponseField? field)
+    {
+        if (field is null || Captures.Any(c => string.Equals(c.Expression, field.Path, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        var leaf = field.Path[(field.Path.LastIndexOf('.') + 1)..];
+
+        // The access token gets the variable the Bearer header already reads, so the commonest case
+        // is wired up correctly by one click rather than by knowing that convention.
+        var variable = leaf is "access_token" or "id_token"
+            ? (string.IsNullOrWhiteSpace(AccessTokenVariable) ? AuthDefaults.AccessTokenVariable : AccessTokenVariable)
+            : leaf;
+
+        var row = new CaptureRowViewModel(new CaptureRule
+        {
+            Enabled = true,
+            VariableName = variable,
+            Source = ResponseField.JsonBody,
+            Expression = field.Path,
+            Scope = CaptureScope.Session,
+        });
+
+        row.PropertyChanged += (_, _) => RaiseChanged();
+        Captures.Add(row);
+        RaiseChanged();
     }
 
     [RelayCommand]
