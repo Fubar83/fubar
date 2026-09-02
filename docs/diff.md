@@ -14,6 +14,10 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 > end to end. Editing the three-way merge's three INPUT panes, structural comparison for languages other
 > than C#, and the other formats, are not built yet — see [Roadmap](#roadmap).
 
+<!-- Screenshots: see docs/images/README.md for what each shot must show. Uncomment as they land.
+![Fubar Diff](images/diff-side-by-side.png)
+-->
+
 ## Features
 
 - **Two-editor side-by-side view**, with each side showing its own file's line numbers — so the

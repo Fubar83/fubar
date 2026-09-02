@@ -12,6 +12,11 @@ they share.
 | **[Fubar Diff](docs/diff.md)** | A diff tool. Side-by-side comparison with character-level highlighting, semantic JSON and YAML, folder comparison, three-way merge with an editable result, and a **structural C# comparison** that says which members changed and which were only reformatted or moved. Runs headless for CI. Ships as `FubarDiff`. |
 | **Fubar.Controls** | The shared design system: colour tokens with Dark/Light variants, and a catalog of composable Avalonia controls. Has its own sandbox app, the Gallery. |
 
+<!-- Screenshots: see docs/images/README.md. Uncomment as they land.
+| ![Fubar API Studio](docs/images/studio-request.png) | ![Fubar Diff](docs/images/diff-side-by-side.png) |
+| --- | --- |
+-->
+
 ## Why one repository
 
 These started as three. The split existed so `Fubar.Controls` could be consumed as a NuGet package,

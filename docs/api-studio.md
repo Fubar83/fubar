@@ -12,8 +12,10 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
 
 > **Status:** pre-1.0 and under active development. Expect rough edges; feedback and PRs welcome.
 
-<!-- Add a screenshot or GIF here once you have one — it does more than any paragraph.
-     e.g. ![Fubar API Studio](docs/screenshot.png) -->
+<!-- Screenshots: see docs/images/README.md for what each shot must show. Uncomment as they land -
+     a missing image renders as a broken icon, which reads worse than no image at all.
+![Fubar API Studio](images/studio-request.png)
+-->
 
 ## Features
 
