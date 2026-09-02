@@ -60,6 +60,48 @@
                     ToolTip.Tip="Seed the request below from this template (overwrites the current fields)" />
         </StackPanel>
 
+        <!-- Discovery: paste the issuer, get the token endpoint.
+
+             Setting OAuth up starts by copying an endpoint out of a provider's documentation, and every
+             OIDC provider publishes it - with its scopes - at a predictable URL. This turns "find the
+             docs, find the right page, copy the URL, hope it is current" into pasting one thing. -->
+        <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Grid.Column="0" Text="{Binding Issuer}"
+                         PlaceholderText="Provider issuer, e.g. https://login.example.com  (optional)"
+                         FontSize="11" />
+                <Button Grid.Column="1" Classes="secondary-btn" Content="Discover"
+                        Command="{Binding DiscoverCommand}"
+                        ToolTip.Tip="Read the provider's /.well-known/openid-configuration and fill in the token URL" />
+            </Grid>
+
+            <TextBlock Text="{Binding DiscoveryStatus}"
+                       IsVisible="{Binding DiscoveryStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                       FontSize="11" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondary}" />
+
+            <!-- The provider's own scope list, so scopes are chosen rather than remembered. -->
+            <StackPanel IsVisible="{Binding HasDiscoveredScopes}" Spacing="4">
+                <TextBlock Text="Scopes this provider supports — click to add:"
+                           FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                <ItemsControl ItemsSource="{Binding DiscoveredScopes}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Classes="secondary-btn" Content="{Binding}"
+                                    Padding="8,2" FontSize="11" MinHeight="22" Margin="0,0,4,4"
+                                    Command="{Binding $parent[UserControl].((vm:TokenRequestEditorViewModel)DataContext).AddScopeCommand}"
+                                    CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </StackPanel>
+
         <!-- Method + token URL -->
         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
             <ComboBox Grid.Column="0" ItemsSource="{Binding MethodOptions}" SelectedItem="{Binding Method}" MinWidth="110" />

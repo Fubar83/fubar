@@ -290,6 +290,93 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     [RelayCommand]
     private void VerifyRequest() => RequestPreview = PreviewHandler?.Invoke(ToAuthConfig());
 
+    /// <summary>
+    /// Fetches the provider's OpenID configuration and fills in what it says. Set by the host, which
+    /// owns the HTTP client; null leaves the Discover button inert.
+    /// </summary>
+    public Func<string, Task<DiscoveryResult>>? DiscoveryHandler { get; set; }
+
+    /// <summary>The issuer to look up. Usually pasted straight from the provider's own page.</summary>
+    [ObservableProperty]
+    public partial string Issuer { get; set; } = "";
+
+    /// <summary>What discovery found, or why it did not.</summary>
+    [ObservableProperty]
+    public partial string? DiscoveryStatus { get; private set; }
+
+    /// <summary>The scopes the provider advertises, offered rather than typed from memory.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<string> DiscoveredScopes { get; private set; } = [];
+
+    public bool HasDiscoveredScopes => DiscoveredScopes.Count > 0;
+
+    partial void OnDiscoveredScopesChanged(IReadOnlyList<string> value) =>
+        OnPropertyChanged(nameof(HasDiscoveredScopes));
+
+    /// <summary>
+    /// Looks the provider up and fills the token URL in.
+    ///
+    /// This replaces "find the docs, find the right page, copy the endpoint, hope it is current" with
+    /// pasting the issuer. Only the URL is written: the credentials are the user's and the body was
+    /// seeded by the template, so overwriting either from a discovery document would throw away work
+    /// to supply something it does not actually know.
+    /// </summary>
+    [RelayCommand]
+    private async Task DiscoverAsync()
+    {
+        if (DiscoveryHandler is null)
+        {
+            return;
+        }
+
+        DiscoveryStatus = "Looking up the provider…";
+
+        var result = await DiscoveryHandler(Issuer);
+
+        DiscoveryStatus = result.Message;
+
+        if (result.Configuration is not { } configuration)
+        {
+            DiscoveredScopes = [];
+
+            return;
+        }
+
+        Url = configuration.TokenEndpoint ?? Url;
+        DiscoveredScopes = configuration.ScopesSupported;
+    }
+
+    /// <summary>
+    /// Adds a discovered scope to the token request's <c>scope</c> field, creating it if the template
+    /// did not. Appended rather than replaced - scopes are a set, and choosing them one at a time is
+    /// how anyone actually decides which they need.
+    /// </summary>
+    [RelayCommand]
+    private void AddScope(string? scope)
+    {
+        if (string.IsNullOrWhiteSpace(scope))
+        {
+            return;
+        }
+
+        var row = Body.UrlEncoded.Rows.FirstOrDefault(r => string.Equals(r.Key, "scope", StringComparison.OrdinalIgnoreCase));
+
+        if (row is null)
+        {
+            Body.UrlEncoded.AddRowQuietly(KeyValueRowViewModel.FromModel(new KeyValueItem { Key = "scope", Value = scope }));
+            RaiseChanged();
+
+            return;
+        }
+
+        var already = (row.Value ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if (!already.Contains(scope, StringComparer.Ordinal))
+        {
+            row.Value = string.Join(' ', already.Append(scope));
+        }
+    }
+
     /// <summary>Populate the editor from an <see cref="AuthConfig"/>'s OAuth2 fields: its template token
     /// request if present, otherwise the legacy fixed-form config (upgraded), otherwise the default template.</summary>
     public void LoadFrom(AuthConfig auth)
