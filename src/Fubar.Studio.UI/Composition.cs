@@ -36,6 +36,7 @@ internal static class Composition
                 // AddFubarDiffInfrastructure binds its Core ports (diff engine, JSON parser, text
                 // normalizer) exactly as it does inside Fubar Diff.
                 services.AddFubarDiffInfrastructure();
+                services.AddSingleton<SignInService>();
                 services.AddSingleton<JsonSemanticPass>();
 
                 // CodeStructurePass is deliberately NOT registered here. It is optional on

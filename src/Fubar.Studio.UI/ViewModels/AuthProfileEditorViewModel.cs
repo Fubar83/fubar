@@ -39,7 +39,8 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
         IJsonSchemaValidator schemaValidator,
         StatusLogViewModel statusLog,
         EnvironmentManagerViewModel environmentManager,
-        IOpenIdDiscoveryService discovery)
+        IOpenIdDiscoveryService discovery,
+        SignInService signIn)
     {
         _workspace = workspace;
         _workspaceService = workspaceService;
@@ -69,6 +70,8 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
             PreviewHandler = config =>
                 _authProvider.PreviewTokenRequest(config, _workspace, _environmentManager.ActiveEnvironment),
             DiscoveryHandler = issuer => discovery.DiscoverAsync(issuer),
+            SignInHandler = (authorizeUrl, clientId, scopes) =>
+                signIn.SignInAsync(authorizeUrl, clientId, scopes, _workspace, _environmentManager.ActiveEnvironment),
             VariableContext = new VariableTooltipContext(
                 variableResolver, workspace, environmentManager.ActiveEnvironment, SecretsRevealed: false),
         };

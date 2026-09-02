@@ -296,6 +296,81 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     /// </summary>
     public Func<string, Task<DiscoveryResult>>? DiscoveryHandler { get; set; }
 
+    // ---- Signing in (authorization code + PKCE) --------------------------------------------------
+
+    /// <summary>
+    /// Runs the browser half of the authorization-code grant and returns what came back. Set by the
+    /// host, which owns the browser and the socket.
+    /// </summary>
+    public Func<string, string, string?, Task<SignInResult>>? SignInHandler { get; set; }
+
+    /// <summary>The provider's authorize endpoint. Filled by Discover when the provider publishes one.</summary>
+    [ObservableProperty]
+    public partial string AuthorizeUrl { get; set; } = "";
+
+    /// <summary>
+    /// The redirect this app will listen on, shown BEFORE the flow can work.
+    ///
+    /// It has to be registered with the provider exactly as written, and a sign-in that fails because
+    /// it was not is the single most opaque failure in this grant - the browser shows the provider's
+    /// own error page and the app never hears anything at all. So the value is on screen to copy
+    /// rather than discovered from a failure.
+    /// </summary>
+    [ObservableProperty]
+    public partial string RedirectUri { get; private set; } = "";
+
+    /// <summary>True when the chosen template signs a person in, so the browser step is shown.</summary>
+    public bool IsAuthorizationCode => SelectedTemplate?.Grant == OAuth2GrantType.AuthorizationCode;
+
+    [ObservableProperty]
+    public partial string? SignInStatus { get; private set; }
+
+    /// <summary>
+    /// Opens the browser, waits for the redirect, and puts the code and verifier where the token
+    /// request can read them.
+    ///
+    /// Two steps rather than one because they genuinely are two: a person approving in a browser, then
+    /// an ordinary HTTP request. Keeping the second half an editable request is what lets a provider
+    /// with an extra required field be handled by adding one, instead of by waiting for this app to
+    /// support it.
+    /// </summary>
+    [RelayCommand]
+    private async Task SignInAsync()
+    {
+        if (SignInHandler is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(AuthorizeUrl))
+        {
+            SignInStatus = "Set the authorize URL first, or press Discover to find it.";
+
+            return;
+        }
+
+        SignInStatus = "Waiting for the browser…";
+
+        var scopes = Body.UrlEncoded.Rows
+            .FirstOrDefault(r => string.Equals(r.Key, "scope", StringComparison.OrdinalIgnoreCase))?.Value;
+
+        var result = await SignInHandler(AuthorizeUrl, ClientIdInBody(), scopes);
+
+        RedirectUri = result.RedirectUri ?? RedirectUri;
+        SignInStatus = result.Message;
+    }
+
+    /// <summary>
+    /// The client id as the token request carries it, so the browser step and the exchange cannot
+    /// disagree about who is asking - a mismatch there is rejected by the provider with an error about
+    /// the code rather than about the client.
+    /// </summary>
+    private string ClientIdInBody() =>
+        Body.UrlEncoded.Rows.FirstOrDefault(r => string.Equals(r.Key, "client_id", StringComparison.OrdinalIgnoreCase))?.Value
+        ?? "";
+
+    partial void OnSelectedTemplateChanged(AuthTemplate? value) => OnPropertyChanged(nameof(IsAuthorizationCode));
+
     /// <summary>The issuer to look up. Usually pasted straight from the provider's own page.</summary>
     [ObservableProperty]
     public partial string Issuer { get; set; } = "";
@@ -343,6 +418,7 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         }
 
         Url = configuration.TokenEndpoint ?? Url;
+        AuthorizeUrl = configuration.AuthorizationEndpoint ?? AuthorizeUrl;
         DiscoveredScopes = configuration.ScopesSupported;
     }
 

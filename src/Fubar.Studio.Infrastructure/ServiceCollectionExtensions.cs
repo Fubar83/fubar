@@ -49,6 +49,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVariableResolver, VariableResolver>();
         services.AddSingleton<IAuthProvider, AuthProvider>();
         services.AddSingleton<IOpenIdDiscoveryService, OpenIdDiscoveryService>();
+        services.AddSingleton<IAuthorizationCodeListener, LoopbackAuthorizationCodeListener>();
         services.AddSingleton<IHistoryService, HistoryService>();
         services.AddSingleton<IResponseTestService, ResponseTestService>();
         services.AddSingleton<IJsonSchemaValidator, JsonSchemaValidator>();

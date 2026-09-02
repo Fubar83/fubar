@@ -35,6 +35,15 @@ public enum OAuth2GrantType
 
     /// <summary>Exchange a stored refresh token for a fresh access token.</summary>
     RefreshToken,
+
+    /// <summary>
+    /// Sign in as a PERSON: the browser is opened at the provider, they approve, and the code that
+    /// comes back is exchanged for a token. Always with PKCE - see <see cref="Auth.Pkce"/>.
+    ///
+    /// The only grant here that needs a user present, which is why it needs a browser and a loopback
+    /// listener rather than just a request.
+    /// </summary>
+    AuthorizationCode,
 }
 
 /// <summary>How the client credentials are presented to the token endpoint.</summary>

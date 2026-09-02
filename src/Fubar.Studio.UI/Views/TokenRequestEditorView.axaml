@@ -102,6 +102,53 @@
             </StackPanel>
         </StackPanel>
 
+        <!-- Signing a PERSON in: the browser half of the authorization-code grant.
+
+             Shown only for that template, because it is the only one where a user has to be present.
+             The two steps are separate on screen because they genuinely are two - a browser round trip,
+             then an ordinary request - and keeping the second half editable is what lets a provider
+             with one extra required field be handled by adding it. -->
+        <Border IsVisible="{Binding IsAuthorizationCode}"
+                Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1" CornerRadius="6" Padding="10">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Step 1 — sign in" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimary}" />
+
+                <TextBox Text="{Binding AuthorizeUrl}"
+                         PlaceholderText="Authorize URL (Discover fills this in)"
+                         FontSize="11"
+                         controls:VariableTooltip.Context="{Binding VariableContext}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="secondary-btn" Content="Sign in with browser"
+                            Command="{Binding SignInCommand}"
+                            ToolTip.Tip="Opens your browser at the provider, then waits for it to redirect back" />
+                    <TextBlock Text="{Binding SignInStatus}"
+                               IsVisible="{Binding SignInStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                               VerticalAlignment="Center" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+
+                <!-- The redirect must be registered with the provider EXACTLY as written. A sign-in
+                     that fails because it was not is the most opaque failure in this grant - the
+                     browser shows the provider's error page and this app never hears anything - so it
+                     is on screen to copy rather than discovered from a failure. -->
+                <StackPanel Spacing="2"
+                            IsVisible="{Binding RedirectUri, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock Text="Register this redirect URI with your provider:"
+                               FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                    <SelectableTextBlock Text="{Binding RedirectUri}"
+                                         FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
+                                         Foreground="{DynamicResource TextPrimary}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="Step 2 — exchange the code for a token" FontSize="11" FontWeight="SemiBold"
+                   IsVisible="{Binding IsAuthorizationCode}"
+                   Foreground="{DynamicResource TextPrimary}" />
+
         <!-- Method + token URL -->
         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
             <ComboBox Grid.Column="0" ItemsSource="{Binding MethodOptions}" SelectedItem="{Binding Method}" MinWidth="110" />

@@ -14,6 +14,7 @@ public static class AuthTemplateCatalog
     public static IReadOnlyList<AuthTemplate> All { get; } =
     [
         ClientCredentials(),
+        AuthorizationCode(),
         RefreshToken(),
         CustomLogin(),
     ];
@@ -36,6 +37,40 @@ public static class AuthTemplateCatalog
                 ("client_secret", "{{client_secret}}")),
         },
         SeedCaptures: [Capture(AuthDefaults.AccessTokenVariable, "$.access_token")],
+        AccessTokenVariable: AuthDefaults.AccessTokenVariable,
+        ExpiryVariable: AuthDefaults.ExpiryVariable,
+        ExpiresInExpression: "$.expires_in");
+
+    /// <summary>
+    /// Sign in as a person. The token request here is only the SECOND half of the grant - the exchange
+    /// of an authorization code for a token - because the first half is a browser round trip that no
+    /// request can express.
+    ///
+    /// <c>{{oauth2_code}}</c> and <c>{{oauth2_code_verifier}}</c> are written into the session by the
+    /// browser step immediately before this request runs, which is why they appear here as ordinary
+    /// variables: the exchange stays an editable request like every other, and a provider wanting an
+    /// extra field can have one added by hand.
+    /// </summary>
+    private static AuthTemplate AuthorizationCode() => new(
+        Key: "oauth2-authorization-code",
+        DisplayName: "OAuth 2.0 - Authorization Code + PKCE (sign in)",
+        Grant: OAuth2GrantType.AuthorizationCode,
+        SeedRequest: new AuthTokenRequest
+        {
+            Method = "POST",
+            Url = "{{token_url}}",
+            Body = UrlEncoded(
+                ("grant_type", "authorization_code"),
+                ("code", "{{oauth2_code}}"),
+                ("redirect_uri", "{{oauth2_redirect_uri}}"),
+                ("code_verifier", "{{oauth2_code_verifier}}"),
+                ("client_id", "{{client_id}}")),
+        },
+        SeedCaptures:
+        [
+            Capture(AuthDefaults.AccessTokenVariable, "$.access_token"),
+            Capture("oauth2_refresh_token", "$.refresh_token"),
+        ],
         AccessTokenVariable: AuthDefaults.AccessTokenVariable,
         ExpiryVariable: AuthDefaults.ExpiryVariable,
         ExpiresInExpression: "$.expires_in");

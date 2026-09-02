@@ -48,6 +48,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     private readonly IVariableResolver _variableResolver;
     private readonly IAuthProvider _authProvider;
     private readonly IOpenIdDiscoveryService _discovery;
+    private readonly SignInService _signIn;
     private readonly StatusLogViewModel _statusLog;
     private readonly RequestModel _original;
 
@@ -93,6 +94,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         IVariableResolver variableResolver,
         IAuthProvider authProvider,
         IOpenIdDiscoveryService discovery,
+        SignInService signIn,
         IClipboardService clipboardService,
         IFilePickerService filePickerService,
         StatusLogViewModel statusLog,
@@ -116,6 +118,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         _variableResolver = variableResolver;
         _authProvider = authProvider;
         _discovery = discovery;
+        _signIn = signIn;
         _statusLog = statusLog;
         _diffPreview = diffPreview;
 
@@ -185,6 +188,8 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         Auth.OAuth2.TestAuthHandler = async config => (await _authProvider.PrepareAsync(config, _workspace, _environmentManager.ActiveEnvironment)).Outcome;
         Auth.OAuth2.PreviewHandler = config => _authProvider.PreviewTokenRequest(config, _workspace, _environmentManager.ActiveEnvironment);
         Auth.OAuth2.DiscoveryHandler = issuer => _discovery.DiscoverAsync(issuer);
+        Auth.OAuth2.SignInHandler = (authorizeUrl, clientId, scopes) =>
+            _signIn.SignInAsync(authorizeUrl, clientId, scopes, _workspace, _environmentManager.ActiveEnvironment);
         Auth.OAuth2.VariableContext = VariableContext;
 
         // The active environment/secrets-reveal choice can change while this request stays open -
