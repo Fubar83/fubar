@@ -120,7 +120,7 @@ jobs:
       # (Sigstore-backed, free). Consumers verify with:
       #   gh attestation verify <file> --repo ${{ github.repository }}
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             artifacts/*.zip
