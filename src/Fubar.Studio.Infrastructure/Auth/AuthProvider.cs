@@ -261,12 +261,30 @@ public sealed class AuthProvider : IAuthProvider
             ? (_session.Get(scope, refreshVariable) is { Length: > 0 } stored ? stored : Resolve(auth.RefreshToken))
             : null;
 
+        var clientId = Resolve(auth.ClientId);
+        var clientSecret = Resolve(auth.ClientSecret);
+        var scopes = Resolve(auth.Scopes);
+
+        // Stop BEFORE the request when a variable did not resolve.
+        //
+        // Substitute leaves what it cannot resolve exactly as it found it, so `{{authHost}}/token`
+        // travels on as that literal string and comes back as an invalid-URI error, or worse as a
+        // 404 from a real server - neither of which mentions a variable. This is the single most
+        // confusing failure in setting OAuth up, because the cause and the symptom are in different
+        // places and the symptom names the wrong thing. Naming the variables costs one regex over
+        // text we already have, and only when a `{{` survives.
+        if (UnresolvedVariables.Describe(
+                UnresolvedVariables.In(tokenUrl, clientId, clientSecret, scopes, refreshToken)) is { } unresolved)
+        {
+            return new AuthOutcome(false, $"OAuth2: {unresolved}");
+        }
+
         var request = new OAuth2TokenRequest(
             auth.OAuth2Grant,
             tokenUrl,
-            Resolve(auth.ClientId),
-            Resolve(auth.ClientSecret),
-            Resolve(auth.Scopes),
+            clientId,
+            clientSecret,
+            scopes,
             refreshToken,
             auth.ClientAuthentication);
 

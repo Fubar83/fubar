@@ -385,4 +385,83 @@ public class OAuthTests
 
         Assert.Equal("Bearer cached-tok", Assert.Single(applied.Headers).Value);
     }
+
+    // ---- Unresolved variables --------------------------------------------------------------------
+
+    [Fact]
+    public async Task An_unresolved_variable_in_the_token_url_is_named_rather_than_requested()
+    {
+        // Substitution leaves what it cannot resolve exactly as it found it, so this used to travel
+        // into the token request as the literal "{{authHost}}/token" and come back as an invalid-URI
+        // error - a symptom in a different place from the cause, naming the wrong thing entirely.
+        var session = new SessionVariableStore();
+        var tokenService = new CountingTokenService();
+        var provider = MakeProvider(tokenService, session);
+
+        var auth = new AuthConfig
+        {
+            Type = AuthType.OAuth2,
+            TokenUrl = "{{authHost}}/token",
+            ClientId = "c",
+            ClientSecret = "s",
+        };
+
+        var outcome = (await provider.PrepareAsync(auth, Workspace, null)).Outcome;
+
+        Assert.False(outcome.Ok);
+        Assert.Contains("{{authHost}}", outcome.Message);
+
+        // And no request was made. Sending one that cannot succeed is how the confusing error got
+        // produced in the first place.
+        Assert.Equal(0, tokenService.Calls);
+    }
+
+    [Fact]
+    public async Task Every_unresolved_field_is_named_at_once()
+    {
+        // One trip round the loop per missing variable is the slow way to configure OAuth.
+        var session = new SessionVariableStore();
+        var provider = MakeProvider(new CountingTokenService(), session);
+
+        var auth = new AuthConfig
+        {
+            Type = AuthType.OAuth2,
+            TokenUrl = "{{authHost}}/token",
+            ClientId = "{{clientId}}",
+            ClientSecret = "s",
+        };
+
+        var outcome = (await provider.PrepareAsync(auth, Workspace, null)).Outcome;
+
+        Assert.Contains("{{authHost}}", outcome.Message);
+        Assert.Contains("{{clientId}}", outcome.Message);
+    }
+
+    [Fact]
+    public async Task A_variable_that_DOES_resolve_is_not_reported()
+    {
+        // The guard must not fire on the ordinary case, which is the entire point of using variables -
+        // and resolving from the ENVIRONMENT is the case that was broken from the profile editor.
+        var session = new SessionVariableStore();
+        var provider = MakeProvider(new CountingTokenService(), session);
+
+        var environment = new WorkspaceEnvironment
+        {
+            Id = "e1",
+            Name = "Dev",
+            Variables = [new AppVariable { Key = "authHost", Value = "https://auth.example.com" }],
+        };
+
+        var auth = new AuthConfig
+        {
+            Type = AuthType.OAuth2,
+            TokenUrl = "{{authHost}}/token",
+            ClientId = "c",
+            ClientSecret = "s",
+        };
+
+        var outcome = (await provider.PrepareAsync(auth, Workspace, environment)).Outcome;
+
+        Assert.True(outcome.Ok);
+    }
 }
