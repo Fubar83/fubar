@@ -459,6 +459,30 @@ Image formats are detected from the CONTENT signature, unlike languages, which a
 extension: a renamed `.png` that is really a JPEG is ordinary, and being wrong here is immediately
 visible because the picture either appears or it does not.
 
+**Scroll sync copies BOTH axes, and horizontal was a reversal** (Diff). `DiffView.SyncScroll` and
+`ThreeWayView.SyncScroll` copy vertical AND horizontal offsets. Horizontal was deliberately left
+independent for a long time, on the argument that dragging one pane sideways because the other has a
+long line is disorienting - which is true only of a pane nobody is reading. The rows are ALIGNED, so
+row `i` is the same change on both sides, and scrolling right to reach the end of a long line pushed
+its counterpart off screen at exactly the moment it was the thing being compared. Two columns that
+have to be dragged sideways separately to read one difference is the worse of the two problems, and
+the three-way window makes it worse again by having three of them. Two things this rests on and one it
+must not break. It is safe because the side-by-side panes never wrap (see below), so a horizontal
+offset means the same thing in both; and the write clamps to the target's own extent, so a short line
+simply stops at its end rather than the pair jamming. **The two axes are written through different
+objects and that is not tidiness debt**: vertical goes through `TextEditor.ScrollToVerticalOffset`,
+horizontal through `EditorScroll.ScrollHorizontallyTo`, because `TextEditor.ScrollToHorizontalOffset`
+looks like the obvious counterpart and silently does nothing - AvaloniaEdit's `TextView` is an
+`ILogicalScrollable` that scrolls itself, so the ScrollViewer in the editor's template never moves
+(its `Offset.X` reads 0.0 on a pane visibly scrolled to 809.8) and writing to it changes nothing
+visible. Found with temporary logging, not by reading docs, and the first guess - that the target's
+extent was too narrow - was wrong: it measured 1270 against a 450 viewport, so the offset was always
+reachable. The thing it can break is the
+re-entry guard: syncing a second axis doubles the ways pane A can move pane B which moves A back
+forever, and `_syncingScroll` is ONE bool covering both axes for that reason. A ping-pong there hangs
+the UI thread rather than producing a wrong value, so nothing else would catch it - `ScrollSyncTests`
+exists mainly to prove the guard still holds.
+
 **Word wrap belongs to the unified view and CANNOT be given to the side-by-side one** (Diff). The two
 columns are aligned by having the same number of visual lines, which is what makes scroll sync a plain
 offset copy; a line long enough to wrap on one side and not the other pulls them apart by a line for

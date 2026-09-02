@@ -132,17 +132,29 @@ public partial class DiffView : UserControl
         _syncingScroll = true;
         try
         {
-            // Vertical only. Horizontal is deliberately left independent: lines differ in length
-            // between the two sides, and yanking one pane sideways because the other has a long line
-            // is more disorienting than helpful.
+            // BOTH axes. Horizontal used to be left independent, on the argument that yanking one
+            // pane sideways because the other has a long line is disorienting - but that reasoning
+            // only holds for a pane you are not reading. The rows are aligned, so row N is the same
+            // change on both sides, and scrolling right to reach the end of a long line puts the
+            // counterpart line off screen exactly when it is the thing being compared. Two columns
+            // that have to be dragged sideways separately to read one difference is the worse of the
+            // two problems.
             //
-            // The offset is read from the TextView but written through the TextEditor - TextView's
-            // ScrollOffset is read-only, and the editor owns the scroll viewer that actually moves.
-            var offset = from.TextView.VerticalOffset;
+            // The two axes are WRITTEN THROUGH DIFFERENT OBJECTS, which is not a tidiness problem to
+            // fix: vertical goes through the TextEditor, which routes it to the text view internally,
+            // and horizontal has to go through the text view itself because the editor's counterpart
+            // silently does nothing. See EditorScroll.ScrollHorizontallyTo.
+            var vertical = from.TextView.VerticalOffset;
+            var horizontal = from.TextView.HorizontalOffset;
 
-            if (Math.Abs(to.TextView.VerticalOffset - offset) > 0.5)
+            if (Math.Abs(to.TextView.VerticalOffset - vertical) > 0.5)
             {
-                to.TextEditor.ScrollToVerticalOffset(offset);
+                to.TextEditor.ScrollToVerticalOffset(vertical);
+            }
+
+            if (Math.Abs(to.TextView.HorizontalOffset - horizontal) > 0.5)
+            {
+                EditorScroll.ScrollHorizontallyTo(to.TextView, horizontal);
             }
         }
         finally

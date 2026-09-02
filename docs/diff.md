@@ -19,7 +19,9 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 - **Two-editor side-by-side view**, with each side showing its own file's line numbers — so the
   numbers still match what is on disk across insertions.
 - **Aligned panes.** Insertions and deletions get a placeholder row opposite them, and the two
-  editors scroll in lockstep, so the columns cannot drift apart.
+  editors scroll in lockstep — **both axes**, so scrolling right to read the end of a long line brings
+  its counterpart with it instead of leaving it off screen. The same holds for all three columns of a
+  three-way merge.
 - **Align two lines by hand** when the aligner pairs the wrong ones. Put the caret on a line in each
   pane and press **Ctrl+Shift+A** (or View → *Align the two carets*): those two lines are paired, the
   regions either side of them are compared independently, and the status bar says how many pairings

@@ -157,7 +157,7 @@ public partial class ThreeWayView : UserControl
         Output.IsVisible = visible;
     }
 
-    /// <summary>Copies one pane's vertical offset to the other two.</summary>
+    /// <summary>Copies one pane's scroll offset to the other two, on both axes.</summary>
     private void SyncScroll(DiffEditorPane from)
     {
         if (_syncingScroll)
@@ -168,16 +168,30 @@ public partial class ThreeWayView : UserControl
         _syncingScroll = true;
         try
         {
-            // Vertical only, as in the two-way view: lines differ in length between the three
-            // documents, and dragging every pane sideways because one has a long line is more
-            // disorienting than helpful.
-            var offset = from.TextView.VerticalOffset;
+            // Both axes, as in the two-way view - and the argument is stronger here, because reading a
+            // conflict means comparing THREE versions of one line. Having to drag three columns
+            // sideways independently to see the end of it is exactly the work this window exists to
+            // remove.
+            var vertical = from.TextView.VerticalOffset;
+            var horizontal = from.TextView.HorizontalOffset;
 
             foreach (var pane in new[] { LeftPane, BasePane, RightPane })
             {
-                if (!ReferenceEquals(pane, from) && Math.Abs(pane.TextView.VerticalOffset - offset) > 0.5)
+                if (ReferenceEquals(pane, from))
                 {
-                    pane.TextEditor.ScrollToVerticalOffset(offset);
+                    continue;
+                }
+
+                if (Math.Abs(pane.TextView.VerticalOffset - vertical) > 0.5)
+                {
+                    pane.TextEditor.ScrollToVerticalOffset(vertical);
+                }
+
+                // Through the text view, not the editor - see EditorScroll.ScrollHorizontallyTo for
+                // why the obvious-looking TextEditor.ScrollToHorizontalOffset does nothing.
+                if (Math.Abs(pane.TextView.HorizontalOffset - horizontal) > 0.5)
+                {
+                    EditorScroll.ScrollHorizontallyTo(pane.TextView, horizontal);
                 }
             }
         }

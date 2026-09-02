@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **The panes now scroll in lockstep horizontally as well as vertically**, in both the side-by-side
+  comparison and all three columns of a three-way merge. Horizontal was deliberately left independent
+  before, on the argument that dragging one pane sideways because the other has a long line is
+  disorienting - which is true only of a pane nobody is reading. The rows are aligned, so row *i* is
+  the same change on both sides, and scrolling right to reach the end of a long line pushed its
+  counterpart off screen at exactly the moment it was the thing being compared. Having to drag two
+  columns sideways separately to read one difference was the worse of the two problems, and a merge
+  made it worse again with three.
+
 ### Added
 
 - **Structural C# comparison: what changed, member by member.** Every diff tool in existence compares
