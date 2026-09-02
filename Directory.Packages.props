@@ -58,7 +58,8 @@
     <!-- Held at 3.2.2: xunit.v3 4.0.0 drops the VSTest `dotnet test` path in favour of
          Microsoft.Testing.Platform on .NET 10, which needs a test-runner migration (and mixed
          MTP/VSTest projects don't run together under one `dotnet test`). Dependabot will keep
-         proposing the bump, and its CI run will keep failing. Revisit when migrating. -->
+         proposing the bump, and its CI run will keep failing, so 4.x is ignored in
+         .github/dependabot.yml - unignore it there at the same time as changing this. -->
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />

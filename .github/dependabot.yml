@@ -6,6 +6,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    ignore:
+      # xunit.v3 4.x drops the VSTest `dotnet test` path for Microsoft.Testing.Platform, which needs
+      # a test-runner migration this repo has not done - and mixed MTP/VSTest projects cannot run
+      # together under one `dotnet test`, so the bump cannot land piecemeal either. Left unignored it
+      # reopens a permanently-red PR every week, which is how a red PR list stops meaning anything.
+      # Remove this when migrating; see the matching note in Directory.Packages.props.
+      - dependency-name: "xunit.v3"
+        versions: [">=4.0.0"]
     groups:
       avalonia:
         patterns:
