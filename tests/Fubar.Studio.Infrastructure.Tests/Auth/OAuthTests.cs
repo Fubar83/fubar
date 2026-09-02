@@ -438,6 +438,50 @@ public class OAuthTests
     }
 
     [Fact]
+    public async Task The_TEMPLATE_path_names_unresolved_variables_too()
+    {
+        // The path that actually matters, and the one the first version of this guard missed: the
+        // editor writes a TokenRequest, so this is where nearly every user is. The three tests above
+        // all set TokenUrl with no TokenRequest, which is the LEGACY path - they passed while the
+        // real path was unguarded.
+        var session = new SessionVariableStore();
+        var executor = new StubExecutor();
+        var provider = MakeProvider(new CountingTokenService(), session, new StubExecutorRegistry(executor));
+
+        var auth = TemplateAuth();
+        auth.TokenRequest!.Url = "{{token_url}}/token";
+
+        var outcome = (await provider.PrepareAsync(auth, Workspace, null)).Outcome;
+
+        Assert.False(outcome.Ok);
+        Assert.Contains("{{token_url}}", outcome.Message);
+
+        // And nothing was sent. Handing a literal "{{token_url}}/token" to the executor is what
+        // produced the malformed-URI error that named everything except the cause.
+        Assert.Equal(0, executor.Calls);
+    }
+
+    [Fact]
+    public async Task The_TEMPLATE_path_reads_headers_and_body_for_variables()
+    {
+        var session = new SessionVariableStore();
+        var executor = new StubExecutor();
+        var provider = MakeProvider(new CountingTokenService(), session, new StubExecutorRegistry(executor));
+
+        var auth = TemplateAuth();
+        auth.TokenRequest!.Body = new RequestBody
+        {
+            Type = BodyType.UrlEncoded,
+            UrlEncoded = [new KeyValueItem { Key = "client_id", Value = "{{client_id}}" }],
+        };
+
+        var outcome = (await provider.PrepareAsync(auth, Workspace, null)).Outcome;
+
+        Assert.Contains("{{client_id}}", outcome.Message);
+        Assert.Equal(0, executor.Calls);
+    }
+
+    [Fact]
     public async Task A_variable_that_DOES_resolve_is_not_reported()
     {
         // The guard must not fire on the ordinary case, which is the entire point of using variables -

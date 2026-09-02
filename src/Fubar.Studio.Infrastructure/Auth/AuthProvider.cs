@@ -105,6 +105,20 @@ public sealed class AuthProvider : IAuthProvider
             return new AuthOutcome(false, "The token request needs a URL.");
         }
 
+        // The same guard the legacy path has, and this is the one that matters: the EDITOR writes a
+        // TokenRequest, so this is the path nearly every user is on. Without it an unresolved
+        // {{token_url}} is handed to the HTTP executor and comes back as a transport error naming a
+        // malformed URI - the exact confusion the legacy guard was added to remove, still present on
+        // the path people actually take.
+        if (UnresolvedVariables.Describe(
+                [.. TokenRequestVariables
+                    .Of(tokenRequest, text => _resolver.Substitute(text, workspace, activeEnvironment) ?? text)
+                    .Where(v => !v.IsResolved)
+                    .Select(v => v.Name)]) is { } unresolvedInRequest)
+        {
+            return new AuthOutcome(false, $"Token request: {unresolvedInRequest}");
+        }
+
         var model = new RequestModel
         {
             Name = "auth-token",
