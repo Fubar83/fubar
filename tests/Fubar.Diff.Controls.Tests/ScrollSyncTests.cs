@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
+using Fubar.Diff.Controls.Rendering;
 using Fubar.Diff.Controls.ViewModels;
 using Fubar.Diff.Controls.Views;
 using Fubar.Diff.Core.Merge;
@@ -79,8 +80,11 @@ public class ScrollSyncTests
 
         foreach (var pane in panes)
         {
-            pane.TextEditor.ScrollToHorizontalOffset(120);
-            pane.TextEditor.ScrollToVerticalOffset(40);
+            // Both axes written through the TEXT VIEW. Neither TextEditor.ScrollTo*Offset does anything
+            // here - the TextView is an ILogicalScrollable that scrolls itself - so driving the panes
+            // through the editor made this exercise nothing at all while appearing to.
+            EditorScroll.ScrollHorizontallyTo(pane.TextView, 120);
+            EditorScroll.ScrollVerticallyTo(pane.TextView, 40);
         }
 
         window.UpdateLayout();
@@ -120,8 +124,8 @@ public class ScrollSyncTests
 
         foreach (var column in panes)
         {
-            column.TextEditor.ScrollToHorizontalOffset(200);
-            column.TextEditor.ScrollToVerticalOffset(20);
+            EditorScroll.ScrollHorizontallyTo(column.TextView, 200);
+            EditorScroll.ScrollVerticallyTo(column.TextView, 20);
         }
 
         window.UpdateLayout();

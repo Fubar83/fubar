@@ -371,6 +371,19 @@ public sealed class FileComparisonService : IFileComparisonService
     /// <summary>
     /// Replaces the keys the engine echoed back with the real document lines, using the line numbers
     /// on each row. Fillers have no number and stay empty.
+    ///
+    /// <para>Also the one place that can see a row was equalised BY AN OPTION. The engine matched on
+    /// comparison keys; here both raw lines are in hand for the first time, so an Unchanged row whose
+    /// two texts differ can only have been made equal by ignore-whitespace, ignore-case,
+    /// ignore-comments, a line-pattern mask or Unicode normalisation. Marking it
+    /// <see cref="DiffLine.IsIgnored"/> gets it the same faint band an ignored JSON path already gets -
+    /// and costs one ordinal string compare per unchanged row, which is nothing beside the alignment
+    /// that just ran.</para>
+    ///
+    /// <para>Without it, turning an option on made the difference vanish completely, and the reader
+    /// could not tell "these lines agree" from "these lines disagree and I asked not to be told" - the
+    /// same wrong silence an ignored reorder used to have. It also makes an option's effect visible
+    /// while it is on, which is the only way to check a rule is doing what you thought.</para>
     /// </summary>
     private static List<DiffLine> ProjectOntoDocuments(
         IReadOnlyList<DiffLine> rows,
@@ -380,15 +393,34 @@ public sealed class FileComparisonService : IFileComparisonService
         var projected = new List<DiffLine>(rows.Count);
         foreach (var row in rows)
         {
+            var leftText = row.LeftNumber is { } l ? leftLines[l - 1] : null;
+            var rightText = row.RightNumber is { } r ? rightLines[r - 1] : null;
+
             projected.Add(row with
             {
-                LeftText = row.LeftNumber is { } l ? leftLines[l - 1] : null,
-                RightText = row.RightNumber is { } r ? rightLines[r - 1] : null,
+                LeftText = leftText,
+                RightText = rightText,
+
+                // Never overwrite an IsIgnored the semantic pass already decided; only ADD the ones the
+                // text options are responsible for.
+                IsIgnored = row.IsIgnored || EqualisedByAnOption(row, leftText, rightText),
             });
         }
 
         return projected;
     }
+
+    /// <summary>
+    /// True for a row the aligner called equal whose two lines are not actually the same text.
+    ///
+    /// Restricted to <see cref="ChangeKind.Unchanged"/>: a filler has no counterpart to differ from, and
+    /// a row that is already reported as a change needs no faint hint that it differs.
+    /// </summary>
+    private static bool EqualisedByAnOption(DiffLine row, string? leftText, string? rightText) =>
+        row.Kind == ChangeKind.Unchanged
+        && leftText is not null
+        && rightText is not null
+        && !string.Equals(leftText, rightText, StringComparison.Ordinal);
 
     /// <summary>
     /// Longest line the character-level differ is asked about.
@@ -405,13 +437,21 @@ public sealed class FileComparisonService : IFileComparisonService
     /// Only <see cref="ChangeKind.Modified"/> rows get spans: on a wholly inserted or deleted line the
     /// entire row is already the change, so picking out words within it would be noise. Rows are
     /// mutated in place in the list to avoid a second full copy of what can be a very long document.
+    ///
+    /// <para><b>And IGNORED rows</b>, whose Kind is Unchanged but whose two lines are not the same text.
+    /// Those need spans for the opposite reason to an inserted line: the difference is usually a couple
+    /// of characters - two leading spaces, a capital letter - and banding the entire row to report it
+    /// says the whole line is involved when almost none of it is. With spans the renderers can mark the
+    /// characters that actually differ and leave the rest of the line alone.</para>
     /// </summary>
     private List<DiffLine> WithInlineSpans(List<DiffLine> rows, SourceLanguage language)
     {
         for (var i = 0; i < rows.Count; i++)
         {
             var row = rows[i];
-            if (row.Kind != ChangeKind.Modified || row.LeftText is not { } left || row.RightText is not { } right)
+            var wanted = row.Kind == ChangeKind.Modified || row.IsIgnored;
+
+            if (!wanted || row.LeftText is not { } left || row.RightText is not { } right)
             {
                 continue;
             }

@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls.Primitives;
 using AvaloniaEdit;
+using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
 
 namespace Fubar.Diff.Controls.Rendering;
@@ -19,11 +20,13 @@ internal static class EditorScroll
     ///
     /// Goes through <see cref="IScrollable"/> on the TEXT VIEW, and that detail cost a diagnostic
     /// session to find. <c>TextEditor.ScrollToHorizontalOffset</c> looks like the obvious counterpart
-    /// to <c>ScrollToVerticalOffset</c> and is silently useless here: AvaloniaEdit's TextView is an
+    /// to <c>ScrollToVerticalOffset</c> and is silently useless here - as, it turns out, is
+    /// <c>ScrollToVerticalOffset</c> itself: AvaloniaEdit's TextView is an
     /// <c>ILogicalScrollable</c> that scrolls ITSELF, so the ScrollViewer in the editor's template
     /// never moves - its <c>Offset.X</c> reads 0.0 on a pane visibly scrolled to 809.8 - and writing
-    /// to it changes nothing anyone can see. The vertical twin works only because AvaloniaEdit routes
-    /// it to the text view internally.
+    /// to it changes nothing anyone can see. The vertical twin was believed to work because AvaloniaEdit
+    /// routed it to the text view internally; it does not, and that belief cost the panes their vertical
+    /// sync. See <see cref="ScrollVerticallyTo"/> for the measurement.
     ///
     /// Measured before being believed: the target's extent was never the problem (1270 wide against a
     /// 450 viewport, so the offset asked for was always reachable). The write was going somewhere
@@ -39,6 +42,123 @@ internal static class EditorScroll
         // Clamped by the view itself: a side whose longest line is shorter simply stops at its own
         // end rather than the pair jamming or throwing.
         scrollable.Offset = new Vector(Math.Max(0, offset), scrollable.Offset.Y);
+    }
+
+    /// <summary>
+    /// Scrolls a pane vertically to an absolute offset.
+    ///
+    /// <para>Through <see cref="IScrollable"/> on the TEXT VIEW, for exactly the reason the horizontal
+    /// twin above is - and the note there used to say this one was the exception, that
+    /// <c>TextEditor.ScrollToVerticalOffset</c> worked because AvaloniaEdit routed it to the text view
+    /// internally. It does not. Measured: with the right pane at offset 0, an extent of 471.8 and a
+    /// viewport of 415.0 - so 56.8 was both the target and exactly the maximum it could reach - calling
+    /// <c>ScrollToVerticalOffset(56.8)</c> left it reading 0.0. The call is silently a no-op, the same as
+    /// its horizontal counterpart, because the TextView is an <c>ILogicalScrollable</c> that scrolls
+    /// itself and the ScrollViewer in the editor's template never moves.</para>
+    ///
+    /// <para>That one wrong sentence cost the two panes their vertical sync entirely: the handler fired
+    /// on every scroll, computed the right offset, asked for it, and nothing happened. It looked like a
+    /// missing subscription for as long as nobody measured what the call actually did.</para>
+    /// </summary>
+    public static void ScrollVerticallyTo(TextView textView, double offset)
+    {
+        if (textView is not IScrollable scrollable)
+        {
+            return;
+        }
+
+        scrollable.Offset = new Vector(scrollable.Offset.X, Math.Max(0, offset));
+    }
+
+    /// <summary>
+    /// Brings the changed CHARACTERS of a line into view sideways, if they are not already.
+    ///
+    /// <para>Centring vertically is right - the eye rests in the middle of the pane - and centring
+    /// horizontally is not. Horizontal position carries meaning: indentation is how code shows its
+    /// structure, and a pane yanked sideways on every navigation loses that for every difference that
+    /// did not need it. So this scrolls the MINIMUM required, and only when the span is actually out of
+    /// view.</para>
+    ///
+    /// <para>A change with no columns to point at - a wholly inserted or deleted line, which carries no
+    /// character spans because the entire row is the difference - scrolls back to the left margin
+    /// instead. That IS where such a change starts, and leaving the pane parked to the right after
+    /// following a long line would hide the next difference behind the gutter.</para>
+    /// </summary>
+    /// <param name="startColumn">1-based column of the first changed character, or 0 for none.</param>
+    /// <param name="endColumn">1-based column just past the last changed character.</param>
+    public static void RevealColumns(
+        TextEditor editor, TextView textView, int lineNumber, int startColumn, int endColumn)
+    {
+        if (textView is not IScrollable scrollable || textView.Bounds.Width <= 0)
+        {
+            return;
+        }
+
+        var viewportWidth = textView.Bounds.Width;
+        var offset = scrollable.Offset.X;
+
+        // No columns: the whole line is the change, so home.
+        if (startColumn <= 0)
+        {
+            if (offset > 0)
+            {
+                ScrollHorizontallyTo(textView, 0);
+            }
+
+            return;
+        }
+
+        var line = editor.Document?.GetLineByNumber(lineNumber);
+        if (line is null)
+        {
+            return;
+        }
+
+        // Clamped to the line: a span is computed against the display text, and a stale or
+        // out-of-range column would otherwise ask AvaloniaEdit for a position that does not exist.
+        var length = line.Length;
+        var from = Math.Clamp(startColumn, 1, length + 1);
+        var to = Math.Clamp(endColumn, from, length + 1);
+
+        var left = XOf(textView, lineNumber, from);
+        var right = XOf(textView, lineNumber, to);
+
+        if (double.IsNaN(left) || double.IsNaN(right))
+        {
+            return;
+        }
+
+        // A margin so the change does not sit flush against an edge, where it reads as cut off.
+        const double Margin = 48;
+
+        if (left < offset + Margin)
+        {
+            ScrollHorizontallyTo(textView, Math.Max(0, left - Margin));
+            return;
+        }
+
+        if (right > offset + viewportWidth - Margin)
+        {
+            // Prefer showing the START of a span too wide to fit: reading begins there.
+            var wanted = right - viewportWidth + Margin;
+            ScrollHorizontallyTo(textView, Math.Min(wanted, Math.Max(0, left - Margin)));
+        }
+    }
+
+    private static double XOf(TextView textView, int lineNumber, int column)
+    {
+        try
+        {
+            return textView
+                .GetVisualPosition(new TextViewPosition(lineNumber, column), VisualYPosition.LineTop)
+                .X;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // The view has not built that visual line yet. Not knowing where a column is is a reason to
+            // leave the pane alone, never to throw out of a navigation.
+            return double.NaN;
+        }
     }
 
     public static void CenterOnLine(TextEditor editor, TextView textView, int lineNumber)
@@ -67,6 +187,9 @@ internal static class EditorScroll
         // the pane scrolls somewhere plausible and simply does not centre the difference.
         var visualTop = textView.GetVisualTopByDocumentLine(lineNumber);
 
-        editor.ScrollToVerticalOffset(Math.Max(0, visualTop - ((textView.Bounds.Height - lineHeight) / 2)));
+        // Through the text view, not the editor: ScrollToVerticalOffset does nothing here. ScrollToLine
+        // above is what was actually moving the pane, which is why navigation landed on the right line
+        // but never centred it - the centring step was silently discarded every time.
+        ScrollVerticallyTo(textView, visualTop - ((textView.Bounds.Height - lineHeight) / 2));
     }
 }

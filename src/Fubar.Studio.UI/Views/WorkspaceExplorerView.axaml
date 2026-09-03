@@ -26,6 +26,8 @@
 
             <fc:TreeView.ContextFlyout>
                 <MenuFlyout>
+                    <MenuItem Header="Run" Command="{Binding RunCommand}" />
+                    <Separator />
                     <MenuItem Header="New Request" Command="{Binding NewRequestCommand}" />
                     <MenuItem Header="New Folder" Command="{Binding NewFolderCommand}" />
                     <Separator />

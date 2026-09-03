@@ -8,6 +8,78 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Run a collection from the command line, for CI.** `FubarAPIStudio --run --env Staging --report
+  results.xml`. The same binary, switched into a batch tool by flags that have no meaning on screen —
+  the rule Fubar Diff already uses, so starting the app normally is untouched.
+
+  Exit codes are `diff`'s: **0** everything ran and passed, **1** something failed, **2** the run could
+  not be attempted. The third is kept strictly apart from the second because a workspace that would not
+  load and a collection whose assertions failed call for completely different reactions from a build,
+  and collapsing them would make the first look like the second.
+
+  **JUnit XML** because that is the format every CI system already renders: a failed assertion shows up
+  as a failed test on the build page, with its message, instead of a line somewhere in a log nobody
+  opens. One `<testcase>` per request rather than per assertion — a request is the thing with a name, a
+  duration and a URL, and a page listing "status is 200" twenty times would name none of them. The
+  folder becomes the classname, so CI groups them the way the collection does, and a transport failure
+  is an `<error>` rather than a `<failure>`, which is JUnit's own distinction and exactly ours.
+  `--report results.json` gets the whole report as JSON instead.
+
+  **A captured value is never written to either format.** The headline capture is an access token, and a
+  report file is precisely the thing that gets attached to a build and kept. The variable's name and
+  whether it worked are recorded; its value is not.
+
+  A run matching nothing exits **1**, not 0 — "no tests ran, so it passed" is one typo in `--filter`
+  away. A named environment that does not exist is an error rather than a quiet fall back to none, which
+  would leave every `{{variable}}` resolving to nothing and make the failure look like the requests'
+  fault instead of a typo's. A report that cannot be written is reported without changing the verdict:
+  the run already happened, and turning a passing run into exit 2 over an unwritable path would tell the
+  build the wrong thing about the API.
+
+  History is never recorded by a command-line run, and there is deliberately no flag to turn it on.
+
+- **Run a whole collection.** Right-click a folder — or the workspace — and pick **Run**. Every request
+  under it is sent in the order the left pane shows, each one's captures and assertions applied as it
+  goes, and the window reports what happened.
+
+  This is what makes captures worth having. A capture writes a variable; a variable is only useful to a
+  *later* request; and until now there was no way to run a later request except by clicking it yourself.
+  A login that captures `{{token}}` now feeds the nineteen requests after it in one press.
+
+  The run window lists the whole plan before it starts rather than growing a row at a time, because the
+  usual reason to watch a running collection is to decide whether to wait for it, and a list that only
+  shows what has finished can answer that only by finishing. A request in flight is named while it is in
+  flight — the one that hangs is the one you most want identified.
+
+  Options: stop at the first failure (worth turning on for a chain, where carrying on past a failed
+  login produces nineteen more failures that all say the same thing and bury the one that matters), a
+  delay between requests for rate-limited APIs, a name filter, and history recording — which is OFF by
+  default, unlike a single send, because history is capped per request and a run on a schedule would
+  otherwise evict the sends you made by hand.
+
+  **A status code never fails a run on its own; only an assertion or a transport error does.** Not the
+  obvious choice, so: this app lets you assert `StatusCode Equals 404` deliberately, and a runner that
+  also treated 4xx as failure would make the same response both the expected result and a failure, with
+  one of those two answers winning silently. Deciding which statuses are bad is the job assertions exist
+  to do explicitly. The cost — a collection with no assertions can return 500s and still pass — is paid
+  for by flagging every non-2xx nobody asserted on, beside the verdict rather than inside it: the run
+  does not fail, and you are still told. A cancelled run is never green either, and neither is an empty
+  one, since "no tests ran, so it passed" is reachable by a filter with a typo in it.
+
+  Sequential, never parallel, and that is correctness rather than an implementation shortcut: captures
+  write variables later requests read, so two requests in flight at once is a race whose outcome depends
+  on which response came back first. A "run faster" switch would break exactly the collections that are
+  worth running.
+
+  Each step goes through the same pipeline a single send does, so auth acquisition, the 401 retry,
+  captures, assertions and history behave identically whether you press Send or Run — anything that
+  works in the editor works in a run. Two things are contained rather than fatal: a request file that
+  will not parse errors that one step and the run carries on, and a capture that could not be applied is
+  reported without failing the request that answered fine.
+
+  Requests are read from disk when their turn comes, so a run sends what is **saved** — the honest
+  behaviour for something whose purpose is to be repeatable.
+
 - **Sign in as a person: Authorization Code + PKCE.** The grant most people expect was missing, and it
   is not a template — it needs a browser, a loopback listener, PKCE and a code-for-token exchange. Pick
   the template, press **Sign in with browser**, approve at your provider, then **Test / Get token**
@@ -37,6 +109,38 @@ All notable changes to this project are documented here. The format is based on
   *failure* too, which is where `invalid_client` and its description live. Token values are never
   printed in full: finding the field is the job, and a pane that spills a live credential into a
   screenshot is a bad trade for information nobody needed.
+
+### Fixed
+
+- **OpenAPI import created far too many environment variables, and one of them broke auth silently.** An
+  eight-operation spec produced fourteen variables per environment, of which three were correct. It now
+  produces two. Four separate causes:
+
+  **Path parameters are no longer variables at all.** Every distinct `{name}` in the spec used to become
+  one workspace-wide variable. That is wrong at scale — a mid-sized API turns into dozens of empty
+  variables — and wrong in kind, because the names *collide*: `/users/{id}`, `/users/{id}/orders` and
+  `/orders/{id}` all resolved to a single `id`, so filling it in for one request broke the other two. A
+  path parameter belongs to the one request whose URL contains it, so that is where it now lives —
+  keeping the spec's own `{id}`, or the example/default when the spec supplies one, which makes the
+  request runnable straight away.
+
+  **Security schemes nothing references no longer create profiles or credentials.** A spec declaring four
+  schemes and using one got four auth profiles and five variables, including a Basic auth username and
+  password for auth nobody asked for. A spec that references *no* scheme anywhere still gets all of them,
+  with a warning — importing none would leave nothing to switch on.
+
+  **Server variables are substituted into the URL and not also copied into the environments.** Being both
+  made them inert: `baseUrl` already held the resolved URL, so nothing referenced them and setting
+  `region` to `eu` changed nothing. They also leaked — one server's variables were copied into *every*
+  environment, first value wins, including environments whose URL is literal and has no such variable.
+
+  **A spec that declares `Authorization` as a header parameter no longer suppresses your token.** This
+  one failed silently. Such a header imported as an enabled row carrying a placeholder, and the auth
+  merge — correctly — refuses to overwrite a header the request already carries enabled. So `<string>`
+  went out as the Authorization header, the bearer token never did, and the 401s looked like the auth
+  profile was broken. It is now imported unchecked, with a warning saying why; a disabled row cannot
+  suppress the auth, so ticking it back on is a deliberate act with a visible consequence. The same
+  applies to an API-key-in-query scheme against a declared query parameter.
 
 ### Changed
 

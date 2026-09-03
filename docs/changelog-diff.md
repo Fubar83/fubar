@@ -6,6 +6,219 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **A location map worth reading, where there was a strip of ticks.** The map between the panes now
+  shows *how much* changed at each point, not just where. **One mark per difference**, at that
+  difference's own height — a twelve-line change is one twelve-pixel bar, not twelve marks with gaps
+  between them, which is how it read before and made the map answer "how many differences are there?"
+  with a number far too big. Two differences separated by a single unchanged line still count as two,
+  even when the gap between them is too small to draw.
+
+  The width of a mark says how much of it changed, which is what a map earns its place for: on a
+  60,000-line file drawn 600px tall one pixel is a hundred rows, and the old drawing clamped every hunk
+  to the same minimum — so forty changes in a rewritten region looked identical to one stray edit beside
+  it. A difference squashed into a single pixel is still a visible sliver, and one spanning forty is a
+  full bar.
+
+  Marks are now per side, so a deletion shows on the left and an insertion on the right without relying
+  on colour alone. **Ignored rows are marked** — they form no hunk, so they used to draw nothing at all,
+  leaving you unable to tell "these are identical" from "a rule is hiding this", which is exactly what
+  you want to check after adding a rule. Small triangles at the top and bottom say when changes lie off
+  screen that way, and hovering names what is under the pointer — "line 4,120 of 60,000 · change 12 of
+  40 · 11 above, 28 below the view".
+
+  It deliberately does **not** copy WinMerge's connecting lines between its two columns. Those exist
+  because its columns are at independent scales; ours are row-aligned by construction, so a line would
+  join a point to itself. The one case where the two ends genuinely sit at different heights is a
+  **move**, and that is the one case a line is drawn for.
+
+- **The Json close-up no longer spends half its height on an empty box.** An inserted value exists only
+  on the right and a deleted one only on the left, so for a large share of the changes you navigate to,
+  one of the two sides had nothing in it — and still took half the pane, beside the half holding the
+  thing you were trying to read. A side with no excerpt now gets no height at all, and the divider
+  between them goes with it. Worst case fixed: on a minified document the excerpt *is* the whole line, so
+  the side with content needs every pixel it can get.
+
+- **Click a difference in either pane to make it the current one.** The panes showed every difference and
+  the only way to step to one was the toolbar, so pointing at the difference you were already reading and
+  saying "this one" was impossible — the missing half of the map, the tree and Prev/Next all agreeing
+  about a current difference nothing could set by hand. Clicking unchanged text selects nothing: the
+  caret moves for all sorts of reasons, and having the window scroll away because you clicked to read
+  would make the panes unusable for their actual job.
+
+- **The change tree now follows the difference you are on, visibly.** The selection always moved with
+  Prev/Next — but nothing opened the rows above it, so on a document nested five levels deep the tree
+  agreed it had moved and showed nothing. Navigating now opens the ancestors of the selected row and
+  scrolls it into view. It only ever *opens*: a row you expanded by hand is never closed again by
+  stepping to the next difference, and nothing is expanded on load, exactly as before.
+
+- **The location map, again.** Borders down both edges so it reads as its own column between the panes
+  rather than as margin belonging to one of them. Marks are thicker (5px) and never thinner than 5px
+  wide, because the mark *is* the click target — its size decides whether the map can be used at all —
+  and a click now snaps to a change within 12px of it. The current difference is shown by **recolouring its own
+  marks** in the accent colour - nothing is drawn over or behind them. A frame down the outer edges said
+  "somewhere in this range" when the question is "which one am I on"; a wash and a bar across the strip
+  both answered that and drowned the map doing it. The marks were already the right shape and weight.
+
+- **The location map is easier to hit, easier to read, and says which difference you are on.** Wider
+  (32px), so it reads as the strip *between* the two panes rather than a border on one of them. Marks are
+  drawn 3px tall instead of 1px, so a single changed line on a long file is visible rather than a hair —
+  density is still carried by width, so nothing about "how much changed here" is lost.
+
+  **Clicking near a change snaps to it.** On a 60,000-line file one pixel is a hundred rows, so hitting a
+  one-line change used to be luck — and missing by a pixel scrolled a hundred lines away from the thing
+  you aimed at. A click within a few pixels of a mark now goes to the start of that change. Further away
+  it still goes exactly where you pointed, so dragging the strip keeps scrubbing smoothly.
+
+  **The current difference is washed across the full width** with bars down both edges, in the same
+  orange the editors use — so the map and the panes agree about which one you are on. The wash is drawn
+  *under* the marks, which stay the brightest thing on their own row.
+
+- **Navigating to a difference now scrolls sideways to it — in every pane, including the close-up.** A
+  change beyond the right edge of a long line used to leave you looking at a row that appeared unchanged.
+  Each pane is scrolled by the minimum needed to bring *its own* changed characters into view, with a
+  margin so they do not sit flush against an edge — the minimum, because horizontal position carries
+  meaning and a pane yanked sideways on every step loses indentation as a cue. A whole inserted or
+  deleted line has no columns to point at, so it scrolls back to the left margin, which is where such a
+  change starts.
+
+  The **Json view and the close-up beneath it** do this too, and that is where the omission actually
+  hurt: an unaligned Json document is usually **minified**, so the close-up's excerpt is one enormous
+  line, and finding the right line left you staring at its beginning with the highlighted characters two
+  hundred across and off the edge. Nothing on screen suggested you were looking at the wrong part of the
+  right line.
+
+- **Arrays are compared by position unless you say otherwise, and the menu says which rule is in
+  force.** Right-clicking a list now opens with the answer to the first question anyone has about it —
+  *Matched by position*, *Matched ignoring order*, *Matched by id* — and the options underneath carry a
+  radio mark on the one already in use. That mark was being computed and bound to nothing, so the menu
+  offered four ways to match a list and said nothing at all about the one you were already on.
+
+  **And a detectable key is now a suggestion rather than a default.** An array whose elements happen to
+  carry an `id`, `name` or `key` field used to be matched by it automatically. That is a good guess and
+  a bad rule: it meant two lists in the same file were compared by different rules with nothing on
+  screen saying so, adding a `name` field to some records silently changed how they were diffed, and
+  turning on "ignore order" globally did nothing to any of them. The detection still runs and is still
+  offered first, labelled *(suggested)* — it just has to be chosen. **This changes results**: a
+  reordered list of objects that used to report as identical now reports as changed until you pick a
+  key for it, which is one right-click.
+
+- **Fixed: the side-by-side panes had stopped scrolling together vertically.** One side moved and the
+  other stayed put. The sync handler was firing on every scroll and computing the right offset, but the
+  call it made to apply it — `TextEditor.ScrollToVerticalOffset` — does nothing in AvaloniaEdit: the text
+  view scrolls itself, and the editor's scroll viewer that the call writes to never moves. The same trap
+  had already been found and documented for the horizontal axis, with a note stating that vertical was
+  the exception. It was not. Two more things it had been quietly breaking: navigating to a difference
+  never actually **centred** it, and the tests written to cover scroll sync were driving the panes
+  through the same dead call.
+
+- **A moved block is shown at both ends at once.** Clicking one highlights both: the block where it
+  *was* outlined in the left pane, where it *is* outlined in the right. The two panes give up their
+  lockstep scrolling for exactly as long as a move is selected, holding themselves level at the block's
+  two ends instead of at the same row — which is the only way both ends can be on screen together, and
+  the one difference where "the same row on both sides" is not what you want to look at. The offset is
+  measured from where the rows actually are, so a collapsed region above either end does not throw it
+  out. Everything else still scrolls in plain lockstep.
+
+- **The close-up keeps the gaps, so its two halves line up.** A hunk of three deletions and two
+  insertions used to give a three-line block above a two-line one, with nothing saying which of the
+  three the two corresponded to. Filler rows are kept now, so line N of the upper block is line N of the
+  lower one.
+
+- **The close-up shows both ends of a moved block.** A move is the one difference whose halves are not
+  on the same rows — the block left the file at one place and turned up at another — so it is two
+  differences, and the close-up used to build both of its sides from one of them: the block on one side,
+  an empty box on the other, which is the single comparison a move actually needs. Clicking either end,
+  or the connecting line between them on the location map, now shows the block where it *was* beside the
+  block where it *is*. They remain two differences to Prev/Next and to the counts, because the block
+  really did leave one place and arrive at another.
+
+- **Fixed: the location map drew big differences thinner than small ones.** Width says how much changed,
+  and it was being measured against the pixels a mark spans rather than against one pixel's worth of
+  rows. With the map taller than the document that is about ten pixels per row, so a twelve-row
+  difference computed 12/111 and hit the minimum width while a one-row difference computed 1/1 and came
+  out full. The two encodings now divide by scale and neither carries the other: where there is room,
+  every mark is full width and height says the size; where a hundred rows share a pixel, width takes
+  over.
+
+- **Only the whitespace is marked, not the whole line.** A line differing by two trailing spaces used
+  to light up end to end, which reads as "this line is involved" when the line is identical apart from
+  something invisible at one end of it — and on a file a formatter has been over, that is every row lit
+  up to say nothing. The exact characters are marked instead. This holds on both sides: trailing
+  whitespace exists on only one of them, and the other used to go on banding its whole row about the
+  very difference its counterpart was pointing at precisely. Lines too long to compare character by
+  character keep the band, because a faint whole row still beats showing nothing.
+
+- **Shift+Alt+Up/Down steps through the ignored differences too**, and the close-up shows one when you
+  land on it. Ordinary Prev/Next still walks straight past them, which is what having rules is for;
+  this answers the other question — *what exactly am I not being told?* — which gets asked right after
+  adding a rule and once more before trusting the diff. Before it, an ignored difference was a faint
+  mark you had to find by scrolling. A run of adjacent ignored rows is one stop, not one per row.
+
+  Clicking an ignored row selects it too, and the close-up captions it *Ignored difference* with both
+  sides and its line numbers. It used to answer "No difference selected" about something you had just
+  deliberately navigated to.
+
+- **Ignored differences are visible now, and there are more of them.** Two changes, one principle: a
+  difference you told the tool to ignore is still *shown*, faintly — because told nothing at all you
+  cannot tell "these lines agree" from "these lines disagree and I asked not to be told", and the second
+  is worth a glance before trusting the diff. It is also the only way to check that a rule you just added
+  is doing what you thought.
+
+  **Whitespace, case, comments and line-pattern rules now leave a mark.** Turning one on used to make the
+  affected lines vanish into ordinary unchanged rows. They now carry the same faint neutral band an
+  ignored JSON path already had, and stay out of the counts, the hunks and next/previous exactly as
+  before. One implementation covers every option that equalises a line, because it compares the two raw
+  lines after projection rather than knowing which rule ran.
+
+  **And the band is no longer nearly invisible** — raised from 7% to 14%, with a stronger 30% for
+  character spans in the Json view, where the same opacity over a few characters reads as far less than
+  over a whole row. It stays below an ordinary change row and stays neutral grey against their red and
+  green, so it is told apart by hue rather than only by weight.
+
+- **Ignored differences are shown, faintly, and an ignored REORDER is now one of them.** Picking *Ignore
+  order* on a list used to make the moved elements vanish outright. That is the wrong kind of silence:
+  you asked for the order to be ignored, not for the fact that something moved to be erased, and told
+  nothing at all you cannot tell "these agree here" from "these disagree here and I said not to mention
+  it" — which is worth a glance before trusting the diff. A moved element now leaves the same faint 7%
+  wash an ignored path already leaves: visible, not counted, skipped by next/previous, and labelled
+  *moved* in the change tree. Only the elements that actually moved are marked; marking every element of
+  a reordered list would turn a hint into a wash.
+
+- **Lists whose order does not matter.** Right-click a list in the change tree → *Compare this list* →
+  **Ignore order**, or add its path under Settings → JSON, or commit it to `.fubardiff.json` as
+  `unorderedArrays`.
+
+  This is the shape the array menu had no answer for. Matching by an identity field only works for
+  objects carrying an id; an array of **strings** — a set of tags, roles, feature flags, enabled
+  locales — has no field to be keyed by, so it always fell through to positional comparison and
+  `["A","B"]` against `["B","A"]` reported two modifications for a document nobody had edited. Elements
+  are now matched on their whole value instead, which needs no field and works for scalars, objects with
+  nothing to key on, and nested arrays alike.
+
+  It is a **multiset**, not a set: `["A","A","B"]` against `["A","B"]` has genuinely lost an element, and
+  calling those equal is the one answer a comparison must never give. Elements left over after the exact
+  matches are paired up rather than reported as a pile of deletions and insertions, so one element that
+  changed in one field is still **one** change and still says which field — and your ignore rules still
+  reach inside it. Opting a list out of ordering says nothing about lists nested inside it; those get
+  their own rule.
+
+### Fixed
+
+- **Settings stopped saving silently.** Options worked for the session and were back to their old values
+  after a restart. One duplicated entry in the array-key override list was enough: capturing the options
+  built a dictionary from that list, `ToDictionary` throws on a duplicate key, and it runs inside the
+  event handler that saves — so the exception went out through whatever toggle raised it and **nothing
+  was saved again for the rest of the session**. Nothing looked wrong until the next start.
+
+  Three fixes, because one was not enough. The dictionary now keeps the last entry for a repeated path
+  instead of throwing. The Settings window's *Add* replaces an existing entry for the same path rather
+  than appending a second one, the way choosing a key from the change tree already did. And saving is
+  wrapped so nothing a tab hands it can break the chain again — with the failure **reported in a banner**
+  rather than swallowed, which is the part that let this hide: the settings store is deliberately built
+  never to throw, so before this there was nowhere at all for a settings problem to surface.
+
 ### Changed
 
 - **The panes now scroll in lockstep horizontally as well as vertically**, in both the side-by-side

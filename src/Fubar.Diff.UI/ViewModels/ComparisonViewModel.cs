@@ -117,7 +117,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         Pane.FormattingChanged += (_, _) => Refresh();
 
         // The pane asks; this owns the comparison options, so it answers and re-compares.
-        Pane.ArrayKeyChosen += (_, option) => _ = ApplyArrayKeyAsync(option.Path, option.Key);
+        Pane.ArrayKeyChosen += (_, option) => _ = ApplyArrayKeyAsync(option.Path, option.Mode, option.Key);
         Pane.CustomArrayKeyRequested += (_, path) => _ = AskForArrayKeyAsync(path);
 
         // Editing is offered only in the side-by-side view, so the toggle has to appear and disappear
@@ -262,13 +262,24 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     public ObservableCollection<string> PositionalArrays { get; } = [];
 
     /// <summary>
+    /// Arrays the user has asked to compare ignoring order, by path.
+    ///
+    /// The reason this is separate from an identity key rather than a special value of one: a key names
+    /// a FIELD, and an array of strings - a set of tags, roles, feature flags - has no field to name. It
+    /// was the one shape the array menu had no answer for, so it always fell back to position and
+    /// <c>["A","B"]</c> against <c>["B","A"]</c> reported two changes to a document nobody had edited.
+    /// </summary>
+    public ObservableCollection<string> UnorderedArrays { get; } = [];
+
+    /// <summary>
     /// Records how one array should be matched and re-compares.
     ///
-    /// A null key means "by position". The two lists are kept mutually exclusive rather than layered,
-    /// because an array cannot both be keyed and positional, and leaving a stale entry in the other
-    /// list would make the menu's check marks lie about what is happening.
+    /// The three lists are kept mutually exclusive rather than layered, because an array can only be
+    /// compared one way, and leaving a stale entry in another list would make the menu's check marks lie
+    /// about what is happening - and, worse, would hand the differ a contradiction it has to break with
+    /// a precedence rule the user never saw.
     /// </summary>
-    public async Task ApplyArrayKeyAsync(string path, string? key)
+    public async Task ApplyArrayKeyAsync(string path, ArrayMatchMode mode, string? key = null)
     {
         var existing = ArrayKeyOverrides.FirstOrDefault(o => string.Equals(o.Path, path, StringComparison.Ordinal));
         if (existing is not null)
@@ -276,24 +287,33 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             ArrayKeyOverrides.Remove(existing);
         }
 
+        // Every copy, not just the first - a repeated entry would survive as a rule the user cannot see
+        // and cannot undo from the menu.
         while (PositionalArrays.Remove(path))
         {
-            // Remove every copy, not just the first - a repeated entry would survive as a rule the
-            // user cannot see and cannot undo from the menu.
         }
 
-        if (key is null)
+        while (UnorderedArrays.Remove(path))
         {
-            PositionalArrays.Add(path);
-        }
-        else
-        {
-            ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(path, key));
         }
 
-        StatusMessage = key is null
-            ? $"{path}: comparing by position."
-            : $"{path}: matching elements by {key}.";
+        switch (mode)
+        {
+            case ArrayMatchMode.Key when key is not null:
+                ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(path, key));
+                StatusMessage = $"{path}: matching elements by {key}.";
+                break;
+
+            case ArrayMatchMode.Unordered:
+                UnorderedArrays.Add(path);
+                StatusMessage = $"{path}: ignoring order.";
+                break;
+
+            default:
+                PositionalArrays.Add(path);
+                StatusMessage = $"{path}: comparing by position.";
+                break;
+        }
 
         if (_loadingSettings)
         {
@@ -327,7 +347,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
 
         if (key is not null)
         {
-            await ApplyArrayKeyAsync(path, key).ConfigureAwait(true);
+            await ApplyArrayKeyAsync(path, ArrayMatchMode.Key, key).ConfigureAwait(true);
         }
     }
 
@@ -740,6 +760,31 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>The current option values, for the shell to persist as the defaults.</summary>
+    /// <summary>
+    /// The overrides as a dictionary, keeping the LAST entry for a repeated path.
+    ///
+    /// <para>Was <c>ToDictionary</c>, which throws on a duplicate key - and this runs inside
+    /// <c>CaptureOptions</c>, which runs inside the <c>OptionsChanged</c> handler that saves settings.
+    /// So a single duplicated path threw out through whatever toggle raised the event and NOTHING was
+    /// ever saved again for the rest of the session. Everything kept working; it was only gone after a
+    /// restart, which is the worst way for a bug to present.</para>
+    ///
+    /// <para>Last-wins rather than first-wins because it matches
+    /// <see cref="ApplyArrayKeyAsync"/>, which replaces an existing entry for a path: whichever way a
+    /// duplicate got in, the most recent instruction is the one the user meant.</para>
+    /// </summary>
+    private Dictionary<string, string> OverridesByPath()
+    {
+        var byPath = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var entry in ArrayKeyOverrides)
+        {
+            byPath[entry.Path] = entry.Key;
+        }
+
+        return byPath;
+    }
+
     public AppSettings CaptureOptions(AppSettings settings) => settings with
     {
         IgnoreWhitespace = IgnoreWhitespace,
@@ -764,7 +809,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         MatchArraysByPosition = MatchArraysByPosition,
         IgnoreNullVsMissing = IgnoreNullVsMissing,
         Mode = Mode,
-        ArrayKeyOverrides = ArrayKeyOverrides.ToDictionary(e => e.Path, e => e.Key),
+        ArrayKeyOverrides = OverridesByPath(),
         IgnoredLinePatterns = [.. IgnoredLinePatterns],
         IgnoredPaths = [.. IgnoredPaths],
     };
@@ -1145,7 +1190,19 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     [RelayCommand(CanExecute = nameof(CanAddArrayKeyOverride))]
     private void AddArrayKeyOverride()
     {
-        ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(NewOverridePath.Trim(), NewOverrideKey.Trim()));
+        var path = NewOverridePath.Trim();
+
+        // Replace rather than append, the same way choosing a key from the change tree does. Two rows
+        // for one path is a rule the user cannot read and cannot undo from the list - and it used to be
+        // worse than confusing, because capturing the options then threw and quietly stopped every
+        // setting from being saved.
+        var existing = ArrayKeyOverrides.FirstOrDefault(o => string.Equals(o.Path, path, StringComparison.Ordinal));
+        if (existing is not null)
+        {
+            ArrayKeyOverrides.Remove(existing);
+        }
+
+        ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(path, NewOverrideKey.Trim()));
         NewOverridePath = string.Empty;
         NewOverrideKey = string.Empty;
         OptionChanged();
@@ -1162,6 +1219,49 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     private void RemoveArrayKeyOverride(ArrayKeyOverrideEntry entry)
     {
         ArrayKeyOverrides.Remove(entry);
+        OptionChanged();
+    }
+
+    // ---- Unordered arrays ------------------------------------------------------------------------
+
+    [ObservableProperty]
+    public partial string NewUnorderedPath { get; set; } = string.Empty;
+
+    [RelayCommand(CanExecute = nameof(CanAddUnorderedArray))]
+    private void AddUnorderedArray()
+    {
+        var path = NewUnorderedPath.Trim();
+
+        // Kept mutually exclusive with the other two lists here as well as in ApplyArrayKeyAsync: this
+        // is the same instruction arriving by a different route, and a path sitting in two lists at once
+        // is a contradiction the differ would have to break with a rule the user never saw.
+        var keyed = ArrayKeyOverrides.FirstOrDefault(o => string.Equals(o.Path, path, StringComparison.Ordinal));
+        if (keyed is not null)
+        {
+            ArrayKeyOverrides.Remove(keyed);
+        }
+
+        while (PositionalArrays.Remove(path))
+        {
+        }
+
+        if (!UnorderedArrays.Contains(path, StringComparer.Ordinal))
+        {
+            UnorderedArrays.Add(path);
+        }
+
+        NewUnorderedPath = string.Empty;
+        OptionChanged();
+    }
+
+    private bool CanAddUnorderedArray() => !string.IsNullOrWhiteSpace(NewUnorderedPath);
+
+    partial void OnNewUnorderedPathChanged(string value) => AddUnorderedArrayCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand]
+    private void RemoveUnorderedArray(string path)
+    {
+        UnorderedArrays.Remove(path);
         OptionChanged();
     }
 
@@ -1650,8 +1750,12 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             ReportPropertyOrder = ReportPropertyOrder,
             MatchArraysByPosition = MatchArraysByPosition,
             IgnoreNullVsMissing = IgnoreNullVsMissing,
-            ArrayKeyOverrides = ArrayKeyOverrides.ToDictionary(e => e.Path, e => e.Key),
+            // OverridesByPath, not ToDictionary: a duplicated path throws, and this one runs on
+            // EVERY comparison - so the same mistake that silently stopped settings saving would stop
+            // the diff itself. Same fix, same reason.
+            ArrayKeyOverrides = OverridesByPath(),
             PositionalArrays = [.. PositionalArrays],
+            UnorderedArrays = [.. UnorderedArrays],
             IgnoredPaths = [.. IgnoredPaths],
         },
     };

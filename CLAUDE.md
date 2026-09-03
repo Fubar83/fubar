@@ -28,6 +28,7 @@ dotnet build Fubar.slnx                # everything (must be warning-clean)
 dotnet test  Fubar.slnx                # every suite
 
 dotnet run --project src/Fubar.Studio.UI                   # API Studio
+dotnet run --project src/Fubar.Studio.UI -- --run --report results.xml   # run a collection; 0 pass, 1 fail, 2 could not
 dotnet run --project src/Fubar.Diff.UI -- left.json right.json
 dotnet run --project src/Fubar.Diff.UI -- --check left.json right.json   # headless; 0 same, 1 differ, 2 failed
 dotnet run --project src/Fubar.Diff.UI -- --functional -q a.cs b.cs      # 0 unless the C# behaviour changed
@@ -342,6 +343,64 @@ That is also why it lives on the service rather than in the view model: re-deriv
 `1.0` and `1e3` stays `1e3` - a formatter that re-derived values would edit the file's numbers while
 claiming to have changed only whitespace.
 
+**An array can be compared three ways, and "unordered" is the only one that works without a field**
+(Diff). `ArrayMatchMode` is Position, Unordered or Key, and `JsonSemanticDiffer.ModeFor` is the single
+place the precedence lives - public precisely so the context menu's check mark and the comparison cannot
+drift into different answers. **Every instruction about ONE array beats every setting about all of them**, and that ordering was got
+WRONG first: the global `MatchArraysByPosition` sat above the per-path lists, so with that switch on,
+choosing "Ignore order" on a single array did nothing at all - the menu recorded the choice, the check
+mark moved, and the comparison ignored it. Reported from a real file, and it contradicted the rule
+`ArrayKeyResolver` already stated for keys: an explicit override wins "including when everything else is
+set to positional". Order now: a named `ArrayKeyOverrides` entry, an explicit `PositionalArrays` path,
+an explicit `UnorderedArrays` path - then, and only then, the global `MatchArraysByPosition`, an
+auto-detected key, the global `IgnoreArrayOrder`, and position. Two rankings among the rest are
+deliberate. An explicit positional path beats an explicit unordered one because
+that pair is a contradiction only the user can have written, and positional is its conservative half -
+reporting a reorder nobody minds is a smaller failure than hiding one that matters. And the GLOBAL
+unordered switch sits BELOW automatic key detection, because where a key exists it already ignores order
+and additionally says which field of which element changed, which whole-value matching cannot.
+
+Unordered matching exists because identity keys only answer "which element is this?" for objects
+carrying an id. An array of STRINGS - tags, roles, feature flags, enabled locales - has no field to key
+on, so it always fell through to positional and `["A","B"]` against `["B","A"]` reported two
+modifications for a document nobody had edited. `JsonValueSignature` matches elements on their whole
+value instead, which needs no field and works for scalars, objects and nested arrays alike. Three rules
+inside it are load-bearing. It is a MULTISET, not a set: `["A","A","B"]` against `["A","B"]` has
+genuinely lost an element, and set semantics would call them equal - the one answer a comparison must
+never give. Property order inside an element does not change its signature (JSON objects are unordered
+by definition) but NESTED ARRAY order does, because opting one array out of ordering says nothing about
+the arrays inside it and a nested one that should also be unordered gets its own rule. And what is left
+over after the exact matches is compared PAIRWISE rather than reported as a pile of deletions and
+insertions - that is what keeps a field-level diff for an element that changed in one field, and what
+lets ignore rules reach inside it at all. Matching purely by value would report a whole element as
+replaced because a timestamp inside it moved, and the rule covering that timestamp would never speak.
+
+**Every option that EQUALISES a line marks the row it equalised** (Diff). `ProjectOntoDocuments` is the
+one place both raw lines are in hand at once - the engine matched on comparison KEYS - so an `Unchanged`
+row whose two texts differ can only have been made equal by ignore-whitespace, ignore-case,
+ignore-comments, a line-pattern mask or Unicode normalisation. It is marked `IsIgnored` there, which
+costs one ordinal compare per unchanged row and gets it the same faint band an ignored JSON path already
+had, for free, in every renderer. One implementation covers every such option precisely because it
+compares the TEXTS rather than knowing which rule ran; adding another normalisation rule needs no change
+here. Do not mark fillers (no counterpart to differ from) or rows that are already reported changes
+(drawn as the change they are), and never overwrite an `IsIgnored` the semantic pass already set - only
+ADD. The tint itself was raised from 0.07 to 0.14, with a separate 0.30 `IgnoredSpanBackground` for the
+Json view's character spans: the same opacity over a few characters reads as far less than over a
+full-width row, which is the same reason `SpanBackground` sits well above `LineBackground`. A mark
+nobody notices is the same as no mark.
+
+**An ignored REORDER leaves a trace; reporting nothing is the wrong kind of silence** (Diff). When
+unordered matching pairs two elements that merely moved, it emits a `JsonChange` flagged `IsReorder`
+AND `IsIgnored` rather than emitting nothing. The user asked for order to be ignored, not for the fact
+of a reorder to be erased - and given silence they cannot tell "these agree here" from "these disagree
+here and I asked you not to mention it", which is worth a glance before trusting the diff. `IsIgnored`
+buys the whole behaviour off the existing machinery: out of the counts, out of the hunks, out of
+next/previous, and drawn at the same faint 7% wash `DiffLineColors.IgnoredBackground` already gives an
+ignored path, in both Text mode (`ChangeLineBackgroundRenderer`) and the Json view
+(`JsonChangeSpanColorizer`). Only elements whose index actually CHANGED are marked - marking every
+element of a reordered list would turn a hint into a wash over the whole array. Tests assert on what is
+REPORTED (non-ignored) for this reason; a bare `Assert.Empty(changes)` on a reordered list is now wrong.
+
 **Array matching is per-array, and only fields that WOULD work are offered** (Diff).
 `JsonComparisonOptions.PositionalArrays` is the per-path counterpart of the global
 `MatchArraysByPosition`, because one document can hold a list of users where order means nothing
@@ -458,6 +517,170 @@ binary comparison silently switching itself off over a copy edit is not a break 
 Image formats are detected from the CONTENT signature, unlike languages, which are detected from the
 extension: a renamed `.png` that is really a JPEG is ordinary, and being wrong here is immediately
 visible because the picture either appears or it does not.
+
+**The current difference is one thing, and four surfaces have to agree about it** (Diff). The map, the
+change tree, the panes and Prev/Next all address the same "which difference am I on", and every one of
+them can now both READ and SET it. `DiffPaneViewModel` is where they meet: `CurrentHunk` and
+`CurrentSemanticChangeIndex` are the state, `SelectDifferenceAtRow` is the setter a pane click goes
+through, and `OnCurrentSemanticChangeIndexChanged` / `OnCurrentTreeNodeChanged` are the two directions
+of the tree sync - already guarded against re-entering each other, which is why setting one does not
+loop. Three rules were each added because the surface looked broken without them.
+
+*A selection nobody can see is not a selection.* The tree's two-way sync always worked and always looked
+broken on a deep document, because nothing opened the rows above the selected one. `IsExpanded` is now
+owned by `JsonChangeNodeViewModel` (bound TwoWay so expanding by hand stays the row's own state) and
+`Reveal()` walks `Parent` upwards opening ancestors. It only ever OPENS - closing anything would fight a
+reader who had just arranged the tree - and it does not open the selected row itself, which would bury it
+under its own contents. Nothing is expanded on load, which is exactly what the tree did before. Scrolling
+the row into view is the VIEW's half (`JsonTreeView`), posted at `DispatcherPriority.Loaded` because the
+containers for rows that were just revealed do not exist until the next layout pass; asking earlier finds
+no container and scrolls nowhere, silently.
+
+*A difference off the right edge of a long line is invisible.* `EditorScroll.RevealColumns` scrolls each
+pane sideways by the MINIMUM needed to show its own changed characters, never centring: horizontal
+position carries meaning - indentation is how code shows structure - and a pane yanked sideways on every
+step loses that for every difference that never needed it. Each side is given its OWN spans, because on a
+modified row the two sides' changed characters are rarely at the same offsets. A whole inserted or
+deleted line carries no spans and scrolls home instead, which is where such a change starts.
+
+Both surfaces have to call it: `DiffView.ScrollTo` for the aligned panes, and `RawJsonPane.ApplyHighlight`
+for the Json panes and the close-up. It was wired into the first only, and the close-up is where the
+omission actually hurt - an unaligned Json document is regularly MINIFIED, so the excerpt is one enormous
+line and centring on it left the reader looking at its start with the highlight two hundred characters
+off the right edge. Post the call rather than making it inline: the visual line for a row just scrolled
+to does not exist until the next layout pass, and asking for a column position before then finds nothing
+and scrolls nowhere, silently. That silence is why this went unnoticed until it met a minified file.
+
+*A mark that can be seen must be hittable.* The map draws bands 5px tall and never narrower than 5px, and
+`DiffMapModel.SnapToNearestChange` sends a click within 12px to the nearest hunk's START. Both exist
+because one pixel is a hundred rows on a long file: a one-line change was a hairline, and missing it by a
+pixel scrolled a hundred lines from what was aimed at. Snapping falls back to the plain position when
+nothing is near, so dragging still scrubs. The current difference is shown by RECOLOURING its own marks
+in the accent colour, and by drawing nothing else. Three tries got here and the order matters: two bars
+down the outer edges framed the row, which reads as "somewhere in this range" when the question is
+"which one"; a full-width wash and then a solid bar across the strip both answered that and drowned the
+map doing it. The marks were already the right shape and weight - only their colour was missing. Do not
+re-add an overlay here.
+
+**The location map draws one mark per DIFFERENCE, sized by how much of it changed, and what it draws is
+decided in Core** (Diff). `DiffMapModel.Build` turns rows and hunks into bands; `DiffMap` only paints
+them. Two obvious designs are both wrong and this has been each of them, in this order. One rectangle per
+hunk with a minimum height so it cannot vanish fails in exactly the case a map exists for: on a
+60,000-line file drawn 600px tall one pixel is a hundred rows, every hunk clamps to the same minimum, and
+forty changes in a rewritten region look identical to one stray edit beside it. Emitting a band per PIXEL
+ROW instead fixes that and introduces a new lie at the other end of the scale - on a file that fits on
+screen, one twelve-line difference becomes twelve separate marks with gaps between them, so the map
+answers "how many differences are there?" with a number far too big.
+
+So rows are grouped by the HUNK they belong to: one mark per difference, at that difference's own height,
+floored to 5px so a single-line change is still visible and hittable. The changed rows behind a mark are
+still counted and reported as `MapBand.Density`, measured against the rows the mark COVERS - so a
+twelve-row difference drawn twelve pixels tall is full, and the same difference squashed into one pixel of
+a huge file is a sliver. Density is drawn as WIDTH from each side inwards rather than as opacity, because
+a faint mark on a dark strip is easy to miss entirely while a short one is unmistakably present; the 0.15
+floor is what keeps a single-line change visible, and losing those would make the map worse than none,
+since an empty strip reads as "nothing here".
+
+Group by hunk, NOT by adjacency. Two differences separated by one unchanged line are two differences, and
+must stay two marks even when the gap between them rounds away to nothing - which it does on any long
+file. Runs of ignored rows form no hunk, so they are grouped by adjacency instead, that being the closest
+thing available for something the differ decided was not a difference.
+
+`MapBand.HunkIndex` is what the control matches against its own `CurrentHunk` to recolour the current
+difference. That used to be a comparison of the mark's pixel row against the current hunk's pixel bounds,
+needing a fudge at each end and still recolouring a neighbour whenever two differences rounded onto
+adjacent pixels; a mark that IS a whole difference can simply say which one. A change and a run of ignored
+rows are separate marks that routinely land on the same pixel, so `DiffMap` paints all the ignored ones
+first and the changes over them - the ignored colour means "a rule is hiding something here", and letting
+it tint a real edit says the opposite of what is true. That is a painting decision and lives in the
+control; the model stays in document order.
+
+Marks are per (SIDE, difference) - a deletion paints only the left half, an insertion only the right, a
+modification both - and the two sides group separately, so one replacement marks each side over its own
+rows rather than merging into "modified" across both. That per-side split costs nothing precisely because
+the panes are row-aligned, which is also why this needs none of WinMerge's connecting lines between its
+columns: those exist to tie together two columns at independent scales, and ours are the same scale by
+construction. The one place a connecting line carries information here is a MOVE, whose two ends sit at
+different rows by definition - hence `MapMoveLink`, capped and skipped for short travels so the links
+stay information rather than hatching. The map also marks IGNORED rows, which form no hunk and so drew
+nothing at all before, leaving the reader unable to tell "identical" from "a rule is hiding this"; and it
+counts hunks wholly above and below the viewport, which is the question people scroll a diff they have
+already read in order to answer. `DiffMapModel.Build` degrades to hunk-shaped bands when handed no rows,
+because a blank strip reads as "no changes" - the one wrong answer a diff tool must never give.
+
+**An array nobody has named is compared by POSITION, and the menu says so** (Diff).
+`JsonSemanticDiffer.ModeFor` is the single precedence authority and its floor is Position. Automatic key
+detection used to sit in that chain, above the global unordered switch, so an array whose elements
+carried an `id`, `name` or `key` was matched by it without anyone asking. Good guess, bad rule: the mode
+then depended on what the DATA happened to contain, so two arrays in one file were compared differently
+with nothing on screen saying so, adding a `name` field to some records silently changed how they were
+diffed, and the global "ignore order" switch did nothing to any of them. `ArrayKeyResolver.Resolve` still
+detects, and the menu still offers it first labelled *(suggested)* - it just has to be chosen. Two
+Application tests that pinned the old default now pin the new one plus the opt-in restoring it; that
+pair is the honest record of what the change costs.
+
+The menu's marks come from `ArrayKeyChoices.Current`, which is `ModeFor`'s own answer - the check mark and
+the comparison cannot drift apart because they ask the same function. `ArrayKeyOption.IsCurrent` was
+computed correctly and **bound to nothing**, which no view-model test could catch; `ArrayMenuBindingTests`
+now asks the rendered `MenuItem` for its `IsChecked` and `ToggleType`, the same way it already asks for the
+`Command` that was once missing. `CurrentKey` is stated separately from `Suggested` even though the two
+agree today (Resolve returns an override ahead of detection, so the suggestion IS the override once one
+exists) - saying which key is in force is what lets the menu stop labelling someone's own override
+"(suggested)".
+
+**A MOVE is the one difference whose two halves are not on the same rows** (Diff), and three things
+follow from it. `DiffPaneViewModel.CurrentRangeFor(side)` answers per SIDE, so each pane outlines its own
+end - handing both panes the same range highlighted the block in one and unrelated context in the other.
+`RebuildDetail` sources each half of the close-up from its own end, so the pane shows the block where it
+was beside where it is, from whichever end was clicked. And `DiffView` holds the panes level at the two
+ENDS rather than at the same row while a move is selected (`_syncLeftRow`/`_syncRightRow`), which is the
+one deliberate exception to the lockstep scroll sync: with the ends fifteen rows apart, lockstep can show
+at most one of them. The offset is derived from `GetVisualTopByDocumentLine` every time rather than
+cached as pixels, because folding and wrapping both change what a row is worth and a cached figure drifts
+the moment a region collapses above either end. It is cleared for every other difference, so the
+exception lasts exactly as long as the move is what is being read.
+
+The two ends remain two DIFFERENCES - the counts, the map and next/previous are untouched. A block that
+moved really did leave one place and arrive at another, and merging them would be a different claim.
+
+The close-up keeps FILLER rows (`AlignedText.Build`, not `BuildCompact`), reversing the earlier call that
+a stacked close-up has no alignment to preserve. It does: a hunk of three deletions and two insertions
+gave a three-row block above a two-row one with nothing saying which rows corresponded.
+
+**An ignored difference is shown by its CHARACTERS, and can be navigated to** (Diff). Two changes with
+one principle: a difference the tool was told to ignore is still a difference, and the reader is
+entitled to see exactly what it is. `WithInlineSpans` now runs for ignored rows as well as modified ones,
+so the renderers can mark the two spaces that differ instead of banding the row; `CharSpanColorizer`
+paints those in the neutral ignored colour, never in the red and green of a reported change. The guard
+in `ChangeLineBackgroundRenderer` reads `AlignedLine.IsLocalised`, which is the ROW's answer rather than
+this side's - trailing whitespace exists on one side only, so the other has no span of its own and would
+otherwise go on banding its whole row about the difference its counterpart is pointing at precisely.
+Rows with nothing localisable keep the band.
+
+`DifferenceStops` lists hunks and runs of ignored rows together, which is what Shift+Alt+Up/Down walks;
+ordinary Prev/Next still steps past the ignored ones, because that is what having rules is for. Position
+is taken as a ROW, not as an index into that list, so nothing has to be kept in step with the four other
+things that can move the selection. An ignored run is not a hunk, so `CurrentIgnoredRow`/`End` carry it
+instead of `CurrentHunk` - which must stay -1, since the merge commands act on the current hunk - and
+`DiffView.ApplyCurrentHunk` and `RebuildDetail` both read either source. A run of adjacent ignored rows is
+ONE stop, the same grouping rule the location map draws by.
+
+**NEITHER axis can be scrolled through the TextEditor** (Diff). `EditorScroll.ScrollHorizontallyTo` and
+`ScrollVerticallyTo` both write `IScrollable.Offset` on the TEXT VIEW, and every scroll in the app must go
+through them. AvaloniaEdit's TextView is an `ILogicalScrollable` that scrolls itself, so the ScrollViewer
+in the editor's template never moves and `TextEditor.ScrollToHorizontalOffset` / `ScrollToVerticalOffset`
+are both silently no-ops. The horizontal half of that was found first and written up here - with the
+explicit claim that vertical was the exception, because AvaloniaEdit routed it internally. That sentence
+was wrong, and it cost the panes their vertical sync completely: the handler fired on every scroll,
+computed the right offset, called `ScrollToVerticalOffset`, and nothing moved. Measured before believed
+this time - right pane at offset 0, extent 471.8, viewport 415.0, so the requested 56.8 was exactly its
+maximum and therefore reachable; after the call it still read 0.0.
+
+Two things it also broke that nobody connected to it: `CenterOnLine` was never centring (its
+`ScrollToLine` was doing the moving and the centring step was discarded), and `ScrollSyncTests` drove the
+panes through the editor, so the tests meant to exercise sync were exercising nothing. **If a pane will
+not scroll, check what the call actually did before looking for a missing subscription** - this presents
+as a dead event handler.
 
 **Scroll sync copies BOTH axes, and horizontal was a reversal** (Diff). `DiffView.SyncScroll` and
 `ThreeWayView.SyncScroll` copy vertical AND horizontal offsets. Horizontal was deliberately left
@@ -597,6 +820,98 @@ it out of `IsChange`, and therefore out of hunks, counts, the diff map and F7/F8
 a renderer draw a faint band. Promoting it to a `ChangeKind` would silently put every ignored row back
 into the hunk list and make navigation stop on the fields the user asked not to see.
 `IgnoredRowNavigationTests` pins this.
+
+**The same executable is a window AND a batch tool here too, and the CLI's progress is written the
+opposite way round from the GUI's** (Studio). `CommandLine.IsHeadless` is checked in `Program.Main`
+before Avalonia is configured, exactly as in Fubar Diff, and for the same reason: a run that must exit
+with a status code cannot also be showing a window. The list is deliberately short - `--run`, `--help`,
+`-h`, `--version` - and nothing else counts, so starting the app normally is untouched. Exit codes are
+`diff`'s (0 passed, 1 failed, 2 could not tell), and 2 is kept strictly apart from 1 because a workspace
+that would not load and a collection whose assertions failed call for different reactions from a build.
+On Windows a GUI executable has no console until `ParentConsole.Attach` runs, which is why `dotnet run`
+shows nothing while the built exe does. The asymmetry worth knowing: `CliRunner` reports progress
+through a plain synchronous `IProgress<T>` and `CollectionRunViewModel` uses `Progress<T>`, and neither
+may adopt the other's choice. `Progress<T>` marshals to the captured synchronization context - which is
+what makes the view model safe to touch rows from, and what makes a console process (which has none)
+print its lines from the thread pool, out of order and possibly after the summary meant to conclude
+them. Both were found by a failing test.
+
+**An OpenAPI import creates as few environment variables as it can, and PATH PARAMETERS ARE NEVER ONE
+OF THEM** (Studio). An eight-operation spec used to materialise fourteen variables per environment, of
+which three were right. The rule now: the only inferred variables are `baseUrl` and the credentials for
+security schemes the document actually references. Four separate reasons, each worth keeping.
+
+*Path parameters go inline in the URL.* One workspace-wide variable per distinct `{name}` is wrong at
+scale - a mid-sized API becomes dozens of empty variables - and wrong in kind, because the names COLLIDE:
+`/users/{id}`, `/users/{id}/orders` and `/orders/{id}` all resolved to a single `id`, so filling it in for
+one request broke the other two. A path parameter belongs to the one request whose URL contains it, and
+this app has no request-scoped variables by design (`RequestModel.LocalVariables` is retired), so the URL
+is where it lives. It keeps the spec's own `{name}` - single braces, inert to `VariableResolver`, so it
+reads as a placeholder rather than an undefined variable - or the example/default when the spec supplies
+one, which makes the request runnable. Not `<string>`: `/users/<string>/orders/<string>` throws away which
+parameter is which, and the name is the only thing telling the reader what to put there.
+
+*Only referenced security schemes.* `BuildAuthProfiles` used to walk every scheme in
+`components.securitySchemes`; a spec that declares four and uses one got four profiles and five
+variables, including a Basic username and password for auth nobody asked for. `ReferencedSchemes` collects
+what the global and per-operation `security` blocks name. The one exception: a document referencing
+NOTHING keeps them all, with a warning, because importing no auth at all would leave nothing to switch on.
+
+*Server variables are substituted, never also copied.* Being both made them inert - `baseUrl` already held
+the resolved URL, so nothing referenced them and setting `region` to `eu` changed nothing - and made them
+wrong across environments, since one server's variables were copied into every environment, first value
+wins, including servers whose URL is literal. Making them LIVE instead would need recursive resolution
+(a `baseUrl` containing `{{region}}`), and `VariableResolver.Substitute` is deliberately a single pass.
+
+*A declared parameter that collides with the auth is imported UNCHECKED.* The silent one. Specs routinely
+declare `Authorization` as an ordinary header parameter as well as declaring a security scheme; imported
+enabled it carried a placeholder, and `AuthRequestMerge` - correctly - refuses to overwrite a header the
+request already carries enabled, so `<string>` went out as the Authorization header and the real token
+never did. 401s that look like the auth profile is broken. Disabled rather than dropped: the spec said the
+parameter exists, and a disabled row cannot suppress the auth, so ticking it back on is a deliberate act.
+The same applies to an apiKey-in-query scheme against a declared query parameter.
+
+**An HTTP status never fails a collection run - only an assertion or a transport error does**
+(Studio). The load-bearing decision in the runner, and not the obvious one. This app lets you assert
+`StatusCode Equals 404` deliberately, so a runner that ALSO treated 4xx/5xx as failure would make the
+same response both the expected result and a failure, and one of the two answers would have to win
+silently. Deciding which statuses are bad is exactly what assertions exist to do explicitly, so
+`RunReport` does not also do it implicitly. The cost is real - a collection with no assertions can
+return 500s and still pass - which is why `StepReport.IsUnexpectedStatus` and
+`RunReport.UnexpectedStatuses` exist and are surfaced BESIDE the verdict rather than folded into it:
+the run does not fail, and the reader is still told. Do not "fix" this by failing on non-2xx. Two
+further refusals in `RunReport.Ok` are the same instinct: a CANCELLED run is never green (it did not
+answer the question that was asked), and an EMPTY one is not either - "no tests ran, so it passed" is
+reachable here by a name filter with a typo in it.
+
+**A collection run is SEQUENTIAL, and that is correctness rather than laziness** (Studio). Captures
+write variables that later requests read - the headline case being a login whose token every subsequent
+request depends on - so two requests in flight at once is a race on the session store whose outcome
+depends on which response came back first. A "run faster" option would silently break exactly the
+collections that are worth running. The chaining itself is free, and stays free only because every step
+runs against the SAME workspace and environment instances: session variables are scoped per (workspace,
+environment) via `SessionScope`, so a token captured by request 1 becomes invisible to request 2 the
+moment anything re-resolves either. `CollectionRunServiceTests` pins it.
+
+**The run order is the left pane's order, exactly** (Studio). `RunPlan.From` walks the tree depth-first
+in the order the scan produced, and `WorkspaceNodeViewModel.ToTreeNode()` projects the VIEW MODEL tree
+rather than re-scanning the directory - so what the user sees is what runs. Ordering is not cosmetic
+when captures chain: request 3 routinely depends on request 1, and the tree is the only place that
+dependency is written down. A run also addresses requests by PATH and reads each from disk when its turn
+comes, so it sends what is SAVED rather than what is open in an editor - the honest behaviour for
+something whose whole purpose is to be repeatable, and what will happen when it runs in CI.
+
+**A run reuses `IRequestExecutionService` rather than reimplementing the send** (Studio).
+`CollectionRunService`'s own job is only the walking, the stopping and the reporting; auth acquisition,
+the 401 retry, captures, assertions and history all behave identically whether a request is sent by hand
+or by a run. Anything that works in the editor works in a run, and any difference is a real one rather
+than a second implementation drifting from the first - which is why its tests fake at that seam and not
+below it. Two failures are deliberately contained rather than fatal: a request file that will not parse
+errors THAT STEP and the run continues (throwing would abandon nineteen other requests over one bad file
+and hand back an exception instead of the answers already earned), and a capture that could not be
+applied is reported on the step without failing it (the request answered; whether a missing field
+matters is what an assertion is for). History is OFF by default for runs, the opposite of a single send:
+history is capped per request, so a scheduled run would evict the sends people actually go back for.
 
 **Comparison settings inherit PER SETTING, not per level** (Studio). `ComparisonSettings` has every
 member nullable precisely so a request overriding one option keeps inheriting the rest;
@@ -779,6 +1094,23 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   been constructed but not yet displayed — which is exactly where opening `--merge`'s window belongs.
   `App` defers it to the main window's `Opened` event for this reason; the exception is immediate and
   fatal, not a silent misbehaviour, so it will find you.
+**"Settings never throw" needs somewhere for a settings failure to GO** (Diff). `ISettingsStore.Load`
+returns defaults and `SaveAsync` returns false rather than throwing, which is right - losing a preference
+must never stop the app. The cost is that a settings problem has no natural way to surface, and that is
+not theoretical: `CaptureOptions` built its dictionary with `ToDictionary`, which throws on a duplicate
+key, and it runs inside the `OptionsChanged` handler that saves. One duplicated array-key override
+therefore threw out through whatever toggle raised the event and NOTHING was saved for the rest of the
+session - every option still worked, and every one was gone at the next start. Reported as "my settings
+do not stick"; the settings file was a day old while the toolbar showed things switched on.
+
+Three rules now, and all three are needed. Building the settings must not throw: duplicates collapse
+last-wins, matching `ApplyArrayKeyAsync`, which replaces rather than appends. Duplicates are also
+stopped at the source - the Settings window's Add replaces an existing entry for a path, the same way
+the change tree's menu does. And `ShellViewModel.Persist` wraps the capture, because it runs from an
+event handler where an escaping exception silently kills every later save; the failure sets
+`SettingsError`, which `MainWindow` shows as a banner. Do not remove that banner to "keep the window
+clean" - it is the only thing standing between a settings bug and a user discovering it a day later.
+
 - **Settings never throw**: `Load` returns defaults, `SaveAsync` returns false. Losing a preference is
   a nuisance; refusing to start over a corrupt settings file is not acceptable.
 - **`ExecutionSnapshot.ResponseBody` is optional and must stay that way** — null for an empty body, one

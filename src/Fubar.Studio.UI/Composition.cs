@@ -2,6 +2,7 @@ using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Infrastructure;
 using Fubar.Controls;
 using Fubar.Studio.Application.Requests;
+using Fubar.Studio.Application.Running;
 using Fubar.Studio.Infrastructure;
 using Fubar.Studio.UI.Services;
 using Fubar.Studio.UI.Tabs;
@@ -26,11 +27,13 @@ internal static class Composition
 
                 // Application-layer use-case services (orchestration over the Core ports above).
                 services.AddSingleton<IRequestExecutionService, RequestExecutionService>();
+                services.AddSingleton<ICollectionRunService, CollectionRunService>();
 
                 services.AddSingleton<IFolderPickerService, FolderPickerService>();
                 services.AddSingleton<IFilePickerService, FilePickerService>();
                 services.AddSingleton<IClipboardService, ClipboardService>();
                 services.AddSingleton<IImportDialogService, ImportDialogService>();
+                services.AddSingleton<IRunDialogService, RunDialogService>();
 
                 // The diff engine, reused for the OpenAPI import preview and response comparisons.
                 // AddFubarDiffInfrastructure binds its Core ports (diff engine, JSON parser, text

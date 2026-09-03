@@ -65,9 +65,15 @@ internal sealed class CharSpanColorizer : DocumentColorizingTransformer
             spans = [new CharSpan(0, lineLength, meta.Kind)];
         }
 
+        // An ignored row's spans are painted in the neutral ignored colour, never in the red and green
+        // of a reported change: the span Kind describes what the characters DID (inserted, removed), and
+        // colouring by it would make a difference the tool was told to ignore look exactly like one it
+        // is reporting. Told apart by hue, the same way the ignored row band is.
+        var ignoredBrush = meta.IsIgnored ? DiffLineColors.IgnoredSpanBackground(_host) : null;
+
         foreach (var span in spans)
         {
-            if (DiffLineColors.SpanBackground(_host, span.Kind, emphasis) is not { } brush)
+            if ((ignoredBrush ?? DiffLineColors.SpanBackground(_host, span.Kind, emphasis)) is not { } brush)
             {
                 continue;
             }

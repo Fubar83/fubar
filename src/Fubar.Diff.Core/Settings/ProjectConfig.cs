@@ -92,6 +92,15 @@ public sealed record ProjectRule
     public IReadOnlyDictionary<string, string> ArrayKeys { get; init; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Arrays whose ORDER is not part of their meaning, by path - a set of tags, roles, feature flags.
+    ///
+    /// Belongs here beside <see cref="ArrayKeys"/> rather than in per-machine settings for the same
+    /// reason: "this array is a set" is a fact about the FILES that is true for the whole team and every
+    /// checkout, not a preference about reading them.
+    /// </summary>
+    public IReadOnlyList<string> UnorderedArrays { get; init; } = [];
+
     /// <summary>True when this rule asserts nothing at all.</summary>
     public bool IsEmpty =>
         Mode is null
@@ -101,7 +110,8 @@ public sealed record ProjectRule
         && IgnoreBlankLines is null
         && IgnoredLinePatterns.Count == 0
         && IgnoredPaths.Count == 0
-        && ArrayKeys.Count == 0;
+        && ArrayKeys.Count == 0
+        && UnorderedArrays.Count == 0;
 
     /// <summary>This rule with <paramref name="other"/> laid over it. See <see cref="ProjectConfig.For"/>.</summary>
     public ProjectRule Merge(ProjectRule other)
@@ -123,6 +133,7 @@ public sealed record ProjectRule
             IgnoredLinePatterns = [.. IgnoredLinePatterns, .. other.IgnoredLinePatterns],
             IgnoredPaths = [.. IgnoredPaths, .. other.IgnoredPaths],
             ArrayKeys = keys,
+            UnorderedArrays = [.. UnorderedArrays, .. other.UnorderedArrays],
         };
     }
 
@@ -165,6 +176,7 @@ public sealed record ProjectRule
             {
                 IgnoredPaths = [.. options.Json.IgnoredPaths, .. IgnoredPaths],
                 ArrayKeyOverrides = keys,
+                UnorderedArrays = [.. options.Json.UnorderedArrays, .. UnorderedArrays],
             },
         };
     }

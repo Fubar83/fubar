@@ -32,6 +32,13 @@
              a hand's move away from the text; Alt+arrows can be held down to walk a file. -->
         <KeyBinding Gesture="Alt+Down" Command="{Binding SelectedTab.Pane.NextDifferenceCommand}" />
         <KeyBinding Gesture="Alt+Up" Command="{Binding SelectedTab.Pane.PreviousDifferenceCommand}" />
+
+        <!-- The same walk, but stopping at the differences a rule is hiding as well. Ordinary Prev/Next
+             steps past those, which is what having rules is for; this answers the other question -
+             "what exactly am I not being told?" - which gets asked right after adding a rule and once
+             more before trusting the diff. Shift+Alt because it is the same gesture, widened. -->
+        <KeyBinding Gesture="Shift+Alt+Down" Command="{Binding SelectedTab.Pane.NextDifferenceIncludingIgnoredCommand}" />
+        <KeyBinding Gesture="Shift+Alt+Up" Command="{Binding SelectedTab.Pane.PreviousDifferenceIncludingIgnoredCommand}" />
         <!-- F5 re-runs the comparison, which now means one of two things depending on whether a pane
              has been typed into - see ComparisonViewModel.RefreshDiffAsync. It is the same key every
              browser and file manager uses for "show me the current state of this". -->
@@ -437,6 +444,21 @@
                                ToolTip.Tip="Every difference between these files is formatting, comments or declaration order. Open the Structure panel to see which members moved and which were reformatted."
                                IsVisible="{Binding Structure.NoFunctionalChange}" />
 
+                    <!-- Reformat rewrites what the panes SHOW - a minified file appears indented, and
+                         both sides get a line count the files do not have. That is a big enough lie
+                         about the documents to be worth stating on screen: the option lives in a
+                         settings window nobody has open, it survives across tabs and sessions, and
+                         without this the only symptom is "why is my file prettified" with nothing
+                         anywhere to answer it. Clicking it opens Settings, where it can be turned off. -->
+                    <Button Classes="toolbar-btn"
+                            Content="Reformatted"
+                            Click="OnSettingsClick"
+                            Padding="6,0"
+                            FontSize="11"
+                            Foreground="{DynamicResource PostmanAmberBrush}"
+                            ToolTip.Tip="Both sides are being re-indented for display, so what you see is not how the files are written. Turn 'Reformat JSON and XML in the Text view' off in Settings to see them as they are."
+                            IsVisible="{Binding NormalizeStructure}" />
+
                     <!-- Encodings, BOMs and line endings never reach the panes - the reader consumes
                          them - so a file pair that differs only in those shows two identical-looking
                          documents and no rows. This is the only place that difference is reported. -->
@@ -502,6 +524,16 @@
                 </StackPanel>
             </Grid>
         </Border>
+
+        <!-- Settings failing to save is the one failure this app used to have no way to report. The
+             store returns false rather than throwing (losing a preference must never stop the app), so
+             without somewhere to say so the user finds out at the next restart, if at all - which is
+             exactly how a duplicate array-key override silently stopped every save for a whole session.
+             Bound past the tab to the shell, which owns the settings. -->
+        <fc:Banner DockPanel.Dock="Top"
+                   Severity="Warning"
+                   Message="{Binding $parent[Window].((vm:ShellViewModel)DataContext).SettingsError}"
+                   IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).SettingsError, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
         <fc:Banner DockPanel.Dock="Top"
                    Severity="Error"

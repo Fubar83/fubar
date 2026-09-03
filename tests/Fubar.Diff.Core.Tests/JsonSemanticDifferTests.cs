@@ -35,6 +35,17 @@ public class JsonSemanticDifferTests
         JsonComparisonOptions? options = null) =>
         JsonSemanticDiffer.Compare(left, right, options ?? JsonComparisonOptions.Default);
 
+    /// <summary>
+    /// Options that key the root array by <c>id</c>.
+    ///
+    /// Key matching is opt-in: an array nobody has named is compared by position, however detectable a
+    /// key sitting in it might be. The tests below are about what key matching DOES, so they ask for it.
+    /// </summary>
+    private static JsonComparisonOptions KeyedById => JsonComparisonOptions.Default with
+    {
+        ArrayKeyOverrides = new Dictionary<string, string> { ["$"] = "id" },
+    };
+
     // ---- Objects --------------------------------------------------------------------------------
 
     [Fact]
@@ -165,7 +176,7 @@ public class JsonSemanticDifferTests
             Obj(("id", Num("2")), ("v", Str("b"))),
             Obj(("id", Num("3")), ("v", Str("c"))));
 
-        var change = Assert.Single(Compare(left, right));
+        var change = Assert.Single(Compare(left, right, KeyedById));
 
         Assert.Equal(ChangeKind.Inserted, change.Kind);
     }
@@ -176,7 +187,18 @@ public class JsonSemanticDifferTests
         var left = Arr(Obj(("id", Num("1"))), Obj(("id", Num("2"))));
         var right = Arr(Obj(("id", Num("2"))), Obj(("id", Num("1"))));
 
-        Assert.Empty(Compare(left, right));
+        Assert.Empty(Compare(left, right, KeyedById));
+    }
+
+    [Fact]
+    public void The_same_reorder_IS_a_difference_when_no_key_was_asked_for()
+    {
+        // The default. A key that can be detected is a suggestion the menu offers, not a rule that
+        // applies itself - so this array, which nobody has said anything about, is compared by position.
+        var left = Arr(Obj(("id", Num("1"))), Obj(("id", Num("2"))));
+        var right = Arr(Obj(("id", Num("2"))), Obj(("id", Num("1"))));
+
+        Assert.NotEmpty(Compare(left, right));
     }
 
     [Fact]

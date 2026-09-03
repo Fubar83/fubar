@@ -71,6 +71,55 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial int ScrollToRow { get; set; } = -1;
 
+    /// <summary>
+    /// First row of the ignored run currently stepped to, or -1.
+    ///
+    /// A run of ignored rows is a place Shift+Alt+Up/Down can stop, and it is NOT a hunk - it forms none
+    /// by design. So "which difference am I on" needs somewhere to live that is not
+    /// <see cref="CurrentHunk"/>, or stepping onto one would mark whichever hunk happened to be selected
+    /// before. The two are mutually exclusive and each is cleared when the other is set.
+    /// </summary>
+    [ObservableProperty]
+    public partial int CurrentIgnoredRow { get; set; } = -1;
+
+    /// <summary>Last row of that run, inclusive. Meaningless while <see cref="CurrentIgnoredRow"/> is -1.</summary>
+    [ObservableProperty]
+    public partial int CurrentIgnoredRowEnd { get; set; } = -1;
+
+    /// <summary>
+    /// The row the "current difference" starts at, whichever kind it is - which is what stepping reads
+    /// to know where it is, so that a click, the map or the tree moving the selection moves stepping too.
+    /// </summary>
+    public int CurrentStopRow => HasCurrentHunk
+        ? _result.Hunks[CurrentHunk].StartIndex
+        : CurrentIgnoredRow;
+
+    /// <summary>
+    /// The rows one side should mark as the current difference, or (-1, -1) for none.
+    ///
+    /// <para>Per SIDE, because a MOVE is the one difference whose two halves are on different rows: the
+    /// block was deleted at one place and inserted at another, which the aligner reports as two hunks.
+    /// Marking the same row range in both panes therefore highlighted the block in one and a stretch of
+    /// unrelated context in the other - and highlighted only the end you happened to click, when the
+    /// whole point of following a move is seeing where it went.</para>
+    ///
+    /// <para>Everything else answers identically on both sides, so this collapses to the hunk's own rows
+    /// for every difference that is not a move.</para>
+    /// </summary>
+    public (int Start, int End) CurrentRangeFor(DiffSide side)
+    {
+        if (!HasCurrentHunk)
+        {
+            return CurrentIgnoredRow >= 0 ? (CurrentIgnoredRow, CurrentIgnoredRowEnd) : (-1, -1);
+        }
+
+        var hunk = _result.Hunks[CurrentHunk];
+
+        return MovedCounterpart(hunk, side) is { } moved
+            ? (moved.Start, moved.Start + moved.Length - 1)
+            : (hunk.StartIndex, hunk.EndIndex);
+    }
+
     /// <summary>First visible row, pushed up by the view so the diff map can draw its viewport box.</summary>
     [ObservableProperty]
     public partial int ViewportStart { get; set; }
@@ -84,6 +133,14 @@ public partial class DiffPaneViewModel : ObservableObject
     /// binding them must disable them until one is picked, or they silently do nothing.
     /// </summary>
     public bool HasCurrentHunk => CurrentHunk >= 0 && CurrentHunk < _result.Hunks.Count;
+
+    /// <summary>
+    /// The close-up follows an ignored run just as it follows a hunk.
+    ///
+    /// Only the START is hooked: <see cref="MoveToStop"/> sets the end first so it is already right when
+    /// this fires, and hooking both would rebuild the pane twice for every step - once with a stale end.
+    /// </summary>
+    partial void OnCurrentIgnoredRowChanged(int value) => RebuildDetail();
 
     partial void OnCurrentHunkChanged(int value)
     {
@@ -268,6 +325,28 @@ public partial class DiffPaneViewModel : ObservableObject
 
     private void RebuildDetail()
     {
+        // An ignored run is a difference you can be ON - Shift+Alt+Up/Down stops there - and it forms no
+        // hunk, so the close-up used to answer "No difference selected" about something the reader had
+        // just deliberately navigated to. It gets the same treatment as any other difference: both
+        // sides, stacked, with its lines named. Saying which rule is hiding it is not something this can
+        // know - the row records that it was equalised, not by what - so the caption says what it is.
+        if (!HasCurrentHunk && CurrentIgnoredRow >= 0)
+        {
+            var length = CurrentIgnoredRowEnd - CurrentIgnoredRow + 1;
+
+            DetailLeft = AlignedText.Build(_result, DiffSide.Left, CurrentIgnoredRow, length);
+            DetailRight = AlignedText.Build(_result, DiffSide.Right, CurrentIgnoredRow, length);
+
+            var ignoredRange = HunkNavigator.RangeOf(
+                _result.Lines, new DiffHunk(CurrentIgnoredRow, CurrentIgnoredRowEnd));
+
+            DetailCaption =
+                $"Ignored difference   ·   " +
+                $"left {Describe(ignoredRange.LeftStart, ignoredRange.LeftEnd)}   ·   " +
+                $"right {Describe(ignoredRange.RightStart, ignoredRange.RightEnd)}";
+            return;
+        }
+
         if (!HasCurrentHunk)
         {
             DetailLeft = null;
@@ -280,16 +359,90 @@ public partial class DiffPaneViewModel : ObservableObject
 
         var hunk = _result.Hunks[CurrentHunk];
 
-        // Compact, not the fillers-included Build: the detail pane stacks old above new rather than
-        // side by side, so there is no row-count parity to preserve, and a filler would only insert
-        // a pointless blank line into what should read as one coherent block per side.
-        DetailLeft = AlignedText.BuildCompact(_result, DiffSide.Left, hunk.StartIndex, hunk.Length);
-        DetailRight = AlignedText.BuildCompact(_result, DiffSide.Right, hunk.StartIndex, hunk.Length);
+        // A MOVE is the one difference whose two halves are not on the same rows. The block left the
+        // file at one place and turned up at another, so those are two hunks - and building both sides
+        // of the close-up from ONE of them showed the block on one side and an empty box on the other,
+        // which is the one comparison a move actually needs. Each side is therefore sourced from its own
+        // end: the block where it was, beside the block where it is. Whichever end you clicked.
+        //
+        // The two stay two DIFFERENCES - navigation still stops at each, and the counts are unchanged.
+        // This is only about what the close-up is looking at.
+        var leftSource = MovedCounterpart(hunk, DiffSide.Left) ?? (hunk.StartIndex, hunk.Length);
+        var rightSource = MovedCounterpart(hunk, DiffSide.Right) ?? (hunk.StartIndex, hunk.Length);
 
-        var range = HunkNavigator.RangeOf(_result.Lines, hunk);
+        // Fillers KEPT, which reverses an earlier decision here. The argument for dropping them was that
+        // the close-up stacks old above new rather than side by side, so there is no row-count parity to
+        // preserve and a filler is just a blank line. True as far as it goes - but it means a hunk of
+        // three deletions and two insertions gives a three-row block above a two-row one, and nothing
+        // says which of the three the two correspond to. Keeping the gaps makes row N of the upper block
+        // row N of the lower one, which is the only thing that makes reading them against each other -
+        // or scrolling them together - mean anything.
+        DetailLeft = AlignedText.Build(_result, DiffSide.Left, leftSource.Item1, leftSource.Item2);
+        DetailRight = AlignedText.Build(_result, DiffSide.Right, rightSource.Item1, rightSource.Item2);
+
+        var leftRange = HunkNavigator.RangeOf(_result.Lines, new DiffHunk(leftSource.Item1, leftSource.Item1 + leftSource.Item2 - 1));
+        var rightRange = HunkNavigator.RangeOf(_result.Lines, new DiffHunk(rightSource.Item1, rightSource.Item1 + rightSource.Item2 - 1));
+        var moved = leftSource != rightSource;
+
         DetailCaption =
-            $"Difference {CurrentHunk + 1} of {_result.Hunks.Count}   ·   " +
-            $"left {Describe(range.LeftStart, range.LeftEnd)}   ·   right {Describe(range.RightStart, range.RightEnd)}";
+            $"Difference {CurrentHunk + 1} of {_result.Hunks.Count}{(moved ? "   ·   moved" : string.Empty)}   ·   " +
+            $"left {Describe(leftRange.LeftStart, leftRange.LeftEnd)}   ·   right {Describe(rightRange.RightStart, rightRange.RightEnd)}";
+    }
+
+    /// <summary>
+    /// Where this side of a MOVED block lives, when the current hunk holds only the other end of it.
+    ///
+    /// Null whenever the hunk is not one end of a move, or already has content on this side - in which
+    /// case the hunk's own rows are what to show, exactly as before. Returning the counterpart's rows is
+    /// what lets the close-up put the block where it WAS beside the block where it IS.
+    /// </summary>
+    private (int Start, int Length)? MovedCounterpart(DiffHunk hunk, DiffSide side)
+    {
+        var lines = _result.Lines;
+        var last = Math.Min(hunk.EndIndex, lines.Count - 1);
+
+        // Already has text on this side: nothing to go looking for.
+        for (var row = Math.Max(hunk.StartIndex, 0); row <= last; row++)
+        {
+            if ((side == DiffSide.Left ? lines[row].LeftText : lines[row].RightText) is not null)
+            {
+                return null;
+            }
+        }
+
+        // The move id carried by the OTHER side of these rows - the end we do have.
+        int? moveId = null;
+        for (var row = Math.Max(hunk.StartIndex, 0); row <= last && moveId is null; row++)
+        {
+            moveId = side == DiffSide.Left ? lines[row].RightMoveId : lines[row].LeftMoveId;
+        }
+
+        if (moveId is not { } id)
+        {
+            return null;
+        }
+
+        // Where the same id appears on the side being asked about.
+        var start = -1;
+        var end = -1;
+
+        for (var row = 0; row < lines.Count; row++)
+        {
+            var here = side == DiffSide.Left ? lines[row].LeftMoveId : lines[row].RightMoveId;
+            if (here != id)
+            {
+                continue;
+            }
+
+            if (start < 0)
+            {
+                start = row;
+            }
+
+            end = row;
+        }
+
+        return start < 0 ? null : (start, end - start + 1);
     }
 
     /// <summary>"added"/"removed" rather than a line range when a side contributes no lines at all.</summary>
@@ -584,6 +737,21 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial string DetailRightRawText { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Whether the left side of the close-up has anything in it.
+    ///
+    /// An inserted value exists only on the right and a deleted one only on the left, so one of these is
+    /// false for a large share of the changes anyone navigates to. The close-up used to split its height
+    /// evenly regardless, which spent half the pane on an empty box beside the half that had the thing
+    /// the reader was looking at - worst of all on a minified document, where the side WITH content
+    /// needs every pixel it can get.
+    /// </summary>
+    public bool HasDetailLeft => !string.IsNullOrWhiteSpace(DetailLeftRawText);
+
+    /// <summary>Whether the right side of the close-up has anything in it. See
+    /// <see cref="HasDetailLeft"/>.</summary>
+    public bool HasDetailRight => !string.IsNullOrWhiteSpace(DetailRightRawText);
+
     /// <summary>Where to highlight within <see cref="DetailRightRawText"/>.</summary>
     [ObservableProperty]
     public partial SourceSpan? DetailRightHighlightSpan { get; set; }
@@ -592,6 +760,9 @@ public partial class DiffPaneViewModel : ObservableObject
     {
         (DetailLeftRawText, DetailLeftHighlightSpan) = BuildJsonExcerpt(LeftRawText, LeftHighlightSpan);
         (DetailRightRawText, DetailRightHighlightSpan) = BuildJsonExcerpt(RightRawText, RightHighlightSpan);
+
+        OnPropertyChanged(nameof(HasDetailLeft));
+        OnPropertyChanged(nameof(HasDetailRight));
     }
 
     private static (string Text, SourceSpan? Span) BuildJsonExcerpt(string rawText, SourceSpan? span)
@@ -672,7 +843,62 @@ public partial class DiffPaneViewModel : ObservableObject
             CurrentTreeNode = node;
         }
 
+        // Open the way to it. Selecting a row inside collapsed ancestors is a selection nobody can see,
+        // which is what stepping through differences looked like: the tree agreed it had moved and
+        // showed nothing. Done after the assignment so the row exists to be revealed.
+        node?.Reveal();
+
         RaiseJsonDerived();
+    }
+
+    /// <summary>
+    /// Makes the difference at a row the current one, because the user clicked there.
+    ///
+    /// <para>The panes were read-only as a navigation surface: you could see every difference and step
+    /// through them only with the toolbar, so pointing at the one you were already reading and saying
+    /// "this one" was impossible. It is the obvious gesture and it was the missing half of the map,
+    /// the tree and Prev/Next all agreeing about a current difference nobody could SET by hand.</para>
+    ///
+    /// <para>A click on unchanged text selects nothing rather than jumping to the nearest difference:
+    /// the caret moves for all sorts of reasons - selecting text to copy, clicking to read - and having
+    /// the window scroll somewhere else because of it would make the panes unusable for their actual
+    /// job. Both halves are updated where they exist, so the Json view's change and the text view's
+    /// hunk cannot disagree about which one is current.</para>
+    /// </summary>
+    public void SelectDifferenceAtRow(int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= _result.Lines.Count)
+        {
+            return;
+        }
+
+        var hunk = HunkNavigator.IndexOfHunkContaining(_result.Hunks, rowIndex);
+        if (hunk >= 0 && hunk != CurrentHunk)
+        {
+            CurrentHunk = hunk;
+            CurrentIgnoredRow = -1;
+            CurrentIgnoredRowEnd = -1;
+        }
+        else if (hunk < 0 && _result.Lines[rowIndex].IsIgnored)
+        {
+            // Clicking an ignored row selected nothing at all, because no hunk contains one. Pointing at
+            // a difference and saying "this one" should work for the differences a rule is hiding as
+            // much as for the rest - they are the ones you most want a close-up of, since the pane is
+            // the only place that says what is actually different about them.
+            SelectIgnoredRunAt(rowIndex);
+        }
+
+        // In the Json view the current difference is a semantic change, not a hunk. Both are set when
+        // both apply, so whichever view is on screen agrees with the other.
+        var row = _result.Lines[rowIndex];
+        if (_changeIndex.Find(row.LeftNumber, row.RightNumber) is { } change)
+        {
+            var index = IndexOfPath(change.Path);
+            if (index >= 0 && index != CurrentSemanticChangeIndex)
+            {
+                CurrentSemanticChangeIndex = index;
+            }
+        }
     }
 
     partial void OnCurrentTreeNodeChanged(JsonChangeNodeViewModel? value)
@@ -834,6 +1060,125 @@ public partial class DiffPaneViewModel : ObservableObject
         {
             PreviousChange();
         }
+    }
+
+    /// <summary>
+    /// Next difference INCLUDING the ignored ones - Shift+Alt+Down.
+    ///
+    /// Ordinary Prev/Next steps past anything a rule covers, which is the whole point of having rules.
+    /// This is the other question, asked right after adding one and once more before trusting the diff:
+    /// what exactly am I not being told? Without it an ignored difference is a faint mark you have to
+    /// find by scrolling, which on a long file means not finding it.
+    /// </summary>
+    [RelayCommand]
+    public void NextDifferenceIncludingIgnored()
+    {
+        if (IsJsonViewVisible)
+        {
+            MoveToSemanticChange(
+                SemanticChangeNavigator.Next(_semanticChanges, CurrentSemanticChangeIndex, includeIgnored: true));
+        }
+        else
+        {
+            MoveToStop(DifferenceStops.Next(DifferenceStops.All(_result.Lines, _result.Hunks), CurrentStopRow));
+        }
+    }
+
+    /// <summary>Previous difference including the ignored ones - Shift+Alt+Up.</summary>
+    [RelayCommand]
+    public void PreviousDifferenceIncludingIgnored()
+    {
+        if (IsJsonViewVisible)
+        {
+            MoveToSemanticChange(
+                SemanticChangeNavigator.Previous(_semanticChanges, CurrentSemanticChangeIndex, includeIgnored: true));
+        }
+        else
+        {
+            MoveToStop(DifferenceStops.Previous(DifferenceStops.All(_result.Lines, _result.Hunks), CurrentStopRow));
+        }
+    }
+
+    /// <summary>
+    /// Selects the whole run of ignored rows containing <paramref name="rowIndex"/>.
+    ///
+    /// The run, not the row: a block whose indentation changed is one difference, and selecting one line
+    /// of it would show a close-up of one line of a block - which is exactly the reading the grouping
+    /// everywhere else exists to prevent.
+    /// </summary>
+    private void SelectIgnoredRunAt(int rowIndex)
+    {
+        var lines = _result.Lines;
+        var start = rowIndex;
+        var end = rowIndex;
+
+        while (start > 0 && lines[start - 1].IsIgnored)
+        {
+            start--;
+        }
+
+        while (end + 1 < lines.Count && lines[end + 1].IsIgnored)
+        {
+            end++;
+        }
+
+        CurrentIgnoredRowEnd = end;
+        CurrentIgnoredRow = start;
+        CurrentHunk = -1;
+    }
+
+    private void MoveToStop(DifferenceStop? stop)
+    {
+        if (stop is not { } target)
+        {
+            return;
+        }
+
+        if (target.IsIgnored)
+        {
+            // End before start, and both before clearing the hunk. Both changed handlers rebuild the
+            // close-up, and each has to see a complete selection when it does: the end first so the
+            // start's handler has a real range to build from, and the hunk cleared last so it is not
+            // rebuilt from "nothing selected" on the way through.
+            CurrentIgnoredRowEnd = target.EndRow;
+            CurrentIgnoredRow = target.StartRow;
+            CurrentHunk = -1;
+        }
+        else
+        {
+            CurrentIgnoredRow = -1;
+            CurrentIgnoredRowEnd = -1;
+            CurrentHunk = target.HunkIndex;
+        }
+
+        ScrollToRow = target.StartRow;
+
+        // Same reason as MoveTo: both views are pointed at the row so switching mid-navigation lands in
+        // the right place. A hunk can be found by index, but an ignored run is not a hunk in either
+        // document, so it has to be found through the unified document's own row mapping.
+        UnifiedScrollToRow = target.IsIgnored
+            ? UnifiedRowOf(target.StartRow)
+            : target.HunkIndex < UnifiedDocument.Hunks.Count
+                ? UnifiedDocument.Hunks[target.HunkIndex].StartIndex
+                : -1;
+
+        Navigated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Where an aligned row sits in the unified document, or -1 when it is not shown there.</summary>
+    private int UnifiedRowOf(int alignedRow)
+    {
+        var rows = UnifiedDocument.SourceRows;
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (rows[i] == alignedRow)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>

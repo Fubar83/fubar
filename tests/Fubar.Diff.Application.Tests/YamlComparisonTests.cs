@@ -125,10 +125,20 @@ public class YamlComparisonTests
     }
 
     [Fact]
-    public async Task A_list_of_objects_is_matched_by_identity_rather_than_position()
+    public async Task A_list_of_objects_can_be_matched_by_identity_when_asked()
     {
-        // The array-key machinery, inherited whole. Two containers swapped in the manifest is not a
-        // change to both of them.
+        // The array-key machinery, inherited whole: two containers swapped in the manifest is not a
+        // change to both of them. It is opt-in - an array nobody has named is compared by position,
+        // because a rule that switches itself on when the data happens to carry a "name" field is a rule
+        // nobody can see. This is exactly the case worth choosing it for, and it is one right-click away.
+        var options = ComparisonOptions.Default with
+        {
+            Json = new JsonComparisonOptions
+            {
+                ArrayKeyOverrides = new Dictionary<string, string> { ["$.containers"] = "name" },
+            },
+        };
+
         var comparison = await CompareAsync(
             """
             containers:
@@ -143,7 +153,8 @@ public class YamlComparisonTests
                 image: worker:1
               - name: api
                 image: api:2
-            """);
+            """,
+            options: options);
 
         // One change, not four: the two entries were paired by their name field, so swapping them is
         // not a change to either. The path still addresses the element by index - that is how the

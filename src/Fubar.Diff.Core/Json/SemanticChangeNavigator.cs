@@ -19,9 +19,9 @@ public static class SemanticChangeNavigator
     /// The change index to move to from <paramref name="currentIndex"/>, wrapping past the end.
     /// Returns null when there is nothing navigable (no changes, or every change is ignored).
     /// </summary>
-    public static int? Next(IReadOnlyList<JsonChange> changes, int currentIndex)
+    public static int? Next(IReadOnlyList<JsonChange> changes, int currentIndex, bool includeIgnored = false)
     {
-        var navigable = Navigable(changes);
+        var navigable = Navigable(changes, includeIgnored);
         if (navigable.Count == 0)
         {
             return null;
@@ -35,9 +35,9 @@ public static class SemanticChangeNavigator
     /// The previous navigable index, wrapping past the start. From "none selected" (-1) this lands on
     /// the LAST navigable change, matching <see cref="Comparison.HunkNavigator.Previous"/>.
     /// </summary>
-    public static int? Previous(IReadOnlyList<JsonChange> changes, int currentIndex)
+    public static int? Previous(IReadOnlyList<JsonChange> changes, int currentIndex, bool includeIgnored = false)
     {
-        var navigable = Navigable(changes);
+        var navigable = Navigable(changes, includeIgnored);
         if (navigable.Count == 0)
         {
             return null;
@@ -47,14 +47,20 @@ public static class SemanticChangeNavigator
         return position <= 0 ? navigable[^1] : navigable[position - 1];
     }
 
-    /// <summary>Indices of changes that are real, navigable differences - ignored ones are skipped.</summary>
-    private static List<int> Navigable(IReadOnlyList<JsonChange> changes)
+    /// <summary>
+    /// Indices of changes that are real, navigable differences - ignored ones are skipped.
+    ///
+    /// Unless asked for: "what exactly am I not being told?" is a question worth a gesture of its own,
+    /// usually asked right after adding a rule and once more before trusting the diff. That is
+    /// Shift+Alt+Up/Down; ordinary Prev/Next still steps past them, which is what having rules is for.
+    /// </summary>
+    private static List<int> Navigable(IReadOnlyList<JsonChange> changes, bool includeIgnored)
     {
         var result = new List<int>();
 
         for (var i = 0; i < changes.Count; i++)
         {
-            if (!changes[i].IsIgnored)
+            if (includeIgnored || !changes[i].IsIgnored)
             {
                 result.Add(i);
             }

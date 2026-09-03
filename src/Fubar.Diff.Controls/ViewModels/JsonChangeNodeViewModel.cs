@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Models;
 
@@ -12,7 +13,9 @@ namespace Fubar.Diff.Controls.ViewModels;
 /// <param name="Key">The field to match elements by, or null to compare by position.</param>
 /// <param name="Label">What the menu says.</param>
 /// <param name="IsCurrent">Whether this is what the comparison is already doing, for a check mark.</param>
-public sealed record ArrayKeyOption(string Path, string? Key, string Label, bool IsCurrent);
+/// <param name="Mode">Which way to compare. <see cref="Key"/> is set only for
+/// <see cref="ArrayMatchMode.Key"/>.</param>
+public sealed record ArrayKeyOption(string Path, ArrayMatchMode Mode, string? Key, string Label, bool IsCurrent);
 
 /// <summary>
 /// One row of the JSON change tree: a path segment, with any nested changes beneath it.
@@ -22,11 +25,45 @@ public sealed record ArrayKeyOption(string Path, string? Key, string Label, bool
 /// exists alongside it. The structure comes from the change paths, so a change at
 /// <c>$.users[2].email</c> appears under <c>users</c>, then <c>[2]</c>.
 /// </summary>
-public sealed class JsonChangeNodeViewModel
+public sealed partial class JsonChangeNodeViewModel : ObservableObject
 {
     private readonly List<JsonChangeNodeViewModel> _children = [];
 
     private JsonChangeNodeViewModel(string label) => Label = label;
+
+    /// <summary>The row above this one, or null at the top. Exists so a row can open its own ancestors
+    /// when navigation lands on it - see <see cref="Reveal"/>.</summary>
+    public JsonChangeNodeViewModel? Parent { get; private set; }
+
+    /// <summary>
+    /// Whether this row is open, owned by the view model rather than only by the container.
+    ///
+    /// It has to live here because navigation needs to OPEN a row it did not draw: stepping to a
+    /// difference five levels down selects a node the reader cannot see while its ancestors are shut.
+    /// Two-way, so expanding a row by hand is still the row's own state and not something the next
+    /// navigation silently disagrees with. Defaults to closed, which is exactly what the tree did
+    /// before this existed.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
+
+    /// <summary>
+    /// Opens every row between this one and the top, so a selection made by navigation is actually on
+    /// screen.
+    ///
+    /// <para>Selecting a node inside collapsed ancestors is a selection nobody can see - which is what
+    /// stepping through differences looked like before: the tree agreed it had moved and showed
+    /// nothing. This opens the ancestors and deliberately does NOT open the node itself; a change row
+    /// has no children worth unfolding, and unfolding a group would bury the row that was selected
+    /// under its own contents.</para>
+    /// </summary>
+    public void Reveal()
+    {
+        for (var ancestor = Parent; ancestor is not null; ancestor = ancestor.Parent)
+        {
+            ancestor.IsExpanded = true;
+        }
+    }
 
     /// <summary>This step of the path, e.g. <c>users</c> or <c>[2]</c>.</summary>
     public string Label { get; }
@@ -89,6 +126,21 @@ public sealed class JsonChangeNodeViewModel
     public bool IsArray => ArrayChoices is not null;
 
     /// <summary>
+    /// How this array is being compared right now, said in the menu's own heading.
+    ///
+    /// The marks inside the submenu answer the same question, but only once it is open - and the first
+    /// thing anyone wants on right-clicking a list is what the rule for it currently IS, before deciding
+    /// whether to change it. Position is what an array nobody has spoken about gets.
+    /// </summary>
+    public string ArrayCurrentDescription => ArrayChoices switch
+    {
+        null => string.Empty,
+        { Current: ArrayMatchMode.Unordered } => "Matched ignoring order",
+        { Current: ArrayMatchMode.Key, CurrentKey: { } key } => $"Matched by {key}",
+        _ => "Matched by position",
+    };
+
+    /// <summary>
     /// The entries a right-click offers: match by position, then the suggested key, then every other
     /// field that could serve as one.
     ///
@@ -106,21 +158,45 @@ public sealed class JsonChangeNodeViewModel
 
             var options = new List<ArrayKeyOption>
             {
-                new(choices.Path, null, "Ignore ordering: off (compare by position)", choices.Suggested is null),
+                new(choices.Path, ArrayMatchMode.Position, null, "Compare by position",
+                    choices.Current == ArrayMatchMode.Position),
+
+                // Offered for EVERY array, including one of plain strings - which is the case that had
+                // no answer before, since a set of tags or roles has no field to be keyed by and could
+                // only be compared by position.
+                new(choices.Path, ArrayMatchMode.Unordered, null, "Ignore order (match equal values)",
+                    choices.Current == ArrayMatchMode.Unordered),
             };
 
             if (choices.Suggested is { } suggested)
             {
-                options.Add(new ArrayKeyOption(choices.Path, suggested, $"Match by {suggested}  (suggested)", true));
+                // Not labelled "(suggested)" when it is the key already in force: the resolver returns
+                // an override ahead of anything it would detect, so once someone has named a key this
+                // entry IS their choice, and calling it a suggestion invites them to pick the thing they
+                // already picked.
+                var label = InForce(suggested) ? $"Match by {suggested}" : $"Match by {suggested}  (suggested)";
+
+                options.Add(new ArrayKeyOption(
+                    choices.Path, ArrayMatchMode.Key, suggested, label, InForce(suggested)));
             }
 
             foreach (var candidate in choices.Candidates)
             {
                 if (!string.Equals(candidate, choices.Suggested, StringComparison.Ordinal))
                 {
-                    options.Add(new ArrayKeyOption(choices.Path, candidate, $"Match by {candidate}", false));
+                    options.Add(new ArrayKeyOption(
+                        choices.Path, ArrayMatchMode.Key, candidate, $"Match by {candidate}",
+                        InForce(candidate)));
                 }
             }
+
+            // Against the key actually being USED. This used to compare against the suggestion, which
+            // reached the same answer only because the resolver returns an override ahead of detection -
+            // so "the suggestion" and "the key in force" were the same string. Asking the question
+            // directly costs nothing and does not rely on that staying true.
+            bool InForce(string name) =>
+                choices.Current == ArrayMatchMode.Key
+                && string.Equals(name, choices.CurrentKey, StringComparison.Ordinal);
 
             return options;
         }
@@ -208,7 +284,7 @@ public sealed class JsonChangeNodeViewModel
 
         var parent = path.Parent is { } parentPath ? EnsureNode(parentPath, index, root) : root;
 
-        var node = new JsonChangeNodeViewModel(path.Label) { Path = key };
+        var node = new JsonChangeNodeViewModel(path.Label) { Path = key, Parent = parent };
         parent._children.Add(node);
         index[key] = node;
 

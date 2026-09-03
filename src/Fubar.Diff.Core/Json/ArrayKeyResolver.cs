@@ -49,7 +49,16 @@ public static class ArrayKeyResolver
             return overridden;
         }
 
-        if (options.MatchArraysByPosition || Contains(options.PositionalArrays, key))
+        // An explicit per-path instruction is handled by JsonSemanticDiffer.ModeFor, which ranks it
+        // above these; returning null here for a path listed as UNORDERED would be harmless (the mode is
+        // decided without the key) but returning null because of a GLOBAL switch, for a path the user has
+        // spoken about, is the shape of the bug that made "Ignore order" inert.
+        if (Contains(options.PositionalArrays, key) || Contains(options.UnorderedArrays, key))
+        {
+            return null;
+        }
+
+        if (options.MatchArraysByPosition)
         {
             return null;
         }
