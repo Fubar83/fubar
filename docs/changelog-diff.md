@@ -6,6 +6,44 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **A location map worth reading, where there was a strip of ticks.** The map between the panes now
+  shows *how much* changed at each point, not just where. It aggregates per pixel rather than per hunk,
+  which matters exactly where a map earns its place: on a 60,000-line file drawn 600px tall, one pixel is
+  a hundred rows, and the old drawing clamped every hunk to the same minimum height — so forty changes in
+  a rewritten region looked identical to one stray edit beside it.
+
+  Marks are now per side, so a deletion shows on the left and an insertion on the right without relying
+  on colour alone. **Ignored rows are marked** — they form no hunk, so they used to draw nothing at all,
+  leaving you unable to tell "these are identical" from "a rule is hiding this", which is exactly what
+  you want to check after adding a rule. Small triangles at the top and bottom say when changes lie off
+  screen that way, and hovering names what is under the pointer — "line 4,120 of 60,000 · change 12 of
+  40 · 11 above, 28 below the view".
+
+  It deliberately does **not** copy WinMerge's connecting lines between its two columns. Those exist
+  because its columns are at independent scales; ours are row-aligned by construction, so a line would
+  join a point to itself. The one case where the two ends genuinely sit at different heights is a
+  **move**, and that is the one case a line is drawn for.
+
+- **Lists whose order does not matter.** Right-click a list in the change tree → *Compare this list* →
+  **Ignore order**, or add its path under Settings → JSON, or commit it to `.fubardiff.json` as
+  `unorderedArrays`.
+
+  This is the shape the array menu had no answer for. Matching by an identity field only works for
+  objects carrying an id; an array of **strings** — a set of tags, roles, feature flags, enabled
+  locales — has no field to be keyed by, so it always fell through to positional comparison and
+  `["A","B"]` against `["B","A"]` reported two modifications for a document nobody had edited. Elements
+  are now matched on their whole value instead, which needs no field and works for scalars, objects with
+  nothing to key on, and nested arrays alike.
+
+  It is a **multiset**, not a set: `["A","A","B"]` against `["A","B"]` has genuinely lost an element, and
+  calling those equal is the one answer a comparison must never give. Elements left over after the exact
+  matches are paired up rather than reported as a pile of deletions and insertions, so one element that
+  changed in one field is still **one** change and still says which field — and your ignore rules still
+  reach inside it. Opting a list out of ordering says nothing about lists nested inside it; those get
+  their own rule.
+
 ### Changed
 
 - **The panes now scroll in lockstep horizontally as well as vertically**, in both the side-by-side

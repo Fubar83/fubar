@@ -343,6 +343,33 @@ That is also why it lives on the service rather than in the view model: re-deriv
 `1.0` and `1e3` stays `1e3` - a formatter that re-derived values would edit the file's numbers while
 claiming to have changed only whitespace.
 
+**An array can be compared three ways, and "unordered" is the only one that works without a field**
+(Diff). `ArrayMatchMode` is Position, Unordered or Key, and `JsonSemanticDiffer.ModeFor` is the single
+place the precedence lives - public precisely so the context menu's check mark and the comparison cannot
+drift into different answers. Order, most specific instruction first: a named `ArrayKeyOverrides` entry,
+then an explicit `PositionalArrays` path, then an explicit `UnorderedArrays` path, then the global
+`MatchArraysByPosition`, then an auto-detected key, then the global `IgnoreArrayOrder`, then position.
+Two rankings in there are deliberate. An explicit positional path beats an explicit unordered one because
+that pair is a contradiction only the user can have written, and positional is its conservative half -
+reporting a reorder nobody minds is a smaller failure than hiding one that matters. And the GLOBAL
+unordered switch sits BELOW automatic key detection, because where a key exists it already ignores order
+and additionally says which field of which element changed, which whole-value matching cannot.
+
+Unordered matching exists because identity keys only answer "which element is this?" for objects
+carrying an id. An array of STRINGS - tags, roles, feature flags, enabled locales - has no field to key
+on, so it always fell through to positional and `["A","B"]` against `["B","A"]` reported two
+modifications for a document nobody had edited. `JsonValueSignature` matches elements on their whole
+value instead, which needs no field and works for scalars, objects and nested arrays alike. Three rules
+inside it are load-bearing. It is a MULTISET, not a set: `["A","A","B"]` against `["A","B"]` has
+genuinely lost an element, and set semantics would call them equal - the one answer a comparison must
+never give. Property order inside an element does not change its signature (JSON objects are unordered
+by definition) but NESTED ARRAY order does, because opting one array out of ordering says nothing about
+the arrays inside it and a nested one that should also be unordered gets its own rule. And what is left
+over after the exact matches is compared PAIRWISE rather than reported as a pile of deletions and
+insertions - that is what keeps a field-level diff for an element that changed in one field, and what
+lets ignore rules reach inside it at all. Matching purely by value would report a whole element as
+replaced because a timestamp inside it moved, and the rule covering that timestamp would never speak.
+
 **Array matching is per-array, and only fields that WOULD work are offered** (Diff).
 `JsonComparisonOptions.PositionalArrays` is the per-path counterpart of the global
 `MatchArraysByPosition`, because one document can hold a list of users where order means nothing
@@ -459,6 +486,31 @@ binary comparison silently switching itself off over a copy edit is not a break 
 Image formats are detected from the CONTENT signature, unlike languages, which are detected from the
 extension: a renamed `.png` that is really a JPEG is ordinary, and being wrong here is immediately
 visible because the picture either appears or it does not.
+
+**The location map aggregates per PIXEL, and what it draws is decided in Core** (Diff).
+`DiffMapModel.Build` turns rows and hunks into bands; `DiffMap` only paints them. The obvious
+implementation - one rectangle per hunk with a minimum height so it cannot vanish - is what was here
+before, and it fails in exactly the case a map exists for: on a 60,000-line file drawn 600px tall one
+pixel is a hundred rows, every hunk clamps to the same minimum, and forty changes in a rewritten region
+look identical to one stray edit beside it. Counting the changed rows behind each pixel and reporting
+that as `MapBand.Density` makes "how much changed here" legible again. Density is drawn as WIDTH from
+each side inwards rather than as opacity, because a faint mark on a dark strip is easy to miss entirely
+while a short one is unmistakably present; the 0.15 floor in the model is what keeps a single-line change
+visible on a huge file, and losing those would make the map worse than none, since an empty strip reads
+as "nothing here".
+
+Marks are per SIDE - a deletion paints only the left half, an insertion only the right, a modification
+both - and the two sides accumulate separately, so a pixel holding a deletion and an insertion shows one
+of each facing rather than merging into "modified". That per-side split costs nothing precisely because
+the panes are row-aligned, which is also why this needs none of WinMerge's connecting lines between its
+columns: those exist to tie together two columns at independent scales, and ours are the same scale by
+construction. The one place a connecting line carries information here is a MOVE, whose two ends sit at
+different rows by definition - hence `MapMoveLink`, capped and skipped for short travels so the links
+stay information rather than hatching. The map also marks IGNORED rows, which form no hunk and so drew
+nothing at all before, leaving the reader unable to tell "identical" from "a rule is hiding this"; and it
+counts hunks wholly above and below the viewport, which is the question people scroll a diff they have
+already read in order to answer. `DiffMapModel.Build` degrades to hunk-shaped bands when handed no rows,
+because a blank strip reads as "no changes" - the one wrong answer a diff tool must never give.
 
 **Scroll sync copies BOTH axes, and horizontal was a reversal** (Diff). `DiffView.SyncScroll` and
 `ThreeWayView.SyncScroll` copy vertical AND horizontal offsets. Horizontal was deliberately left

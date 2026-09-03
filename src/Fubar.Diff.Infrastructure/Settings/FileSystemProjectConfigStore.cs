@@ -134,6 +134,7 @@ public sealed class FileSystemProjectConfigStore : IProjectConfigStore
         IgnoredLinePatterns = rule.IgnoredLinePatterns ?? [],
         IgnoredPaths = rule.IgnoredPaths ?? [],
         ArrayKeys = rule.ArrayKeys ?? new Dictionary<string, string>(StringComparer.Ordinal),
+        UnorderedArrays = rule.UnorderedArrays ?? [],
     };
 
     /// <summary>
@@ -167,6 +168,8 @@ public sealed class FileSystemProjectConfigStore : IProjectConfigStore
         public List<string>? IgnoredPaths { get; set; }
 
         public Dictionary<string, string>? ArrayKeys { get; set; }
+
+        public List<string>? UnorderedArrays { get; set; }
     }
 
     private sealed class ConfigFile : RuleFile

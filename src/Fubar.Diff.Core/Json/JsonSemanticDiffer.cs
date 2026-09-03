@@ -185,13 +185,154 @@ public static class JsonSemanticDiffer
     {
         var key = ArrayKeyResolver.Resolve(left, right, path, options);
 
-        if (key is null)
+        switch (ModeFor(path.ToString(), key, options))
         {
-            CompareArraysByPosition(left, right, path, options, changes);
-            return;
+            case ArrayMatchMode.Unordered:
+                CompareArraysUnordered(left, right, path, options, changes);
+                return;
+
+            case ArrayMatchMode.Key when key is not null:
+                CompareArraysByKey(left, right, path, key, options, changes);
+                return;
+
+            default:
+                CompareArraysByPosition(left, right, path, options, changes);
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Which mode an array is compared with. Public because the menu asks the same question, and two
+    /// implementations of this precedence would eventually give the check mark and the comparison
+    /// different answers.
+    ///
+    /// <para>Most specific instruction first. An explicit key names a field, so it wins outright. An
+    /// explicit "this one is positional" beats an explicit "this one is unordered": that pair is a
+    /// contradiction only the user can have written, and positional is its conservative half, since
+    /// reporting a reorder nobody minds is a smaller failure than hiding one that matters. The GLOBAL
+    /// unordered switch ranks below automatic key detection, because where a key exists it already
+    /// ignores order and says which field of which element changed as well.</para>
+    /// </summary>
+    public static ArrayMatchMode ModeFor(string path, string? resolvedKey, JsonComparisonOptions options)
+    {
+        if (options.ArrayKeyOverrides.ContainsKey(path))
+        {
+            return ArrayMatchMode.Key;
         }
 
-        CompareArraysByKey(left, right, path, key, options, changes);
+        if (options.MatchArraysByPosition || PathListed(options.PositionalArrays, path))
+        {
+            return ArrayMatchMode.Position;
+        }
+
+        if (PathListed(options.UnorderedArrays, path))
+        {
+            return ArrayMatchMode.Unordered;
+        }
+
+        if (resolvedKey is not null)
+        {
+            return ArrayMatchMode.Key;
+        }
+
+        return options.IgnoreArrayOrder ? ArrayMatchMode.Unordered : ArrayMatchMode.Position;
+    }
+
+    private static bool PathListed(IReadOnlyList<string> paths, string path)
+    {
+        for (var i = 0; i < paths.Count; i++)
+        {
+            if (string.Equals(paths[i], path, System.StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Compares an array as an unordered collection: elements are matched by their whole VALUE, so
+    /// nothing needs a field to be identified by and a list of strings works as well as a list of
+    /// objects.
+    ///
+    /// <para>A MULTISET, not a set. <c>["A","A","B"]</c> against <c>["A","B"]</c> has genuinely lost an
+    /// element, and set semantics would call the two equal - the one answer a comparison must never
+    /// give. Each match is consumed.</para>
+    ///
+    /// <para>What is left over after the exact matches is compared PAIRWISE, in order, rather than
+    /// reported as a pile of deletions and insertions. Two reasons, and both are what makes this usable:
+    /// an element that changed in one field still gets a field-level diff saying which one, and ignore
+    /// rules still apply to it - matching purely by value would report a whole element as replaced
+    /// because a timestamp inside it moved, and the rule covering that timestamp would never get to
+    /// speak.</para>
+    /// </summary>
+    private static void CompareArraysUnordered(
+        JsonAstArray left,
+        JsonAstArray right,
+        JsonPath path,
+        JsonComparisonOptions options,
+        List<JsonChange> changes)
+    {
+        // Right-hand elements by signature, each usable once.
+        var available = new Dictionary<string, Queue<int>>(System.StringComparer.Ordinal);
+        for (var i = 0; i < right.Items.Count; i++)
+        {
+            var signature = JsonValueSignature.Of(right.Items[i]);
+            if (!available.TryGetValue(signature, out var queue))
+            {
+                available[signature] = queue = new Queue<int>();
+            }
+
+            queue.Enqueue(i);
+        }
+
+        var matchedRight = new HashSet<int>();
+        var unmatchedLeft = new List<int>();
+
+        for (var i = 0; i < left.Items.Count; i++)
+        {
+            var signature = JsonValueSignature.Of(left.Items[i]);
+
+            if (available.TryGetValue(signature, out var queue) && queue.Count > 0)
+            {
+                // Identical by value: nothing to report, whatever position either of them sits at.
+                matchedRight.Add(queue.Dequeue());
+                continue;
+            }
+
+            unmatchedLeft.Add(i);
+        }
+
+        var unmatchedRight = new List<int>();
+        for (var i = 0; i < right.Items.Count; i++)
+        {
+            if (!matchedRight.Contains(i))
+            {
+                unmatchedRight.Add(i);
+            }
+        }
+
+        var shared = System.Math.Min(unmatchedLeft.Count, unmatchedRight.Count);
+        for (var i = 0; i < shared; i++)
+        {
+            CompareNode(
+                left.Items[unmatchedLeft[i]],
+                right.Items[unmatchedRight[i]],
+                path.Index(unmatchedLeft[i]),
+                options,
+                changes);
+        }
+
+        for (var i = shared; i < unmatchedLeft.Count; i++)
+        {
+            changes.Add(new JsonChange(path.Index(unmatchedLeft[i]), ChangeKind.Deleted, left.Items[unmatchedLeft[i]], null));
+        }
+
+        for (var i = shared; i < unmatchedRight.Count; i++)
+        {
+            changes.Add(new JsonChange(path.Index(unmatchedRight[i]), ChangeKind.Inserted, null, right.Items[unmatchedRight[i]]));
+        }
     }
 
     private static void CompareArraysByPosition(

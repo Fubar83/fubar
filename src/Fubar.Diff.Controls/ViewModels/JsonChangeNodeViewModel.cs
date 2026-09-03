@@ -12,7 +12,9 @@ namespace Fubar.Diff.Controls.ViewModels;
 /// <param name="Key">The field to match elements by, or null to compare by position.</param>
 /// <param name="Label">What the menu says.</param>
 /// <param name="IsCurrent">Whether this is what the comparison is already doing, for a check mark.</param>
-public sealed record ArrayKeyOption(string Path, string? Key, string Label, bool IsCurrent);
+/// <param name="Mode">Which way to compare. <see cref="Key"/> is set only for
+/// <see cref="ArrayMatchMode.Key"/>.</param>
+public sealed record ArrayKeyOption(string Path, ArrayMatchMode Mode, string? Key, string Label, bool IsCurrent);
 
 /// <summary>
 /// One row of the JSON change tree: a path segment, with any nested changes beneath it.
@@ -106,21 +108,34 @@ public sealed class JsonChangeNodeViewModel
 
             var options = new List<ArrayKeyOption>
             {
-                new(choices.Path, null, "Ignore ordering: off (compare by position)", choices.Suggested is null),
+                new(choices.Path, ArrayMatchMode.Position, null, "Compare by position",
+                    choices.Current == ArrayMatchMode.Position),
+
+                // Offered for EVERY array, including one of plain strings - which is the case that had
+                // no answer before, since a set of tags or roles has no field to be keyed by and could
+                // only be compared by position.
+                new(choices.Path, ArrayMatchMode.Unordered, null, "Ignore order (match equal values)",
+                    choices.Current == ArrayMatchMode.Unordered),
             };
 
             if (choices.Suggested is { } suggested)
             {
-                options.Add(new ArrayKeyOption(choices.Path, suggested, $"Match by {suggested}  (suggested)", true));
+                options.Add(new ArrayKeyOption(
+                    choices.Path, ArrayMatchMode.Key, suggested, $"Match by {suggested}  (suggested)",
+                    choices.Current == ArrayMatchMode.Key && IsKey(suggested)));
             }
 
             foreach (var candidate in choices.Candidates)
             {
                 if (!string.Equals(candidate, choices.Suggested, StringComparison.Ordinal))
                 {
-                    options.Add(new ArrayKeyOption(choices.Path, candidate, $"Match by {candidate}", false));
+                    options.Add(new ArrayKeyOption(
+                        choices.Path, ArrayMatchMode.Key, candidate, $"Match by {candidate}",
+                        choices.Current == ArrayMatchMode.Key && IsKey(candidate)));
                 }
             }
+
+            bool IsKey(string name) => string.Equals(name, choices.Suggested, StringComparison.Ordinal);
 
             return options;
         }

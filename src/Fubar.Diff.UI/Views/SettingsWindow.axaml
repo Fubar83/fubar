@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:fc="using:Fubar.Controls"
         xmlns:vm="using:Fubar.Diff.UI.ViewModels"
+        xmlns:sys="using:System"
         x:Class="Fubar.Diff.UI.Views.SettingsWindow"
         x:DataType="vm:ComparisonViewModel"
         Title="Settings"
@@ -199,6 +200,32 @@
                                          ToolTip.Tip="A .NET regular expression. Add stays disabled until it compiles." />
                                 <Button Grid.Column="1" Classes="secondary-btn" Content="Add" Margin="8,0,0,0"
                                         Command="{Binding AddLinePatternCommand}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="JSON: lists whose order does not matter" FontWeight="SemiBold" />
+                            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" FontSize="11"
+                                       Text="For a list that is really a set - tags, roles, feature flags. Its items are matched by value, so reordering them stops being a difference. Works for lists of plain strings and numbers, which have no field to be identified by. Right-clicking a list in the change tree sets these too." />
+
+                            <ItemsControl ItemsSource="{Binding UnorderedArrays}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="sys:String">
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                                            <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center"
+                                                       FontFamily="Cascadia Mono,Consolas,monospace" FontSize="12" />
+                                            <Button Grid.Column="1" Classes="secondary-btn" Content="Remove"
+                                                    Command="{Binding $parent[Window].((vm:ComparisonViewModel)DataContext).RemoveUnorderedArrayCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" PlaceholderText="List, e.g. $.tags" Text="{Binding NewUnorderedPath}" />
+                                <Button Grid.Column="1" Classes="secondary-btn" Content="Add" Margin="8,0,0,0"
+                                        Command="{Binding AddUnorderedArrayCommand}" />
                             </Grid>
                         </StackPanel>
 

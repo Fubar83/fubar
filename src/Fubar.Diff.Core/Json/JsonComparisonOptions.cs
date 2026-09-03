@@ -68,4 +68,33 @@ public sealed record JsonComparisonOptions
     /// forces the wrong answer on one of them.
     /// </summary>
     public IReadOnlyList<string> PositionalArrays { get; init; } = [];
+
+    /// <summary>
+    /// Compare every array as an unordered collection: <c>["A","B"]</c> equals <c>["B","A"]</c>.
+    ///
+    /// Off by default, because for plenty of arrays the order IS the content. This is the blunt form;
+    /// <see cref="UnorderedArrays"/> is the one to reach for first.
+    ///
+    /// <para>Ranked BELOW automatic identity-key matching on purpose: for a list of objects that carry
+    /// an <c>id</c>, matching by that id already ignores order AND reports which field of which element
+    /// changed, where matching whole values could only say "this one went, that one arrived".</para>
+    /// </summary>
+    public bool IgnoreArrayOrder { get; init; }
+
+    /// <summary>
+    /// Specific arrays whose order does not matter, by JSON path - the per-array form of
+    /// <see cref="IgnoreArrayOrder"/>, and the reason it exists.
+    ///
+    /// <para>Identity keys answer "which element is this?" only for objects carrying an id field. An
+    /// array of STRINGS - a set of tags, roles, feature flags, enabled locales - has no field to key
+    /// on, so it always fell through to positional comparison and <c>["A","B"]</c> against
+    /// <c>["B","A"]</c> reported two modifications for a document that had not changed. Marking the
+    /// path unordered matches the elements by their whole VALUE instead, which needs no field and works
+    /// equally for scalars, objects and nested arrays.</para>
+    ///
+    /// <para>An explicit <see cref="PositionalArrays"/> entry for the same path wins. That is a
+    /// contradiction only the user can have written, and positional is the conservative half of it:
+    /// reporting a reorder nobody cares about is a smaller failure than hiding one that matters.</para>
+    /// </summary>
+    public IReadOnlyList<string> UnorderedArrays { get; init; } = [];
 }

@@ -20,13 +20,19 @@ namespace Fubar.Diff.Core.Json;
 /// </param>
 /// <param name="ElementsAreObjects">
 /// False for an array of scalars or of mixed shapes, where there is no field to choose - the only
-/// meaningful choice left is whether order matters.
+/// meaningful choice left is whether order matters, which is exactly what
+/// <see cref="ArrayMatchMode.Unordered"/> offers.
+/// </param>
+/// <param name="Current">
+/// The mode this array is being compared with right now, so the menu's check mark tells the truth
+/// rather than guessing from whether a key was found.
 /// </param>
 public sealed record ArrayKeyChoices(
     string Path,
     string? Suggested,
     IReadOnlyList<string> Candidates,
-    bool ElementsAreObjects);
+    bool ElementsAreObjects,
+    ArrayMatchMode Current = ArrayMatchMode.Position);
 
 /// <summary>
 /// Finds the arrays in a comparison and works out what each could be keyed by.
@@ -103,11 +109,14 @@ public static class ArrayKeyScanner
             && left.Items.All(i => i is JsonAstObject)
             && right.Items.All(i => i is JsonAstObject);
 
+        var suggested = ArrayKeyResolver.Resolve(left, right, path, options);
+
         return new ArrayKeyChoices(
             path.ToString(),
-            ArrayKeyResolver.Resolve(left, right, path, options),
+            suggested,
             elementsAreObjects ? Candidates(left, right) : [],
-            elementsAreObjects);
+            elementsAreObjects,
+            JsonSemanticDiffer.ModeFor(path.ToString(), suggested, options));
     }
 
     /// <summary>

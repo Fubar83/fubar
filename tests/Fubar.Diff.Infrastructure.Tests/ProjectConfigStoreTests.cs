@@ -38,6 +38,58 @@ public class ProjectConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void An_unordered_array_rule_is_read_from_the_config()
+    {
+        // "This list is a set" is a fact about the FILES - true for the whole team and every checkout -
+        // so it belongs in the committed config beside arrayKeys rather than in per-machine settings.
+        Write(".fubardiff.json", """
+            {
+              "rules": [
+                {
+                  "files": "*.json",
+                  "mode": "json",
+                  "unorderedArrays": ["$.tags", "$.roles"]
+                }
+              ]
+            }
+            """);
+
+        var file = Write("snapshot.json", "{}");
+        var rule = new FileSystemProjectConfigStore().Find(file, out _).For(file);
+
+        Assert.Equal(["$.tags", "$.roles"], rule.UnorderedArrays);
+    }
+
+    [Fact]
+    public void An_unordered_array_rule_reaches_the_comparison_options()
+    {
+        Write(".fubardiff.json", """
+            {
+              "rules": [ { "files": "*.json", "unorderedArrays": ["$.tags"] } ]
+            }
+            """);
+
+        var file = Write("snapshot.json", "{}");
+        var rule = new FileSystemProjectConfigStore().Find(file, out _).For(file);
+
+        var options = rule.ApplyTo(ComparisonOptions.Default);
+
+        Assert.Contains("$.tags", options.Json.UnorderedArrays);
+    }
+
+    [Fact]
+    public void A_config_with_no_unordered_arrays_still_asserts_nothing()
+    {
+        // IsEmpty is the fast path every comparison in every repository without a config goes through;
+        // a new list defaulting to non-empty would quietly turn it off.
+        Write(".fubardiff.json", """{ "rules": [ { "files": "*.json" } ] }""");
+
+        var file = Write("snapshot.json", "{}");
+
+        Assert.True(new FileSystemProjectConfigStore().Find(file, out _).For(file).IsEmpty);
+    }
+
+    [Fact]
     public void No_config_anywhere_is_simply_no_rules()
     {
         var file = Write("src/a.json", "{}");

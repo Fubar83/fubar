@@ -26,6 +26,18 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   editors scroll in lockstep — **both axes**, so scrolling right to read the end of a long line brings
   its counterpart with it instead of leaving it off screen. The same holds for all three columns of a
   three-way merge.
+- **A location map between the panes.** Where the changes are, which side each is on, and **how much**
+  changed at each point — it aggregates per pixel rather than per hunk, so on a long file a rewritten
+  block reads as denser than a stray edit instead of both clamping to the same tick. Ignored rows are
+  marked (they form no hunk, so nothing else shows them), moved blocks have their two ends joined, and
+  triangles at the ends say when changes lie off screen. Click or drag to jump; hover to be told what is
+  there. Unlike a classic location pane it needs no connecting lines between its halves — the panes are
+  row-aligned, so both halves are already at the same height.
+- **Lists whose order does not matter.** Right-click a list → *Compare this list* → **Ignore order**, for
+  a list that is really a set. Works for lists of **plain strings and numbers**, which have no field to be
+  identified by: `["A","B"]` and `["B","A"]` stop being a difference. Duplicates still count, and an
+  element that actually changed still gets a field-level diff. Commit it as `unorderedArrays` in
+  `.fubardiff.json` to share it with the team.
 - **Align two lines by hand** when the aligner pairs the wrong ones. Put the caret on a line in each
   pane and press **Ctrl+Shift+A** (or View → *Align the two carets*): those two lines are paired, the
   regions either side of them are compared independently, and the status bar says how many pairings
