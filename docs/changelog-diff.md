@@ -42,9 +42,10 @@ All notable changes to this project are documented here. The format is based on
 - **The location map, again.** Borders down both edges so it reads as its own column between the panes
   rather than as margin belonging to one of them. Marks are thicker (5px) and never thinner than 5px
   wide, because the mark *is* the click target — its size decides whether the map can be used at all —
-  and a click now snaps to a change within 12px of it. The current difference is drawn as a **solid line
-  across the strip** in the accent colour instead of two bars down the outer edges: a frame said
-  "somewhere in this range" when the question is "which one am I on".
+  and a click now snaps to a change within 12px of it. The current difference is shown by **recolouring its own
+  marks** in the accent colour - nothing is drawn over or behind them. A frame down the outer edges said
+  "somewhere in this range" when the question is "which one am I on"; a wash and a bar across the strip
+  both answered that and drowned the map doing it. The marks were already the right shape and weight.
 
 - **The location map is easier to hit, easier to read, and says which difference you are on.** Wider
   (32px), so it reads as the strip *between* the two panes rather than a border on one of them. Marks are

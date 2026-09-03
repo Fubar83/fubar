@@ -166,15 +166,25 @@ public sealed class DiffMap : Control
 
         DrawBorders(context, height, width);
 
-        // Behind the marks, so they stay the brightest thing on their own row.
-        DrawCurrentHunkWash(context, height, width);
-
         // Half the strip per side, inside the borders and their gutter.
         var columnWidth = (width - (BorderWidth + Inset) * 2) / 2;
 
+        // The current difference is shown by RECOLOURING its own marks, not by drawing anything extra
+        // over or behind them. A wash and a bar across the strip were both tried and both drowned the
+        // map: the marks were already the right shape and weight, and the only thing missing was which
+        // of them is the one you are on.
+        var current = CurrentHunkBounds(height);
+        var accent = DiffLineColors.CurrentHunkAccent(this);
+
         foreach (var band in view.Bands)
         {
-            if (BrushFor(band) is not { } brush)
+            var isCurrent =
+                accent is not null
+                && current is { } range
+                && band.Y >= range.Top - BandThickness
+                && band.Y <= range.Top + range.Height;
+
+            if ((isCurrent ? accent : BrushFor(band)) is not { } brush)
             {
                 continue;
             }
@@ -194,10 +204,6 @@ public sealed class DiffMap : Control
         }
 
         DrawMoveLinks(context, view, width);
-
-        // Last of the content: the current difference is the one thing that must never be obscured.
-        DrawCurrentHunk(context, height, width);
-
         DrawViewport(context, height, width);
         DrawOffScreenCounts(context, view, height, width);
         DrawHover(context, width);
@@ -261,50 +267,6 @@ public sealed class DiffMap : Control
 
             context.DrawGeometry(null, pen, geometry);
         }
-    }
-
-    /// <summary>
-    /// A full-width wash behind the hunk the user is on.
-    ///
-    /// Drawn UNDER the bands rather than over them - the bands say what changed and must stay the
-    /// brightest thing on their row - and full width rather than as an edge bracket, which is what this
-    /// was and which was far too quiet to answer "where am I?" at a glance. Orange, the same colour the
-    /// editors use for the current difference, so the map and the panes agree about which one it is.
-    /// </summary>
-    private void DrawCurrentHunkWash(DrawingContext context, double height, double width)
-    {
-        if (CurrentHunkBounds(height) is not { } bounds
-            || DiffLineColors.CurrentHunkWash(this) is not { } wash)
-        {
-            return;
-        }
-
-        context.FillRectangle(wash, new Rect(0, bounds.Top, width, bounds.Height));
-    }
-
-    /// <summary>
-    /// Draws the current difference as a solid LINE across the strip, on top of everything.
-    ///
-    /// <para>It was two bars down the outer edges, which framed the row rather than marking it: on a
-    /// strip this narrow a frame reads as "somewhere in this range" when the question being asked is
-    /// "which one am I on". A filled band in the accent colour answers that directly, and being the
-    /// only saturated thing on the map it is findable without hunting.</para>
-    ///
-    /// <para>Inset from the borders so both stay legible, and floored at the band thickness so a
-    /// one-line difference is as findable as a fifty-line one - which is the whole reason someone is
-    /// looking at the map.</para>
-    /// </summary>
-    private void DrawCurrentHunk(DrawingContext context, double height, double width)
-    {
-        if (CurrentHunkBounds(height) is not { } bounds
-            || DiffLineColors.CurrentHunkAccent(this) is not { } accent)
-        {
-            return;
-        }
-
-        context.FillRectangle(
-            accent,
-            new Rect(BorderWidth, bounds.Top, Math.Max(0, width - BorderWidth * 2), bounds.Height));
     }
 
     /// <summary>

@@ -547,9 +547,12 @@ deleted line carries no spans and scrolls home instead, which is where such a ch
 `DiffMapModel.SnapToNearestChange` sends a click within 12px to the nearest hunk's START. Both exist
 because one pixel is a hundred rows on a long file: a one-line change was a hairline, and missing it by a
 pixel scrolled a hundred lines from what was aimed at. Snapping falls back to the plain position when
-nothing is near, so dragging still scrubs. The current difference is a solid accent line ACROSS the
-strip - it was two bars down the outer edges, and a frame reads as "somewhere in this range" when the
-question is "which one".
+nothing is near, so dragging still scrubs. The current difference is shown by RECOLOURING its own marks
+in the accent colour, and by drawing nothing else. Three tries got here and the order matters: two bars
+down the outer edges framed the row, which reads as "somewhere in this range" when the question is
+"which one"; a full-width wash and then a solid bar across the strip both answered that and drowned the
+map doing it. The marks were already the right shape and weight - only their colour was missing. Do not
+re-add an overlay here.
 
 **The location map aggregates per PIXEL, and what it draws is decided in Core** (Diff).
 `DiffMapModel.Build` turns rows and hunks into bands; `DiffMap` only paints them. The obvious
