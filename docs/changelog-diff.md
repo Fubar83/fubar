@@ -26,6 +26,13 @@ All notable changes to this project are documented here. The format is based on
   join a point to itself. The one case where the two ends genuinely sit at different heights is a
   **move**, and that is the one case a line is drawn for.
 
+- **The Json close-up no longer spends half its height on an empty box.** An inserted value exists only
+  on the right and a deleted one only on the left, so for a large share of the changes you navigate to,
+  one of the two sides had nothing in it — and still took half the pane, beside the half holding the
+  thing you were trying to read. A side with no excerpt now gets no height at all, and the divider
+  between them goes with it. Worst case fixed: on a minified document the excerpt *is* the whole line, so
+  the side with content needs every pixel it can get.
+
 - **Click a difference in either pane to make it the current one.** The panes showed every difference and
   the only way to step to one was the toolbar, so pointing at the difference you were already reading and
   saying "this one" was impossible — the missing half of the map, the tree and Prev/Next all agreeing

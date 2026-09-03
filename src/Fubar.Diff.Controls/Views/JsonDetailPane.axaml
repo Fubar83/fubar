@@ -28,8 +28,11 @@
                        FontSize="11"
                        Margin="8,4" />
 
-            <Grid RowDefinitions="*,1,*">
-                <DockPanel Grid.Row="0">
+            <!-- Row heights are set in code-behind, not bound: collapsing a Grid row needs its
+                 RowDefinition height zeroed, and IsVisible on the child alone leaves the empty band
+                 behind (the same gotcha DiffView's detail pane hit). -->
+            <Grid x:Name="Sides" RowDefinitions="*,1,*">
+                <DockPanel x:Name="LeftSide" Grid.Row="0">
                     <TextBlock DockPanel.Dock="Top" Text="Left"
                                Foreground="{DynamicResource TextSecondary}"
                                FontSize="10" Margin="8,2" />
@@ -38,9 +41,9 @@
                                        Emphasized="True" />
                 </DockPanel>
 
-                <Border Grid.Row="1" Background="{DynamicResource BorderSubtle}" />
+                <Border x:Name="SidesDivider" Grid.Row="1" Background="{DynamicResource BorderSubtle}" />
 
-                <DockPanel Grid.Row="2">
+                <DockPanel x:Name="RightSide" Grid.Row="2">
                     <TextBlock DockPanel.Dock="Top" Text="Right"
                                Foreground="{DynamicResource TextSecondary}"
                                FontSize="10" Margin="8,2" />

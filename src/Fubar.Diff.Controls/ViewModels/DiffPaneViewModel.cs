@@ -584,6 +584,21 @@ public partial class DiffPaneViewModel : ObservableObject
     [ObservableProperty]
     public partial string DetailRightRawText { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Whether the left side of the close-up has anything in it.
+    ///
+    /// An inserted value exists only on the right and a deleted one only on the left, so one of these is
+    /// false for a large share of the changes anyone navigates to. The close-up used to split its height
+    /// evenly regardless, which spent half the pane on an empty box beside the half that had the thing
+    /// the reader was looking at - worst of all on a minified document, where the side WITH content
+    /// needs every pixel it can get.
+    /// </summary>
+    public bool HasDetailLeft => !string.IsNullOrWhiteSpace(DetailLeftRawText);
+
+    /// <summary>Whether the right side of the close-up has anything in it. See
+    /// <see cref="HasDetailLeft"/>.</summary>
+    public bool HasDetailRight => !string.IsNullOrWhiteSpace(DetailRightRawText);
+
     /// <summary>Where to highlight within <see cref="DetailRightRawText"/>.</summary>
     [ObservableProperty]
     public partial SourceSpan? DetailRightHighlightSpan { get; set; }
@@ -592,6 +607,9 @@ public partial class DiffPaneViewModel : ObservableObject
     {
         (DetailLeftRawText, DetailLeftHighlightSpan) = BuildJsonExcerpt(LeftRawText, LeftHighlightSpan);
         (DetailRightRawText, DetailRightHighlightSpan) = BuildJsonExcerpt(RightRawText, RightHighlightSpan);
+
+        OnPropertyChanged(nameof(HasDetailLeft));
+        OnPropertyChanged(nameof(HasDetailRight));
     }
 
     private static (string Text, SourceSpan? Span) BuildJsonExcerpt(string rawText, SourceSpan? span)
