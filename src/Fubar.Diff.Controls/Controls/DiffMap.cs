@@ -1,23 +1,35 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Fubar.Diff.Core.Models;
+using Fubar.Diff.Core.Rendering;
 using Fubar.Diff.Controls.Rendering;
 
 namespace Fubar.Diff.Controls.Controls;
 
 /// <summary>
-/// A scaled-down map of the whole comparison: one tick per hunk, positioned proportionally through the
-/// document, coloured by change kind, with a box showing what the viewport is currently on.
+/// A location map of the whole comparison: where the changes are, which side each is on, how much
+/// changed at each point, where the viewport sits, and how many changes remain off screen in each
+/// direction. Click or drag to jump; hover to be told what is there.
 ///
-/// Answers the question a scrollbar cannot - "where are the changes, and how many are left?" - without
-/// scrolling. Clicking or dragging jumps straight to a position.
+/// <para>Answers what a scrollbar cannot - "where are the changes, and how much is left?" - without
+/// scrolling. What it draws is decided by <see cref="DiffMapModel"/> in Core, so the interesting rules
+/// (density, side attribution, move linking) are testable without a window; this class only paints.</para>
 ///
-/// Lives in the app rather than Fubar.Controls because it knows what a hunk is; the design system's
-/// rule is that anything bound to a domain concept stays app-side.
+/// <para>It differs from the location pane it is modelled on in three ways that matter. It aggregates
+/// per PIXEL rather than per hunk, so a rewritten block does not look like a stray edit once a long file
+/// is squashed into a few hundred pixels. It needs no connecting lines between its two halves, because
+/// the panes are row-aligned and both halves are already at the same height - so a line is drawn only
+/// for a MOVE, which is the one case where the two ends really are at different heights. And it says how
+/// many changes are above and below the viewport, which is the question people scroll a diff they have
+/// already read in order to answer.</para>
+///
+/// <para>Lives in the app rather than Fubar.Controls because it knows what a hunk is; the design
+/// system's rule is that anything bound to a domain concept stays app-side.</para>
 /// </summary>
 public sealed class DiffMap : Control
 {
@@ -54,7 +66,7 @@ public sealed class DiffMap : Control
 
     public DiffMap()
     {
-        Width = 14;
+        Width = 18;
         Cursor = new Cursor(StandardCursorType.Hand);
     }
 
@@ -88,97 +100,169 @@ public sealed class DiffMap : Control
         set => SetValue(CurrentHunkProperty, value);
     }
 
+    /// <summary>
+    /// Row data. Without it the map draws nothing: kind, side, density, moves and ignored rows all come
+    /// from here, and hunks alone cannot supply any of them.
+    /// </summary>
+    public IReadOnlyList<DiffLine>? DiffLines
+    {
+        get => _diffLines;
+        set
+        {
+            _diffLines = value;
+            InvalidateVisual();
+        }
+    }
+
+    private IReadOnlyList<DiffLine>? _diffLines;
+
     /// <summary>Raised with a 0-based row index when the user clicks or drags the map.</summary>
     public event EventHandler<int>? JumpRequested;
 
+    // ---- Painting ----------------------------------------------------------------------------------
+
+    /// <summary>Gutter either side of the strip, so marks do not touch the editors they sit between.</summary>
+    private const double Inset = 1;
+
+    /// <summary>Height of the off-screen indicator at the top and bottom.</summary>
+    private const double ArrowHeight = 5;
+
     public override void Render(DrawingContext context)
     {
-        var hunks = Hunks;
-        var total = Scale;
+        var height = Bounds.Height;
+        var width = Bounds.Width;
 
-        if (hunks is null || hunks.Count == 0 || total <= 0 || Bounds.Height <= 0)
+        if (DiffLines is not { Count: > 0 } lines || Bounds.Height <= 0 || Scale <= 0)
         {
             return;
         }
 
-        var height = Bounds.Height;
-        var width = Bounds.Width;
+        var view = DiffMapModel.Build(
+            lines,
+            Hunks ?? [],
+            (int)Math.Floor(height),
+            Scale,
+            ViewportStart,
+            ViewportLength);
 
-        for (var i = 0; i < hunks.Count; i++)
+        // Half the strip per side, inside the gutter.
+        var columnWidth = (width - Inset * 2) / 2;
+
+        foreach (var band in view.Bands)
         {
-            var hunk = hunks[i];
-
-            var top = hunk.StartIndex / (double)total * height;
-            var rawHeight = hunk.Length / (double)total * height;
-
-            // Floor the height: on a long file a one-line hunk is a fraction of a pixel and would
-            // vanish, which defeats the point of a map you scan for changes.
-            var tickHeight = Math.Max(rawHeight, MinimumTickHeight);
-
-            if (BrushFor(hunk) is { } brush)
+            if (BrushFor(band) is not { } brush)
             {
-                var isCurrent = i == CurrentHunk;
-
-                // The current hunk spans the full width; the rest are inset, so the one you are on
-                // reads at a glance without needing a different colour.
-                var inset = isCurrent ? 0 : 2;
-                context.FillRectangle(brush, new Rect(inset, top, width - inset * 2, tickHeight));
+                continue;
             }
+
+            var x = band.Side == MapSide.Left ? Inset : Inset + columnWidth;
+
+            // Density is shown as WIDTH from the centre outwards rather than as opacity: a faint mark on
+            // a dark strip is easy to miss entirely, while a short one is still unmistakably present.
+            // The floor in the model guarantees a single-line change keeps a visible sliver.
+            var drawn = Math.Max(1, columnWidth * band.Density);
+            var left = band.Side == MapSide.Left ? x + (columnWidth - drawn) : x;
+
+            context.FillRectangle(brush, new Rect(left, band.Y, drawn, 1));
         }
 
-        DrawViewport(context, total, height, width);
+        DrawMoveLinks(context, view, width);
+        DrawCurrentHunk(context, height, width);
+        DrawViewport(context, height, width);
+        DrawOffScreenCounts(context, view, height, width);
+        DrawHover(context, width);
     }
-
-    private const double MinimumTickHeight = 3;
 
     /// <summary>
     /// The number of rows the map's full height represents.
     ///
-    /// Not simply <see cref="TotalLines"/>: the map sits BETWEEN the two editors, so its ticks are
-    /// read against the adjacent text, and stretching a short document over the full height would put
-    /// every tick far below the line it refers to. Scaling by the viewport instead means a document
-    /// that fits on screen has its ticks level with their lines, while anything longer compresses to
-    /// fit exactly as before.
+    /// Not simply <see cref="TotalLines"/>: the map sits BETWEEN the two editors, so its marks are read
+    /// against the adjacent text, and stretching a short document over the full height would put every
+    /// mark far below the line it refers to. Scaling by the viewport instead means a document that fits
+    /// on screen has its marks level with their lines, while anything longer compresses to fit.
     /// </summary>
     private int Scale => Math.Max(TotalLines, ViewportLength);
 
-    /// <summary>
-    /// The tick's colour: blue for a hunk that only moved, otherwise the ordinary tint for its kind.
-    ///
-    /// The map is where the reason for marking moves pays off most - it is read as "how much is left
-    /// to review", and a reordered file that fills it end to end is answering that question wrongly
-    /// until the moves are a different colour.
-    /// </summary>
-    private IBrush? BrushFor(DiffHunk hunk) =>
-        DiffLines is { Count: > 0 } lines && hunk.StartIndex < lines.Count && lines[hunk.StartIndex].IsMoved
+    private IBrush? BrushFor(MapBand band)
+    {
+        if (band.IsIgnored)
+        {
+            return DiffLineColors.IgnoredBackground(this);
+        }
+
+        return band.IsMoved
             ? DiffLineColors.MovedBackground(this)
-            : DiffLineColors.LineBackground(this, KindOf(hunk));
+            : DiffLineColors.LineBackground(this, band.Kind);
+    }
 
     /// <summary>
-    /// The kind used to colour a hunk. A hunk can mix kinds; the first row's kind is a good enough
-    /// summary for a 14px-wide indicator, and picking the "worst" kind would need an ordering that
-    /// does not really exist between inserted, deleted and modified.
+    /// Joins the two ends of a moved block.
+    ///
+    /// This is the one place the location-pane idea of a connecting line carries information here.
+    /// Everywhere else the panes are row-aligned, so a line between the halves would join a point to
+    /// itself; a move is the one case whose ends genuinely sit at different heights.
     /// </summary>
-    private ChangeKind KindOf(DiffHunk hunk) =>
-        DiffLines is { Count: > 0 } lines && hunk.StartIndex < lines.Count
-            ? lines[hunk.StartIndex].Kind
-            : ChangeKind.Modified;
+    private void DrawMoveLinks(DrawingContext context, DiffMapView view, double width)
+    {
+        if (view.MoveLinks.Count == 0 || DiffLineColors.MovedBackground(this) is not ISolidColorBrush moved)
+        {
+            return;
+        }
 
-    /// <summary>
-    /// Optional row data, used only to colour ticks by kind. Left null, every hunk draws as modified -
-    /// the map still works, it is just monochrome.
-    /// </summary>
-    public IReadOnlyList<DiffLine>? DiffLines { get; set; }
+        var pen = new Pen(new SolidColorBrush(moved.Color, 0.45), 1);
+        var centre = width / 2;
 
-    private void DrawViewport(DrawingContext context, int total, double height, double width)
+        foreach (var link in view.MoveLinks)
+        {
+            // A shallow curve bowing out from the centre, so several links stay separable instead of
+            // stacking into one vertical smear.
+            var bulge = Math.Min(centre - Inset, Math.Abs(link.ToY - link.FromY) / 8.0);
+
+            var geometry = new StreamGeometry();
+            using (var ctx = geometry.Open())
+            {
+                ctx.BeginFigure(new Point(centre, link.FromY + 0.5), isFilled: false);
+                ctx.CubicBezierTo(
+                    new Point(centre + bulge, link.FromY + 0.5),
+                    new Point(centre + bulge, link.ToY + 0.5),
+                    new Point(centre, link.ToY + 0.5));
+                ctx.EndFigure(false);
+            }
+
+            context.DrawGeometry(null, pen, geometry);
+        }
+    }
+
+    /// <summary>A bracket beside the hunk the user is on, so it reads without needing its own colour.</summary>
+    private void DrawCurrentHunk(DrawingContext context, double height, double width)
+    {
+        if (Hunks is not { } hunks || CurrentHunk < 0 || CurrentHunk >= hunks.Count)
+        {
+            return;
+        }
+
+        if (DiffLineColors.CurrentHunkAccent(this) is not { } accent)
+        {
+            return;
+        }
+
+        var hunk = hunks[CurrentHunk];
+        var top = hunk.StartIndex / (double)Scale * height;
+        var markHeight = Math.Max(hunk.Length / (double)Scale * height, 3);
+
+        context.FillRectangle(accent, new Rect(0, top, Inset, markHeight));
+        context.FillRectangle(accent, new Rect(width - Inset, top, Inset, markHeight));
+    }
+
+    private void DrawViewport(DrawingContext context, double height, double width)
     {
         if (ViewportLength <= 0)
         {
             return;
         }
 
-        var top = ViewportStart / (double)total * height;
-        var boxHeight = Math.Max(ViewportLength / (double)total * height, MinimumTickHeight * 2);
+        var top = ViewportStart / (double)Scale * height;
+        var boxHeight = Math.Max(ViewportLength / (double)Scale * height, 6);
 
         if (this.TryFindResource("TextSecondary", out var resource) && resource is ISolidColorBrush brush)
         {
@@ -189,6 +273,66 @@ public sealed class DiffMap : Control
             context.DrawRectangle(null, pen, new Rect(0.5, top + 0.5, width - 1, boxHeight));
         }
     }
+
+    /// <summary>
+    /// Triangles at the top and bottom when changes lie off screen that way - the map's answer to "how
+    /// much is left to review". The exact counts are in the tooltip; the triangle only has to say
+    /// "there is more up there", which is what stops a reader scrolling to check.
+    /// </summary>
+    private void DrawOffScreenCounts(DrawingContext context, DiffMapView view, double height, double width)
+    {
+        if (this.TryFindResource("TextSecondary", out var resource) is false || resource is not ISolidColorBrush brush)
+        {
+            return;
+        }
+
+        var fill = new SolidColorBrush(brush.Color, 0.75);
+        var centre = width / 2;
+
+        if (view.ChangesAbove > 0)
+        {
+            context.DrawGeometry(fill, null, Triangle(centre, 1, ArrowHeight, up: true));
+        }
+
+        if (view.ChangesBelow > 0)
+        {
+            context.DrawGeometry(fill, null, Triangle(centre, height - 1, ArrowHeight, up: false));
+        }
+
+        _offScreen = (view.ChangesAbove, view.ChangesBelow);
+    }
+
+    private static StreamGeometry Triangle(double centreX, double baseY, double size, bool up)
+    {
+        var geometry = new StreamGeometry();
+        using var ctx = geometry.Open();
+
+        var tipY = up ? baseY : baseY - size;
+        var flatY = up ? baseY + size : baseY;
+
+        ctx.BeginFigure(new Point(centreX, tipY), isFilled: true);
+        ctx.LineTo(new Point(centreX - size / 2, flatY));
+        ctx.LineTo(new Point(centreX + size / 2, flatY));
+        ctx.EndFigure(true);
+
+        return geometry;
+    }
+
+    /// <summary>A hairline at the pointer, so it is obvious which row a click would land on.</summary>
+    private void DrawHover(DrawingContext context, double width)
+    {
+        if (_hoverY is not { } y || !this.TryFindResource("TextPrimary", out var resource) || resource is not ISolidColorBrush brush)
+        {
+            return;
+        }
+
+        context.DrawLine(new Pen(new SolidColorBrush(brush.Color, 0.5), 1), new Point(0, y + 0.5), new Point(width, y + 0.5));
+    }
+
+    // ---- Pointer -----------------------------------------------------------------------------------
+
+    private double? _hoverY;
+    private (int Above, int Below) _offScreen;
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -201,11 +345,23 @@ public sealed class DiffMap : Control
     {
         base.OnPointerMoved(e);
 
-        // Only while dragging - captured means the press started here.
+        var y = e.GetPosition(this).Y;
+        _hoverY = y;
+        UpdateTooltip(y);
+        InvalidateVisual();
+
+        // Only jump while dragging - captured means the press started here.
         if (Equals(e.Pointer.Captured, this))
         {
-            RequestJump(e.GetPosition(this).Y);
+            RequestJump(y);
         }
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        _hoverY = null;
+        InvalidateVisual();
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -214,19 +370,68 @@ public sealed class DiffMap : Control
         e.Pointer.Capture(null);
     }
 
-    private void RequestJump(double y)
+    /// <summary>
+    /// Says what is under the pointer, and how much is off screen. A map you can only click is a map you
+    /// have to click to read; naming the hunk turns "somewhere around there" into "change 12 of 40".
+    /// </summary>
+    private void UpdateTooltip(double y)
     {
-        // Same scale the ticks were drawn at, so a click lands on the tick under the cursor.
-        var total = Scale;
-        if (total <= 0 || Bounds.Height <= 0)
+        var row = RowAt(y);
+        if (row < 0)
         {
+            ToolTip.SetTip(this, null);
             return;
         }
 
-        var ratio = Math.Clamp(y / Bounds.Height, 0, 1);
+        var parts = new List<string> { $"Line {row + 1:N0} of {TotalLines:N0}" };
 
-        // Clamp to the document, not to the scale: when the whole file fits on screen the scale is
-        // larger than the row count, so the lower part of the map addresses rows that do not exist.
-        JumpRequested?.Invoke(this, Math.Clamp((int)(ratio * total), 0, TotalLines - 1));
+        if (Hunks is { Count: > 0 } hunks)
+        {
+            var index = IndexOfHunkAt(hunks, row);
+            parts.Add(index >= 0
+                ? $"change {index + 1:N0} of {hunks.Count:N0}"
+                : $"{hunks.Count:N0} changes");
+        }
+
+        if (_offScreen.Above > 0 || _offScreen.Below > 0)
+        {
+            parts.Add(string.Create(
+                CultureInfo.CurrentCulture,
+                $"{_offScreen.Above:N0} above, {_offScreen.Below:N0} below the view"));
+        }
+
+        ToolTip.SetTip(this, string.Join(" · ", parts));
+    }
+
+    /// <summary>The hunk containing a row, or the nearest one within a pixel's worth of rows either side -
+    /// on a long file the row under the cursor is one of hundreds, and demanding an exact hit would make
+    /// the tooltip almost never name a change.</summary>
+    private int IndexOfHunkAt(IReadOnlyList<DiffHunk> hunks, int row)
+    {
+        var tolerance = Bounds.Height > 0 ? (int)Math.Ceiling(Scale / Bounds.Height) : 0;
+
+        for (var i = 0; i < hunks.Count; i++)
+        {
+            if (row >= hunks[i].StartIndex - tolerance && row <= hunks[i].EndIndex + tolerance)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>The row a point on the strip addresses. The rule itself is in Core, where it is
+    /// tested; this only supplies the geometry.</summary>
+    private int RowAt(double y) =>
+        Bounds.Height <= 0 ? -1 : DiffMapModel.RowAt(y / Bounds.Height, Scale, TotalLines);
+
+    private void RequestJump(double y)
+    {
+        var row = RowAt(y);
+        if (row >= 0)
+        {
+            JumpRequested?.Invoke(this, row);
+        }
     }
 }
