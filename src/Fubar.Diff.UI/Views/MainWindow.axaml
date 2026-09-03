@@ -437,6 +437,21 @@
                                ToolTip.Tip="Every difference between these files is formatting, comments or declaration order. Open the Structure panel to see which members moved and which were reformatted."
                                IsVisible="{Binding Structure.NoFunctionalChange}" />
 
+                    <!-- Reformat rewrites what the panes SHOW - a minified file appears indented, and
+                         both sides get a line count the files do not have. That is a big enough lie
+                         about the documents to be worth stating on screen: the option lives in a
+                         settings window nobody has open, it survives across tabs and sessions, and
+                         without this the only symptom is "why is my file prettified" with nothing
+                         anywhere to answer it. Clicking it opens Settings, where it can be turned off. -->
+                    <Button Classes="toolbar-btn"
+                            Content="Reformatted"
+                            Click="OnSettingsClick"
+                            Padding="6,0"
+                            FontSize="11"
+                            Foreground="{DynamicResource PostmanAmberBrush}"
+                            ToolTip.Tip="Both sides are being re-indented for display, so what you see is not how the files are written. Turn 'Reformat JSON and XML in the Text view' off in Settings to see them as they are."
+                            IsVisible="{Binding NormalizeStructure}" />
+
                     <!-- Encodings, BOMs and line endings never reach the panes - the reader consumes
                          them - so a file pair that differs only in those shows two identical-looking
                          documents and no rows. This is the only place that difference is reported. -->
