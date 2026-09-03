@@ -3,13 +3,20 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
+  <!-- Every Avalonia package moves together, HEADLESS INCLUDED. They share internal interfaces with
+       no compatibility guarantee across patch versions: 12.1.2 added SetHitTestVisible to the windowing
+       platform, and Avalonia.Headless 12.1.1 against Avalonia 12.1.2 threw TypeLoadException from
+       "new Window()" - which is every [AvaloniaFact] in the repo, presenting as dozens of unrelated
+       view tests failing at once. Dependabot's "Avalonia*" group covers these, but it opened a bump
+       without them once (the headless packages published later), so check the whole block matches
+       before merging one. -->
   <ItemGroup Label="Avalonia">
-    <PackageVersion Include="Avalonia" Version="12.1.1" />
-    <PackageVersion Include="Avalonia.Desktop" Version="12.1.1" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.1" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.1" />
-    <PackageVersion Include="Avalonia.Headless" Version="12.1.1" />
-    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.1" />
+    <PackageVersion Include="Avalonia" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.2" />
     <!-- The legacy Avalonia.Diagnostics package has not shipped a 12.x build (stuck at 11.3.20).
          Avalonia's tooling moved to AvaloniaUI.DiagnosticsSupport for the 12.x line instead;
          it's Debug-only (see the app csproj IncludeAssets/PrivateAssets conditions). -->
