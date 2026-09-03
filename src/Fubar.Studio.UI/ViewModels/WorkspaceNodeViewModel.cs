@@ -40,6 +40,18 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
     public ObservableCollection<WorkspaceNodeViewModel> Children { get; } = [];
 
+    /// <summary>
+    /// Projects this node and its descendants back into the immutable <see cref="WorkspaceTreeNode"/>
+    /// shape, so domain code (<c>RunPlan</c>) can work on the tree without knowing about view models.
+    ///
+    /// <para>Built from the VIEW MODEL tree rather than by re-scanning the directory, deliberately: a
+    /// run sends requests in the order they appear here, and taking that order from anywhere else would
+    /// let the two disagree. What the user sees is the contract.</para>
+    /// </summary>
+    public WorkspaceTreeNode ToTreeNode() =>
+        new(Name, FullPath, IsDirectory, [.. Children.Select(c => c.ToTreeNode())],
+            IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride));
+
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
 

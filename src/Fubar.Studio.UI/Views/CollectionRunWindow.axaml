@@ -1,0 +1,222 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:avc="using:Avalonia.Data.Converters"
+        xmlns:sys="using:System"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="620"
+        x:Class="Fubar.Studio.UI.Views.CollectionRunWindow"
+        x:DataType="vm:CollectionRunViewModel"
+        Title="Run collection"
+        Width="840" Height="640"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgSidebar}">
+
+    <Window.Styles>
+        <!-- Row status pill. One class per outcome, bound from a bool per class - Avalonia's Classes
+             is not bindable, so the view model exposes IsPassed/IsFailed/... rather than a string. -->
+        <Style Selector="Border.pill">
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="MinWidth" Value="52" />
+            <Setter Property="Background" Value="{DynamicResource StatusInfoBg}" />
+        </Style>
+        <Style Selector="Border.pill TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource StatusInfoFg}" />
+        </Style>
+
+        <Style Selector="Border.pill.passed">
+            <Setter Property="Background" Value="{DynamicResource StatusSuccessBg}" />
+        </Style>
+        <Style Selector="Border.pill.passed TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusSuccessFg}" />
+        </Style>
+
+        <Style Selector="Border.pill.failed">
+            <Setter Property="Background" Value="{DynamicResource StatusServerErrorBg}" />
+        </Style>
+        <Style Selector="Border.pill.failed TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusServerErrorFg}" />
+        </Style>
+
+        <Style Selector="Border.pill.errored">
+            <Setter Property="Background" Value="{DynamicResource StatusConnFailedBg}" />
+        </Style>
+        <Style Selector="Border.pill.errored TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusConnFailedFg}" />
+        </Style>
+
+        <!-- A non-2xx nobody asserted on: neither green nor red, because the run does not fail over it
+             and it is still the thing a reader is most likely scanning for. -->
+        <Style Selector="Border.pill.unexpected">
+            <Setter Property="Background" Value="{DynamicResource StatusClientErrorBg}" />
+        </Style>
+        <Style Selector="Border.pill.unexpected TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusClientErrorFg}" />
+        </Style>
+
+        <Style Selector="Border.pill.skipped">
+            <Setter Property="Opacity" Value="0.55" />
+        </Style>
+
+        <Style Selector="Border.summary">
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Background" Value="{DynamicResource StatusInfoBg}" />
+        </Style>
+        <Style Selector="Border.summary.ok">
+            <Setter Property="Background" Value="{DynamicResource StatusSuccessBg}" />
+        </Style>
+        <Style Selector="Border.summary.bad">
+            <Setter Property="Background" Value="{DynamicResource StatusServerErrorBg}" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="14">
+
+        <!-- What is being run, and against what. The environment is named because it decides every
+             {{variable}} in the collection, and running the right requests against the wrong
+             environment is the mistake this window is most able to prevent. -->
+        <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,10">
+            <TextBlock Text="{Binding Target}"
+                       FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimary}" />
+            <TextBlock Foreground="{DynamicResource TextSecondary}" FontSize="12">
+                <Run Text="Environment:" />
+                <Run Text="{Binding EnvironmentName}" />
+            </TextBlock>
+        </StackPanel>
+
+        <!-- Options -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource BgHeader}"
+                BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1"
+                CornerRadius="4" Padding="10" Margin="0,0,0,10">
+            <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                    <TextBox Grid.Column="0"
+                             PlaceholderText="Filter by name (blank runs everything)"
+                             Text="{Binding NameFilter}"
+                             IsEnabled="{Binding !IsRunning}" />
+                    <Button Grid.Column="1" Classes="primary-btn"
+                            Content="Run" Command="{Binding RunCommand}"
+                            IsVisible="{Binding !IsRunning}" />
+                    <Button Grid.Column="2" Classes="secondary-btn"
+                            Content="Cancel" Command="{Binding CancelCommand}"
+                            IsVisible="{Binding IsRunning}" />
+                </Grid>
+
+                <WrapPanel Orientation="Horizontal">
+                    <CheckBox Content="Stop at the first failure"
+                              IsChecked="{Binding StopOnFailure}"
+                              IsEnabled="{Binding !IsRunning}"
+                              ToolTip.Tip="Useful for a chain: when the first request is a login the rest depend on, carrying on just produces the same failure many times."
+                              Margin="0,0,16,0" />
+                    <CheckBox Content="Record history"
+                              IsChecked="{Binding RecordHistory}"
+                              IsEnabled="{Binding !IsRunning}"
+                              ToolTip.Tip="Off by default: history is capped per request, so repeated runs would evict the sends you made by hand."
+                              Margin="0,0,16,0" />
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="Delay (ms)" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondary}" FontSize="12" />
+                        <NumericUpDown Value="{Binding DelayMilliseconds}"
+                                       Minimum="0" Maximum="60000" Increment="100"
+                                       FormatString="0" Width="110"
+                                       IsEnabled="{Binding !IsRunning}"
+                                       ToolTip.Tip="Space out the requests for a rate-limited API, where running faster than the limit turns passing requests into 429s." />
+                    </StackPanel>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- The plan. Every row exists from the start, so the window can answer "how much is left?"
+             before it has finished. -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource BgResponsePanel}"
+                BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1"
+                CornerRadius="4">
+            <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding Steps}" Margin="2">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RunStepRowViewModel">
+                            <Grid ColumnDefinitions="34,Auto,*,Auto" Margin="8,5" ColumnSpacing="10">
+
+                                <TextBlock Grid.Column="0" Text="{Binding Order}"
+                                           Foreground="{DynamicResource TextSecondary}"
+                                           FontSize="11" VerticalAlignment="Center"
+                                           HorizontalAlignment="Right" />
+
+                                <Border Grid.Column="1" Classes="pill"
+                                        Classes.passed="{Binding IsPassed}"
+                                        Classes.failed="{Binding IsFailed}"
+                                        Classes.errored="{Binding IsErrored}"
+                                        Classes.skipped="{Binding IsSkipped}"
+                                        Classes.unexpected="{Binding IsUnexpectedStatus}"
+                                        VerticalAlignment="Center">
+                                    <Panel>
+                                        <TextBlock Text="{Binding StatusText}"
+                                                   IsVisible="{Binding !IsRunning}" />
+                                        <TextBlock Text="…" IsVisible="{Binding IsRunning}" />
+                                    </Panel>
+                                </Border>
+
+                                <StackPanel Grid.Column="2" Spacing="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}"
+                                               Foreground="{DynamicResource TextPrimary}"
+                                               FontSize="13" TextTrimming="CharacterEllipsis" />
+
+                                    <TextBlock Text="{Binding Error}"
+                                               IsVisible="{Binding Error, Converter={x:Static avc:ObjectConverters.IsNotNull}}"
+                                               Foreground="{DynamicResource StatusConnFailedFg}"
+                                               FontSize="11" TextWrapping="Wrap" />
+
+                                    <!-- Only FAILED assertions are listed: a report's job is to point at
+                                         what needs attention, and the counts already say how many
+                                         passed. -->
+                                    <ItemsControl ItemsSource="{Binding FailedAssertions}"
+                                                  IsVisible="{Binding HasFailedAssertions}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="sys:String">
+                                                <TextBlock Text="{Binding}"
+                                                           Foreground="{DynamicResource StatusServerErrorFg}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Margin="0,1,0,0" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <TextBlock Grid.Column="3" Text="{Binding Detail}"
+                                           Foreground="{DynamicResource TextSecondary}"
+                                           FontSize="11" VerticalAlignment="Center"
+                                           FontFamily="Cascadia Code,Consolas,monospace" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Status while running; the verdict afterwards. -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,10,0,0" ColumnSpacing="10">
+            <Border Grid.Column="0" Classes="summary"
+                    Classes.ok="{Binding IsVerdictOk}"
+                    Classes.bad="{Binding IsVerdictBad}"
+                    IsVisible="{Binding HasVerdict}">
+                <TextBlock Text="{Binding Summary}"
+                           Foreground="{DynamicResource TextPrimary}"
+                           FontSize="12" TextWrapping="Wrap" />
+            </Border>
+
+            <TextBlock Grid.Column="1" Text="{Binding Status}"
+                       Foreground="{DynamicResource TextSecondary}"
+                       FontSize="12" VerticalAlignment="Center" />
+        </Grid>
+    </Grid>
+</Window>

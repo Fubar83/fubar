@@ -25,6 +25,18 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   or import what you already have from OpenAPI, Postman or cURL. A workspace is a folder of plain
   files, so it belongs in the repository it tests; pointing *New Workspace* at a folder that is
   already one opens it untouched rather than reinitialising it.
+- **Run a whole collection, in order.** Right-click a folder (or the workspace) → **Run**. Every request
+  in it is sent top to bottom in the order the left pane shows, each one's captures and assertions
+  applied as it goes — so a login that captures `{{token}}` feeds the nineteen requests after it, which
+  is the thing that makes a collection worth having rather than a folder of bookmarks. The window lists
+  the whole plan before it starts, fills each row in as it lands, and ends on a one-line verdict.
+  Options for stopping at the first failure (worth it for a chain, where carrying on just repeats the
+  same failure), a delay between requests for rate-limited APIs, and a name filter.
+
+  **A status code never fails a run on its own — only an assertion or a transport error does.** You can
+  assert `StatusCode Equals 404` deliberately, so a runner that also called 4xx bad would be arguing
+  with you about the thing you just told it to expect. Any non-2xx nobody asserted on is still flagged
+  on its row, so nothing hides. A cancelled or empty run is never reported green.
 - **Request builder** — method + URL bar with live `{{variable}}` highlighting, and tabs for
   Params, Headers, Body, Auth, and per-request History/replay. URL and Params stay in two-way sync.
 - **Environments & variables** — `{{key}}` resolves from the active environment. Values can be marked

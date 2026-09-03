@@ -582,6 +582,23 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>Raised when the user asks to run the selection - <see cref="MainViewModel"/> wires this
+    /// to the Run window, because deciding what to run needs the ACTIVE ENVIRONMENT, which lives beside
+    /// this view model rather than in it.</summary>
+    public event Action<WorkspaceNodeViewModel>? RunRequested;
+
+    [RelayCommand]
+    private void Run()
+    {
+        // The selection, or the whole active workspace when nothing is selected - "run everything" is
+        // the commonest thing to want and should not need a click on the root first.
+        var node = SelectedNode ?? ActiveRoot;
+        if (node is not null)
+        {
+            RunRequested?.Invoke(node);
+        }
+    }
+
     /// <summary>
     /// The directory a new file/folder should be created in, based on the current selection:
     /// inside the selected directory, alongside the selected file, or the active workspace's

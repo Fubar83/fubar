@@ -8,6 +8,48 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Run a whole collection.** Right-click a folder — or the workspace — and pick **Run**. Every request
+  under it is sent in the order the left pane shows, each one's captures and assertions applied as it
+  goes, and the window reports what happened.
+
+  This is what makes captures worth having. A capture writes a variable; a variable is only useful to a
+  *later* request; and until now there was no way to run a later request except by clicking it yourself.
+  A login that captures `{{token}}` now feeds the nineteen requests after it in one press.
+
+  The run window lists the whole plan before it starts rather than growing a row at a time, because the
+  usual reason to watch a running collection is to decide whether to wait for it, and a list that only
+  shows what has finished can answer that only by finishing. A request in flight is named while it is in
+  flight — the one that hangs is the one you most want identified.
+
+  Options: stop at the first failure (worth turning on for a chain, where carrying on past a failed
+  login produces nineteen more failures that all say the same thing and bury the one that matters), a
+  delay between requests for rate-limited APIs, a name filter, and history recording — which is OFF by
+  default, unlike a single send, because history is capped per request and a run on a schedule would
+  otherwise evict the sends you made by hand.
+
+  **A status code never fails a run on its own; only an assertion or a transport error does.** Not the
+  obvious choice, so: this app lets you assert `StatusCode Equals 404` deliberately, and a runner that
+  also treated 4xx as failure would make the same response both the expected result and a failure, with
+  one of those two answers winning silently. Deciding which statuses are bad is the job assertions exist
+  to do explicitly. The cost — a collection with no assertions can return 500s and still pass — is paid
+  for by flagging every non-2xx nobody asserted on, beside the verdict rather than inside it: the run
+  does not fail, and you are still told. A cancelled run is never green either, and neither is an empty
+  one, since "no tests ran, so it passed" is reachable by a filter with a typo in it.
+
+  Sequential, never parallel, and that is correctness rather than an implementation shortcut: captures
+  write variables later requests read, so two requests in flight at once is a race whose outcome depends
+  on which response came back first. A "run faster" switch would break exactly the collections that are
+  worth running.
+
+  Each step goes through the same pipeline a single send does, so auth acquisition, the 401 retry,
+  captures, assertions and history behave identically whether you press Send or Run — anything that
+  works in the editor works in a run. Two things are contained rather than fatal: a request file that
+  will not parse errors that one step and the run carries on, and a capture that could not be applied is
+  reported without failing the request that answered fine.
+
+  Requests are read from disk when their turn comes, so a run sends what is **saved** — the honest
+  behaviour for something whose purpose is to be repeatable.
+
 - **Sign in as a person: Authorization Code + PKCE.** The grant most people expect was missing, and it
   is not a template — it needs a browser, a loopback listener, PKCE and a code-for-token exchange. Pick
   the template, press **Sign in with browser**, approve at your provider, then **Test / Get token**

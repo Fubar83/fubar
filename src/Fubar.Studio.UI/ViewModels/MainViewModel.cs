@@ -7,6 +7,7 @@ using Fubar.Studio.Core.History;
 using Fubar.Studio.Core.Import;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
+using Fubar.Studio.Core.Running;
 using Fubar.Studio.Core.Secrets;
 using Fubar.Studio.Core.Testing;
 using Fubar.Studio.Core.Variables;
@@ -32,6 +33,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRequestStore _workspaceService;
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IEditorViewModelFactory _editorFactory;
+    private readonly IRunDialogService _runDialog;
     private RequestEditorViewModel? _dirtyTrackedRequest;
 
     public WorkspaceExplorerViewModel WorkspaceExplorer { get; }
@@ -69,6 +71,7 @@ public partial class MainViewModel : ViewModelBase
         IRequestStore workspaceService,
         IProtocolRegistry protocolRegistry,
         IEditorViewModelFactory editorFactory,
+        IRunDialogService runDialog,
         ITabDragHost tabDragHost)
     {
         WorkspaceExplorer = workspaceExplorer;
@@ -79,16 +82,49 @@ public partial class MainViewModel : ViewModelBase
         _workspaceService = workspaceService;
         _protocolRegistry = protocolRegistry;
         _editorFactory = editorFactory;
+        _runDialog = runDialog;
 
         WorkspaceExplorer.PropertyChanged += OnWorkspaceExplorerPropertyChanged;
         WorkspaceExplorer.WorkspaceClosed += OnWorkspaceClosed;
         WorkspaceExplorer.WorkspaceContentImported += workspace => _ = ActivateWorkspaceContextAsync(workspace);
 
         WorkspaceExplorer.RequestFileActivated += path => _ = OpenRequestAsync(path);
+        WorkspaceExplorer.RunRequested += OnRunRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
         LeftPane.AuthProfilesSection.EditRequested += OpenAuthProfileEditor;
 
         StatusLog.Log("Fubar shell ready.");
+    }
+
+    /// <summary>
+    /// Opens the Run window for a selected folder or request.
+    ///
+    /// <para>Lives here rather than on the explorer because a run needs the ACTIVE ENVIRONMENT, which
+    /// decides every {{variable}} in the collection - and this is the view model that holds both the
+    /// tree and the environment manager.</para>
+    /// </summary>
+    private void OnRunRequested(WorkspaceNodeViewModel node)
+    {
+        // Which workspace the node belongs to: several can be open, and the selection is not always in
+        // the active one.
+        var root = WorkspaceExplorer.Roots.FirstOrDefault(
+                       r => node.FullPath.StartsWith(r.FullPath, StringComparison.OrdinalIgnoreCase))
+                   ?? WorkspaceExplorer.ActiveRoot;
+
+        if (root is null)
+        {
+            return;
+        }
+
+        var plan = RunPlan.From(node.ToTreeNode());
+        if (plan.IsEmpty)
+        {
+            // Nothing to run is worth SAYING. A window listing nothing looks like a failure to load.
+            StatusLog.Log($"Nothing to run in \"{node.Name}\" - it holds no requests.");
+            return;
+        }
+
+        _runDialog.Show(plan, root.Workspace, EnvironmentManager.ActiveEnvironment, node.Name);
     }
 
     [RelayCommand]
