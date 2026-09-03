@@ -76,7 +76,7 @@ internal sealed class JsonChangeSpanColorizer : DocumentColorizingTransformer
         // it cannot be mistaken for something that was reported.
         if (change.IsIgnored)
         {
-            return DiffLineColors.IgnoredBackground(_host);
+            return DiffLineColors.IgnoredSpanBackground(_host);
         }
 
         return DiffLineColors.SpanBackground(_host, KindFor(change.Kind, _side), EmphasisFor(span, _current));

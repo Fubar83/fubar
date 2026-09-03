@@ -26,6 +26,23 @@ All notable changes to this project are documented here. The format is based on
   join a point to itself. The one case where the two ends genuinely sit at different heights is a
   **move**, and that is the one case a line is drawn for.
 
+- **Ignored differences are visible now, and there are more of them.** Two changes, one principle: a
+  difference you told the tool to ignore is still *shown*, faintly — because told nothing at all you
+  cannot tell "these lines agree" from "these lines disagree and I asked not to be told", and the second
+  is worth a glance before trusting the diff. It is also the only way to check that a rule you just added
+  is doing what you thought.
+
+  **Whitespace, case, comments and line-pattern rules now leave a mark.** Turning one on used to make the
+  affected lines vanish into ordinary unchanged rows. They now carry the same faint neutral band an
+  ignored JSON path already had, and stay out of the counts, the hunks and next/previous exactly as
+  before. One implementation covers every option that equalises a line, because it compares the two raw
+  lines after projection rather than knowing which rule ran.
+
+  **And the band is no longer nearly invisible** — raised from 7% to 14%, with a stronger 30% for
+  character spans in the Json view, where the same opacity over a few characters reads as far less than
+  over a whole row. It stays below an ordinary change row and stays neutral grey against their red and
+  green, so it is told apart by hue rather than only by weight.
+
 - **Ignored differences are shown, faintly, and an ignored REORDER is now one of them.** Picking *Ignore
   order* on a list used to make the moved elements vanish outright. That is the wrong kind of silence:
   you asked for the order to be ignored, not for the fact that something moved to be erased, and told

@@ -70,14 +70,31 @@ internal static class DiffLineColors
     };
 
     /// <summary>
-    /// The band behind a row that differs only at ignored paths.
+    /// The band behind a row that differs only in ways the options were told to ignore - an ignored
+    /// path, a reordered list element, or a line the whitespace/case/comment rules equalised.
     ///
-    /// Barely there on purpose, and neutral rather than a change colour: it says "something differs
-    /// here and you asked not to be told", which must not compete for attention with the differences
-    /// that were not ignored. Any stronger and adding a rule would not visibly quieten the diff,
-    /// which is the whole point of adding one.
+    /// Quiet on purpose, and NEUTRAL rather than a change colour: it says "something differs here and
+    /// you asked not to be told", which must not compete with the differences that were not ignored.
+    /// Any louder and adding a rule would stop visibly quietening the diff, which is the whole point of
+    /// adding one.
+    ///
+    /// <para>Raised from 0.07, which was too close to invisible to do the job it exists for - a mark
+    /// nobody notices is the same as no mark, and the reader is then back to being unable to tell
+    /// agreement from a suppressed disagreement. It stays comfortably below an ordinary change row
+    /// (<see cref="LineOpacity"/>, 0.12 faded / 0.28) and, being grey where those are red and green, it
+    /// is told apart by hue rather than only by weight.</para>
     /// </summary>
-    public static IBrush? IgnoredBackground(StyledElement host) => Tinted(host, "TextSecondary", 0.07);
+    public static IBrush? IgnoredBackground(StyledElement host) => Tinted(host, "TextSecondary", 0.14);
+
+    /// <summary>
+    /// The same signal over the CHARACTERS of an ignored change rather than a whole row.
+    ///
+    /// Stronger than <see cref="IgnoredBackground"/> for the same reason <see cref="SpanBackground"/> is
+    /// stronger than <see cref="LineBackground"/>: a span covers a few characters instead of the pane's
+    /// full width, so the same opacity reads as far less. The gap between the two is what keeps a span
+    /// and a row saying the same thing at the same apparent strength.
+    /// </summary>
+    public static IBrush? IgnoredSpanBackground(StyledElement host) => Tinted(host, "TextSecondary", 0.30);
 
     /// <summary>
     /// The band behind a row both sides of a three-way merge changed differently.

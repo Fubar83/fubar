@@ -375,6 +375,20 @@ insertions - that is what keeps a field-level diff for an element that changed i
 lets ignore rules reach inside it at all. Matching purely by value would report a whole element as
 replaced because a timestamp inside it moved, and the rule covering that timestamp would never speak.
 
+**Every option that EQUALISES a line marks the row it equalised** (Diff). `ProjectOntoDocuments` is the
+one place both raw lines are in hand at once - the engine matched on comparison KEYS - so an `Unchanged`
+row whose two texts differ can only have been made equal by ignore-whitespace, ignore-case,
+ignore-comments, a line-pattern mask or Unicode normalisation. It is marked `IsIgnored` there, which
+costs one ordinal compare per unchanged row and gets it the same faint band an ignored JSON path already
+had, for free, in every renderer. One implementation covers every such option precisely because it
+compares the TEXTS rather than knowing which rule ran; adding another normalisation rule needs no change
+here. Do not mark fillers (no counterpart to differ from) or rows that are already reported changes
+(drawn as the change they are), and never overwrite an `IsIgnored` the semantic pass already set - only
+ADD. The tint itself was raised from 0.07 to 0.14, with a separate 0.30 `IgnoredSpanBackground` for the
+Json view's character spans: the same opacity over a few characters reads as far less than over a
+full-width row, which is the same reason `SpanBackground` sits well above `LineBackground`. A mark
+nobody notices is the same as no mark.
+
 **An ignored REORDER leaves a trace; reporting nothing is the wrong kind of silence** (Diff). When
 unordered matching pairs two elements that merely moved, it emits a `JsonChange` flagged `IsReorder`
 AND `IsIgnored` rather than emitting nothing. The user asked for order to be ignored, not for the fact
