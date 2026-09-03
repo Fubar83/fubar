@@ -503,6 +503,16 @@
             </Grid>
         </Border>
 
+        <!-- Settings failing to save is the one failure this app used to have no way to report. The
+             store returns false rather than throwing (losing a preference must never stop the app), so
+             without somewhere to say so the user finds out at the next restart, if at all - which is
+             exactly how a duplicate array-key override silently stopped every save for a whole session.
+             Bound past the tab to the shell, which owns the settings. -->
+        <fc:Banner DockPanel.Dock="Top"
+                   Severity="Warning"
+                   Message="{Binding $parent[Window].((vm:ShellViewModel)DataContext).SettingsError}"
+                   IsVisible="{Binding $parent[Window].((vm:ShellViewModel)DataContext).SettingsError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
         <fc:Banner DockPanel.Dock="Top"
                    Severity="Error"
                    Message="{Binding ErrorMessage}"

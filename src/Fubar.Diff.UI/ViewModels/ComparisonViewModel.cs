@@ -760,6 +760,31 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>The current option values, for the shell to persist as the defaults.</summary>
+    /// <summary>
+    /// The overrides as a dictionary, keeping the LAST entry for a repeated path.
+    ///
+    /// <para>Was <c>ToDictionary</c>, which throws on a duplicate key - and this runs inside
+    /// <c>CaptureOptions</c>, which runs inside the <c>OptionsChanged</c> handler that saves settings.
+    /// So a single duplicated path threw out through whatever toggle raised the event and NOTHING was
+    /// ever saved again for the rest of the session. Everything kept working; it was only gone after a
+    /// restart, which is the worst way for a bug to present.</para>
+    ///
+    /// <para>Last-wins rather than first-wins because it matches
+    /// <see cref="ApplyArrayKeyAsync"/>, which replaces an existing entry for a path: whichever way a
+    /// duplicate got in, the most recent instruction is the one the user meant.</para>
+    /// </summary>
+    private Dictionary<string, string> OverridesByPath()
+    {
+        var byPath = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var entry in ArrayKeyOverrides)
+        {
+            byPath[entry.Path] = entry.Key;
+        }
+
+        return byPath;
+    }
+
     public AppSettings CaptureOptions(AppSettings settings) => settings with
     {
         IgnoreWhitespace = IgnoreWhitespace,
@@ -784,7 +809,7 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         MatchArraysByPosition = MatchArraysByPosition,
         IgnoreNullVsMissing = IgnoreNullVsMissing,
         Mode = Mode,
-        ArrayKeyOverrides = ArrayKeyOverrides.ToDictionary(e => e.Path, e => e.Key),
+        ArrayKeyOverrides = OverridesByPath(),
         IgnoredLinePatterns = [.. IgnoredLinePatterns],
         IgnoredPaths = [.. IgnoredPaths],
     };
@@ -1165,7 +1190,19 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
     [RelayCommand(CanExecute = nameof(CanAddArrayKeyOverride))]
     private void AddArrayKeyOverride()
     {
-        ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(NewOverridePath.Trim(), NewOverrideKey.Trim()));
+        var path = NewOverridePath.Trim();
+
+        // Replace rather than append, the same way choosing a key from the change tree does. Two rows
+        // for one path is a rule the user cannot read and cannot undo from the list - and it used to be
+        // worse than confusing, because capturing the options then threw and quietly stopped every
+        // setting from being saved.
+        var existing = ArrayKeyOverrides.FirstOrDefault(o => string.Equals(o.Path, path, StringComparison.Ordinal));
+        if (existing is not null)
+        {
+            ArrayKeyOverrides.Remove(existing);
+        }
+
+        ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(path, NewOverrideKey.Trim()));
         NewOverridePath = string.Empty;
         NewOverrideKey = string.Empty;
         OptionChanged();

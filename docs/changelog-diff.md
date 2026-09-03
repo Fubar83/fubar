@@ -119,6 +119,21 @@ All notable changes to this project are documented here. The format is based on
   reach inside it. Opting a list out of ordering says nothing about lists nested inside it; those get
   their own rule.
 
+### Fixed
+
+- **Settings stopped saving silently.** Options worked for the session and were back to their old values
+  after a restart. One duplicated entry in the array-key override list was enough: capturing the options
+  built a dictionary from that list, `ToDictionary` throws on a duplicate key, and it runs inside the
+  event handler that saves — so the exception went out through whatever toggle raised it and **nothing
+  was saved again for the rest of the session**. Nothing looked wrong until the next start.
+
+  Three fixes, because one was not enough. The dictionary now keeps the last entry for a repeated path
+  instead of throwing. The Settings window's *Add* replaces an existing entry for the same path rather
+  than appending a second one, the way choosing a key from the change tree already did. And saving is
+  wrapped so nothing a tab hands it can break the chain again — with the failure **reported in a banner**
+  rather than swallowed, which is the part that let this hide: the settings store is deliberately built
+  never to throw, so before this there was nowhere at all for a settings problem to surface.
+
 ### Changed
 
 - **The panes now scroll in lockstep horizontally as well as vertically**, in both the side-by-side

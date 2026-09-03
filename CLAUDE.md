@@ -991,6 +991,23 @@ timing assertion tight enough to catch the latter fails on a loaded CI agent ins
   been constructed but not yet displayed — which is exactly where opening `--merge`'s window belongs.
   `App` defers it to the main window's `Opened` event for this reason; the exception is immediate and
   fatal, not a silent misbehaviour, so it will find you.
+**"Settings never throw" needs somewhere for a settings failure to GO** (Diff). `ISettingsStore.Load`
+returns defaults and `SaveAsync` returns false rather than throwing, which is right - losing a preference
+must never stop the app. The cost is that a settings problem has no natural way to surface, and that is
+not theoretical: `CaptureOptions` built its dictionary with `ToDictionary`, which throws on a duplicate
+key, and it runs inside the `OptionsChanged` handler that saves. One duplicated array-key override
+therefore threw out through whatever toggle raised the event and NOTHING was saved for the rest of the
+session - every option still worked, and every one was gone at the next start. Reported as "my settings
+do not stick"; the settings file was a day old while the toolbar showed things switched on.
+
+Three rules now, and all three are needed. Building the settings must not throw: duplicates collapse
+last-wins, matching `ApplyArrayKeyAsync`, which replaces rather than appends. Duplicates are also
+stopped at the source - the Settings window's Add replaces an existing entry for a path, the same way
+the change tree's menu does. And `ShellViewModel.Persist` wraps the capture, because it runs from an
+event handler where an escaping exception silently kills every later save; the failure sets
+`SettingsError`, which `MainWindow` shows as a banner. Do not remove that banner to "keep the window
+clean" - it is the only thing standing between a settings bug and a user discovering it a day later.
+
 - **Settings never throw**: `Load` returns defaults, `SaveAsync` returns false. Losing a preference is
   a nuisance; refusing to start over a corrupt settings file is not acceptable.
 - **`ExecutionSnapshot.ResponseBody` is optional and must stay that way** — null for an empty body, one

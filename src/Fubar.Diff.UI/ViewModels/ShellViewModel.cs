@@ -294,14 +294,52 @@ public partial class ShellViewModel : ViewModelBase
     /// Fire-and-forget: saving a preference is not something the user should ever wait for, and the
     /// store reports failure rather than throwing, so there is nothing to await for correctness.
     /// </summary>
+    /// <summary>
+    /// Writes the current options to disk.
+    ///
+    /// <para>Wrapped, because this runs from an event handler on every option change: an exception
+    /// escaping here goes out through whatever toggle raised the event, and the observed result is that
+    /// settings silently stop being saved for the whole session while everything else keeps working.
+    /// That is exactly what a duplicate array-key override used to do, and the reason it went unnoticed
+    /// for so long is that nothing is wrong until the next restart.</para>
+    ///
+    /// <para>Capturing what the tab holds is the risky half and is what the guard is for. The failure is
+    /// reported rather than swallowed: <c>ISettingsStore.SaveAsync</c> is deliberately built never to
+    /// throw, so without something here a settings problem has nowhere at all to surface.</para>
+    /// </summary>
     private void Persist()
     {
-        _settings = (SelectedTab?.CaptureOptions(_settings) ?? _settings) with
+        try
         {
-            Theme = ThemeManager.CurrentTheme.ToString(),
-            Recent = Recent,
-        };
+            _settings = (SelectedTab?.CaptureOptions(_settings) ?? _settings) with
+            {
+                Theme = ThemeManager.CurrentTheme.ToString(),
+                Recent = Recent,
+            };
+        }
+        catch (Exception ex)
+        {
+            SettingsError = $"Settings could not be saved: {ex.Message}";
+            return;
+        }
 
-        _ = _settingsStore.SaveAsync(_settings);
+        _ = SaveAndReportAsync(_settings);
     }
+
+    private async Task SaveAndReportAsync(AppSettings settings)
+    {
+        var saved = await _settingsStore.SaveAsync(settings).ConfigureAwait(true);
+
+        SettingsError = saved ? null : "Settings could not be saved to disk.";
+    }
+
+    /// <summary>
+    /// Why settings are not being saved, or null while they are.
+    ///
+    /// Exists because losing preferences silently is the failure mode this whole path had: the store
+    /// returns false rather than throwing (losing a preference must never stop the app), so without
+    /// somewhere to say so the user finds out at the next restart, if at all.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? SettingsError { get; set; }
 }
