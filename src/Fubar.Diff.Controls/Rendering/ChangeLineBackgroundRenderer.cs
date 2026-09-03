@@ -91,6 +91,23 @@ internal sealed class ChangeLineBackgroundRenderer : IBackgroundRenderer
             // block in the two colours that mean "written" and "removed" - which is exactly the
             // reading the mark exists to correct.
             var line = _lines[index];
+
+            // An ignored row that knows WHICH characters differ says so with those characters, not with
+            // a band across the row. Trailing whitespace is the case that made this obvious: two spaces
+            // at the end of a line lit the entire row, which reads as "this line is involved" when the
+            // line is identical apart from something invisible at one end of it. CharSpanColorizer
+            // marks the spans instead. Rows with nothing localisable - or a line too long to diff
+            // character by character - keep the band, because a faint whole row is still far better
+            // than showing nothing.
+            //
+            // IsLocalised, not this side's own Spans: trailing whitespace exists on ONE side, so the
+            // other has no span of its own and would go on banding its whole row about the very
+            // difference its counterpart is pointing at precisely.
+            if (line.IsIgnored && line.IsLocalised)
+            {
+                continue;
+            }
+
             var brushOrNull = line.IsConflict
                 ? DiffLineColors.ConflictBackground(_host, Emphasis(index))
                 : line.IsIgnored

@@ -108,12 +108,34 @@ public class JsonSemanticComparisonTests
     }
 
     [Fact]
-    public async Task Reordered_keyed_array_elements_report_as_identical()
+    public async Task Reordered_array_elements_are_reported_until_a_rule_says_otherwise()
     {
+        // An array nobody has spoken about is compared BY POSITION, even though "id" is sitting right
+        // there and would match these two elements to each other. Detection used to decide this on its
+        // own, which meant the rule depended on whether the data happened to carry an id - two arrays in
+        // one file compared differently with nothing on screen saying so.
         var left = "{\n  \"items\": [\n    {\"id\": 1},\n    {\"id\": 2}\n  ]\n}";
         var right = "{\n  \"items\": [\n    {\"id\": 2},\n    {\"id\": 1}\n  ]\n}";
 
-        Assert.True((await CompareAsync(left, right)).Result.AreIdentical);
+        Assert.False((await CompareAsync(left, right)).Result.AreIdentical);
+    }
+
+    [Fact]
+    public async Task Choosing_a_key_for_an_array_makes_a_reorder_identical_again()
+    {
+        // The machinery is unchanged and one right-click away - it just has to be asked for now.
+        var left = "{\n  \"items\": [\n    {\"id\": 1},\n    {\"id\": 2}\n  ]\n}";
+        var right = "{\n  \"items\": [\n    {\"id\": 2},\n    {\"id\": 1}\n  ]\n}";
+
+        var options = ComparisonOptions.Default with
+        {
+            Json = new JsonComparisonOptions
+            {
+                ArrayKeyOverrides = new Dictionary<string, string> { ["$.items"] = "id" },
+            },
+        };
+
+        Assert.True((await CompareAsync(left, right, options)).Result.AreIdentical);
     }
 
     [Fact]

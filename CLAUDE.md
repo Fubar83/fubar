@@ -608,6 +608,44 @@ counts hunks wholly above and below the viewport, which is the question people s
 already read in order to answer. `DiffMapModel.Build` degrades to hunk-shaped bands when handed no rows,
 because a blank strip reads as "no changes" - the one wrong answer a diff tool must never give.
 
+**An array nobody has named is compared by POSITION, and the menu says so** (Diff).
+`JsonSemanticDiffer.ModeFor` is the single precedence authority and its floor is Position. Automatic key
+detection used to sit in that chain, above the global unordered switch, so an array whose elements
+carried an `id`, `name` or `key` was matched by it without anyone asking. Good guess, bad rule: the mode
+then depended on what the DATA happened to contain, so two arrays in one file were compared differently
+with nothing on screen saying so, adding a `name` field to some records silently changed how they were
+diffed, and the global "ignore order" switch did nothing to any of them. `ArrayKeyResolver.Resolve` still
+detects, and the menu still offers it first labelled *(suggested)* - it just has to be chosen. Two
+Application tests that pinned the old default now pin the new one plus the opt-in restoring it; that
+pair is the honest record of what the change costs.
+
+The menu's marks come from `ArrayKeyChoices.Current`, which is `ModeFor`'s own answer - the check mark and
+the comparison cannot drift apart because they ask the same function. `ArrayKeyOption.IsCurrent` was
+computed correctly and **bound to nothing**, which no view-model test could catch; `ArrayMenuBindingTests`
+now asks the rendered `MenuItem` for its `IsChecked` and `ToggleType`, the same way it already asks for the
+`Command` that was once missing. `CurrentKey` is stated separately from `Suggested` even though the two
+agree today (Resolve returns an override ahead of detection, so the suggestion IS the override once one
+exists) - saying which key is in force is what lets the menu stop labelling someone's own override
+"(suggested)".
+
+**An ignored difference is shown by its CHARACTERS, and can be navigated to** (Diff). Two changes with
+one principle: a difference the tool was told to ignore is still a difference, and the reader is
+entitled to see exactly what it is. `WithInlineSpans` now runs for ignored rows as well as modified ones,
+so the renderers can mark the two spaces that differ instead of banding the row; `CharSpanColorizer`
+paints those in the neutral ignored colour, never in the red and green of a reported change. The guard
+in `ChangeLineBackgroundRenderer` reads `AlignedLine.IsLocalised`, which is the ROW's answer rather than
+this side's - trailing whitespace exists on one side only, so the other has no span of its own and would
+otherwise go on banding its whole row about the difference its counterpart is pointing at precisely.
+Rows with nothing localisable keep the band.
+
+`DifferenceStops` lists hunks and runs of ignored rows together, which is what Shift+Alt+Up/Down walks;
+ordinary Prev/Next still steps past the ignored ones, because that is what having rules is for. Position
+is taken as a ROW, not as an index into that list, so nothing has to be kept in step with the four other
+things that can move the selection. An ignored run is not a hunk, so `CurrentIgnoredRow`/`End` carry it
+instead of `CurrentHunk` - which must stay -1, since the merge commands act on the current hunk - and
+`DiffView.ApplyCurrentHunk` and `RebuildDetail` both read either source. A run of adjacent ignored rows is
+ONE stop, the same grouping rule the location map draws by.
+
 **Scroll sync copies BOTH axes, and horizontal was a reversal** (Diff). `DiffView.SyncScroll` and
 `ThreeWayView.SyncScroll` copy vertical AND horizontal offsets. Horizontal was deliberately left
 independent for a long time, on the argument that dragging one pane sideways because the other has a

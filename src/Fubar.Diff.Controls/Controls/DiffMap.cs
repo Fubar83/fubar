@@ -145,6 +145,9 @@ public sealed class DiffMap : Control
     /// </summary>
     private const double SnapTolerance = 12;
 
+    /// <summary>How close to the centre line a click must be to count as a click on a move's link.</summary>
+    private const double MoveLinkTolerance = 6;
+
     public override void Render(DrawingContext context)
     {
         var height = Bounds.Height;
@@ -180,6 +183,8 @@ public sealed class DiffMap : Control
         // means "a rule is hiding something here", and letting it tint a real edit says the opposite of
         // what is true. Two passes rather than a sort, because painting order is this control's business
         // and the model has better reasons to stay in document order.
+        _lastView = view;
+
         DrawBands(context, view.Bands.Where(b => b.IsIgnored), columnWidth, accent);
         DrawBands(context, view.Bands.Where(b => !b.IsIgnored), columnWidth, accent);
 
@@ -198,6 +203,13 @@ public sealed class DiffMap : Control
     /// on screen has its marks level with their lines, while anything longer compresses to fit.
     /// </summary>
     private int Scale => Math.Max(TotalLines, ViewportLength);
+
+    /// <summary>
+    /// What <see cref="Render"/> last drew, kept so a click can hit-test the move links against the same
+    /// geometry the reader is looking at. Rebuilding it per click would walk every row of the document
+    /// again for something the last paint already worked out.
+    /// </summary>
+    private DiffMapView? _lastView;
 
     private void DrawBands(
         DrawingContext context, IEnumerable<MapBand> bands, double columnWidth, IBrush? accent)
@@ -385,7 +397,7 @@ public sealed class DiffMap : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        RequestJump(e.GetPosition(this).Y);
+        RequestJump(e.GetPosition(this));
         e.Pointer.Capture(this);
     }
 
@@ -398,10 +410,18 @@ public sealed class DiffMap : Control
         UpdateTooltip(y);
         InvalidateVisual();
 
-        // Only jump while dragging - captured means the press started here.
+        // Only jump while dragging - captured means the press started here. Dragging scrubs by POSITION,
+        // never snapping to a move's link: a drag is a continuous scroll through the document, and having
+        // it jump to a block's other end halfway down would be the opposite of scrubbing.
         if (Equals(e.Pointer.Captured, this))
         {
-            RequestJump(y);
+            var row = DiffMapModel.SnapToNearestChange(
+                Hunks ?? [], y / Bounds.Height, Scale, TotalLines, (int)Math.Floor(Bounds.Height), SnapTolerance);
+
+            if (row >= 0)
+            {
+                JumpRequested?.Invoke(this, row);
+            }
         }
     }
 
@@ -476,15 +496,72 @@ public sealed class DiffMap : Control
 
     /// <summary>Where a CLICK goes - the nearest change when one is close, so a mark that can be seen
     /// can be hit.</summary>
-    private int ClickRowAt(double y) =>
-        Bounds.Height <= 0
-            ? -1
-            : DiffMapModel.SnapToNearestChange(
-                Hunks ?? [], y / Bounds.Height, Scale, TotalLines, (int)Math.Floor(Bounds.Height), SnapTolerance);
-
-    private void RequestJump(double y)
+    private int ClickRowAt(Point point)
     {
-        var row = ClickRowAt(y);
+        if (Bounds.Height <= 0)
+        {
+            return -1;
+        }
+
+        // The connecting line of a move is drawn down the middle of the strip, and it is the only thing
+        // there - so a click on it is a click on that move, and it needs answering before the ordinary
+        // snap, which would find nothing (both ends are far away by definition) and fall through to
+        // whatever unchanged row happens to sit under the pointer.
+        if (MoveEndNear(point) is { } movedRow)
+        {
+            return movedRow;
+        }
+
+        return DiffMapModel.SnapToNearestChange(
+            Hunks ?? [], point.Y / Bounds.Height, Scale, TotalLines, (int)Math.Floor(Bounds.Height), SnapTolerance);
+    }
+
+    /// <summary>
+    /// The nearer end of a move whose connecting line the pointer is on, or null.
+    ///
+    /// <para>Deliberately narrow on X. The line lives in the centre channel, where no mark is drawn
+    /// unless a difference is at full width - and in that case the ordinary snap has a hunk right there
+    /// anyway. Widening this would capture clicks on the unchanged rows a long link passes, and dragging
+    /// the strip has to keep scrubbing smoothly through those.</para>
+    ///
+    /// <para>The NEARER end, because the two ends are two differences and the close-up shows both of
+    /// them from either one: landing on the one you were pointing at is what the click meant.</para>
+    /// </summary>
+    private int? MoveEndNear(Point point)
+    {
+        if (_lastView is not { MoveLinks.Count: > 0 } view || Scale <= 0)
+        {
+            return null;
+        }
+
+        if (Math.Abs(point.X - Bounds.Width / 2) > MoveLinkTolerance)
+        {
+            return null;
+        }
+
+        foreach (var link in view.MoveLinks)
+        {
+            var top = Math.Min(link.FromY, link.ToY);
+            var bottom = Math.Max(link.FromY, link.ToY);
+
+            if (point.Y < top - MoveLinkTolerance || point.Y > bottom + MoveLinkTolerance)
+            {
+                continue;
+            }
+
+            var nearestY = Math.Abs(point.Y - link.FromY) <= Math.Abs(point.Y - link.ToY)
+                ? link.FromY
+                : link.ToY;
+
+            return Math.Clamp(nearestY * Scale / (int)Math.Floor(Bounds.Height), 0, Math.Max(TotalLines - 1, 0));
+        }
+
+        return null;
+    }
+
+    private void RequestJump(Point point)
+    {
+        var row = ClickRowAt(point);
         if (row >= 0)
         {
             JumpRequested?.Invoke(this, row);

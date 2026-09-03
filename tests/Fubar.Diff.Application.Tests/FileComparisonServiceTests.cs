@@ -225,7 +225,9 @@ public class FileComparisonServiceTests
 
         Assert.All(comparison.Result.Lines, line =>
         {
-            if (line.Kind != ChangeKind.Modified)
+            // Ignored rows carry spans too, and for the opposite reason: their difference is usually a
+            // couple of characters, so the renderers mark those instead of banding the whole row.
+            if (line.Kind != ChangeKind.Modified && !line.IsIgnored)
             {
                 Assert.Empty(line.LeftSpans);
                 Assert.Empty(line.RightSpans);

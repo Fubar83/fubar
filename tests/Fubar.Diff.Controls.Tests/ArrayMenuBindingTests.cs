@@ -88,4 +88,64 @@ public class ArrayMenuBindingTests
         Assert.NotEmpty(items);
         Assert.All(items, item => Assert.NotNull(item.Command));
     }
+
+    [AvaloniaFact]
+    public void The_generated_menu_items_say_which_one_is_current()
+    {
+        // Same class of defect as the missing command, one layer over: ArrayKeyOption.IsCurrent was
+        // computed correctly and bound to NOTHING, so the menu offered four ways to match an array and
+        // said nothing at all about the one already in force. A view-model test cannot see that - the
+        // property was right the whole time - so this asks the rendered items.
+        var pane = Pane();
+        var view = new JsonTreeView { DataContext = pane };
+
+        var window = new Window { Content = view, Width = 600, Height = 400 };
+        window.Show();
+
+        var row = view.GetVisualDescendants().OfType<Border>()
+            .First(b => b.ContextMenu is not null && b.DataContext is JsonChangeNodeViewModel { IsArray: true });
+
+        var menu = row.ContextMenu!;
+        menu.Open(row);
+
+        var submenu = menu.GetLogicalDescendants().OfType<MenuItem>()
+            .First(m => Equals(m.Header, "Compare this list"));
+
+        submenu.IsSubMenuOpen = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var items = menu.GetLogicalDescendants().OfType<MenuItem>()
+            .Where(m => m.DataContext is ArrayKeyOption)
+            .ToList();
+
+        Assert.NotEmpty(items);
+
+        // Radio, not check: these are one mutually exclusive setting and exactly one is always in force.
+        Assert.All(items, item => Assert.Equal(MenuItemToggleType.Radio, item.ToggleType));
+
+        var checkedItem = Assert.Single(items, item => item.IsChecked);
+        Assert.Equal(ArrayMatchMode.Position, ((ArrayKeyOption)checkedItem.DataContext!).Mode);
+    }
+
+    [AvaloniaFact]
+    public void The_menu_heading_states_the_rule_in_force()
+    {
+        // Before opening any submenu. The marks answer the same question but only once you have gone
+        // looking, and "what is the rule for this list right now" is what a right-click is asking.
+        var pane = Pane();
+        var view = new JsonTreeView { DataContext = pane };
+
+        var window = new Window { Content = view, Width = 600, Height = 400 };
+        window.Show();
+
+        var row = view.GetVisualDescendants().OfType<Border>()
+            .First(b => b.ContextMenu is not null && b.DataContext is JsonChangeNodeViewModel { IsArray: true });
+
+        row.ContextMenu!.Open(row);
+
+        var heading = row.ContextMenu.GetLogicalDescendants().OfType<MenuItem>()
+            .FirstOrDefault(m => Equals(m.Header, "Matched by position"));
+
+        Assert.NotNull(heading);
+    }
 }

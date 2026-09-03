@@ -75,7 +75,11 @@
                              one differ" test to make. -->
                         <Border.ContextMenu>
                             <ContextMenu IsVisible="{Binding IsArray}">
-                                <MenuItem Header="How should this array be matched?" IsEnabled="False" />
+                                <!-- The heading says what the rule for this array currently IS, because
+                                     that is the first thing anyone wants on right-clicking a list and
+                                     the marks below it only answer once the submenu is open. An array
+                                     nobody has spoken about reads "Matched by position". -->
+                                <MenuItem Header="{Binding ArrayCurrentDescription}" IsEnabled="False" />
                                 <Separator />
 
                                 <!-- The list is built per row: by position, then ignoring order, then
@@ -96,6 +100,16 @@
                                             <Setter Property="Command"
                                                     Value="{Binding #Root.((vm:DiffPaneViewModel)DataContext).ChooseArrayKeyCommand}" />
                                             <Setter Property="CommandParameter" Value="{Binding}" />
+
+                                            <!-- Radio rather than a check: these are one mutually
+                                                 exclusive setting, and exactly one is always in force.
+                                                 IsCurrent was computed for this and then bound to
+                                                 nothing at all, so the menu offered four options and
+                                                 said nothing about which one you were already on.
+                                                 One-way: the option is a record and the choice is made
+                                                 by the command, not by toggling the item. -->
+                                            <Setter Property="ToggleType" Value="Radio" />
+                                            <Setter Property="IsChecked" Value="{Binding IsCurrent, Mode=OneWay}" />
                                         </ControlTheme>
                                     </MenuItem.ItemContainerTheme>
                                 </MenuItem>

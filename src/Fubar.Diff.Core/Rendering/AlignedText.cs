@@ -99,6 +99,7 @@ public static class AlignedText
             side == DiffSide.Left ? row.LeftSpans : row.RightSpans)
         {
             IsIgnored = row.IsIgnored,
+            IsLocalised = row.LeftSpans.Count > 0 || row.RightSpans.Count > 0,
 
             // This side's own answer. A row can be a move on one side and an ordinary change on
             // the other - two methods swapping places is exactly that - and the filler half of a
@@ -153,6 +154,7 @@ public static class AlignedText
             meta.Add(new AlignedLine(number, row.Kind, spans)
             {
                 IsIgnored = row.IsIgnored,
+                IsLocalised = row.LeftSpans.Count > 0 || row.RightSpans.Count > 0,
                 IsMoved = row.IsMovedOn(side),
             });
         }
@@ -226,6 +228,19 @@ public readonly record struct AlignedLine(int? SourceNumber, ChangeKind Kind, IR
 {
     /// <summary>True when this row differs only at ignored paths - drawn as a faint band, nothing more.</summary>
     public bool IsIgnored { get; init; }
+
+    /// <summary>
+    /// True when the ignored difference on this ROW was pinned down to particular characters - on
+    /// either side - so a renderer can mark those instead of banding the whole row.
+    ///
+    /// <para>Both sides' answer, not this side's, and that is the whole reason it exists. Trailing
+    /// whitespace lives on ONE side: the row is ignored on both, the right has a span over the two
+    /// spaces, and the left has no span because nothing on the left differs. Deciding per side left the
+    /// left half banding its entire row to report a difference the right half was already pointing at
+    /// precisely - so the row read as "this whole line is involved" on one side and "these two
+    /// characters" on the other, about the same difference.</para>
+    /// </summary>
+    public bool IsLocalised { get; init; }
 
     /// <summary>
     /// True when this row belongs to a three-way merge region both sides changed differently.

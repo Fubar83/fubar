@@ -437,13 +437,21 @@ public sealed class FileComparisonService : IFileComparisonService
     /// Only <see cref="ChangeKind.Modified"/> rows get spans: on a wholly inserted or deleted line the
     /// entire row is already the change, so picking out words within it would be noise. Rows are
     /// mutated in place in the list to avoid a second full copy of what can be a very long document.
+    ///
+    /// <para><b>And IGNORED rows</b>, whose Kind is Unchanged but whose two lines are not the same text.
+    /// Those need spans for the opposite reason to an inserted line: the difference is usually a couple
+    /// of characters - two leading spaces, a capital letter - and banding the entire row to report it
+    /// says the whole line is involved when almost none of it is. With spans the renderers can mark the
+    /// characters that actually differ and leave the rest of the line alone.</para>
     /// </summary>
     private List<DiffLine> WithInlineSpans(List<DiffLine> rows, SourceLanguage language)
     {
         for (var i = 0; i < rows.Count; i++)
         {
             var row = rows[i];
-            if (row.Kind != ChangeKind.Modified || row.LeftText is not { } left || row.RightText is not { } right)
+            var wanted = row.Kind == ChangeKind.Modified || row.IsIgnored;
+
+            if (!wanted || row.LeftText is not { } left || row.RightText is not { } right)
             {
                 continue;
             }

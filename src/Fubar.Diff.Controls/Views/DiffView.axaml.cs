@@ -114,6 +114,8 @@ public partial class DiffView : UserControl
                 break;
 
             case nameof(DiffPaneViewModel.CurrentHunk):
+            case nameof(DiffPaneViewModel.CurrentIgnoredRow):
+            case nameof(DiffPaneViewModel.CurrentIgnoredRowEnd):
                 ApplyCurrentHunk();
                 break;
 
@@ -187,9 +189,15 @@ public partial class DiffView : UserControl
             return;
         }
 
+        // An ignored run is a difference you can be ON without it being a hunk - Shift+Alt+Up/Down stops
+        // there - so the marker has to be able to come from either. Without this, stepping onto one
+        // scrolled to it and left the highlight sitting on whichever hunk was selected before, pointing
+        // at the wrong row.
         var (start, end) = _viewModel.HasCurrentHunk
             ? (_viewModel.Hunks[_viewModel.CurrentHunk].StartIndex, _viewModel.Hunks[_viewModel.CurrentHunk].EndIndex)
-            : (-1, -1);
+            : _viewModel.CurrentIgnoredRow >= 0
+                ? (_viewModel.CurrentIgnoredRow, _viewModel.CurrentIgnoredRowEnd)
+                : (-1, -1);
 
         LeftPane.SetCurrentHunk(start, end);
         RightPane.SetCurrentHunk(start, end);

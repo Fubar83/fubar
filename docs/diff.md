@@ -27,8 +27,10 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   its counterpart with it instead of leaving it off screen. The same holds for all three columns of a
   three-way merge.
 - **A location map between the panes.** Where the changes are, which side each is on, and **how much**
-  changed at each point — it aggregates per pixel rather than per hunk, so on a long file a rewritten
-  block reads as denser than a stray edit instead of both clamping to the same tick. Ignored rows are
+  changed at each point. One mark per difference at its own height, so a twelve-line change is one bar
+  rather than twelve marks and the map can be counted by eye; on a file long enough that a hundred rows
+  share a pixel, height can no longer separate them and WIDTH takes over, so a rewritten block reads as
+  denser than a stray edit instead of both clamping to the same tick. Ignored rows are
   marked (they form no hunk, so nothing else shows them), moved blocks have their two ends joined, and
   triangles at the ends say when changes lie off screen. Click or drag to jump; hover to be told what is
   there. Unlike a classic location pane it needs no connecting lines between its halves — the panes are
@@ -175,6 +177,9 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   edge to resize, or turn it off under View.
 - **Change navigation** — next/previous with wrap-around (F7 / F8, or Alt+Up / Alt+Down). The current
   difference is marked with an accent bar and outline, so it stays findable among the other changes.
+  **Shift+Alt+Up / Shift+Alt+Down** walks the same list *including* the differences your ignore rules
+  are hiding — the question you want answered right after adding a rule, and once more before trusting
+  the diff. A run of adjacent ignored rows is one stop, and landing on one shows it in the close-up.
 - **Merge and save** — take the left or right version of a change (Alt+Left / Alt+Right), then save.
   The file's encoding, BOM, line endings and trailing newline are preserved byte-for-byte.
 - **Editable panes** — turn on *Edit* and type straight into either side; the diff re-runs as you
@@ -228,8 +233,8 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   Clicking a resolve button after that would rebuild the document and discard what you wrote, so it
   asks first — and *Keep my edits* is the default, including if you dismiss the dialog.
 - **Semantic JSON**: compares structure, not text. Reordered properties and reformatting are not
-  differences; array elements are matched by an auto-detected identity key, so an element inserted
-  mid-array marks only itself. JSON opens in the **Json** view by default - the change tree plus both
+  differences; array elements are matched by position until you pick a key for that list, after which
+  an element inserted mid-array marks only itself rather than shifting everything below it. JSON opens in the **Json** view by default - the change tree plus both
   documents, each shown exactly as given (a minified file stays minified, not reformatted) - where
   every difference is marked in both documents at once and stepping through them (the toolbar's ◀ ▶,
   F7 / F8, or a click in the tree) brings each one up strongly in turn, immune to formatting or
@@ -252,9 +257,13 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   two one-line documents. Force it with **View → Compare as → Yaml** (or `--mode yaml`) for a file
   that has no extension. Comments are not part of YAML's data model, so a change to one shows in Text
   mode and not here.
-- **Right-click an array in the change tree** to choose how its elements are matched: by position, or
-  by any field that could identify them — the auto-detected one first, then every other field that
-  would actually work, plus a dotted path like `meta.id` for identity that is nested. A field missing
+- **Right-click an array in the change tree** to choose how its elements are matched. The menu opens
+  with the rule currently in force — *Matched by position*, *Matched ignoring order*, *Matched by id* —
+  and marks it in the list below. The options are position, ignoring order, or any field that could
+  identify the elements: the detected one first and labelled *(suggested)*, then every other field that
+  would actually work, plus a dotted path like `meta.id` for identity that is nested. The suggestion is
+  a suggestion, not a default — a list is compared by position until you choose otherwise, so that how
+  a list is compared never depends on whether its data happens to carry a field called `id`. A field missing
   from some element, or repeated across two, is never offered: it would silently fail to match. The
   choice is per array, because one document can hold a list of users where order means nothing beside
   a list of steps where order is the whole content.

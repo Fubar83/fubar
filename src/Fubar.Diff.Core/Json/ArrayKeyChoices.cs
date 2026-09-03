@@ -24,15 +24,27 @@ namespace Fubar.Diff.Core.Json;
 /// <see cref="ArrayMatchMode.Unordered"/> offers.
 /// </param>
 /// <param name="Current">
-/// The mode this array is being compared with right now, so the menu's check mark tells the truth
-/// rather than guessing from whether a key was found.
+/// The mode this array is being compared with right now, so the menu's mark tells the truth rather
+/// than guessing from whether a key was found.
+/// </param>
+/// <param name="CurrentKey">
+/// The field it is being keyed by right now, or null when <see cref="Current"/> is not
+/// <see cref="ArrayMatchMode.Key"/>.
+///
+/// <para>Stated separately from <see cref="Suggested"/> even though the two currently always agree when
+/// the mode is Key - <see cref="ArrayKeyResolver.Resolve"/> returns an override ahead of anything it
+/// would detect, so the "suggestion" IS the override once one exists. The menu marking the suggested
+/// entry therefore happened to mark the right one, by coincidence rather than by asking. Saying which
+/// key is in force out loud is what lets the menu stop calling someone's own override a suggestion, and
+/// stops the marking depending on that coincidence holding.</para>
 /// </param>
 public sealed record ArrayKeyChoices(
     string Path,
     string? Suggested,
     IReadOnlyList<string> Candidates,
     bool ElementsAreObjects,
-    ArrayMatchMode Current = ArrayMatchMode.Position);
+    ArrayMatchMode Current = ArrayMatchMode.Position,
+    string? CurrentKey = null);
 
 /// <summary>
 /// Finds the arrays in a comparison and works out what each could be keyed by.
@@ -110,13 +122,17 @@ public static class ArrayKeyScanner
             && right.Items.All(i => i is JsonAstObject);
 
         var suggested = ArrayKeyResolver.Resolve(left, right, path, options);
+        var mode = JsonSemanticDiffer.ModeFor(path.ToString(), options);
 
+        // Resolve returns an override ahead of anything it would detect, so when the mode IS Key the key
+        // it hands back is the one in force - which is not necessarily the one being suggested.
         return new ArrayKeyChoices(
             path.ToString(),
             suggested,
             elementsAreObjects ? Candidates(left, right) : [],
             elementsAreObjects,
-            JsonSemanticDiffer.ModeFor(path.ToString(), suggested, options));
+            mode,
+            mode == ArrayMatchMode.Key ? suggested : null);
     }
 
     /// <summary>

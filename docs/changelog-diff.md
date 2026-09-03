@@ -89,6 +89,55 @@ All notable changes to this project are documented here. The format is based on
   hundred across and off the edge. Nothing on screen suggested you were looking at the wrong part of the
   right line.
 
+- **Arrays are compared by position unless you say otherwise, and the menu says which rule is in
+  force.** Right-clicking a list now opens with the answer to the first question anyone has about it —
+  *Matched by position*, *Matched ignoring order*, *Matched by id* — and the options underneath carry a
+  radio mark on the one already in use. That mark was being computed and bound to nothing, so the menu
+  offered four ways to match a list and said nothing at all about the one you were already on.
+
+  **And a detectable key is now a suggestion rather than a default.** An array whose elements happen to
+  carry an `id`, `name` or `key` field used to be matched by it automatically. That is a good guess and
+  a bad rule: it meant two lists in the same file were compared by different rules with nothing on
+  screen saying so, adding a `name` field to some records silently changed how they were diffed, and
+  turning on "ignore order" globally did nothing to any of them. The detection still runs and is still
+  offered first, labelled *(suggested)* — it just has to be chosen. **This changes results**: a
+  reordered list of objects that used to report as identical now reports as changed until you pick a
+  key for it, which is one right-click.
+
+- **The close-up shows both ends of a moved block.** A move is the one difference whose halves are not
+  on the same rows — the block left the file at one place and turned up at another — so it is two
+  differences, and the close-up used to build both of its sides from one of them: the block on one side,
+  an empty box on the other, which is the single comparison a move actually needs. Clicking either end,
+  or the connecting line between them on the location map, now shows the block where it *was* beside the
+  block where it *is*. They remain two differences to Prev/Next and to the counts, because the block
+  really did leave one place and arrive at another.
+
+- **Fixed: the location map drew big differences thinner than small ones.** Width says how much changed,
+  and it was being measured against the pixels a mark spans rather than against one pixel's worth of
+  rows. With the map taller than the document that is about ten pixels per row, so a twelve-row
+  difference computed 12/111 and hit the minimum width while a one-row difference computed 1/1 and came
+  out full. The two encodings now divide by scale and neither carries the other: where there is room,
+  every mark is full width and height says the size; where a hundred rows share a pixel, width takes
+  over.
+
+- **Only the whitespace is marked, not the whole line.** A line differing by two trailing spaces used
+  to light up end to end, which reads as "this line is involved" when the line is identical apart from
+  something invisible at one end of it — and on a file a formatter has been over, that is every row lit
+  up to say nothing. The exact characters are marked instead. This holds on both sides: trailing
+  whitespace exists on only one of them, and the other used to go on banding its whole row about the
+  very difference its counterpart was pointing at precisely. Lines too long to compare character by
+  character keep the band, because a faint whole row still beats showing nothing.
+
+- **Shift+Alt+Up/Down steps through the ignored differences too**, and the close-up shows one when you
+  land on it. Ordinary Prev/Next still walks straight past them, which is what having rules is for;
+  this answers the other question — *what exactly am I not being told?* — which gets asked right after
+  adding a rule and once more before trusting the diff. Before it, an ignored difference was a faint
+  mark you had to find by scrolling. A run of adjacent ignored rows is one stop, not one per row.
+
+  Clicking an ignored row selects it too, and the close-up captions it *Ignored difference* with both
+  sides and its line numbers. It used to answer "No difference selected" about something you had just
+  deliberately navigated to.
+
 - **Ignored differences are visible now, and there are more of them.** Two changes, one principle: a
   difference you told the tool to ignore is still *shown*, faintly — because told nothing at all you
   cannot tell "these lines agree" from "these lines disagree and I asked not to be told", and the second

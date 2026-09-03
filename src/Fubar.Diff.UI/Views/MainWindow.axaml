@@ -32,6 +32,13 @@
              a hand's move away from the text; Alt+arrows can be held down to walk a file. -->
         <KeyBinding Gesture="Alt+Down" Command="{Binding SelectedTab.Pane.NextDifferenceCommand}" />
         <KeyBinding Gesture="Alt+Up" Command="{Binding SelectedTab.Pane.PreviousDifferenceCommand}" />
+
+        <!-- The same walk, but stopping at the differences a rule is hiding as well. Ordinary Prev/Next
+             steps past those, which is what having rules is for; this answers the other question -
+             "what exactly am I not being told?" - which gets asked right after adding a rule and once
+             more before trusting the diff. Shift+Alt because it is the same gesture, widened. -->
+        <KeyBinding Gesture="Shift+Alt+Down" Command="{Binding SelectedTab.Pane.NextDifferenceIncludingIgnoredCommand}" />
+        <KeyBinding Gesture="Shift+Alt+Up" Command="{Binding SelectedTab.Pane.PreviousDifferenceIncludingIgnoredCommand}" />
         <!-- F5 re-runs the comparison, which now means one of two things depending on whether a pane
              has been typed into - see ComparisonViewModel.RefreshDiffAsync. It is the same key every
              browser and file manager uses for "show me the current state of this". -->

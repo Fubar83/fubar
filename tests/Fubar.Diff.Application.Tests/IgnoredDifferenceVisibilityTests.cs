@@ -67,6 +67,62 @@ public class IgnoredDifferenceVisibilityTests
     }
 
     [Fact]
+    public async Task Only_the_whitespace_is_marked_not_the_whole_row()
+    {
+        // The row is identical apart from four spaces at one end of it. Banding the whole row to report
+        // that reads as "this line is involved", when almost none of it is - and on a file where a
+        // formatter touched the indentation of every line, that is the entire pane lit up to say
+        // nothing. The spans let the renderers mark the characters and leave the rest alone.
+        var comparison = await CompareAsync(
+            "int x = 1;\n",
+            "    int x = 1;\n",
+            ComparisonOptions.Default with { IgnoreWhitespace = true });
+
+        var ignored = Assert.Single(IgnoredRows(comparison));
+
+        var span = Assert.Single(ignored.RightSpans);
+        Assert.Equal(0, span.Start);
+        Assert.Equal(4, span.End);
+
+        // And what it covers really is only the spaces.
+        Assert.Equal("    ", ignored.RightText![span.Start..span.End]);
+    }
+
+    [Fact]
+    public async Task Trailing_whitespace_is_marked_at_the_end_and_nowhere_else()
+    {
+        var comparison = await CompareAsync(
+            "int x = 1;  \n",
+            "int x = 1;\n",
+            ComparisonOptions.Default with { IgnoreWhitespace = true });
+
+        var ignored = Assert.Single(IgnoredRows(comparison));
+
+        var span = Assert.Single(ignored.LeftSpans);
+        Assert.Equal("  ", ignored.LeftText![span.Start..span.End]);
+        Assert.Equal(10, span.Start);
+    }
+
+    [Fact]
+    public async Task An_ordinary_unchanged_row_still_gets_no_spans()
+    {
+        // The spans exist to localise a difference. A row with none must not acquire any, or every
+        // identical line in the file would be carrying an empty highlight the renderers have to skip.
+        var comparison = await CompareAsync(
+            "int x = 1;\nint y = 2;\n",
+            "    int x = 1;\nint y = 2;\n",
+            ComparisonOptions.Default with { IgnoreWhitespace = true });
+
+        var untouched = comparison.Result.Lines.Where(l => !l.IsIgnored && !l.IsChange);
+
+        Assert.All(untouched, line =>
+        {
+            Assert.Empty(line.LeftSpans);
+            Assert.Empty(line.RightSpans);
+        });
+    }
+
+    [Fact]
     public async Task The_mark_keeps_it_out_of_the_differences()
     {
         // Faint, and free: IsIgnored is what keeps a row out of the hunks, the counts and next/previous

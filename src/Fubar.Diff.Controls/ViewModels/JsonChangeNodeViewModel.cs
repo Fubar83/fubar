@@ -126,6 +126,21 @@ public sealed partial class JsonChangeNodeViewModel : ObservableObject
     public bool IsArray => ArrayChoices is not null;
 
     /// <summary>
+    /// How this array is being compared right now, said in the menu's own heading.
+    ///
+    /// The marks inside the submenu answer the same question, but only once it is open - and the first
+    /// thing anyone wants on right-clicking a list is what the rule for it currently IS, before deciding
+    /// whether to change it. Position is what an array nobody has spoken about gets.
+    /// </summary>
+    public string ArrayCurrentDescription => ArrayChoices switch
+    {
+        null => string.Empty,
+        { Current: ArrayMatchMode.Unordered } => "Matched ignoring order",
+        { Current: ArrayMatchMode.Key, CurrentKey: { } key } => $"Matched by {key}",
+        _ => "Matched by position",
+    };
+
+    /// <summary>
     /// The entries a right-click offers: match by position, then the suggested key, then every other
     /// field that could serve as one.
     ///
@@ -155,9 +170,14 @@ public sealed partial class JsonChangeNodeViewModel : ObservableObject
 
             if (choices.Suggested is { } suggested)
             {
+                // Not labelled "(suggested)" when it is the key already in force: the resolver returns
+                // an override ahead of anything it would detect, so once someone has named a key this
+                // entry IS their choice, and calling it a suggestion invites them to pick the thing they
+                // already picked.
+                var label = InForce(suggested) ? $"Match by {suggested}" : $"Match by {suggested}  (suggested)";
+
                 options.Add(new ArrayKeyOption(
-                    choices.Path, ArrayMatchMode.Key, suggested, $"Match by {suggested}  (suggested)",
-                    choices.Current == ArrayMatchMode.Key && IsKey(suggested)));
+                    choices.Path, ArrayMatchMode.Key, suggested, label, InForce(suggested)));
             }
 
             foreach (var candidate in choices.Candidates)
@@ -166,11 +186,17 @@ public sealed partial class JsonChangeNodeViewModel : ObservableObject
                 {
                     options.Add(new ArrayKeyOption(
                         choices.Path, ArrayMatchMode.Key, candidate, $"Match by {candidate}",
-                        choices.Current == ArrayMatchMode.Key && IsKey(candidate)));
+                        InForce(candidate)));
                 }
             }
 
-            bool IsKey(string name) => string.Equals(name, choices.Suggested, StringComparison.Ordinal);
+            // Against the key actually being USED. This used to compare against the suggestion, which
+            // reached the same answer only because the resolver returns an override ahead of detection -
+            // so "the suggestion" and "the key in force" were the same string. Asking the question
+            // directly costs nothing and does not rely on that staying true.
+            bool InForce(string name) =>
+                choices.Current == ArrayMatchMode.Key
+                && string.Equals(name, choices.CurrentKey, StringComparison.Ordinal);
 
             return options;
         }

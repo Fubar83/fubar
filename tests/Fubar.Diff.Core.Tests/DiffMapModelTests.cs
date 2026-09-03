@@ -241,6 +241,33 @@ public class DiffMapModelTests
     }
 
     [Fact]
+    public void A_multi_row_difference_is_never_drawn_THINNER_than_a_single_row_one()
+    {
+        // Reported from the window: multi-row differences came out much narrower than single-row ones.
+        // Density was being measured against the pixels a mark SPANS, and with the map taller than the
+        // document that is about ten pixels per row - so twelve rows computed 12/111 and hit the 0.15
+        // floor, while one row computed 1/1 and came out full width. Width is meant to say "how much
+        // changed here"; it was saying the opposite.
+        var lines = Document(40);
+        lines[5] = Modified(6);                                       // a single-row difference
+        for (var row = 20; row < 32; row++) lines[row] = Modified(row + 1);  // a twelve-row one
+
+        var view = Build(lines, pixelHeight: 400);   // ten pixels per row - the map has room
+
+        var single = view.Bands.First(b => b.Side == MapSide.Left && b.Height <= 10);
+        var block = view.Bands.First(b => b.Side == MapSide.Left && b.Height > 10);
+
+        Assert.True(
+            block.Density >= single.Density,
+            $"a twelve-row difference ({block.Density}) must not be thinner than a one-row one ({single.Density})");
+
+        // With a pixel to spare per row, width has nothing left to say and height carries the size.
+        Assert.Equal(1.0, block.Density);
+        Assert.Equal(1.0, single.Density);
+        Assert.True(block.Height > single.Height);
+    }
+
+    [Fact]
     public void A_difference_squashed_into_one_pixel_is_a_thin_mark_not_a_full_one()
     {
         // Grouping must not cost the density encoding: three changed rows out of the hundred behind a

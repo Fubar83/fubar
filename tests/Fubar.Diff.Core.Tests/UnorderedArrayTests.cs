@@ -365,7 +365,7 @@ public class UnorderedArrayTests
     {
         Assert.Equal(
             ArrayMatchMode.Unordered,
-            JsonSemanticDiffer.ModeFor("$.tags", resolvedKey: null, Unordered("$.tags")));
+            JsonSemanticDiffer.ModeFor("$.tags", Unordered("$.tags")));
     }
 
     [Fact]
@@ -379,7 +379,7 @@ public class UnorderedArrayTests
             ArrayKeyOverrides = new Dictionary<string, string> { ["$.users"] = "ref" },
         };
 
-        Assert.Equal(ArrayMatchMode.Key, JsonSemanticDiffer.ModeFor("$.users", "ref", options));
+        Assert.Equal(ArrayMatchMode.Key, JsonSemanticDiffer.ModeFor("$.users", options));
     }
 
     [Fact]
@@ -391,15 +391,28 @@ public class UnorderedArrayTests
             PositionalArrays = ["$.tags"],
         };
 
-        Assert.Equal(ArrayMatchMode.Position, JsonSemanticDiffer.ModeFor("$.tags", null, options));
+        Assert.Equal(ArrayMatchMode.Position, JsonSemanticDiffer.ModeFor("$.tags", options));
     }
 
     [Fact]
-    public void ModeFor_puts_an_auto_detected_key_above_the_global_unordered_switch()
+    public void ModeFor_does_not_key_an_array_nobody_asked_about()
     {
+        // A detectable key is a SUGGESTION now, not a default. It used to rank here, above the global
+        // unordered switch, which meant that turning "ignore order" on globally silently did nothing to
+        // any array whose elements happened to carry an id - the switch was on, the menu said so, and
+        // those arrays were compared by key regardless.
         var options = JsonComparisonOptions.Default with { IgnoreArrayOrder = true };
 
-        Assert.Equal(ArrayMatchMode.Key, JsonSemanticDiffer.ModeFor("$.users", "id", options));
+        Assert.Equal(ArrayMatchMode.Unordered, JsonSemanticDiffer.ModeFor("$.users", options));
+    }
+
+    [Fact]
+    public void ModeFor_is_position_for_an_array_with_nothing_said_about_it()
+    {
+        // The default, stated on its own because everything else here is a departure from it.
+        Assert.Equal(
+            ArrayMatchMode.Position,
+            JsonSemanticDiffer.ModeFor("$.users", JsonComparisonOptions.Default));
     }
 
     [Fact]
@@ -407,7 +420,7 @@ public class UnorderedArrayTests
     {
         Assert.Equal(
             ArrayMatchMode.Position,
-            JsonSemanticDiffer.ModeFor("$.steps", null, JsonComparisonOptions.Default));
+            JsonSemanticDiffer.ModeFor("$.steps", JsonComparisonOptions.Default));
     }
 
     // ---- A reorder leaves a faint trace ---------------------------------------------------------
@@ -531,16 +544,16 @@ public class UnorderedArrayTests
 
         Assert.Equal(
             ArrayMatchMode.Unordered,
-            JsonSemanticDiffer.ModeFor("$.tags", null, global with { UnorderedArrays = ["$.tags"] }));
+            JsonSemanticDiffer.ModeFor("$.tags", global with { UnorderedArrays = ["$.tags"] }));
 
         Assert.Equal(
             ArrayMatchMode.Key,
             JsonSemanticDiffer.ModeFor(
-                "$.users", "ref",
+                "$.users",
                 global with { ArrayKeyOverrides = new Dictionary<string, string> { ["$.users"] = "ref" } }));
 
         // And an array nobody named still obeys the switch.
-        Assert.Equal(ArrayMatchMode.Position, JsonSemanticDiffer.ModeFor("$.other", "id", global));
+        Assert.Equal(ArrayMatchMode.Position, JsonSemanticDiffer.ModeFor("$.other", global));
     }
 
     // ---- Degenerate --------------------------------------------------------------------------

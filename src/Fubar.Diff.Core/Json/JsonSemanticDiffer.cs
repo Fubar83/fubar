@@ -185,7 +185,7 @@ public static class JsonSemanticDiffer
     {
         var key = ArrayKeyResolver.Resolve(left, right, path, options);
 
-        switch (ModeFor(path.ToString(), key, options))
+        switch (ModeFor(path.ToString(), options))
         {
             case ArrayMatchMode.Unordered:
                 CompareArraysUnordered(left, right, path, options, changes);
@@ -217,11 +217,19 @@ public static class JsonSemanticDiffer
     /// <para>Within the per-path instructions, an explicit "positional" beats an explicit "unordered":
     /// that pair is a contradiction only the user can have written, and positional is its conservative
     /// half, since reporting a reorder nobody minds is a smaller failure than hiding one that matters.
-    /// Below the explicit ones, the global switches apply - and the global UNORDERED one ranks below
-    /// automatic key detection, because where a key exists it already ignores order and says which field
-    /// of which element changed as well.</para>
+    /// Below the explicit ones, the global switches apply, and below those the answer is POSITION.</para>
+    ///
+    /// <para><b>An array nobody has spoken about is compared by position, even when a key could be
+    /// detected in it.</b> Detection used to rank here, above the global unordered switch, on the
+    /// argument that a key ignores order and says which field of which element changed - all true, and
+    /// beside the point: it meant the mode depended on whether the data happened to carry a field called
+    /// id, name or key, so two arrays in one file were compared by different rules with nothing on
+    /// screen saying so, and adding a "name" field to some records silently changed how they were
+    /// diffed. The detection still runs and is still offered first in the menu, labelled as the
+    /// suggestion - it just has to be CHOSEN now. A default nobody can see is the same shape of problem
+    /// as the global switch that made "Ignore order" inert.</para>
     /// </summary>
-    public static ArrayMatchMode ModeFor(string path, string? resolvedKey, JsonComparisonOptions options)
+    public static ArrayMatchMode ModeFor(string path, JsonComparisonOptions options)
     {
         // --- Said about THIS array. Nothing below may overrule these. ---
         if (options.ArrayKeyOverrides.ContainsKey(path))
@@ -243,11 +251,6 @@ public static class JsonSemanticDiffer
         if (options.MatchArraysByPosition)
         {
             return ArrayMatchMode.Position;
-        }
-
-        if (resolvedKey is not null)
-        {
-            return ArrayMatchMode.Key;
         }
 
         return options.IgnoreArrayOrder ? ArrayMatchMode.Unordered : ArrayMatchMode.Position;

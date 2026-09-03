@@ -15,9 +15,10 @@ public enum MapSide
 /// <param name="Y">Pixel offset of the mark's top from the top of the map.</param>
 /// <param name="Kind">The change to colour it by. <see cref="ChangeKind.Unchanged"/> means this band
 /// exists only to show ignored rows.</param>
-/// <param name="Density">How much of the rows this mark covers actually changed, 0..1. On a file long
-/// enough that one pixel covers many rows, this is what separates a single stray edit from a rewritten
-/// block - the thing a map is read for.</param>
+/// <param name="Density">How many rows this difference has, against what one pixel of the map
+/// represents, 0..1. On a file long enough that one pixel covers many rows this is what separates a
+/// stray edit from a rewritten block - the thing a map is read for. On a file with room it saturates at
+/// 1 for everything, and <see cref="Height"/> carries the size instead.</param>
 /// <param name="IsMoved">Every changed row behind this band belongs to a moved block.</param>
 /// <param name="IsIgnored">This band is only ignored rows.</param>
 /// <param name="Height">Pixel rows the mark spans, at least 1. One difference is ONE mark this tall,
@@ -63,8 +64,13 @@ public sealed record DiffMapView(
 ///
 /// <para>So: rows are grouped by the hunk they belong to, giving one mark per difference that can be
 /// counted by eye, and the changed rows behind it are still counted and reported as
-/// <see cref="MapBand.Density"/>, which is drawn as WIDTH. Nothing is lost either way - a hunk squashed
-/// into a single pixel is still a thin mark, and a hunk spanning forty is one tall one.</para>
+/// <see cref="MapBand.Density"/>, which is drawn as WIDTH. The two encodings divide the work by scale
+/// and neither has to carry the other. Where the map has room, one pixel is one row, every mark is full
+/// width, and HEIGHT says how big each difference is. Where a hundred rows share a pixel, height can no
+/// longer tell them apart and width takes over. Measure density against the pixels a mark SPANS rather
+/// than against one pixel's worth of rows and the two collide: at ten pixels per row every multi-row
+/// difference lands on the 0.15 floor while a single-row one comes out full width, and the map draws big
+/// differences thinner than small ones.</para>
 ///
 /// <para>Grouping by hunk rather than by adjacency matters: two differences separated by one unchanged
 /// line are two marks, and stay two marks even when the gap between them rounds away to nothing. Runs
@@ -351,8 +357,8 @@ public static class DiffMapModel
     /// How full a mark is, 0..1 - but never 0, because a mark that has any change at all must be
     /// visible. The floor is what stops a single-line change disappearing on a long file.
     /// </summary>
-    private static double Density(int changedRows, double coveredRows) =>
-        Math.Clamp(changedRows / Math.Max(1.0, coveredRows), 0.15, 1.0);
+    private static double Density(int changedRows, double rowsPerPixel) =>
+        Math.Clamp(changedRows / Math.Max(1.0, rowsPerPixel), 0.15, 1.0);
 
     private static List<MapMoveLink> BuildMoveLinks(IReadOnlyList<DiffLine> lines, int pixelHeight, int scale)
     {
@@ -487,19 +493,25 @@ public static class DiffMapModel
         {
             var height = _lastY - _firstY + 1;
 
-            // Density is measured against the rows the mark COVERS, not against one pixel's worth: a
-            // twelve-line difference drawn twelve pixels tall is full, and the same difference squashed
-            // into one pixel on a huge file is a sliver. Both are true statements about it.
-            var covered = height * rowsPerPixel;
-
+            // Against ONE PIXEL's worth of rows, not against the rows this mark spans on screen. Those
+            // are different numbers whenever the map is taller than the document - at ten pixels per row
+            // a twelve-row difference spans about 111 pixels, and dividing twelve by that put every
+            // multi-row difference on the 0.15 floor while a single-row one computed 1/1 and came out
+            // full width. The map drew big differences THINNER than small ones, which is the opposite of
+            // what width is for.
+            //
+            // This way the two encodings stay separate and neither has to carry the other: on a file
+            // with room, one pixel is one row, every difference is full width, and HEIGHT says how big
+            // it is. On a file long enough that a hundred rows share a pixel, height can no longer tell
+            // them apart, and width takes over - a three-row edit is a sliver beside a sixty-row rewrite.
             return _changed == 0
                 ? new MapBand(
-                    _firstY, side, ChangeKind.Unchanged, Density(_ignored, covered), false, true, height, -1)
+                    _firstY, side, ChangeKind.Unchanged, Density(_ignored, rowsPerPixel), false, true, height, -1)
                 : new MapBand(
                     _firstY,
                     side,
                     _kind,
-                    Density(_changed, covered),
+                    Density(_changed, rowsPerPixel),
                     // Moved only when EVERY changed row here moved. A difference mixing a move with a
                     // real edit is an edit: the move colour means "you can skip this", and being wrong
                     // about that is worse than not saying it.
