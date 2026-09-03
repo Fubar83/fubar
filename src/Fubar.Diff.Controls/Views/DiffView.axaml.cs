@@ -184,7 +184,7 @@ public partial class DiffView : UserControl
 
             if (Math.Abs(to.TextView.VerticalOffset - vertical) > 0.5)
             {
-                to.TextEditor.ScrollToVerticalOffset(Math.Max(0, vertical));
+                EditorScroll.ScrollVerticallyTo(to.TextView, vertical);
             }
 
             if (Math.Abs(to.TextView.HorizontalOffset - horizontal) > 0.5)

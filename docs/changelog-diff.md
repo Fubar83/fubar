@@ -104,6 +104,15 @@ All notable changes to this project are documented here. The format is based on
   reordered list of objects that used to report as identical now reports as changed until you pick a
   key for it, which is one right-click.
 
+- **Fixed: the side-by-side panes had stopped scrolling together vertically.** One side moved and the
+  other stayed put. The sync handler was firing on every scroll and computing the right offset, but the
+  call it made to apply it — `TextEditor.ScrollToVerticalOffset` — does nothing in AvaloniaEdit: the text
+  view scrolls itself, and the editor's scroll viewer that the call writes to never moves. The same trap
+  had already been found and documented for the horizontal axis, with a note stating that vertical was
+  the exception. It was not. Two more things it had been quietly breaking: navigating to a difference
+  never actually **centred** it, and the tests written to cover scroll sync were driving the panes
+  through the same dead call.
+
 - **A moved block is shown at both ends at once.** Clicking one highlights both: the block where it
   *was* outlined in the left pane, where it *is* outlined in the right. The two panes give up their
   lockstep scrolling for exactly as long as a move is selected, holding themselves level at the block's

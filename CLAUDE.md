@@ -665,6 +665,23 @@ instead of `CurrentHunk` - which must stay -1, since the merge commands act on t
 `DiffView.ApplyCurrentHunk` and `RebuildDetail` both read either source. A run of adjacent ignored rows is
 ONE stop, the same grouping rule the location map draws by.
 
+**NEITHER axis can be scrolled through the TextEditor** (Diff). `EditorScroll.ScrollHorizontallyTo` and
+`ScrollVerticallyTo` both write `IScrollable.Offset` on the TEXT VIEW, and every scroll in the app must go
+through them. AvaloniaEdit's TextView is an `ILogicalScrollable` that scrolls itself, so the ScrollViewer
+in the editor's template never moves and `TextEditor.ScrollToHorizontalOffset` / `ScrollToVerticalOffset`
+are both silently no-ops. The horizontal half of that was found first and written up here - with the
+explicit claim that vertical was the exception, because AvaloniaEdit routed it internally. That sentence
+was wrong, and it cost the panes their vertical sync completely: the handler fired on every scroll,
+computed the right offset, called `ScrollToVerticalOffset`, and nothing moved. Measured before believed
+this time - right pane at offset 0, extent 471.8, viewport 415.0, so the requested 56.8 was exactly its
+maximum and therefore reachable; after the call it still read 0.0.
+
+Two things it also broke that nobody connected to it: `CenterOnLine` was never centring (its
+`ScrollToLine` was doing the moving and the centring step was discarded), and `ScrollSyncTests` drove the
+panes through the editor, so the tests meant to exercise sync were exercising nothing. **If a pane will
+not scroll, check what the call actually did before looking for a missing subscription** - this presents
+as a dead event handler.
+
 **Scroll sync copies BOTH axes, and horizontal was a reversal** (Diff). `DiffView.SyncScroll` and
 `ThreeWayView.SyncScroll` copy vertical AND horizontal offsets. Horizontal was deliberately left
 independent for a long time, on the argument that dragging one pane sideways because the other has a

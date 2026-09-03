@@ -184,7 +184,7 @@ public partial class ThreeWayView : UserControl
 
                 if (Math.Abs(pane.TextView.VerticalOffset - vertical) > 0.5)
                 {
-                    pane.TextEditor.ScrollToVerticalOffset(vertical);
+                    EditorScroll.ScrollVerticallyTo(pane.TextView, vertical);
                 }
 
                 // Through the text view, not the editor - see EditorScroll.ScrollHorizontallyTo for

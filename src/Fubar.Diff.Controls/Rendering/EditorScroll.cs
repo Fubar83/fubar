@@ -20,11 +20,13 @@ internal static class EditorScroll
     ///
     /// Goes through <see cref="IScrollable"/> on the TEXT VIEW, and that detail cost a diagnostic
     /// session to find. <c>TextEditor.ScrollToHorizontalOffset</c> looks like the obvious counterpart
-    /// to <c>ScrollToVerticalOffset</c> and is silently useless here: AvaloniaEdit's TextView is an
+    /// to <c>ScrollToVerticalOffset</c> and is silently useless here - as, it turns out, is
+    /// <c>ScrollToVerticalOffset</c> itself: AvaloniaEdit's TextView is an
     /// <c>ILogicalScrollable</c> that scrolls ITSELF, so the ScrollViewer in the editor's template
     /// never moves - its <c>Offset.X</c> reads 0.0 on a pane visibly scrolled to 809.8 - and writing
-    /// to it changes nothing anyone can see. The vertical twin works only because AvaloniaEdit routes
-    /// it to the text view internally.
+    /// to it changes nothing anyone can see. The vertical twin was believed to work because AvaloniaEdit
+    /// routed it to the text view internally; it does not, and that belief cost the panes their vertical
+    /// sync. See <see cref="ScrollVerticallyTo"/> for the measurement.
     ///
     /// Measured before being believed: the target's extent was never the problem (1270 wide against a
     /// 450 viewport, so the offset asked for was always reachable). The write was going somewhere
@@ -40,6 +42,32 @@ internal static class EditorScroll
         // Clamped by the view itself: a side whose longest line is shorter simply stops at its own
         // end rather than the pair jamming or throwing.
         scrollable.Offset = new Vector(Math.Max(0, offset), scrollable.Offset.Y);
+    }
+
+    /// <summary>
+    /// Scrolls a pane vertically to an absolute offset.
+    ///
+    /// <para>Through <see cref="IScrollable"/> on the TEXT VIEW, for exactly the reason the horizontal
+    /// twin above is - and the note there used to say this one was the exception, that
+    /// <c>TextEditor.ScrollToVerticalOffset</c> worked because AvaloniaEdit routed it to the text view
+    /// internally. It does not. Measured: with the right pane at offset 0, an extent of 471.8 and a
+    /// viewport of 415.0 - so 56.8 was both the target and exactly the maximum it could reach - calling
+    /// <c>ScrollToVerticalOffset(56.8)</c> left it reading 0.0. The call is silently a no-op, the same as
+    /// its horizontal counterpart, because the TextView is an <c>ILogicalScrollable</c> that scrolls
+    /// itself and the ScrollViewer in the editor's template never moves.</para>
+    ///
+    /// <para>That one wrong sentence cost the two panes their vertical sync entirely: the handler fired
+    /// on every scroll, computed the right offset, asked for it, and nothing happened. It looked like a
+    /// missing subscription for as long as nobody measured what the call actually did.</para>
+    /// </summary>
+    public static void ScrollVerticallyTo(TextView textView, double offset)
+    {
+        if (textView is not IScrollable scrollable)
+        {
+            return;
+        }
+
+        scrollable.Offset = new Vector(scrollable.Offset.X, Math.Max(0, offset));
     }
 
     /// <summary>
@@ -159,6 +187,9 @@ internal static class EditorScroll
         // the pane scrolls somewhere plausible and simply does not centre the difference.
         var visualTop = textView.GetVisualTopByDocumentLine(lineNumber);
 
-        editor.ScrollToVerticalOffset(Math.Max(0, visualTop - ((textView.Bounds.Height - lineHeight) / 2)));
+        // Through the text view, not the editor: ScrollToVerticalOffset does nothing here. ScrollToLine
+        // above is what was actually moving the pane, which is why navigation landed on the right line
+        // but never centred it - the centring step was silently discarded every time.
+        ScrollVerticallyTo(textView, visualTop - ((textView.Bounds.Height - lineHeight) / 2));
     }
 }
