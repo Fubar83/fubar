@@ -346,10 +346,15 @@ claiming to have changed only whitespace.
 **An array can be compared three ways, and "unordered" is the only one that works without a field**
 (Diff). `ArrayMatchMode` is Position, Unordered or Key, and `JsonSemanticDiffer.ModeFor` is the single
 place the precedence lives - public precisely so the context menu's check mark and the comparison cannot
-drift into different answers. Order, most specific instruction first: a named `ArrayKeyOverrides` entry,
-then an explicit `PositionalArrays` path, then an explicit `UnorderedArrays` path, then the global
-`MatchArraysByPosition`, then an auto-detected key, then the global `IgnoreArrayOrder`, then position.
-Two rankings in there are deliberate. An explicit positional path beats an explicit unordered one because
+drift into different answers. **Every instruction about ONE array beats every setting about all of them**, and that ordering was got
+WRONG first: the global `MatchArraysByPosition` sat above the per-path lists, so with that switch on,
+choosing "Ignore order" on a single array did nothing at all - the menu recorded the choice, the check
+mark moved, and the comparison ignored it. Reported from a real file, and it contradicted the rule
+`ArrayKeyResolver` already stated for keys: an explicit override wins "including when everything else is
+set to positional". Order now: a named `ArrayKeyOverrides` entry, an explicit `PositionalArrays` path,
+an explicit `UnorderedArrays` path - then, and only then, the global `MatchArraysByPosition`, an
+auto-detected key, the global `IgnoreArrayOrder`, and position. Two rankings among the rest are
+deliberate. An explicit positional path beats an explicit unordered one because
 that pair is a contradiction only the user can have written, and positional is its conservative half -
 reporting a reorder nobody minds is a smaller failure than hiding one that matters. And the GLOBAL
 unordered switch sits BELOW automatic key detection, because where a key exists it already ignores order

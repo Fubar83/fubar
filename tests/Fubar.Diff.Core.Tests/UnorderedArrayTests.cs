@@ -399,6 +399,83 @@ public class UnorderedArrayTests
             JsonSemanticDiffer.ModeFor("$.steps", null, JsonComparisonOptions.Default));
     }
 
+    // ---- A per-array instruction beats a global default -----------------------------------------
+
+    // Reported from a real file: with "Match list items by position" on in Settings, choosing "Ignore
+    // order" on one array did nothing at all - the menu recorded it, the check mark moved, and the
+    // comparison ignored it, because the global switch was consulted first. Every test below exists to
+    // keep a default from overruling something said about ONE array.
+
+    [Fact]
+    public void Ignore_order_on_one_array_beats_the_global_match_by_position_switch()
+    {
+        var changes = Compare(
+            Obj(("tags", Strs("A", "B"))),
+            Obj(("tags", Strs("B", "A"))),
+            JsonComparisonOptions.Default with
+            {
+                MatchArraysByPosition = true,
+                UnorderedArrays = ["$.tags"],
+            });
+
+        Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void The_global_switch_still_applies_to_every_array_nobody_spoke_about()
+    {
+        var changes = Compare(
+            Obj(("tags", Strs("A", "B")), ("steps", Strs("one", "two"))),
+            Obj(("tags", Strs("B", "A")), ("steps", Strs("two", "one"))),
+            JsonComparisonOptions.Default with
+            {
+                MatchArraysByPosition = true,
+                UnorderedArrays = ["$.tags"],
+            });
+
+        Assert.NotEmpty(changes);
+        Assert.All(changes, c => Assert.Contains("steps", c.Path.ToString()));
+    }
+
+    [Fact]
+    public void A_named_key_beats_the_global_switch_too()
+    {
+        // Already true before, and asserted here so the reordering of ModeFor cannot quietly lose it.
+        var changes = Compare(
+            Obj(("users", Arr(
+                Obj(("ref", Num("1")), ("name", Str("a"))),
+                Obj(("ref", Num("2")), ("name", Str("b")))))),
+            Obj(("users", Arr(
+                Obj(("ref", Num("2")), ("name", Str("b"))),
+                Obj(("ref", Num("1")), ("name", Str("a")))))),
+            JsonComparisonOptions.Default with
+            {
+                MatchArraysByPosition = true,
+                ArrayKeyOverrides = new Dictionary<string, string> { ["$.users"] = "ref" },
+            });
+
+        Assert.Empty(changes);
+    }
+
+    [Fact]
+    public void ModeFor_puts_every_per_path_instruction_above_the_global_switch()
+    {
+        var global = JsonComparisonOptions.Default with { MatchArraysByPosition = true };
+
+        Assert.Equal(
+            ArrayMatchMode.Unordered,
+            JsonSemanticDiffer.ModeFor("$.tags", null, global with { UnorderedArrays = ["$.tags"] }));
+
+        Assert.Equal(
+            ArrayMatchMode.Key,
+            JsonSemanticDiffer.ModeFor(
+                "$.users", "ref",
+                global with { ArrayKeyOverrides = new Dictionary<string, string> { ["$.users"] = "ref" } }));
+
+        // And an array nobody named still obeys the switch.
+        Assert.Equal(ArrayMatchMode.Position, JsonSemanticDiffer.ModeFor("$.other", "id", global));
+    }
+
     // ---- Degenerate --------------------------------------------------------------------------
 
     [Fact]

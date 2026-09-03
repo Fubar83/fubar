@@ -206,21 +206,30 @@ public static class JsonSemanticDiffer
     /// implementations of this precedence would eventually give the check mark and the comparison
     /// different answers.
     ///
-    /// <para>Most specific instruction first. An explicit key names a field, so it wins outright. An
-    /// explicit "this one is positional" beats an explicit "this one is unordered": that pair is a
-    /// contradiction only the user can have written, and positional is its conservative half, since
-    /// reporting a reorder nobody minds is a smaller failure than hiding one that matters. The GLOBAL
-    /// unordered switch ranks below automatic key detection, because where a key exists it already
-    /// ignores order and says which field of which element changed as well.</para>
+    /// <para><b>Every instruction about ONE array beats every setting about all of them.</b> That is the
+    /// rule, and it is not the order this was first written in: the global "match by position" switch sat
+    /// above the per-path lists, so with that switch on, choosing "Ignore order" on a single array did
+    /// nothing whatsoever - the menu recorded the choice, the check mark moved, and the comparison
+    /// ignored it. Reported from a real file, and the same principle <see cref="ArrayKeyResolver"/>
+    /// already states for keys: someone who has said what they want about THIS array has said it, and a
+    /// default must not overrule them.</para>
+    ///
+    /// <para>Within the per-path instructions, an explicit "positional" beats an explicit "unordered":
+    /// that pair is a contradiction only the user can have written, and positional is its conservative
+    /// half, since reporting a reorder nobody minds is a smaller failure than hiding one that matters.
+    /// Below the explicit ones, the global switches apply - and the global UNORDERED one ranks below
+    /// automatic key detection, because where a key exists it already ignores order and says which field
+    /// of which element changed as well.</para>
     /// </summary>
     public static ArrayMatchMode ModeFor(string path, string? resolvedKey, JsonComparisonOptions options)
     {
+        // --- Said about THIS array. Nothing below may overrule these. ---
         if (options.ArrayKeyOverrides.ContainsKey(path))
         {
             return ArrayMatchMode.Key;
         }
 
-        if (options.MatchArraysByPosition || PathListed(options.PositionalArrays, path))
+        if (PathListed(options.PositionalArrays, path))
         {
             return ArrayMatchMode.Position;
         }
@@ -228,6 +237,12 @@ public static class JsonSemanticDiffer
         if (PathListed(options.UnorderedArrays, path))
         {
             return ArrayMatchMode.Unordered;
+        }
+
+        // --- Said about all arrays. ---
+        if (options.MatchArraysByPosition)
+        {
+            return ArrayMatchMode.Position;
         }
 
         if (resolvedKey is not null)
