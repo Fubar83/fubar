@@ -37,6 +37,16 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   assert `StatusCode Equals 404` deliberately, so a runner that also called 4xx bad would be arguing
   with you about the thing you just told it to expect. Any non-2xx nobody asserted on is still flagged
   on its row, so nothing hides. A cancelled or empty run is never reported green.
+- **Run it in CI.** The same binary is a batch tool: `FubarAPIStudio --run --env Staging --report
+  results.xml` runs the collection, writes **JUnit XML** your build system already knows how to render,
+  and exits `0` / `1` / `2` — passed, failed, could not run. A failed assertion becomes a failed test on
+  the build page with its message, rather than a line in a log nobody opens. `--report results.json`
+  gets the whole thing as JSON instead; captured **values** are never written to either, since a report
+  file is exactly the thing that gets attached to a build and kept.
+
+  Only flags with no meaning on screen switch it into batch mode, so starting the app normally is
+  untouched. A run that matches nothing exits `1`, not `0` — "no tests ran, so it passed" is one typo in
+  `--filter` away.
 - **Request builder** — method + URL bar with live `{{variable}}` highlighting, and tabs for
   Params, Headers, Body, Auth, and per-request History/replay. URL and Params stay in two-way sync.
 - **Environments & variables** — `{{key}}` resolves from the active environment. Values can be marked

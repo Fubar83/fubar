@@ -28,6 +28,7 @@ dotnet build Fubar.slnx                # everything (must be warning-clean)
 dotnet test  Fubar.slnx                # every suite
 
 dotnet run --project src/Fubar.Studio.UI                   # API Studio
+dotnet run --project src/Fubar.Studio.UI -- --run --report results.xml   # run a collection; 0 pass, 1 fail, 2 could not
 dotnet run --project src/Fubar.Diff.UI -- left.json right.json
 dotnet run --project src/Fubar.Diff.UI -- --check left.json right.json   # headless; 0 same, 1 differ, 2 failed
 dotnet run --project src/Fubar.Diff.UI -- --functional -q a.cs b.cs      # 0 unless the C# behaviour changed
@@ -597,6 +598,21 @@ it out of `IsChange`, and therefore out of hunks, counts, the diff map and F7/F8
 a renderer draw a faint band. Promoting it to a `ChangeKind` would silently put every ignored row back
 into the hunk list and make navigation stop on the fields the user asked not to see.
 `IgnoredRowNavigationTests` pins this.
+
+**The same executable is a window AND a batch tool here too, and the CLI's progress is written the
+opposite way round from the GUI's** (Studio). `CommandLine.IsHeadless` is checked in `Program.Main`
+before Avalonia is configured, exactly as in Fubar Diff, and for the same reason: a run that must exit
+with a status code cannot also be showing a window. The list is deliberately short - `--run`, `--help`,
+`-h`, `--version` - and nothing else counts, so starting the app normally is untouched. Exit codes are
+`diff`'s (0 passed, 1 failed, 2 could not tell), and 2 is kept strictly apart from 1 because a workspace
+that would not load and a collection whose assertions failed call for different reactions from a build.
+On Windows a GUI executable has no console until `ParentConsole.Attach` runs, which is why `dotnet run`
+shows nothing while the built exe does. The asymmetry worth knowing: `CliRunner` reports progress
+through a plain synchronous `IProgress<T>` and `CollectionRunViewModel` uses `Progress<T>`, and neither
+may adopt the other's choice. `Progress<T>` marshals to the captured synchronization context - which is
+what makes the view model safe to touch rows from, and what makes a console process (which has none)
+print its lines from the thread pool, out of order and possibly after the summary meant to conclude
+them. Both were found by a failing test.
 
 **An HTTP status never fails a collection run - only an assertion or a transport error does**
 (Studio). The load-bearing decision in the runner, and not the obvious one. This app lets you assert

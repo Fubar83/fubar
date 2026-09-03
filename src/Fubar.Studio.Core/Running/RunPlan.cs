@@ -5,7 +5,9 @@ namespace Fubar.Studio.Core.Running;
 /// <summary>One request in a run, in the order it will be sent.</summary>
 /// <param name="Order">1-based position, so a report can name "request 4 of 12" without the reader
 /// counting rows.</param>
-/// <param name="Name">The request's file name without extension - what the left pane shows.</param>
+/// <param name="Name">The request's name. A request is stored as <c>Ping.json</c>, so the extension is
+/// dropped: it is not part of what anyone calls the request, and it would otherwise show on every row of
+/// a run and in every JUnit test name.</param>
 /// <param name="FilePath">Absolute path to the <c>request.json</c>. The plan carries paths rather than
 /// loaded <see cref="RequestModel"/>s: a run of any size would otherwise hold every request in memory
 /// before sending the first one, and the runner has to re-read from disk anyway (see below).</param>
@@ -92,7 +94,7 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
     {
         if (!node.IsDirectory)
         {
-            into.Add(new RunStep(into.Count + 1, node.Name, node.FullPath, folderPath));
+            into.Add(new RunStep(into.Count + 1, RequestName(node.Name), node.FullPath, folderPath));
             return;
         }
 
@@ -106,4 +108,9 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
         [.. steps.Select((s, i) => s with { Order = i + 1 })];
 
     private static string ParentOf(string path) => Path.GetDirectoryName(path) ?? path;
+
+    /// <summary>A request file's name without its extension. The tree carries the file name because the
+    /// left pane lists files; a run is about requests.</summary>
+    private static string RequestName(string fileName) =>
+        Path.GetFileNameWithoutExtension(fileName) is { Length: > 0 } name ? name : fileName;
 }

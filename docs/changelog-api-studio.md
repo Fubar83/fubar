@@ -8,6 +8,36 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Run a collection from the command line, for CI.** `FubarAPIStudio --run --env Staging --report
+  results.xml`. The same binary, switched into a batch tool by flags that have no meaning on screen —
+  the rule Fubar Diff already uses, so starting the app normally is untouched.
+
+  Exit codes are `diff`'s: **0** everything ran and passed, **1** something failed, **2** the run could
+  not be attempted. The third is kept strictly apart from the second because a workspace that would not
+  load and a collection whose assertions failed call for completely different reactions from a build,
+  and collapsing them would make the first look like the second.
+
+  **JUnit XML** because that is the format every CI system already renders: a failed assertion shows up
+  as a failed test on the build page, with its message, instead of a line somewhere in a log nobody
+  opens. One `<testcase>` per request rather than per assertion — a request is the thing with a name, a
+  duration and a URL, and a page listing "status is 200" twenty times would name none of them. The
+  folder becomes the classname, so CI groups them the way the collection does, and a transport failure
+  is an `<error>` rather than a `<failure>`, which is JUnit's own distinction and exactly ours.
+  `--report results.json` gets the whole report as JSON instead.
+
+  **A captured value is never written to either format.** The headline capture is an access token, and a
+  report file is precisely the thing that gets attached to a build and kept. The variable's name and
+  whether it worked are recorded; its value is not.
+
+  A run matching nothing exits **1**, not 0 — "no tests ran, so it passed" is one typo in `--filter`
+  away. A named environment that does not exist is an error rather than a quiet fall back to none, which
+  would leave every `{{variable}}` resolving to nothing and make the failure look like the requests'
+  fault instead of a typo's. A report that cannot be written is reported without changing the verdict:
+  the run already happened, and turning a passing run into exit 2 over an unwritable path would tell the
+  build the wrong thing about the API.
+
+  History is never recorded by a command-line run, and there is deliberately no flag to turn it on.
+
 - **Run a whole collection.** Right-click a folder — or the workspace — and pick **Run**. Every request
   under it is sent in the order the left pane shows, each one's captures and assertions applied as it
   goes, and the window reports what happened.
