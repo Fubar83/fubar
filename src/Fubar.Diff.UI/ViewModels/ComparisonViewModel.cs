@@ -1750,7 +1750,10 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             ReportPropertyOrder = ReportPropertyOrder,
             MatchArraysByPosition = MatchArraysByPosition,
             IgnoreNullVsMissing = IgnoreNullVsMissing,
-            ArrayKeyOverrides = ArrayKeyOverrides.ToDictionary(e => e.Path, e => e.Key),
+            // OverridesByPath, not ToDictionary: a duplicated path throws, and this one runs on
+            // EVERY comparison - so the same mistake that silently stopped settings saving would stop
+            // the diff itself. Same fix, same reason.
+            ArrayKeyOverrides = OverridesByPath(),
             PositionalArrays = [.. PositionalArrays],
             UnorderedArrays = [.. UnorderedArrays],
             IgnoredPaths = [.. IgnoredPaths],
