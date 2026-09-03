@@ -98,7 +98,7 @@ public class DiffMapModelTests
 
         var view = Build(lines);
 
-        var band = Assert.Single(view.Bands.Where(b => b.Side == MapSide.Left));
+        var band = Assert.Single(view.Bands, b => b.Side == MapSide.Left);
         Assert.True(band.Density >= 0.15);
     }
 

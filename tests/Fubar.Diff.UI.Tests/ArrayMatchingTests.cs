@@ -4,6 +4,7 @@ using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Controls.ViewModels;
 using Fubar.Diff.Core.Comparison;
 using Fubar.Diff.Core.Files;
+using Fubar.Diff.Core.Json;
 using Fubar.Diff.Infrastructure.Comparison;
 using Fubar.Diff.Infrastructure.Json;
 using Fubar.Diff.UI.Services;
@@ -140,7 +141,7 @@ public class ArrayMatchingTests
 
         Assert.True(tab.Pane.HasChanges);
 
-        await tab.ApplyArrayKeyAsync("$.items", "ref");
+        await tab.ApplyArrayKeyAsync("$.items", ArrayMatchMode.Key, "ref");
 
         Assert.False(tab.Pane.HasChanges);
     }
@@ -166,10 +167,10 @@ public class ArrayMatchingTests
         var tab = Build(Left, Right);
         await tab.CompareAsync();
 
-        await tab.ApplyArrayKeyAsync("$.items", "ref");
+        await tab.ApplyArrayKeyAsync("$.items", ArrayMatchMode.Key, "ref");
         Assert.False(tab.Pane.HasChanges);
 
-        await tab.ApplyArrayKeyAsync("$.items", null);
+        await tab.ApplyArrayKeyAsync("$.items", ArrayMatchMode.Position);
 
         Assert.True(tab.Pane.HasChanges);
     }
@@ -189,7 +190,7 @@ public class ArrayMatchingTests
         var steps = Flatten(tab.Pane.SemanticTree).First(n => n.Path == "$.steps");
 
         Assert.True(steps.IsArray);
-        await tab.ApplyArrayKeyAsync(steps.ArrayChoices!.Path, null);
+        await tab.ApplyArrayKeyAsync(steps.ArrayChoices!.Path, ArrayMatchMode.Position);
 
         Assert.Contains("$.steps", tab.PositionalArrays);
         Assert.DoesNotContain("$.users", tab.PositionalArrays);
@@ -203,10 +204,10 @@ public class ArrayMatchingTests
         var tab = Build(Left, Right);
         await tab.CompareAsync();
 
-        await tab.ApplyArrayKeyAsync("$.items", null);
+        await tab.ApplyArrayKeyAsync("$.items", ArrayMatchMode.Position);
         Assert.Contains("$.items", tab.PositionalArrays);
 
-        await tab.ApplyArrayKeyAsync("$.items", "ref");
+        await tab.ApplyArrayKeyAsync("$.items", ArrayMatchMode.Key, "ref");
 
         Assert.DoesNotContain("$.items", tab.PositionalArrays);
         Assert.Contains(tab.ArrayKeyOverrides, o => o.Path == "$.items" && o.Key == "ref");
