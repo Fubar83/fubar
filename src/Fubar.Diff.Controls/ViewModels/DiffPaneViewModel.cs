@@ -672,7 +672,52 @@ public partial class DiffPaneViewModel : ObservableObject
             CurrentTreeNode = node;
         }
 
+        // Open the way to it. Selecting a row inside collapsed ancestors is a selection nobody can see,
+        // which is what stepping through differences looked like: the tree agreed it had moved and
+        // showed nothing. Done after the assignment so the row exists to be revealed.
+        node?.Reveal();
+
         RaiseJsonDerived();
+    }
+
+    /// <summary>
+    /// Makes the difference at a row the current one, because the user clicked there.
+    ///
+    /// <para>The panes were read-only as a navigation surface: you could see every difference and step
+    /// through them only with the toolbar, so pointing at the one you were already reading and saying
+    /// "this one" was impossible. It is the obvious gesture and it was the missing half of the map,
+    /// the tree and Prev/Next all agreeing about a current difference nobody could SET by hand.</para>
+    ///
+    /// <para>A click on unchanged text selects nothing rather than jumping to the nearest difference:
+    /// the caret moves for all sorts of reasons - selecting text to copy, clicking to read - and having
+    /// the window scroll somewhere else because of it would make the panes unusable for their actual
+    /// job. Both halves are updated where they exist, so the Json view's change and the text view's
+    /// hunk cannot disagree about which one is current.</para>
+    /// </summary>
+    public void SelectDifferenceAtRow(int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= _result.Lines.Count)
+        {
+            return;
+        }
+
+        var hunk = HunkNavigator.IndexOfHunkContaining(_result.Hunks, rowIndex);
+        if (hunk >= 0 && hunk != CurrentHunk)
+        {
+            CurrentHunk = hunk;
+        }
+
+        // In the Json view the current difference is a semantic change, not a hunk. Both are set when
+        // both apply, so whichever view is on screen agrees with the other.
+        var row = _result.Lines[rowIndex];
+        if (_changeIndex.Find(row.LeftNumber, row.RightNumber) is { } change)
+        {
+            var index = IndexOfPath(change.Path);
+            if (index >= 0 && index != CurrentSemanticChangeIndex)
+            {
+                CurrentSemanticChangeIndex = index;
+            }
+        }
     }
 
     partial void OnCurrentTreeNodeChanged(JsonChangeNodeViewModel? value)

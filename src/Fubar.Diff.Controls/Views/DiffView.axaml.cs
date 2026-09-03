@@ -2,6 +2,8 @@ using System;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 
 using Fubar.Diff.Controls.Rendering;
 using Fubar.Diff.Controls.ViewModels;
@@ -40,6 +42,13 @@ public partial class DiffView : UserControl
         LeftPane.TextView.VisualLinesChanged += (_, _) => ReportViewport();
 
         Map.JumpRequested += (_, row) => _viewModel?.JumpToRow(row);
+
+        // Clicking a difference in either pane makes it the current one. Released rather than pressed,
+        // so AvaloniaEdit has already moved its caret and there is a line to read; and released rather
+        // than a caret-changed subscription, because the caret also moves when WE scroll to a
+        // difference, which would feed straight back into selecting it again.
+        LeftPane.AddHandler(PointerReleasedEvent, OnPaneClicked, RoutingStrategies.Bubble, handledEventsToo: true);
+        RightPane.AddHandler(PointerReleasedEvent, OnPaneClicked, RoutingStrategies.Bubble, handledEventsToo: true);
 
         // The panes own their documents, their filler anchors and their carets; the view model owns
         // what a comparison MEANS. Edits cross that line here - the side that changed goes up, and the
@@ -271,6 +280,27 @@ public partial class DiffView : UserControl
             var end = spans.Count == 0 ? 0 : spans.Max(s => s.End) + 1;
 
             EditorScroll.RevealColumns(pane.TextEditor, pane.TextView, rowIndex + 1, start, end);
+        }
+    }
+
+    /// <summary>
+    /// Selects the difference under the pointer, if there is one.
+    ///
+    /// The row is the caret's line: both panes are the aligned document, so editor line N is
+    /// <c>DiffResult.Lines[N-1]</c> on either side - the filler discipline is what makes reading it off
+    /// one pane and applying it to the comparison correct without any mapping.
+    /// </summary>
+    private void OnPaneClicked(object? sender, PointerReleasedEventArgs e)
+    {
+        if (sender is not DiffEditorPane pane || _viewModel is null)
+        {
+            return;
+        }
+
+        var line = pane.TextEditor.TextArea.Caret.Line;
+        if (line > 0)
+        {
+            _viewModel.SelectDifferenceAtRow(line - 1);
         }
     }
 

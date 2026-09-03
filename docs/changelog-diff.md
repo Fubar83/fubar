@@ -26,6 +26,26 @@ All notable changes to this project are documented here. The format is based on
   join a point to itself. The one case where the two ends genuinely sit at different heights is a
   **move**, and that is the one case a line is drawn for.
 
+- **Click a difference in either pane to make it the current one.** The panes showed every difference and
+  the only way to step to one was the toolbar, so pointing at the difference you were already reading and
+  saying "this one" was impossible — the missing half of the map, the tree and Prev/Next all agreeing
+  about a current difference nothing could set by hand. Clicking unchanged text selects nothing: the
+  caret moves for all sorts of reasons, and having the window scroll away because you clicked to read
+  would make the panes unusable for their actual job.
+
+- **The change tree now follows the difference you are on, visibly.** The selection always moved with
+  Prev/Next — but nothing opened the rows above it, so on a document nested five levels deep the tree
+  agreed it had moved and showed nothing. Navigating now opens the ancestors of the selected row and
+  scrolls it into view. It only ever *opens*: a row you expanded by hand is never closed again by
+  stepping to the next difference, and nothing is expanded on load, exactly as before.
+
+- **The location map, again.** Borders down both edges so it reads as its own column between the panes
+  rather than as margin belonging to one of them. Marks are thicker (5px) and never thinner than 5px
+  wide, because the mark *is* the click target — its size decides whether the map can be used at all —
+  and a click now snaps to a change within 12px of it. The current difference is drawn as a **solid line
+  across the strip** in the accent colour instead of two bars down the outer edges: a frame said
+  "somewhere in this range" when the question is "which one am I on".
+
 - **The location map is easier to hit, easier to read, and says which difference you are on.** Wider
   (32px), so it reads as the strip *between* the two panes rather than a border on one of them. Marks are
   drawn 3px tall instead of 1px, so a single changed line on a long file is visible rather than a hair —

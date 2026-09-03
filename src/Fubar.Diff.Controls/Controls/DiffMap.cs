@@ -121,8 +121,11 @@ public sealed class DiffMap : Control
 
     // ---- Painting ----------------------------------------------------------------------------------
 
-    /// <summary>Gutter either side of the strip, so marks do not touch the editors they sit between.</summary>
-    private const double Inset = 1;
+    /// <summary>Gutter either side of the strip, so marks do not touch its borders.</summary>
+    private const double Inset = 2;
+
+    /// <summary>The hairline down each edge that makes the strip read as its own column.</summary>
+    private const double BorderWidth = 1;
 
     /// <summary>Height of the off-screen indicator at the top and bottom.</summary>
     private const double ArrowHeight = 5;
@@ -135,13 +138,13 @@ public sealed class DiffMap : Control
     /// without touching the density encoding, which is carried by WIDTH; neighbouring bands simply
     /// overlap, and being the same colour they read as the continuous run they are.
     /// </summary>
-    private const double BandThickness = 3;
+    private const double BandThickness = 5;
 
     /// <summary>
     /// How close the pointer must be to a change for a click to snap to it. Generous on purpose: the
     /// alternative is a map whose marks can be seen and not hit.
     /// </summary>
-    private const double SnapTolerance = 6;
+    private const double SnapTolerance = 12;
 
     public override void Render(DrawingContext context)
     {
@@ -161,11 +164,13 @@ public sealed class DiffMap : Control
             ViewportStart,
             ViewportLength);
 
-        // Behind everything else, so the bands stay the brightest thing on their own row.
+        DrawBorders(context, height, width);
+
+        // Behind the marks, so they stay the brightest thing on their own row.
         DrawCurrentHunkWash(context, height, width);
 
-        // Half the strip per side, inside the gutter.
-        var columnWidth = (width - Inset * 2) / 2;
+        // Half the strip per side, inside the borders and their gutter.
+        var columnWidth = (width - (BorderWidth + Inset) * 2) / 2;
 
         foreach (var band in view.Bands)
         {
@@ -174,20 +179,25 @@ public sealed class DiffMap : Control
                 continue;
             }
 
-            var x = band.Side == MapSide.Left ? Inset : Inset + columnWidth;
+            var edge = BorderWidth + Inset;
+            var x = band.Side == MapSide.Left ? edge : edge + columnWidth;
 
             // Density is shown as WIDTH from the centre outwards rather than as opacity: a faint mark on
             // a dark strip is easy to miss entirely, while a short one is still unmistakably present.
             // The floor in the model guarantees a single-line change keeps a visible sliver.
-            // Floored at 3px as well as scaled by density: below that a mark stops reading as a mark.
-            var drawn = Math.Max(3, columnWidth * band.Density);
+            // Floored well above a hairline as well as scaled by density: the mark IS the click target,
+            // so how big it is decides whether the map can be used at all.
+            var drawn = Math.Max(5, columnWidth * band.Density);
             var left = band.Side == MapSide.Left ? x + (columnWidth - drawn) : x;
 
             context.FillRectangle(brush, new Rect(left, band.Y, drawn, BandThickness));
         }
 
         DrawMoveLinks(context, view, width);
+
+        // Last of the content: the current difference is the one thing that must never be obscured.
         DrawCurrentHunk(context, height, width);
+
         DrawViewport(context, height, width);
         DrawOffScreenCounts(context, view, height, width);
         DrawHover(context, width);
@@ -272,8 +282,18 @@ public sealed class DiffMap : Control
         context.FillRectangle(wash, new Rect(0, bounds.Top, width, bounds.Height));
     }
 
-    /// <summary>The outline and edge bars, drawn on top so the current hunk is findable even where its
-    /// own bands fill the row.</summary>
+    /// <summary>
+    /// Draws the current difference as a solid LINE across the strip, on top of everything.
+    ///
+    /// <para>It was two bars down the outer edges, which framed the row rather than marking it: on a
+    /// strip this narrow a frame reads as "somewhere in this range" when the question being asked is
+    /// "which one am I on". A filled band in the accent colour answers that directly, and being the
+    /// only saturated thing on the map it is findable without hunting.</para>
+    ///
+    /// <para>Inset from the borders so both stay legible, and floored at the band thickness so a
+    /// one-line difference is as findable as a fifty-line one - which is the whole reason someone is
+    /// looking at the map.</para>
+    /// </summary>
     private void DrawCurrentHunk(DrawingContext context, double height, double width)
     {
         if (CurrentHunkBounds(height) is not { } bounds
@@ -282,17 +302,27 @@ public sealed class DiffMap : Control
             return;
         }
 
-        // Bars down both edges: they frame the row without covering the bands between them.
-        context.FillRectangle(accent, new Rect(0, bounds.Top, 2, bounds.Height));
-        context.FillRectangle(accent, new Rect(width - 2, bounds.Top, 2, bounds.Height));
+        context.FillRectangle(
+            accent,
+            new Rect(BorderWidth, bounds.Top, Math.Max(0, width - BorderWidth * 2), bounds.Height));
+    }
 
-        if (DiffLineColors.CurrentHunkOutline(this) is { } outline)
+    /// <summary>
+    /// A hairline down each edge.
+    ///
+    /// The strip sits between two editors, and without them it reads as empty margin belonging to one of
+    /// them rather than as a column of its own - which also makes it unclear that it is something you
+    /// can click.
+    /// </summary>
+    private void DrawBorders(DrawingContext context, double height, double width)
+    {
+        if (!this.TryFindResource("BorderSubtle", out var resource) || resource is not IBrush brush)
         {
-            context.DrawRectangle(
-                null,
-                new Pen(outline, 1),
-                new Rect(0.5, bounds.Top + 0.5, width - 1, Math.Max(1, bounds.Height - 1)));
+            return;
         }
+
+        context.FillRectangle(brush, new Rect(0, 0, BorderWidth, height));
+        context.FillRectangle(brush, new Rect(width - BorderWidth, 0, BorderWidth, height));
     }
 
     /// <summary>Where the current hunk sits on the strip, with a floor so a one-line hunk is still a

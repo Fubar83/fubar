@@ -518,6 +518,39 @@ Image formats are detected from the CONTENT signature, unlike languages, which a
 extension: a renamed `.png` that is really a JPEG is ordinary, and being wrong here is immediately
 visible because the picture either appears or it does not.
 
+**The current difference is one thing, and four surfaces have to agree about it** (Diff). The map, the
+change tree, the panes and Prev/Next all address the same "which difference am I on", and every one of
+them can now both READ and SET it. `DiffPaneViewModel` is where they meet: `CurrentHunk` and
+`CurrentSemanticChangeIndex` are the state, `SelectDifferenceAtRow` is the setter a pane click goes
+through, and `OnCurrentSemanticChangeIndexChanged` / `OnCurrentTreeNodeChanged` are the two directions
+of the tree sync - already guarded against re-entering each other, which is why setting one does not
+loop. Three rules were each added because the surface looked broken without them.
+
+*A selection nobody can see is not a selection.* The tree's two-way sync always worked and always looked
+broken on a deep document, because nothing opened the rows above the selected one. `IsExpanded` is now
+owned by `JsonChangeNodeViewModel` (bound TwoWay so expanding by hand stays the row's own state) and
+`Reveal()` walks `Parent` upwards opening ancestors. It only ever OPENS - closing anything would fight a
+reader who had just arranged the tree - and it does not open the selected row itself, which would bury it
+under its own contents. Nothing is expanded on load, which is exactly what the tree did before. Scrolling
+the row into view is the VIEW's half (`JsonTreeView`), posted at `DispatcherPriority.Loaded` because the
+containers for rows that were just revealed do not exist until the next layout pass; asking earlier finds
+no container and scrolls nowhere, silently.
+
+*A difference off the right edge of a long line is invisible.* `EditorScroll.RevealColumns` scrolls each
+pane sideways by the MINIMUM needed to show its own changed characters, never centring: horizontal
+position carries meaning - indentation is how code shows structure - and a pane yanked sideways on every
+step loses that for every difference that never needed it. Each side is given its OWN spans, because on a
+modified row the two sides' changed characters are rarely at the same offsets. A whole inserted or
+deleted line carries no spans and scrolls home instead, which is where such a change starts.
+
+*A mark that can be seen must be hittable.* The map draws bands 5px tall and never narrower than 5px, and
+`DiffMapModel.SnapToNearestChange` sends a click within 12px to the nearest hunk's START. Both exist
+because one pixel is a hundred rows on a long file: a one-line change was a hairline, and missing it by a
+pixel scrolled a hundred lines from what was aimed at. Snapping falls back to the plain position when
+nothing is near, so dragging still scrubs. The current difference is a solid accent line ACROSS the
+strip - it was two bars down the outer edges, and a frame reads as "somewhere in this range" when the
+question is "which one".
+
 **The location map aggregates per PIXEL, and what it draws is decided in Core** (Diff).
 `DiffMapModel.Build` turns rows and hunks into bands; `DiffMap` only paints them. The obvious
 implementation - one rectangle per hunk with a minimum height so it cannot vanish - is what was here

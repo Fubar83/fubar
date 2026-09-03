@@ -49,6 +49,17 @@
                      Background="Transparent"
                      BorderThickness="0"
                      IsVisible="{Binding !!SemanticTree.Count}">
+            <!-- IsExpanded is bound to the ROW rather than left to the container, so navigation can
+                 open the way to a difference five levels down. TwoWay because expanding by hand is the
+                 row's own state, and a one-way binding would have the next navigation silently
+                 disagree with what the user just did - the same reason the View menu's two genuine
+                 two-way MenuItems say so explicitly. -->
+            <TreeView.Styles>
+                <Style Selector="TreeViewItem" x:DataType="vm:JsonChangeNodeViewModel">
+                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                </Style>
+            </TreeView.Styles>
+
             <TreeView.ItemTemplate>
                 <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:JsonChangeNodeViewModel">
                     <!-- Transparent rather than unset: an unset background is not hit-testable, so a

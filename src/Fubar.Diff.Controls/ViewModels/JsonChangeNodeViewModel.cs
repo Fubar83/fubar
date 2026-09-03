@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Models;
 
@@ -24,11 +25,45 @@ public sealed record ArrayKeyOption(string Path, ArrayMatchMode Mode, string? Ke
 /// exists alongside it. The structure comes from the change paths, so a change at
 /// <c>$.users[2].email</c> appears under <c>users</c>, then <c>[2]</c>.
 /// </summary>
-public sealed class JsonChangeNodeViewModel
+public sealed partial class JsonChangeNodeViewModel : ObservableObject
 {
     private readonly List<JsonChangeNodeViewModel> _children = [];
 
     private JsonChangeNodeViewModel(string label) => Label = label;
+
+    /// <summary>The row above this one, or null at the top. Exists so a row can open its own ancestors
+    /// when navigation lands on it - see <see cref="Reveal"/>.</summary>
+    public JsonChangeNodeViewModel? Parent { get; private set; }
+
+    /// <summary>
+    /// Whether this row is open, owned by the view model rather than only by the container.
+    ///
+    /// It has to live here because navigation needs to OPEN a row it did not draw: stepping to a
+    /// difference five levels down selects a node the reader cannot see while its ancestors are shut.
+    /// Two-way, so expanding a row by hand is still the row's own state and not something the next
+    /// navigation silently disagrees with. Defaults to closed, which is exactly what the tree did
+    /// before this existed.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
+
+    /// <summary>
+    /// Opens every row between this one and the top, so a selection made by navigation is actually on
+    /// screen.
+    ///
+    /// <para>Selecting a node inside collapsed ancestors is a selection nobody can see - which is what
+    /// stepping through differences looked like before: the tree agreed it had moved and showed
+    /// nothing. This opens the ancestors and deliberately does NOT open the node itself; a change row
+    /// has no children worth unfolding, and unfolding a group would bury the row that was selected
+    /// under its own contents.</para>
+    /// </summary>
+    public void Reveal()
+    {
+        for (var ancestor = Parent; ancestor is not null; ancestor = ancestor.Parent)
+        {
+            ancestor.IsExpanded = true;
+        }
+    }
 
     /// <summary>This step of the path, e.g. <c>users</c> or <c>[2]</c>.</summary>
     public string Label { get; }
@@ -223,7 +258,7 @@ public sealed class JsonChangeNodeViewModel
 
         var parent = path.Parent is { } parentPath ? EnsureNode(parentPath, index, root) : root;
 
-        var node = new JsonChangeNodeViewModel(path.Label) { Path = key };
+        var node = new JsonChangeNodeViewModel(path.Label) { Path = key, Parent = parent };
         parent._children.Add(node);
         index[key] = node;
 
