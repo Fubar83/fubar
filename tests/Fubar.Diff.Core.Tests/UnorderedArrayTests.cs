@@ -38,6 +38,17 @@ public class UnorderedArrayTests
     private static JsonComparisonOptions Unordered(params string[] paths) =>
         JsonComparisonOptions.Default with { UnorderedArrays = paths };
 
+    /// <summary>
+    /// The changes that COUNT: hunks, navigation and the counts all skip ignored ones.
+    ///
+    /// An element that merely moved is reported as ignored rather than not at all, so the reader gets a
+    /// faint mark saying "these disagree here and you asked me not to mention it" instead of silence
+    /// they cannot tell from agreement. These assertions are about what is REPORTED, and the trace has
+    /// its own tests below.
+    /// </summary>
+    private static IReadOnlyList<JsonChange> Reported(IReadOnlyList<JsonChange> changes) =>
+        [.. changes.Where(c => !c.IsIgnored)];
+
     // ---- The case this exists for --------------------------------------------------------------
 
     [Fact]
@@ -48,7 +59,7 @@ public class UnorderedArrayTests
             Obj(("tags", Strs("B", "A"))),
             Unordered("$.tags"));
 
-        Assert.Empty(changes);
+        Assert.Empty(Reported(changes));
     }
 
     [Fact]
@@ -71,21 +82,21 @@ public class UnorderedArrayTests
             Obj(("roles", Strs("viewer", "owner", "admin", "editor"))),
             Unordered("$.roles"));
 
-        Assert.Empty(changes);
+        Assert.Empty(Reported(changes));
     }
 
     [Fact]
     public void Numbers_and_booleans_work_the_same_way()
     {
-        Assert.Empty(Compare(
+        Assert.Empty(Reported(Compare(
             Obj(("a", Arr(Num("1"), Num("2"), Num("3")))),
             Obj(("a", Arr(Num("3"), Num("1"), Num("2")))),
-            Unordered("$.a")));
+            Unordered("$.a"))));
 
-        Assert.Empty(Compare(
+        Assert.Empty(Reported(Compare(
             Obj(("a", Arr(Bool(true), Bool(false)))),
             Obj(("a", Arr(Bool(false), Bool(true)))),
-            Unordered("$.a")));
+            Unordered("$.a"))));
     }
 
     [Fact]
@@ -108,7 +119,7 @@ public class UnorderedArrayTests
             Obj(("tags", Strs("C", "A"))),
             Unordered("$.tags"));
 
-        var change = Assert.Single(changes);
+        var change = Assert.Single(Reported(changes));
         Assert.Equal(ChangeKind.Deleted, change.Kind);
     }
 
@@ -120,7 +131,7 @@ public class UnorderedArrayTests
             Obj(("tags", Strs("B", "A"))),
             Unordered("$.tags"));
 
-        var change = Assert.Single(changes);
+        var change = Assert.Single(Reported(changes));
         Assert.Equal(ChangeKind.Inserted, change.Kind);
     }
 
@@ -133,7 +144,7 @@ public class UnorderedArrayTests
             Obj(("tags", Strs("B", "C"))),
             Unordered("$.tags"));
 
-        var change = Assert.Single(changes);
+        var change = Assert.Single(Reported(changes));
         Assert.Equal(ChangeKind.Modified, change.Kind);
     }
 
@@ -147,7 +158,7 @@ public class UnorderedArrayTests
             Obj(("tags", Strs("B", "A"))),
             Unordered("$.tags"));
 
-        var change = Assert.Single(changes);
+        var change = Assert.Single(Reported(changes));
         Assert.Equal(ChangeKind.Deleted, change.Kind);
     }
 
@@ -159,7 +170,7 @@ public class UnorderedArrayTests
             Obj(("tags", Strs("A", "A"))),
             Unordered("$.tags"));
 
-        Assert.Equal(ChangeKind.Inserted, Assert.Single(changes).Kind);
+        Assert.Equal(ChangeKind.Inserted, Assert.Single(Reported(changes)).Kind);
     }
 
     // ---- Objects and nesting -------------------------------------------------------------------
@@ -178,7 +189,7 @@ public class UnorderedArrayTests
                 Obj(("x", Num("1")), ("y", Num("2")))))),
             Unordered("$.points"));
 
-        Assert.Empty(changes);
+        Assert.Empty(Reported(changes));
     }
 
     [Fact]
@@ -190,7 +201,7 @@ public class UnorderedArrayTests
             Obj(("points", Arr(Obj(("y", Num("2")), ("x", Num("1")))))),
             Unordered("$.points"));
 
-        Assert.Empty(changes);
+        Assert.Empty(Reported(changes));
     }
 
     [Fact]
@@ -214,7 +225,7 @@ public class UnorderedArrayTests
             Obj(("rows", Arr(Arr(Num("2"), Num("1"))))),
             Unordered("$.rows", "$.rows[0]"));
 
-        Assert.Empty(changes);
+        Assert.Empty(Reported(changes));
     }
 
     [Fact]
@@ -227,7 +238,7 @@ public class UnorderedArrayTests
             Obj(("points", Arr(Obj(("x", Num("1")), ("y", Num("9")))))),
             Unordered("$.points"));
 
-        var change = Assert.Single(changes);
+        var change = Assert.Single(Reported(changes));
         Assert.Contains("y", change.Path.ToString());
     }
 
@@ -286,7 +297,7 @@ public class UnorderedArrayTests
                 ArrayKeyOverrides = new Dictionary<string, string> { ["$.users"] = "ref" },
             });
 
-        var change = Assert.Single(changes);
+        var change = Assert.Single(Reported(changes));
         Assert.Contains("name", change.Path.ToString());
     }
 
@@ -298,8 +309,8 @@ public class UnorderedArrayTests
             Obj(("tags", Strs("B", "A")), ("steps", Strs("two", "one"))),
             Unordered("$.tags"));
 
-        Assert.NotEmpty(changes);
-        Assert.All(changes, c => Assert.Contains("steps", c.Path.ToString()));
+        Assert.NotEmpty(Reported(changes));
+        Assert.All(Reported(changes), c => Assert.Contains("steps", c.Path.ToString()));
     }
 
     // ---- The global switch ---------------------------------------------------------------------
@@ -312,7 +323,7 @@ public class UnorderedArrayTests
             Obj(("tags", Strs("B", "A")), ("steps", Strs("two", "one"))),
             JsonComparisonOptions.Default with { IgnoreArrayOrder = true });
 
-        Assert.Empty(changes);
+        Assert.Empty(Reported(changes));
     }
 
     [Fact]
@@ -329,7 +340,7 @@ public class UnorderedArrayTests
                 Obj(("id", Num("1")), ("name", Str("CHANGED")))))),
             JsonComparisonOptions.Default with { IgnoreArrayOrder = true });
 
-        var change = Assert.Single(changes);
+        var change = Assert.Single(Reported(changes));
         Assert.Contains("name", change.Path.ToString());
     }
 
@@ -399,6 +410,62 @@ public class UnorderedArrayTests
             JsonSemanticDiffer.ModeFor("$.steps", null, JsonComparisonOptions.Default));
     }
 
+    // ---- A reorder leaves a faint trace ---------------------------------------------------------
+
+    [Fact]
+    public void A_moved_element_is_marked_ignored_rather_than_erased()
+    {
+        // What the reader asked for: order ignored, not the FACT of a reorder erased. Told nothing at
+        // all, they cannot tell "these agree here" from "these disagree here and I said not to mention
+        // it" - and the second is worth a glance before trusting the diff.
+        var changes = Compare(
+            Obj(("tags", Strs("A", "B"))),
+            Obj(("tags", Strs("B", "A"))),
+            Unordered("$.tags"));
+
+        Assert.NotEmpty(changes);
+        Assert.All(changes, c => Assert.True(c.IsIgnored));
+        Assert.All(changes, c => Assert.True(c.IsReorder));
+    }
+
+    [Fact]
+    public void The_trace_does_not_count_as_a_difference()
+    {
+        // IsIgnored is what keeps it out of the hunks, the counts and next/previous, while still letting
+        // a renderer draw it at the faint wash ignored rows already use.
+        var changes = Compare(
+            Obj(("tags", Strs("A", "B"))),
+            Obj(("tags", Strs("B", "A"))),
+            Unordered("$.tags"));
+
+        Assert.Empty(Reported(changes));
+    }
+
+    [Fact]
+    public void An_element_that_did_NOT_move_leaves_no_trace()
+    {
+        // Only the ones that actually moved. Marking every element of a reordered list would turn the
+        // faint hint into a wash over the whole array.
+        var changes = Compare(
+            Obj(("tags", Strs("A", "B", "C"))),
+            Obj(("tags", Strs("A", "C", "B"))),
+            Unordered("$.tags"));
+
+        Assert.Equal(2, changes.Count);
+        Assert.DoesNotContain(changes, c => c.Path.ToString().EndsWith("[0]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_list_in_the_same_order_leaves_no_trace_at_all()
+    {
+        var changes = Compare(
+            Obj(("tags", Strs("A", "B"))),
+            Obj(("tags", Strs("A", "B"))),
+            Unordered("$.tags"));
+
+        Assert.Empty(changes);
+    }
+
     // ---- A per-array instruction beats a global default -----------------------------------------
 
     // Reported from a real file: with "Match list items by position" on in Settings, choosing "Ignore
@@ -418,7 +485,7 @@ public class UnorderedArrayTests
                 UnorderedArrays = ["$.tags"],
             });
 
-        Assert.Empty(changes);
+        Assert.Empty(Reported(changes));
     }
 
     [Fact]
@@ -433,8 +500,8 @@ public class UnorderedArrayTests
                 UnorderedArrays = ["$.tags"],
             });
 
-        Assert.NotEmpty(changes);
-        Assert.All(changes, c => Assert.Contains("steps", c.Path.ToString()));
+        Assert.NotEmpty(Reported(changes));
+        Assert.All(Reported(changes), c => Assert.Contains("steps", c.Path.ToString()));
     }
 
     [Fact]
@@ -454,7 +521,7 @@ public class UnorderedArrayTests
                 ArrayKeyOverrides = new Dictionary<string, string> { ["$.users"] = "ref" },
             });
 
-        Assert.Empty(changes);
+        Assert.Empty(Reported(changes));
     }
 
     [Fact]
@@ -481,7 +548,7 @@ public class UnorderedArrayTests
     [Fact]
     public void Empty_arrays_compare_equal()
     {
-        Assert.Empty(Compare(Obj(("a", Arr())), Obj(("a", Arr())), Unordered("$.a")));
+        Assert.Empty(Reported(Compare(Obj(("a", Arr())), Obj(("a", Arr())), Unordered("$.a"))));
     }
 
     [Fact]
@@ -489,7 +556,7 @@ public class UnorderedArrayTests
     {
         var changes = Compare(Obj(("a", Strs("x", "y"))), Obj(("a", Arr())), Unordered("$.a"));
 
-        Assert.Equal(2, changes.Count);
-        Assert.All(changes, c => Assert.Equal(ChangeKind.Deleted, c.Kind));
+        Assert.Equal(2, Reported(changes).Count);
+        Assert.All(Reported(changes), c => Assert.Equal(ChangeKind.Deleted, c.Kind));
     }
 }

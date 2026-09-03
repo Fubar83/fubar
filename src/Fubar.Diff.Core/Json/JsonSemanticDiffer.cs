@@ -311,8 +311,31 @@ public static class JsonSemanticDiffer
 
             if (available.TryGetValue(signature, out var queue) && queue.Count > 0)
             {
-                // Identical by value: nothing to report, whatever position either of them sits at.
-                matchedRight.Add(queue.Dequeue());
+                var rightIndex = queue.Dequeue();
+                matchedRight.Add(rightIndex);
+
+                // Identical by value - but if it MOVED, leave a faint trace rather than nothing at all.
+                //
+                // Reporting nothing was the first behaviour and it is the wrong kind of silence: the
+                // reader asked for order to be ignored, not for the fact that something was reordered to
+                // be erased. Told nothing, they cannot tell "these files agree here" from "these files
+                // disagree here and I asked you not to mention it" - and the second is worth a glance
+                // before trusting the diff.
+                //
+                // Marked exactly as an ignored row is, which is what buys the whole behaviour for free:
+                // IsIgnored keeps it out of the counts, out of the hunks and out of next/previous, while
+                // still letting the renderers draw it at the faint 7% wash they already use. IsReorder
+                // is what the tree reads to label it "moved" rather than showing a value change that did
+                // not happen.
+                if (rightIndex != i)
+                {
+                    changes.Add(new JsonChange(path.Index(i), ChangeKind.Modified, left.Items[i], right.Items[rightIndex])
+                    {
+                        IsReorder = true,
+                        IsIgnored = true,
+                    });
+                }
+
                 continue;
             }
 

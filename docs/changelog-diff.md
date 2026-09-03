@@ -26,6 +26,15 @@ All notable changes to this project are documented here. The format is based on
   join a point to itself. The one case where the two ends genuinely sit at different heights is a
   **move**, and that is the one case a line is drawn for.
 
+- **Ignored differences are shown, faintly, and an ignored REORDER is now one of them.** Picking *Ignore
+  order* on a list used to make the moved elements vanish outright. That is the wrong kind of silence:
+  you asked for the order to be ignored, not for the fact that something moved to be erased, and told
+  nothing at all you cannot tell "these agree here" from "these disagree here and I said not to mention
+  it" — which is worth a glance before trusting the diff. A moved element now leaves the same faint 7%
+  wash an ignored path already leaves: visible, not counted, skipped by next/previous, and labelled
+  *moved* in the change tree. Only the elements that actually moved are marked; marking every element of
+  a reordered list would turn a hint into a wash.
+
 - **Lists whose order does not matter.** Right-click a list in the change tree → *Compare this list* →
   **Ignore order**, or add its path under Settings → JSON, or commit it to `.fubardiff.json` as
   `unorderedArrays`.

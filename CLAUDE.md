@@ -375,6 +375,18 @@ insertions - that is what keeps a field-level diff for an element that changed i
 lets ignore rules reach inside it at all. Matching purely by value would report a whole element as
 replaced because a timestamp inside it moved, and the rule covering that timestamp would never speak.
 
+**An ignored REORDER leaves a trace; reporting nothing is the wrong kind of silence** (Diff). When
+unordered matching pairs two elements that merely moved, it emits a `JsonChange` flagged `IsReorder`
+AND `IsIgnored` rather than emitting nothing. The user asked for order to be ignored, not for the fact
+of a reorder to be erased - and given silence they cannot tell "these agree here" from "these disagree
+here and I asked you not to mention it", which is worth a glance before trusting the diff. `IsIgnored`
+buys the whole behaviour off the existing machinery: out of the counts, out of the hunks, out of
+next/previous, and drawn at the same faint 7% wash `DiffLineColors.IgnoredBackground` already gives an
+ignored path, in both Text mode (`ChangeLineBackgroundRenderer`) and the Json view
+(`JsonChangeSpanColorizer`). Only elements whose index actually CHANGED are marked - marking every
+element of a reordered list would turn a hint into a wash over the whole array. Tests assert on what is
+REPORTED (non-ignored) for this reason; a bare `Assert.Empty(changes)` on a reordered list is now wrong.
+
 **Array matching is per-array, and only fields that WOULD work are offered** (Diff).
 `JsonComparisonOptions.PositionalArrays` is the per-path counterpart of the global
 `MatchArraysByPosition`, because one document can hold a list of users where order means nothing
