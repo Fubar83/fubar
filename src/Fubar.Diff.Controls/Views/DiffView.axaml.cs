@@ -245,6 +245,35 @@ public partial class DiffView : UserControl
     }
 
     /// <summary>Centres a row in the viewport in both panes.</summary>
+    /// <summary>
+    /// Scrolls each pane sideways so the row's changed characters are visible.
+    ///
+    /// A row with no spans - a whole inserted or deleted line - reports column 0, which
+    /// <see cref="EditorScroll.RevealColumns"/> reads as "go home": the change starts at the beginning
+    /// of the line, and staying parked to the right would hide it.
+    /// </summary>
+    private void RevealChangedColumns(int rowIndex)
+    {
+        if (_viewModel?.Lines is not { } lines || rowIndex >= lines.Count)
+        {
+            return;
+        }
+
+        var row = lines[rowIndex];
+
+        Reveal(LeftPane, row.LeftSpans);
+        Reveal(RightPane, row.RightSpans);
+
+        void Reveal(DiffEditorPane pane, IReadOnlyList<CharSpan> spans)
+        {
+            // 1-based columns from 0-based offsets.
+            var start = spans.Count == 0 ? 0 : spans.Min(s => s.Start) + 1;
+            var end = spans.Count == 0 ? 0 : spans.Max(s => s.End) + 1;
+
+            EditorScroll.RevealColumns(pane.TextEditor, pane.TextView, rowIndex + 1, start, end);
+        }
+    }
+
     private void ScrollTo(int rowIndex)
     {
         if (rowIndex < 0)
@@ -265,6 +294,12 @@ public partial class DiffView : UserControl
         {
             EditorScroll.CenterOnLine(LeftPane.TextEditor, LeftPane.TextView, rowIndex + 1);
             EditorScroll.CenterOnLine(RightPane.TextEditor, RightPane.TextView, rowIndex + 1);
+
+            // Sideways too, or navigating to a change beyond the right edge of a long line lands on a
+            // row that looks unchanged. Each side is given ITS OWN columns: on a modified row the two
+            // sides' changed characters are rarely at the same offsets, and using one side's for both
+            // would leave the other pointing at the wrong part of its line.
+            RevealChangedColumns(rowIndex);
         }
         finally
         {

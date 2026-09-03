@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls.Primitives;
 using AvaloniaEdit;
+using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
 
 namespace Fubar.Diff.Controls.Rendering;
@@ -39,6 +40,97 @@ internal static class EditorScroll
         // Clamped by the view itself: a side whose longest line is shorter simply stops at its own
         // end rather than the pair jamming or throwing.
         scrollable.Offset = new Vector(Math.Max(0, offset), scrollable.Offset.Y);
+    }
+
+    /// <summary>
+    /// Brings the changed CHARACTERS of a line into view sideways, if they are not already.
+    ///
+    /// <para>Centring vertically is right - the eye rests in the middle of the pane - and centring
+    /// horizontally is not. Horizontal position carries meaning: indentation is how code shows its
+    /// structure, and a pane yanked sideways on every navigation loses that for every difference that
+    /// did not need it. So this scrolls the MINIMUM required, and only when the span is actually out of
+    /// view.</para>
+    ///
+    /// <para>A change with no columns to point at - a wholly inserted or deleted line, which carries no
+    /// character spans because the entire row is the difference - scrolls back to the left margin
+    /// instead. That IS where such a change starts, and leaving the pane parked to the right after
+    /// following a long line would hide the next difference behind the gutter.</para>
+    /// </summary>
+    /// <param name="startColumn">1-based column of the first changed character, or 0 for none.</param>
+    /// <param name="endColumn">1-based column just past the last changed character.</param>
+    public static void RevealColumns(
+        TextEditor editor, TextView textView, int lineNumber, int startColumn, int endColumn)
+    {
+        if (textView is not IScrollable scrollable || textView.Bounds.Width <= 0)
+        {
+            return;
+        }
+
+        var viewportWidth = textView.Bounds.Width;
+        var offset = scrollable.Offset.X;
+
+        // No columns: the whole line is the change, so home.
+        if (startColumn <= 0)
+        {
+            if (offset > 0)
+            {
+                ScrollHorizontallyTo(textView, 0);
+            }
+
+            return;
+        }
+
+        var line = editor.Document?.GetLineByNumber(lineNumber);
+        if (line is null)
+        {
+            return;
+        }
+
+        // Clamped to the line: a span is computed against the display text, and a stale or
+        // out-of-range column would otherwise ask AvaloniaEdit for a position that does not exist.
+        var length = line.Length;
+        var from = Math.Clamp(startColumn, 1, length + 1);
+        var to = Math.Clamp(endColumn, from, length + 1);
+
+        var left = XOf(textView, lineNumber, from);
+        var right = XOf(textView, lineNumber, to);
+
+        if (double.IsNaN(left) || double.IsNaN(right))
+        {
+            return;
+        }
+
+        // A margin so the change does not sit flush against an edge, where it reads as cut off.
+        const double Margin = 48;
+
+        if (left < offset + Margin)
+        {
+            ScrollHorizontallyTo(textView, Math.Max(0, left - Margin));
+            return;
+        }
+
+        if (right > offset + viewportWidth - Margin)
+        {
+            // Prefer showing the START of a span too wide to fit: reading begins there.
+            var wanted = right - viewportWidth + Margin;
+            ScrollHorizontallyTo(textView, Math.Min(wanted, Math.Max(0, left - Margin)));
+        }
+    }
+
+    private static double XOf(TextView textView, int lineNumber, int column)
+    {
+        try
+        {
+            return textView
+                .GetVisualPosition(new TextViewPosition(lineNumber, column), VisualYPosition.LineTop)
+                .X;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // The view has not built that visual line yet. Not knowing where a column is is a reason to
+            // leave the pane alone, never to throw out of a navigation.
+            return double.NaN;
+        }
     }
 
     public static void CenterOnLine(TextEditor editor, TextView textView, int lineNumber)

@@ -26,6 +26,27 @@ All notable changes to this project are documented here. The format is based on
   join a point to itself. The one case where the two ends genuinely sit at different heights is a
   **move**, and that is the one case a line is drawn for.
 
+- **The location map is easier to hit, easier to read, and says which difference you are on.** Wider
+  (32px), so it reads as the strip *between* the two panes rather than a border on one of them. Marks are
+  drawn 3px tall instead of 1px, so a single changed line on a long file is visible rather than a hair —
+  density is still carried by width, so nothing about "how much changed here" is lost.
+
+  **Clicking near a change snaps to it.** On a 60,000-line file one pixel is a hundred rows, so hitting a
+  one-line change used to be luck — and missing by a pixel scrolled a hundred lines away from the thing
+  you aimed at. A click within a few pixels of a mark now goes to the start of that change. Further away
+  it still goes exactly where you pointed, so dragging the strip keeps scrubbing smoothly.
+
+  **The current difference is washed across the full width** with bars down both edges, in the same
+  orange the editors use — so the map and the panes agree about which one you are on. The wash is drawn
+  *under* the marks, which stay the brightest thing on their own row.
+
+- **Navigating to a difference now scrolls sideways to it.** A change beyond the right edge of a long
+  line used to leave you looking at a row that appeared unchanged. Each pane is scrolled by the minimum
+  needed to bring *its own* changed characters into view, with a margin so they do not sit flush against
+  an edge — the minimum, because horizontal position carries meaning and a pane yanked sideways on every
+  step loses indentation as a cue. A whole inserted or deleted line has no columns to point at, so it
+  scrolls back to the left margin, which is where such a change starts.
+
 - **Ignored differences are visible now, and there are more of them.** Two changes, one principle: a
   difference you told the tool to ignore is still *shown*, faintly — because told nothing at all you
   cannot tell "these lines agree" from "these lines disagree and I asked not to be told", and the second

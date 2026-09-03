@@ -385,6 +385,68 @@ public class DiffMapModelTests
         Assert.Equal(-1, DiffMapModel.RowAt(0.5, 100, 0));
     }
 
+    // ---- Clicking near a change ----------------------------------------------------------------
+
+    [Fact]
+    public void A_click_near_a_change_snaps_to_it()
+    {
+        // Without this the map is unclickable exactly where it matters: on a long file one pixel is a
+        // hundred rows, so hitting a single-line change is luck - and missing by one pixel scrolls a
+        // hundred lines away from the thing that was aimed at.
+        var hunks = new List<DiffHunk> { new(5000, 5000) };
+
+        // The hunk sits at pixel 50 of 100. Aim four pixels above it.
+        var row = DiffMapModel.SnapToNearestChange(
+            hunks, fraction: 0.46, scale: 10_000, totalLines: 10_000, pixelHeight: 100, tolerancePixels: 6);
+
+        Assert.Equal(5000, row);
+    }
+
+    [Fact]
+    public void A_click_far_from_every_change_goes_where_it_was_aimed()
+    {
+        // Dragging the strip has to keep scrubbing smoothly through unchanged stretches; snapping
+        // everything would make the map a list of buttons instead of a map.
+        var hunks = new List<DiffHunk> { new(5000, 5000) };
+
+        var row = DiffMapModel.SnapToNearestChange(
+            hunks, fraction: 0.10, scale: 10_000, totalLines: 10_000, pixelHeight: 100, tolerancePixels: 6);
+
+        Assert.Equal(DiffMapModel.RowAt(0.10, 10_000, 10_000), row);
+    }
+
+    [Fact]
+    public void A_click_inside_a_tall_hunk_prefers_it_over_a_short_one_nearby()
+    {
+        // Distance is zero within a hunk's own band, so the one under the pointer always wins.
+        var hunks = new List<DiffHunk> { new(0, 5000), new(5100, 5100) };
+
+        var row = DiffMapModel.SnapToNearestChange(
+            hunks, fraction: 0.30, scale: 10_000, totalLines: 10_000, pixelHeight: 100, tolerancePixels: 6);
+
+        Assert.Equal(0, row);
+    }
+
+    [Fact]
+    public void Snapping_lands_on_the_hunks_START_not_wherever_the_pointer_was()
+    {
+        // So a click on a mark scrolls to the beginning of that change, which is what the reader meant.
+        var hunks = new List<DiffHunk> { new(4000, 6000) };
+
+        var row = DiffMapModel.SnapToNearestChange(
+            hunks, fraction: 0.55, scale: 10_000, totalLines: 10_000, pixelHeight: 100, tolerancePixels: 6);
+
+        Assert.Equal(4000, row);
+    }
+
+    [Fact]
+    public void Snapping_with_no_hunks_is_just_the_position()
+    {
+        Assert.Equal(
+            DiffMapModel.RowAt(0.5, 1000, 1000),
+            DiffMapModel.SnapToNearestChange([], 0.5, 1000, 1000, 100, 6));
+    }
+
     [Fact]
     public void Every_band_lands_inside_the_map()
     {

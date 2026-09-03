@@ -66,7 +66,7 @@ public sealed class DiffMap : Control
 
     public DiffMap()
     {
-        Width = 18;
+        Width = 32;
         Cursor = new Cursor(StandardCursorType.Hand);
     }
 
@@ -127,6 +127,22 @@ public sealed class DiffMap : Control
     /// <summary>Height of the off-screen indicator at the top and bottom.</summary>
     private const double ArrowHeight = 5;
 
+    /// <summary>
+    /// How tall a band is drawn, whatever it represents.
+    ///
+    /// Bands are computed one per PIXEL row, so a single-line change on a long file would be a 1px hair -
+    /// hard to see and impossible to aim at. Drawing every band this tall makes a lone change legible
+    /// without touching the density encoding, which is carried by WIDTH; neighbouring bands simply
+    /// overlap, and being the same colour they read as the continuous run they are.
+    /// </summary>
+    private const double BandThickness = 3;
+
+    /// <summary>
+    /// How close the pointer must be to a change for a click to snap to it. Generous on purpose: the
+    /// alternative is a map whose marks can be seen and not hit.
+    /// </summary>
+    private const double SnapTolerance = 6;
+
     public override void Render(DrawingContext context)
     {
         var height = Bounds.Height;
@@ -145,6 +161,9 @@ public sealed class DiffMap : Control
             ViewportStart,
             ViewportLength);
 
+        // Behind everything else, so the bands stay the brightest thing on their own row.
+        DrawCurrentHunkWash(context, height, width);
+
         // Half the strip per side, inside the gutter.
         var columnWidth = (width - Inset * 2) / 2;
 
@@ -160,10 +179,11 @@ public sealed class DiffMap : Control
             // Density is shown as WIDTH from the centre outwards rather than as opacity: a faint mark on
             // a dark strip is easy to miss entirely, while a short one is still unmistakably present.
             // The floor in the model guarantees a single-line change keeps a visible sliver.
-            var drawn = Math.Max(1, columnWidth * band.Density);
+            // Floored at 3px as well as scaled by density: below that a mark stops reading as a mark.
+            var drawn = Math.Max(3, columnWidth * band.Density);
             var left = band.Side == MapSide.Left ? x + (columnWidth - drawn) : x;
 
-            context.FillRectangle(brush, new Rect(left, band.Y, drawn, 1));
+            context.FillRectangle(brush, new Rect(left, band.Y, drawn, BandThickness));
         }
 
         DrawMoveLinks(context, view, width);
@@ -233,25 +253,62 @@ public sealed class DiffMap : Control
         }
     }
 
-    /// <summary>A bracket beside the hunk the user is on, so it reads without needing its own colour.</summary>
-    private void DrawCurrentHunk(DrawingContext context, double height, double width)
+    /// <summary>
+    /// A full-width wash behind the hunk the user is on.
+    ///
+    /// Drawn UNDER the bands rather than over them - the bands say what changed and must stay the
+    /// brightest thing on their row - and full width rather than as an edge bracket, which is what this
+    /// was and which was far too quiet to answer "where am I?" at a glance. Orange, the same colour the
+    /// editors use for the current difference, so the map and the panes agree about which one it is.
+    /// </summary>
+    private void DrawCurrentHunkWash(DrawingContext context, double height, double width)
     {
-        if (Hunks is not { } hunks || CurrentHunk < 0 || CurrentHunk >= hunks.Count)
+        if (CurrentHunkBounds(height) is not { } bounds
+            || DiffLineColors.CurrentHunkWash(this) is not { } wash)
         {
             return;
         }
 
-        if (DiffLineColors.CurrentHunkAccent(this) is not { } accent)
+        context.FillRectangle(wash, new Rect(0, bounds.Top, width, bounds.Height));
+    }
+
+    /// <summary>The outline and edge bars, drawn on top so the current hunk is findable even where its
+    /// own bands fill the row.</summary>
+    private void DrawCurrentHunk(DrawingContext context, double height, double width)
+    {
+        if (CurrentHunkBounds(height) is not { } bounds
+            || DiffLineColors.CurrentHunkAccent(this) is not { } accent)
         {
             return;
+        }
+
+        // Bars down both edges: they frame the row without covering the bands between them.
+        context.FillRectangle(accent, new Rect(0, bounds.Top, 2, bounds.Height));
+        context.FillRectangle(accent, new Rect(width - 2, bounds.Top, 2, bounds.Height));
+
+        if (DiffLineColors.CurrentHunkOutline(this) is { } outline)
+        {
+            context.DrawRectangle(
+                null,
+                new Pen(outline, 1),
+                new Rect(0.5, bounds.Top + 0.5, width - 1, Math.Max(1, bounds.Height - 1)));
+        }
+    }
+
+    /// <summary>Where the current hunk sits on the strip, with a floor so a one-line hunk is still a
+    /// band rather than a hairline.</summary>
+    private (double Top, double Height)? CurrentHunkBounds(double height)
+    {
+        if (Hunks is not { } hunks || CurrentHunk < 0 || CurrentHunk >= hunks.Count || Scale <= 0)
+        {
+            return null;
         }
 
         var hunk = hunks[CurrentHunk];
-        var top = hunk.StartIndex / (double)Scale * height;
-        var markHeight = Math.Max(hunk.Length / (double)Scale * height, 3);
 
-        context.FillRectangle(accent, new Rect(0, top, Inset, markHeight));
-        context.FillRectangle(accent, new Rect(width - Inset, top, Inset, markHeight));
+        return (
+            hunk.StartIndex / (double)Scale * height,
+            Math.Max(hunk.Length / (double)Scale * height, BandThickness * 2));
     }
 
     private void DrawViewport(DrawingContext context, double height, double width)
@@ -421,14 +478,22 @@ public sealed class DiffMap : Control
         return -1;
     }
 
-    /// <summary>The row a point on the strip addresses. The rule itself is in Core, where it is
-    /// tested; this only supplies the geometry.</summary>
+    /// <summary>The row a point on the strip addresses. The rules are in Core, where they are tested;
+    /// this only supplies the geometry.</summary>
     private int RowAt(double y) =>
         Bounds.Height <= 0 ? -1 : DiffMapModel.RowAt(y / Bounds.Height, Scale, TotalLines);
 
+    /// <summary>Where a CLICK goes - the nearest change when one is close, so a mark that can be seen
+    /// can be hit.</summary>
+    private int ClickRowAt(double y) =>
+        Bounds.Height <= 0
+            ? -1
+            : DiffMapModel.SnapToNearestChange(
+                Hunks ?? [], y / Bounds.Height, Scale, TotalLines, (int)Math.Floor(Bounds.Height), SnapTolerance);
+
     private void RequestJump(double y)
     {
-        var row = RowAt(y);
+        var row = ClickRowAt(y);
         if (row >= 0)
         {
             JumpRequested?.Invoke(this, row);

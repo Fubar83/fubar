@@ -120,6 +120,57 @@ public static class DiffMapModel
         return Math.Clamp((int)(Math.Clamp(fraction, 0, 1) * scale), 0, totalLines - 1);
     }
 
+    /// <summary>
+    /// The row a click should actually go to: the start of the nearest hunk when one is close, and the
+    /// row under the cursor when none is.
+    ///
+    /// <para>Without this the map is unclickable in exactly the case it matters. On a 60,000-line file
+    /// drawn 600px tall one pixel is a hundred rows, so a single-line change occupies one pixel and
+    /// landing on it is luck; worse, landing one pixel off silently scrolls a hundred lines away from
+    /// the thing that was aimed at. Snapping means a mark that can be SEEN can be HIT.</para>
+    ///
+    /// <para>The tolerance is in pixels rather than rows on purpose - it is a statement about the
+    /// pointer, not about the document, and a row-based one would be far too generous on a long file and
+    /// uselessly tight on a short one. Falls back to the plain position when nothing is near, so
+    /// dragging the map still scrubs smoothly through unchanged stretches.</para>
+    /// </summary>
+    public static int SnapToNearestChange(
+        IReadOnlyList<DiffHunk> hunks,
+        double fraction,
+        int scale,
+        int totalLines,
+        int pixelHeight,
+        double tolerancePixels)
+    {
+        var row = RowAt(fraction, scale, totalLines);
+        if (row < 0 || hunks is null || hunks.Count == 0 || pixelHeight <= 0 || scale <= 0)
+        {
+            return row;
+        }
+
+        var y = fraction * pixelHeight;
+        var best = -1;
+        var bestDistance = double.MaxValue;
+
+        foreach (var hunk in hunks)
+        {
+            var top = hunk.StartIndex * (double)pixelHeight / scale;
+            var bottom = hunk.EndIndex * (double)pixelHeight / scale;
+
+            // Zero when the pointer is within the hunk's own band, so a click inside a tall hunk always
+            // wins over a short one a few pixels away.
+            var distance = y < top ? top - y : y > bottom ? y - bottom : 0;
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = hunk.StartIndex;
+            }
+        }
+
+        return bestDistance <= tolerancePixels && best >= 0 ? best : row;
+    }
+
     /// <summary>Hunks with no row data: every change drawn on both sides at full density, since without
     /// rows there is nothing to say which side it was on or how much of it there is.</summary>
     private static List<MapBand> BandsFromHunks(IReadOnlyList<DiffHunk> hunks, int pixelHeight, int scale)

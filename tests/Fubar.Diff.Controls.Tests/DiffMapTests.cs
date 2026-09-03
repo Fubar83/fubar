@@ -88,10 +88,12 @@ public class DiffMapTests
     }
 
     [AvaloniaFact]
-    public void It_is_narrow_enough_to_sit_between_the_panes()
+    public void It_is_wide_enough_to_read_as_a_separator_and_no_wider()
     {
-        // The strip costs horizontal space from the thing the app exists to show, so its width is a
-        // deliberate number rather than whatever the content wanted.
-        Assert.InRange(new DiffMap().Width, 1, 24);
+        // Two competing pressures, both real. Too narrow and it looks like a border on one pane rather
+        // than a thing sitting BETWEEN the two - and its marks become unclickable hairlines. Too wide
+        // and the space comes straight out of the diff, which is what the app exists to show. The number
+        // is deliberate rather than whatever the content wanted, so it is pinned.
+        Assert.InRange(new DiffMap().Width, 24, 40);
     }
 }
