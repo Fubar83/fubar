@@ -10,17 +10,29 @@ public enum MapSide
 }
 
 /// <summary>
-/// One pixel row of one side of the map.
+/// One mark on one side of the map: a whole difference, not a row of one.
 /// </summary>
-/// <param name="Y">Pixel offset from the top of the map.</param>
+/// <param name="Y">Pixel offset of the mark's top from the top of the map.</param>
 /// <param name="Kind">The change to colour it by. <see cref="ChangeKind.Unchanged"/> means this band
-/// exists only to show an ignored row.</param>
-/// <param name="Density">How much of this pixel's worth of rows actually changed, 0..1. On a file long
+/// exists only to show ignored rows.</param>
+/// <param name="Density">How much of the rows this mark covers actually changed, 0..1. On a file long
 /// enough that one pixel covers many rows, this is what separates a single stray edit from a rewritten
 /// block - the thing a map is read for.</param>
 /// <param name="IsMoved">Every changed row behind this band belongs to a moved block.</param>
 /// <param name="IsIgnored">This band is only ignored rows.</param>
-public sealed record MapBand(int Y, MapSide Side, ChangeKind Kind, double Density, bool IsMoved, bool IsIgnored);
+/// <param name="Height">Pixel rows the mark spans, at least 1. One difference is ONE mark this tall,
+/// which is why the map can be counted by eye.</param>
+/// <param name="HunkIndex">Which difference this mark is, indexing the hunk list it was built from, or
+/// -1 for a run of ignored rows (which forms no hunk and cannot be navigated to).</param>
+public sealed record MapBand(
+    int Y,
+    MapSide Side,
+    ChangeKind Kind,
+    double Density,
+    bool IsMoved,
+    bool IsIgnored,
+    int Height,
+    int HunkIndex);
 
 /// <summary>Both ends of one moved block, in pixel rows, so the map can join them up.</summary>
 public sealed record MapMoveLink(int FromY, int ToY);
@@ -40,13 +52,24 @@ public sealed record DiffMapView(
 /// <summary>
 /// Turns a comparison into the marks a location map draws.
 ///
-/// <para><b>Aggregated per PIXEL, not per hunk.</b> The obvious implementation gives every hunk a
-/// rectangle and a minimum height so it cannot vanish, and that is what was here before. It fails in
-/// exactly the case a map exists for: on a 60,000-line file drawn 600px tall, one pixel is a hundred
-/// rows, every hunk is clamped to the same minimum, and forty changes in a rewritten region look
-/// identical to one stray edit beside it. Counting the changed rows behind each pixel and reporting
-/// that as <see cref="MapBand.Density"/> makes "how much changed here" legible again, which is the
-/// question a map is read for and the one WinMerge's location pane cannot answer either.</para>
+/// <para><b>One mark per DIFFERENCE, sized by how much of it changed.</b> Two obvious designs are both
+/// wrong, and this has been each of them. Give every hunk a rectangle with a minimum height and the map
+/// fails in exactly the case it exists for: on a 60,000-line file drawn 600px tall one pixel is a
+/// hundred rows, every hunk is clamped to the same minimum, and forty changes in a rewritten region
+/// look identical to one stray edit beside it. Emit a band per PIXEL row instead and that is fixed, but
+/// a new lie appears at the other end of the scale - on a file that fits on screen, one twelve-line
+/// difference becomes twelve separate marks with gaps between them, and the map answers "how many
+/// differences are there?" with a number far too big.</para>
+///
+/// <para>So: rows are grouped by the hunk they belong to, giving one mark per difference that can be
+/// counted by eye, and the changed rows behind it are still counted and reported as
+/// <see cref="MapBand.Density"/>, which is drawn as WIDTH. Nothing is lost either way - a hunk squashed
+/// into a single pixel is still a thin mark, and a hunk spanning forty is one tall one.</para>
+///
+/// <para>Grouping by hunk rather than by adjacency matters: two differences separated by one unchanged
+/// line are two marks, and stay two marks even when the gap between them rounds away to nothing. Runs
+/// of ignored rows form no hunk, so they are grouped by adjacency instead - the closest thing to "the
+/// same difference" available for something the differ decided was not one.</para>
 ///
 /// <para><b>Per side.</b> The map sits between two aligned panes, so a mark can say which side it is
 /// about: a deletion paints only the left half, an insertion only the right, a modification both. That
@@ -93,7 +116,7 @@ public static class DiffMapModel
         // failure here: a map that silently shows nothing reads as "no changes", which is the one wrong
         // answer a diff tool must never give.
         var bands = lines.Count > 0
-            ? BuildBands(lines, pixelHeight, scale)
+            ? BuildBands(lines, hunks, pixelHeight, scale)
             : BandsFromHunks(hunks, pixelHeight, scale);
 
         var links = lines.Count > 0 ? BuildMoveLinks(lines, pixelHeight, scale) : [];
@@ -171,38 +194,41 @@ public static class DiffMapModel
         return bestDistance <= tolerancePixels && best >= 0 ? best : row;
     }
 
-    /// <summary>Hunks with no row data: every change drawn on both sides at full density, since without
+    /// <summary>Hunks with no row data: one mark per hunk on both sides at full density, since without
     /// rows there is nothing to say which side it was on or how much of it there is.</summary>
     private static List<MapBand> BandsFromHunks(IReadOnlyList<DiffHunk> hunks, int pixelHeight, int scale)
     {
-        var seen = new HashSet<int>();
         var bands = new List<MapBand>();
 
-        foreach (var hunk in hunks)
+        for (var index = 0; index < hunks.Count; index++)
         {
+            var hunk = hunks[index];
             var from = Math.Clamp(hunk.StartIndex * pixelHeight / scale, 0, pixelHeight - 1);
             var to = Math.Clamp(hunk.EndIndex * pixelHeight / scale, 0, pixelHeight - 1);
+            var height = to - from + 1;
 
-            for (var y = from; y <= to; y++)
-            {
-                if (!seen.Add(y))
-                {
-                    continue;
-                }
-
-                bands.Add(new MapBand(y, MapSide.Left, ChangeKind.Modified, 1, false, false));
-                bands.Add(new MapBand(y, MapSide.Right, ChangeKind.Modified, 1, false, false));
-            }
+            bands.Add(new MapBand(from, MapSide.Left, ChangeKind.Modified, 1, false, false, height, index));
+            bands.Add(new MapBand(from, MapSide.Right, ChangeKind.Modified, 1, false, false, height, index));
         }
 
         return bands;
     }
 
-    private static List<MapBand> BuildBands(IReadOnlyList<DiffLine> lines, int pixelHeight, int scale)
+    private static List<MapBand> BuildBands(
+        IReadOnlyList<DiffLine> lines, IReadOnlyList<DiffHunk> hunks, int pixelHeight, int scale)
     {
-        // Two accumulators per pixel row, one per side.
-        var left = new Accumulator[pixelHeight];
-        var right = new Accumulator[pixelHeight];
+        var hunkOfRow = HunkPerRow(lines.Count, hunks);
+
+        // One group per (side, difference), found by key and kept in order of creation so the output is
+        // deterministic without depending on how a dictionary happens to enumerate.
+        var groups = new List<Group>();
+        var byKey = new Dictionary<(MapSide Side, int Key), int>();
+
+        // Ignored rows form no hunk, so consecutive ones are collected into a run of their own. Keys are
+        // negative to keep them out of the hunk indices' space; the run number rather than the row means
+        // a stretch of ignored rows is one mark, the same as a difference is.
+        var ignoredRun = -1;
+        var previousIgnoredRow = int.MinValue;
 
         for (var row = 0; row < lines.Count; row++)
         {
@@ -220,71 +246,113 @@ public static class DiffMapModel
 
             if (line.IsIgnored)
             {
-                // An ignored row is Unchanged + IsIgnored, so it forms no hunk and the old map showed
+                // An ignored row is Unchanged + IsIgnored, so it forms no hunk and the map used to show
                 // nothing at all for it. That left the reader unable to tell "these are identical" from
                 // "a rule is hiding this", which is exactly what they want to check after adding one.
-                left[y].AddIgnored();
-                right[y].AddIgnored();
+                if (row != previousIgnoredRow + 1)
+                {
+                    ignoredRun++;
+                }
+
+                previousIgnoredRow = row;
+
+                var ignoredKey = -2 - ignoredRun;
+                Collect(groups, byKey, MapSide.Left, ignoredKey, y, ChangeKind.Unchanged, false, true, -1);
+                Collect(groups, byKey, MapSide.Right, ignoredKey, y, ChangeKind.Unchanged, false, true, -1);
                 continue;
             }
+
+            var hunkIndex = hunkOfRow[row];
+
+            // A changed row belonging to no hunk should not happen - both come from the same comparison -
+            // but if it ever does, every such row must not collapse into one mark spanning the file.
+            // Falling back to a per-pixel key gives the old behaviour for those rows and nothing worse.
+            var key = hunkIndex >= 0 ? hunkIndex : int.MinValue / 2 + y;
 
             // Which halves this row is about. A deletion exists only on the left, an insertion only on
             // the right, a modification on both.
             if (line.Kind is ChangeKind.Deleted or ChangeKind.Modified)
             {
-                left[y].Add(line.Kind, line.IsMovedOn(DiffSide.Left));
+                Collect(
+                    groups, byKey, MapSide.Left, key, y,
+                    line.Kind, line.IsMovedOn(DiffSide.Left), false, hunkIndex);
             }
 
             if (line.Kind is ChangeKind.Inserted or ChangeKind.Modified)
             {
-                right[y].Add(line.Kind, line.IsMovedOn(DiffSide.Right));
+                Collect(
+                    groups, byKey, MapSide.Right, key, y,
+                    line.Kind, line.IsMovedOn(DiffSide.Right), false, hunkIndex);
             }
         }
 
         // Rows behind one pixel. Never below 1, or a map taller than the document divides by zero.
         var rowsPerPixel = Math.Max(1.0, scale / (double)pixelHeight);
 
-        var bands = new List<MapBand>();
-        for (var y = 0; y < pixelHeight; y++)
+        var bands = new List<MapBand>(groups.Count);
+        foreach (var group in groups)
         {
-            Emit(bands, left[y], y, MapSide.Left, rowsPerPixel);
-            Emit(bands, right[y], y, MapSide.Right, rowsPerPixel);
+            bands.Add(group.ToBand(rowsPerPixel));
         }
+
+        // Top to bottom, left before right. Nothing depends on it to draw, but a map is a thing people
+        // compare screenshots of, and tests read the first band.
+        bands.Sort((a, b) => a.Y != b.Y ? a.Y.CompareTo(b.Y) : a.Side.CompareTo(b.Side));
 
         return bands;
     }
 
-    private static void Emit(List<MapBand> into, Accumulator accumulator, int y, MapSide side, double rowsPerPixel)
+    /// <summary>
+    /// Which hunk each row belongs to, or -1. Built once per map rather than searched per row: the map
+    /// is redrawn on every scroll, and hunks on a large diff are numerous enough for that to matter.
+    /// </summary>
+    private static int[] HunkPerRow(int rowCount, IReadOnlyList<DiffHunk> hunks)
     {
-        if (accumulator.Total == 0 && accumulator.Ignored == 0)
+        var owner = new int[rowCount];
+        Array.Fill(owner, -1);
+
+        for (var index = 0; index < hunks.Count; index++)
         {
-            return;
+            var hunk = hunks[index];
+            var from = Math.Max(0, hunk.StartIndex);
+            var to = Math.Min(rowCount - 1, hunk.EndIndex);
+
+            for (var row = from; row <= to; row++)
+            {
+                owner[row] = index;
+            }
         }
 
-        if (accumulator.Total == 0)
+        return owner;
+    }
+
+    private static void Collect(
+        List<Group> groups,
+        Dictionary<(MapSide Side, int Key), int> byKey,
+        MapSide side,
+        int key,
+        int y,
+        ChangeKind kind,
+        bool moved,
+        bool ignored,
+        int hunkIndex)
+    {
+        if (!byKey.TryGetValue((side, key), out var index))
         {
-            into.Add(new MapBand(y, side, ChangeKind.Unchanged, Density(accumulator.Ignored, rowsPerPixel), false, true));
-            return;
+            index = groups.Count;
+            byKey[(side, key)] = index;
+            groups.Add(new Group(side, y, hunkIndex));
         }
 
-        into.Add(new MapBand(
-            y,
-            side,
-            accumulator.Kind,
-            Density(accumulator.Total, rowsPerPixel),
-            // Moved only when EVERY changed row here moved. A pixel mixing a move with a real edit is
-            // an edit: the move colour means "you can skip this", and being wrong about that is worse
-            // than not saying it.
-            accumulator.Moved == accumulator.Total,
-            false));
+        groups[index].Add(y, kind, moved, ignored);
     }
 
     /// <summary>
-    /// How full this pixel is, 0..1 - but never 0, because a pixel that has any change at all must be
+    /// How full a mark is, 0..1 - but never 0, because a mark that has any change at all must be
     /// visible. The floor is what stops a single-line change disappearing on a long file.
     /// </summary>
-    private static double Density(int rows, double rowsPerPixel) =>
-        Math.Clamp(rows / rowsPerPixel, 0.15, 1.0);
+    private static double Density(int changedRows, double coveredRows) =>
+        Math.Clamp(changedRows / Math.Max(1.0, coveredRows), 0.15, 1.0);
 
     private static List<MapMoveLink> BuildMoveLinks(IReadOnlyList<DiffLine> lines, int pixelHeight, int scale)
     {
@@ -367,35 +435,78 @@ public static class DiffMapModel
         return (above, below);
     }
 
-    /// <summary>What one pixel row of one side collected.</summary>
-    private struct Accumulator
+    /// <summary>
+    /// One difference on one side, while its rows are still being counted.
+    ///
+    /// A class rather than a struct because it is held in a list and mutated in place; a struct would
+    /// need writing back on every row, which is the kind of thing that works until someone forgets.
+    /// </summary>
+    private sealed class Group(MapSide side, int firstY, int hunkIndex)
     {
-        public int Total;
-        public int Moved;
-        public int Ignored;
-        public ChangeKind Kind;
+        // Held explicitly rather than read off the parameter: the parameter also seeds _lastY, and a
+        // primary-constructor parameter that is both captured and used to initialise a field is a
+        // warning precisely because which one you are reading stops being obvious.
+        private readonly int _firstY = firstY;
+        private int _lastY = firstY;
+        private int _changed;
+        private int _moved;
+        private int _ignored;
+        private ChangeKind _kind = ChangeKind.Unchanged;
 
-        public void Add(ChangeKind kind, bool moved)
+        public void Add(int y, ChangeKind kind, bool moved, bool ignored)
         {
-            // First kind wins, EXCEPT that Modified is the honest summary of a pixel holding both an
-            // insertion and a deletion - which is what a rewritten block looks like once it is squashed
-            // into one pixel.
-            if (Total == 0)
+            // Rows arrive in order, so this only ever grows downwards - but taking the max costs nothing
+            // and means a caller feeding them in any order still gets a mark that covers them all.
+            _lastY = Math.Max(_lastY, y);
+
+            if (ignored)
             {
-                Kind = kind;
-            }
-            else if (Kind != kind)
-            {
-                Kind = ChangeKind.Modified;
+                _ignored++;
+                return;
             }
 
-            Total++;
+            // First kind wins, EXCEPT that Modified is the honest summary of a difference holding both
+            // an insertion and a deletion - which is what a rewritten block is.
+            if (_changed == 0)
+            {
+                _kind = kind;
+            }
+            else if (_kind != kind)
+            {
+                _kind = ChangeKind.Modified;
+            }
+
+            _changed++;
             if (moved)
             {
-                Moved++;
+                _moved++;
             }
         }
 
-        public void AddIgnored() => Ignored++;
+        public MapBand ToBand(double rowsPerPixel)
+        {
+            var height = _lastY - _firstY + 1;
+
+            // Density is measured against the rows the mark COVERS, not against one pixel's worth: a
+            // twelve-line difference drawn twelve pixels tall is full, and the same difference squashed
+            // into one pixel on a huge file is a sliver. Both are true statements about it.
+            var covered = height * rowsPerPixel;
+
+            return _changed == 0
+                ? new MapBand(
+                    _firstY, side, ChangeKind.Unchanged, Density(_ignored, covered), false, true, height, -1)
+                : new MapBand(
+                    _firstY,
+                    side,
+                    _kind,
+                    Density(_changed, covered),
+                    // Moved only when EVERY changed row here moved. A difference mixing a move with a
+                    // real edit is an edit: the move colour means "you can skip this", and being wrong
+                    // about that is worse than not saying it.
+                    _moved == _changed,
+                    false,
+                    height,
+                    hunkIndex);
+        }
     }
 }

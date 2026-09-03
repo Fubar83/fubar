@@ -131,12 +131,11 @@ public sealed class DiffMap : Control
     private const double ArrowHeight = 5;
 
     /// <summary>
-    /// How tall a band is drawn, whatever it represents.
+    /// The SMALLEST a mark is drawn. A difference taller than this is drawn at its own height.
     ///
-    /// Bands are computed one per PIXEL row, so a single-line change on a long file would be a 1px hair -
-    /// hard to see and impossible to aim at. Drawing every band this tall makes a lone change legible
-    /// without touching the density encoding, which is carried by WIDTH; neighbouring bands simply
-    /// overlap, and being the same colour they read as the continuous run they are.
+    /// A single-line change on a long file rounds to one pixel, which is a hair - hard to see and
+    /// impossible to aim at. Flooring every mark here makes a lone change legible without touching the
+    /// density encoding, which is carried by WIDTH.
     /// </summary>
     private const double BandThickness = 5;
 
@@ -173,35 +172,16 @@ public sealed class DiffMap : Control
         // over or behind them. A wash and a bar across the strip were both tried and both drowned the
         // map: the marks were already the right shape and weight, and the only thing missing was which
         // of them is the one you are on.
-        var current = CurrentHunkBounds(height);
         var accent = DiffLineColors.CurrentHunkAccent(this);
 
-        foreach (var band in view.Bands)
-        {
-            var isCurrent =
-                accent is not null
-                && current is { } range
-                && band.Y >= range.Top - BandThickness
-                && band.Y <= range.Top + range.Height;
-
-            if ((isCurrent ? accent : BrushFor(band)) is not { } brush)
-            {
-                continue;
-            }
-
-            var edge = BorderWidth + Inset;
-            var x = band.Side == MapSide.Left ? edge : edge + columnWidth;
-
-            // Density is shown as WIDTH from the centre outwards rather than as opacity: a faint mark on
-            // a dark strip is easy to miss entirely, while a short one is still unmistakably present.
-            // The floor in the model guarantees a single-line change keeps a visible sliver.
-            // Floored well above a hairline as well as scaled by density: the mark IS the click target,
-            // so how big it is decides whether the map can be used at all.
-            var drawn = Math.Max(5, columnWidth * band.Density);
-            var left = band.Side == MapSide.Left ? x + (columnWidth - drawn) : x;
-
-            context.FillRectangle(brush, new Rect(left, band.Y, drawn, BandThickness));
-        }
+        // Ignored marks first, real changes over them. A difference and a run of ignored rows are two
+        // separate marks now, and on a long file they routinely round onto the same pixel - so whichever
+        // is painted last decides what the reader sees there. It must be the change: the ignored colour
+        // means "a rule is hiding something here", and letting it tint a real edit says the opposite of
+        // what is true. Two passes rather than a sort, because painting order is this control's business
+        // and the model has better reasons to stay in document order.
+        DrawBands(context, view.Bands.Where(b => b.IsIgnored), columnWidth, accent);
+        DrawBands(context, view.Bands.Where(b => !b.IsIgnored), columnWidth, accent);
 
         DrawMoveLinks(context, view, width);
         DrawViewport(context, height, width);
@@ -218,6 +198,41 @@ public sealed class DiffMap : Control
     /// on screen has its marks level with their lines, while anything longer compresses to fit.
     /// </summary>
     private int Scale => Math.Max(TotalLines, ViewportLength);
+
+    private void DrawBands(
+        DrawingContext context, IEnumerable<MapBand> bands, double columnWidth, IBrush? accent)
+    {
+        var edge = BorderWidth + Inset;
+
+        foreach (var band in bands)
+        {
+            // Which difference a mark IS, rather than where it happens to sit. This used to compare the
+            // mark's pixel row against the current hunk's pixel bounds, which needed a fudge at each end
+            // and still recoloured a neighbour whenever two differences rounded onto adjacent pixels.
+            // Now that a mark is a whole difference it can simply say which one.
+            var isCurrent = accent is not null && band.HunkIndex >= 0 && band.HunkIndex == CurrentHunk;
+
+            if ((isCurrent ? accent : BrushFor(band)) is not { } brush)
+            {
+                continue;
+            }
+
+            var x = band.Side == MapSide.Left ? edge : edge + columnWidth;
+
+            // Density is shown as WIDTH from the centre outwards rather than as opacity: a faint mark on
+            // a dark strip is easy to miss entirely, while a short one is still unmistakably present.
+            // The floor in the model guarantees a single-line change keeps a visible sliver.
+            // Floored well above a hairline as well as scaled by density: the mark IS the click target,
+            // so how big it is decides whether the map can be used at all.
+            var drawn = Math.Max(5, columnWidth * band.Density);
+            var left = band.Side == MapSide.Left ? x + (columnWidth - drawn) : x;
+
+            // A difference's own height, floored so a one-pixel one is still a mark you can see and hit.
+            var thickness = Math.Max(BandThickness, band.Height);
+
+            context.FillRectangle(brush, new Rect(left, band.Y, drawn, thickness));
+        }
+    }
 
     private IBrush? BrushFor(MapBand band)
     {
@@ -285,22 +300,6 @@ public sealed class DiffMap : Control
 
         context.FillRectangle(brush, new Rect(0, 0, BorderWidth, height));
         context.FillRectangle(brush, new Rect(width - BorderWidth, 0, BorderWidth, height));
-    }
-
-    /// <summary>Where the current hunk sits on the strip, with a floor so a one-line hunk is still a
-    /// band rather than a hairline.</summary>
-    private (double Top, double Height)? CurrentHunkBounds(double height)
-    {
-        if (Hunks is not { } hunks || CurrentHunk < 0 || CurrentHunk >= hunks.Count || Scale <= 0)
-        {
-            return null;
-        }
-
-        var hunk = hunks[CurrentHunk];
-
-        return (
-            hunk.StartIndex / (double)Scale * height,
-            Math.Max(hunk.Length / (double)Scale * height, BandThickness * 2));
     }
 
     private void DrawViewport(DrawingContext context, double height, double width)

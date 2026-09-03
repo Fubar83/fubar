@@ -9,10 +9,17 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 
 - **A location map worth reading, where there was a strip of ticks.** The map between the panes now
-  shows *how much* changed at each point, not just where. It aggregates per pixel rather than per hunk,
-  which matters exactly where a map earns its place: on a 60,000-line file drawn 600px tall, one pixel is
-  a hundred rows, and the old drawing clamped every hunk to the same minimum height — so forty changes in
-  a rewritten region looked identical to one stray edit beside it.
+  shows *how much* changed at each point, not just where. **One mark per difference**, at that
+  difference's own height — a twelve-line change is one twelve-pixel bar, not twelve marks with gaps
+  between them, which is how it read before and made the map answer "how many differences are there?"
+  with a number far too big. Two differences separated by a single unchanged line still count as two,
+  even when the gap between them is too small to draw.
+
+  The width of a mark says how much of it changed, which is what a map earns its place for: on a
+  60,000-line file drawn 600px tall one pixel is a hundred rows, and the old drawing clamped every hunk
+  to the same minimum — so forty changes in a rewritten region looked identical to one stray edit beside
+  it. A difference squashed into a single pixel is still a visible sliver, and one spanning forty is a
+  full bar.
 
   Marks are now per side, so a deletion shows on the left and an insertion on the right without relying
   on colour alone. **Ignored rows are marked** — they form no hunk, so they used to draw nothing at all,
@@ -68,12 +75,19 @@ All notable changes to this project are documented here. The format is based on
   orange the editors use — so the map and the panes agree about which one you are on. The wash is drawn
   *under* the marks, which stay the brightest thing on their own row.
 
-- **Navigating to a difference now scrolls sideways to it.** A change beyond the right edge of a long
-  line used to leave you looking at a row that appeared unchanged. Each pane is scrolled by the minimum
-  needed to bring *its own* changed characters into view, with a margin so they do not sit flush against
-  an edge — the minimum, because horizontal position carries meaning and a pane yanked sideways on every
-  step loses indentation as a cue. A whole inserted or deleted line has no columns to point at, so it
-  scrolls back to the left margin, which is where such a change starts.
+- **Navigating to a difference now scrolls sideways to it — in every pane, including the close-up.** A
+  change beyond the right edge of a long line used to leave you looking at a row that appeared unchanged.
+  Each pane is scrolled by the minimum needed to bring *its own* changed characters into view, with a
+  margin so they do not sit flush against an edge — the minimum, because horizontal position carries
+  meaning and a pane yanked sideways on every step loses indentation as a cue. A whole inserted or
+  deleted line has no columns to point at, so it scrolls back to the left margin, which is where such a
+  change starts.
+
+  The **Json view and the close-up beneath it** do this too, and that is where the omission actually
+  hurt: an unaligned Json document is usually **minified**, so the close-up's excerpt is one enormous
+  line, and finding the right line left you staring at its beginning with the highlighted characters two
+  hundred across and off the edge. Nothing on screen suggested you were looking at the wrong part of the
+  right line.
 
 - **Ignored differences are visible now, and there are more of them.** Two changes, one principle: a
   difference you told the tool to ignore is still *shown*, faintly — because told nothing at all you

@@ -543,6 +543,14 @@ step loses that for every difference that never needed it. Each side is given it
 modified row the two sides' changed characters are rarely at the same offsets. A whole inserted or
 deleted line carries no spans and scrolls home instead, which is where such a change starts.
 
+Both surfaces have to call it: `DiffView.ScrollTo` for the aligned panes, and `RawJsonPane.ApplyHighlight`
+for the Json panes and the close-up. It was wired into the first only, and the close-up is where the
+omission actually hurt - an unaligned Json document is regularly MINIFIED, so the excerpt is one enormous
+line and centring on it left the reader looking at its start with the highlight two hundred characters
+off the right edge. Post the call rather than making it inline: the visual line for a row just scrolled
+to does not exist until the next layout pass, and asking for a column position before then finds nothing
+and scrolls nowhere, silently. That silence is why this went unnoticed until it met a minified file.
+
 *A mark that can be seen must be hittable.* The map draws bands 5px tall and never narrower than 5px, and
 `DiffMapModel.SnapToNearestChange` sends a click within 12px to the nearest hunk's START. Both exist
 because one pixel is a hundred rows on a long file: a one-line change was a hairline, and missing it by a
@@ -554,21 +562,42 @@ down the outer edges framed the row, which reads as "somewhere in this range" wh
 map doing it. The marks were already the right shape and weight - only their colour was missing. Do not
 re-add an overlay here.
 
-**The location map aggregates per PIXEL, and what it draws is decided in Core** (Diff).
-`DiffMapModel.Build` turns rows and hunks into bands; `DiffMap` only paints them. The obvious
-implementation - one rectangle per hunk with a minimum height so it cannot vanish - is what was here
-before, and it fails in exactly the case a map exists for: on a 60,000-line file drawn 600px tall one
-pixel is a hundred rows, every hunk clamps to the same minimum, and forty changes in a rewritten region
-look identical to one stray edit beside it. Counting the changed rows behind each pixel and reporting
-that as `MapBand.Density` makes "how much changed here" legible again. Density is drawn as WIDTH from
-each side inwards rather than as opacity, because a faint mark on a dark strip is easy to miss entirely
-while a short one is unmistakably present; the 0.15 floor in the model is what keeps a single-line change
-visible on a huge file, and losing those would make the map worse than none, since an empty strip reads
-as "nothing here".
+**The location map draws one mark per DIFFERENCE, sized by how much of it changed, and what it draws is
+decided in Core** (Diff). `DiffMapModel.Build` turns rows and hunks into bands; `DiffMap` only paints
+them. Two obvious designs are both wrong and this has been each of them, in this order. One rectangle per
+hunk with a minimum height so it cannot vanish fails in exactly the case a map exists for: on a
+60,000-line file drawn 600px tall one pixel is a hundred rows, every hunk clamps to the same minimum, and
+forty changes in a rewritten region look identical to one stray edit beside it. Emitting a band per PIXEL
+ROW instead fixes that and introduces a new lie at the other end of the scale - on a file that fits on
+screen, one twelve-line difference becomes twelve separate marks with gaps between them, so the map
+answers "how many differences are there?" with a number far too big.
 
-Marks are per SIDE - a deletion paints only the left half, an insertion only the right, a modification
-both - and the two sides accumulate separately, so a pixel holding a deletion and an insertion shows one
-of each facing rather than merging into "modified". That per-side split costs nothing precisely because
+So rows are grouped by the HUNK they belong to: one mark per difference, at that difference's own height,
+floored to 5px so a single-line change is still visible and hittable. The changed rows behind a mark are
+still counted and reported as `MapBand.Density`, measured against the rows the mark COVERS - so a
+twelve-row difference drawn twelve pixels tall is full, and the same difference squashed into one pixel of
+a huge file is a sliver. Density is drawn as WIDTH from each side inwards rather than as opacity, because
+a faint mark on a dark strip is easy to miss entirely while a short one is unmistakably present; the 0.15
+floor is what keeps a single-line change visible, and losing those would make the map worse than none,
+since an empty strip reads as "nothing here".
+
+Group by hunk, NOT by adjacency. Two differences separated by one unchanged line are two differences, and
+must stay two marks even when the gap between them rounds away to nothing - which it does on any long
+file. Runs of ignored rows form no hunk, so they are grouped by adjacency instead, that being the closest
+thing available for something the differ decided was not a difference.
+
+`MapBand.HunkIndex` is what the control matches against its own `CurrentHunk` to recolour the current
+difference. That used to be a comparison of the mark's pixel row against the current hunk's pixel bounds,
+needing a fudge at each end and still recolouring a neighbour whenever two differences rounded onto
+adjacent pixels; a mark that IS a whole difference can simply say which one. A change and a run of ignored
+rows are separate marks that routinely land on the same pixel, so `DiffMap` paints all the ignored ones
+first and the changes over them - the ignored colour means "a rule is hiding something here", and letting
+it tint a real edit says the opposite of what is true. That is a painting decision and lives in the
+control; the model stays in document order.
+
+Marks are per (SIDE, difference) - a deletion paints only the left half, an insertion only the right, a
+modification both - and the two sides group separately, so one replacement marks each side over its own
+rows rather than merging into "modified" across both. That per-side split costs nothing precisely because
 the panes are row-aligned, which is also why this needs none of WinMerge's connecting lines between its
 columns: those exist to tie together two columns at independent scales, and ours are the same scale by
 construction. The one place a connecting line carries information here is a MOVE, whose two ends sit at

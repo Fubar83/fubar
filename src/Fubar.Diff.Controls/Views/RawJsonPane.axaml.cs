@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Fubar.Diff.Controls.Rendering;
 using Fubar.Diff.Core.Json;
 using Fubar.Diff.Core.Models;
@@ -143,6 +144,27 @@ public partial class RawJsonPane : UserControl
     }
 
     /// <summary>
+    /// Scrolls sideways so the highlighted characters are actually on screen.
+    ///
+    /// <para>Vertical centring alone is not enough here, and this pane is where that shows worst: an
+    /// unaligned Json document is regularly MINIFIED, so the change is one line down and two hundred
+    /// characters across. Centring found the line and left the reader looking at the start of it - the
+    /// close-up would show a wall of text with its highlight somewhere off the right edge.</para>
+    ///
+    /// <para>Posted, because the visual line for a row that was just scrolled to does not exist until
+    /// the next layout pass, and asking for a column position before then finds nothing and scrolls
+    /// nowhere - silently, which is how this went unnoticed in the main panes' version until it was
+    /// tried on a minified file.</para>
+    /// </summary>
+    private void RevealHorizontally(SourceSpan span)
+    {
+        Dispatcher.UIThread.Post(
+            () => EditorScroll.RevealColumns(
+                Editor, Editor.TextArea.TextView, span.StartLine, span.StartColumn, span.EndColumn),
+            DispatcherPriority.Loaded);
+    }
+
+    /// <summary>
     /// Hands the quiet all-changes layer what it should mark.
     ///
     /// Nothing at all in the close-up: that pane shows an EXCERPT, whose lines are renumbered from 1,
@@ -192,6 +214,7 @@ public partial class RawJsonPane : UserControl
         if (known.StartLine >= 1 && known.StartLine <= Editor.Document.LineCount)
         {
             EditorScroll.CenterOnLine(Editor, Editor.TextArea.TextView, known.StartLine);
+            RevealHorizontally(known);
         }
     }
 }

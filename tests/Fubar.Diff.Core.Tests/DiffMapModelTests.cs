@@ -179,16 +179,148 @@ public class DiffMapModelTests
     }
 
     [Fact]
-    public void A_real_change_in_the_same_pixel_wins_over_an_ignored_row()
+    public void A_change_and_an_ignored_row_in_the_same_pixel_are_reported_separately()
     {
-        // The band is drawn once; a pixel holding both must read as the change, not as the ignore.
+        // They are two different things, so the model reports two marks even where they collide - what
+        // used to happen was that the change absorbed the ignore, which lost the ignore entirely on a
+        // long file. Which of the two the reader SEES at a shared pixel is settled by the control, which
+        // paints ignored marks first and changes over them.
         var lines = Document(1000);
         lines[500] = Ignored(501);
         lines[501] = Modified(502);
 
         var view = Build(lines, pixelHeight: 10);
 
-        Assert.All(view.Bands, b => Assert.False(b.IsIgnored));
+        var left = view.Bands.Where(b => b.Side == MapSide.Left).ToList();
+
+        Assert.Contains(left, b => b.IsIgnored);
+        Assert.Contains(left, b => !b.IsIgnored && b.Kind == ChangeKind.Modified);
+        Assert.All(left, b => Assert.Equal(5, b.Y));
+    }
+
+    // ---- One mark per difference ---------------------------------------------------------------
+
+    [Fact]
+    public void Consecutive_rows_of_one_difference_are_a_single_mark()
+    {
+        // The whole point of grouping. Twelve marks in a row all belonging to change #1 tell the reader
+        // there are twelve differences, which is a lie the map used to tell on any file short enough
+        // that each row got a pixel of its own.
+        var lines = Document(40);
+        for (var row = 10; row < 22; row++)
+        {
+            lines[row] = Modified(row + 1);
+        }
+
+        var view = Build(lines, pixelHeight: 40);
+
+        var left = Assert.Single(view.Bands, b => b.Side == MapSide.Left);
+
+        Assert.Equal(10, left.Y);
+        Assert.Equal(12, left.Height);
+        Assert.Equal(0, left.HunkIndex);
+        Assert.Equal(1, left.Density); // every row it covers changed
+    }
+
+    [Fact]
+    public void Two_differences_stay_two_marks_however_close_they_are()
+    {
+        // Grouping is by DIFFERENCE, not by adjacency: one unchanged line between two changes makes them
+        // two differences, and they must still count as two after the gap rounds away to nothing.
+        var lines = Document(1000);
+        lines[500] = Modified(501);
+        lines[502] = Modified(503);
+
+        var view = Build(lines, pixelHeight: 10);
+
+        var left = view.Bands.Where(b => b.Side == MapSide.Left).ToList();
+
+        Assert.Equal(2, left.Count);
+        Assert.Equal([0, 1], left.Select(b => b.HunkIndex));
+        Assert.All(left, b => Assert.Equal(5, b.Y)); // both squashed onto the same pixel
+    }
+
+    [Fact]
+    public void A_difference_squashed_into_one_pixel_is_a_thin_mark_not_a_full_one()
+    {
+        // Grouping must not cost the density encoding: three changed rows out of the hundred behind a
+        // pixel is still a sliver, which is how a stray edit stays distinguishable from a rewrite.
+        var lines = Document(1000);
+        for (var row = 500; row < 503; row++)
+        {
+            lines[row] = Modified(row + 1);
+        }
+
+        var view = Build(lines, pixelHeight: 10);
+
+        var left = Assert.Single(view.Bands, b => b.Side == MapSide.Left);
+
+        Assert.Equal(1, left.Height);
+        Assert.True(left.Density < 0.2, $"expected a sliver, got {left.Density}");
+    }
+
+    [Fact]
+    public void A_replacement_marks_each_side_over_its_own_rows()
+    {
+        // One difference, but the deleted rows and the inserted ones are at different heights. Grouping
+        // per (side, difference) is what keeps each half over the rows it is actually about.
+        var lines = Document(40);
+        lines[10] = Deleted(11);
+        lines[11] = Deleted(12);
+        lines[12] = Inserted(11);
+
+        var view = Build(lines, pixelHeight: 40);
+
+        var left = Assert.Single(view.Bands, b => b.Side == MapSide.Left);
+        var right = Assert.Single(view.Bands, b => b.Side == MapSide.Right);
+
+        Assert.Equal((10, 2), (left.Y, left.Height));
+        Assert.Equal((12, 1), (right.Y, right.Height));
+        Assert.Equal(left.HunkIndex, right.HunkIndex);
+    }
+
+    [Fact]
+    public void A_run_of_ignored_rows_is_one_mark_and_a_second_run_is_another()
+    {
+        // Ignored rows form no hunk, so there is no difference to group them by. Adjacency is the
+        // closest thing available, and it still answers "how many places is a rule hiding something?".
+        var lines = Document(40);
+        lines[5] = Ignored(6);
+        lines[6] = Ignored(7);
+        lines[20] = Ignored(21);
+
+        var view = Build(lines, pixelHeight: 40);
+
+        var left = view.Bands.Where(b => b.Side == MapSide.Left).ToList();
+
+        Assert.Equal(2, left.Count);
+        Assert.All(left, b => Assert.True(b.IsIgnored));
+        Assert.Equal([(5, 2), (20, 1)], left.Select(b => (b.Y, b.Height)));
+        Assert.All(left, b => Assert.Equal(-1, b.HunkIndex));
+    }
+
+    [Fact]
+    public void Every_mark_names_the_difference_it_belongs_to()
+    {
+        // The control recolours the current difference by matching this against its own CurrentHunk, so
+        // an index that does not address the hunk list would highlight the wrong mark or none.
+        var lines = Document(40);
+        lines[5] = Modified(6);
+        lines[20] = Modified(21);
+        lines[21] = Modified(22);
+
+        var view = Build(lines, pixelHeight: 40);
+        var hunks = Hunks(lines);
+
+        Assert.All(
+            view.Bands.Where(b => !b.IsIgnored),
+            b =>
+            {
+                Assert.InRange(b.HunkIndex, 0, hunks.Count - 1);
+
+                // One pixel per row here, so the mark's top is the hunk's own first row.
+                Assert.Equal(hunks[b.HunkIndex].StartIndex, b.Y);
+            });
     }
 
     // ---- Moves ---------------------------------------------------------------------------------
