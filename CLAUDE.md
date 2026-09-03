@@ -614,6 +614,41 @@ what makes the view model safe to touch rows from, and what makes a console proc
 print its lines from the thread pool, out of order and possibly after the summary meant to conclude
 them. Both were found by a failing test.
 
+**An OpenAPI import creates as few environment variables as it can, and PATH PARAMETERS ARE NEVER ONE
+OF THEM** (Studio). An eight-operation spec used to materialise fourteen variables per environment, of
+which three were right. The rule now: the only inferred variables are `baseUrl` and the credentials for
+security schemes the document actually references. Four separate reasons, each worth keeping.
+
+*Path parameters go inline in the URL.* One workspace-wide variable per distinct `{name}` is wrong at
+scale - a mid-sized API becomes dozens of empty variables - and wrong in kind, because the names COLLIDE:
+`/users/{id}`, `/users/{id}/orders` and `/orders/{id}` all resolved to a single `id`, so filling it in for
+one request broke the other two. A path parameter belongs to the one request whose URL contains it, and
+this app has no request-scoped variables by design (`RequestModel.LocalVariables` is retired), so the URL
+is where it lives. It keeps the spec's own `{name}` - single braces, inert to `VariableResolver`, so it
+reads as a placeholder rather than an undefined variable - or the example/default when the spec supplies
+one, which makes the request runnable. Not `<string>`: `/users/<string>/orders/<string>` throws away which
+parameter is which, and the name is the only thing telling the reader what to put there.
+
+*Only referenced security schemes.* `BuildAuthProfiles` used to walk every scheme in
+`components.securitySchemes`; a spec that declares four and uses one got four profiles and five
+variables, including a Basic username and password for auth nobody asked for. `ReferencedSchemes` collects
+what the global and per-operation `security` blocks name. The one exception: a document referencing
+NOTHING keeps them all, with a warning, because importing no auth at all would leave nothing to switch on.
+
+*Server variables are substituted, never also copied.* Being both made them inert - `baseUrl` already held
+the resolved URL, so nothing referenced them and setting `region` to `eu` changed nothing - and made them
+wrong across environments, since one server's variables were copied into every environment, first value
+wins, including servers whose URL is literal. Making them LIVE instead would need recursive resolution
+(a `baseUrl` containing `{{region}}`), and `VariableResolver.Substitute` is deliberately a single pass.
+
+*A declared parameter that collides with the auth is imported UNCHECKED.* The silent one. Specs routinely
+declare `Authorization` as an ordinary header parameter as well as declaring a security scheme; imported
+enabled it carried a placeholder, and `AuthRequestMerge` - correctly - refuses to overwrite a header the
+request already carries enabled, so `<string>` went out as the Authorization header and the real token
+never did. 401s that look like the auth profile is broken. Disabled rather than dropped: the spec said the
+parameter exists, and a disabled row cannot suppress the auth, so ticking it back on is a deliberate act.
+The same applies to an apiKey-in-query scheme against a declared query parameter.
+
 **An HTTP status never fails a collection run - only an assertion or a transport error does**
 (Studio). The load-bearing decision in the runner, and not the obvious one. This app lets you assert
 `StatusCode Equals 404` deliberately, so a runner that ALSO treated 4xx/5xx as failure would make the

@@ -106,11 +106,14 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         var components = root["components"] as JsonObject;
         var securitySchemes = (isV2 ? root["securityDefinitions"] : components?["securitySchemes"]) as JsonObject;
 
-        var (profiles, authVars) = BuildAuthProfiles(securitySchemes, warnings);
+        // Which schemes the document actually uses. A spec commonly declares several - or inherits a
+        // shared components block - and references one; building a profile and a variable for each of the
+        // others fills the environment with credentials for auth nobody asked for.
+        var usedSchemes = ReferencedSchemes(root);
+        var (profiles, authVars) = BuildAuthProfiles(securitySchemes, usedSchemes, warnings);
         var globalSecurity = ResolveSecurity(root["security"], profiles);
 
         var requests = new List<PlannedRequest>();
-        var pathParams = new HashSet<string>(StringComparer.Ordinal);
 
         if (root["paths"] is JsonObject paths)
         {
@@ -130,21 +133,25 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
                         continue;
                     }
 
-                    var model = BuildRequest(method, rawPath, op, pathLevelParams, root, profiles, globalSecurity, pathParams, warnings);
+                    var model = BuildRequest(method, rawPath, op, pathLevelParams, root, profiles, globalSecurity, warnings);
                     var tag = Str((op["tags"] as JsonArray)?.FirstOrDefault()) is { Length: > 0 } t ? t : "";
                     requests.Add(new PlannedRequest(tag, model));
                 }
             }
         }
 
-        // Inferred variables all live in the environment(s): auth-scheme values + path parameters (server
-        // variables get added inside BuildEnvironments). Variables resolve ONLY against the active
-        // environment, so each environment carries the full set.
+        // The only inferred variables are the auth-scheme credentials. Variables resolve ONLY against the
+        // active environment, so each environment carries the full set.
+        //
+        // PATH PARAMETERS ARE DELIBERATELY NOT VARIABLES. They used to be, one workspace-wide variable per
+        // distinct {name} in the spec, and that is wrong twice over. It is wrong at scale - a mid-sized
+        // API turns into dozens of empty variables nobody asked for - and it is wrong in kind, because the
+        // names COLLIDE: /users/{id}, /users/{id}/orders and /orders/{id} all resolved to one shared "id",
+        // so filling it in for one request broke the others. A path parameter belongs to the one request
+        // whose URL contains it, and this app has no request-scoped variables by design
+        // (RequestModel.LocalVariables is retired), so it goes inline in that URL instead - as the spec's
+        // own {name}, or as the example/default when the spec supplies one.
         var commonVars = new List<AppVariable>(authVars);
-        foreach (var p in pathParams)
-        {
-            commonVars.Add(new AppVariable { Key = p, Value = "", Description = "OpenAPI path parameter" });
-        }
 
         var servers = isV2 ? SyntheticV2Servers(root) : root["servers"] as JsonArray;
         var environments = BuildEnvironments(servers, commonVars);
@@ -598,24 +605,36 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         JsonObject root,
         IReadOnlyDictionary<string, AuthProfile> profiles,
         SecurityChoice globalSecurity,
-        HashSet<string> pathParams,
         List<string> warnings)
     {
         var name = Str(op["summary"]) ?? Str(op["operationId"]) ?? $"{method.ToUpperInvariant()} {rawPath}";
+
+        // Resolved up front because the URL is built from them: a path parameter with an example or a
+        // default becomes that value, so the imported request is runnable; one without keeps the spec's
+        // own {name}, which says WHICH parameter it is - something "<string>" would throw away, leaving
+        // /users/<string>/orders/<string>.
+        var pathValues = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var raw in Concat(pathLevelParams, op["parameters"] as JsonArray))
+        {
+            if (ResolveRef(raw, root) is JsonObject pp
+                && Str(pp["in"]) == "path"
+                && Str(pp["name"]) is { } ppName
+                && ConcreteParamValue(pp, pp["schema"] as JsonObject ?? pp) is { } value)
+            {
+                pathValues[ppName] = value;
+            }
+        }
 
         var model = new RequestModel
         {
             Name = name,
             Method = method.ToUpperInvariant(),
-            Url = "{{baseUrl}}" + PathParamRegex().Replace(rawPath, "{{$1}}"),
+            Url = "{{baseUrl}}" + PathParamRegex().Replace(
+                rawPath,
+                m => pathValues.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value),
             // Stable identity so a later re-import updates this request in place instead of duplicating.
             Settings = new JsonObject { ["fubarOpenApi"] = new JsonObject { ["operationKey"] = $"{method.ToUpperInvariant()} {rawPath}" } },
         };
-
-        foreach (Match m in PathParamRegex().Matches(rawPath))
-        {
-            pathParams.Add(m.Groups[1].Value);
-        }
 
         var formFields = new List<KeyValueItem>();
         var queryNames = new JsonArray();
@@ -639,8 +658,7 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
                     headerNames.Add(pName);
                     break;
                 case "path":
-                    pathParams.Add(pName); // already substituted into the URL as {{pName}}
-                    break;
+                    break; // already in the URL - never a variable, see ParseAsync
                 case "body": // Swagger 2.0 body parameter carries the schema directly
                     model.Body = new RequestBody { Type = BodyType.Json, Raw = Pretty(BuildExample(p["schema"], root, 0)) };
                     AttachBodySchema(model, p["schema"], root);
@@ -672,6 +690,7 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
 
         BuildBody(ResolveRef(op["requestBody"], root) as JsonObject, root, model);
         ApplySecurity(op, profiles, globalSecurity, model);
+        DisableParamsTheAuthWillSend(model, profiles, warnings);
 
         // Add an Accept header matching the operation's declared response media types (what Swagger UI
         // sends), unless the spec already declared an Accept header parameter of its own.
@@ -807,6 +826,110 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
             : [];
     }
 
+    /// <summary>
+    /// Turns OFF any imported header/query row whose name is the one the request's auth profile will
+    /// send.
+    ///
+    /// <para>Specs routinely declare <c>Authorization</c> as an ordinary header parameter as well as
+    /// declaring a security scheme. Imported as an enabled row it carries a placeholder, and
+    /// <c>AuthRequestMerge</c> - correctly - refuses to overwrite a header the request already carries
+    /// enabled, so the placeholder went out and the real token never did. Silent 401s that look like the
+    /// auth profile is broken.</para>
+    ///
+    /// <para>Disabled rather than dropped: the spec said the parameter exists and that is worth keeping,
+    /// and a disabled row does not suppress the auth (the merge only skips ENABLED ones), so ticking it
+    /// back on is a deliberate act with a visible consequence.</para>
+    /// </summary>
+    private static void DisableParamsTheAuthWillSend(
+        RequestModel model, IReadOnlyDictionary<string, AuthProfile> profiles, List<string> warnings)
+    {
+        if (model.AuthProfileId is not { } profileId
+            || profiles.Values.FirstOrDefault(p => p.Id == profileId) is not { } profile)
+        {
+            return;
+        }
+
+        var (headerName, queryName) = profile.Config.Type switch
+        {
+            AuthType.ApiKey when profile.Config.ApiKeyLocation == ApiKeyLocation.QueryParam
+                => (null, profile.Config.ApiKeyName),
+            AuthType.ApiKey => (profile.Config.ApiKeyName, (string?)null),
+            AuthType.Bearer or AuthType.Basic or AuthType.OAuth2 => ("Authorization", (string?)null),
+            _ => (null, (string?)null),
+        };
+
+        Disable(model.Headers, headerName, "header");
+        Disable(model.QueryParams, queryName, "query parameter");
+
+        void Disable(List<KeyValueItem> items, string? key, string what)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                return;
+            }
+
+            foreach (var item in items.Where(i => i.Enabled && string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase)))
+            {
+                item.Enabled = false;
+                warnings.Add(
+                    $"{model.Method} {model.Url}: the spec declares \"{item.Key}\" as a {what}, which is also what the "
+                    + $"\"{profile.Name}\" security scheme sends. Imported unchecked so it cannot suppress the token.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every security scheme the document REFERENCES, from the global <c>security</c> and from each
+    /// operation's. Empty when the document references none anywhere - in which case the caller keeps all
+    /// of them, since a spec that declares auth and never wires it up still needs something to turn on.
+    /// </summary>
+    private static HashSet<string> ReferencedSchemes(JsonObject root)
+    {
+        var referenced = new HashSet<string>(StringComparer.Ordinal);
+
+        Collect(root["security"]);
+
+        if (root["paths"] is JsonObject paths)
+        {
+            foreach (var (_, pathItemNode) in paths)
+            {
+                if (pathItemNode is not JsonObject pathItem)
+                {
+                    continue;
+                }
+
+                foreach (var method in HttpMethods)
+                {
+                    if (pathItem[method] is JsonObject op)
+                    {
+                        Collect(op["security"]);
+                    }
+                }
+            }
+        }
+
+        return referenced;
+
+        void Collect(JsonNode? security)
+        {
+            if (security is not JsonArray requirements)
+            {
+                return;
+            }
+
+            foreach (var requirement in requirements)
+            {
+                if (requirement is JsonObject ro)
+                {
+                    foreach (var (schemeName, _) in ro)
+                    {
+                        referenced.Add(schemeName);
+                    }
+                }
+            }
+        }
+    }
+
     private static void ApplySecurity(JsonObject op, IReadOnlyDictionary<string, AuthProfile> profiles, SecurityChoice global, RequestModel model)
     {
         var choice = op["security"] is not null ? ResolveSecurity(op["security"], profiles) : global;
@@ -826,7 +949,8 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
 
     private readonly record struct SecurityChoice(string? ProfileId, bool None);
 
-    private static (Dictionary<string, AuthProfile> Profiles, List<AppVariable> Variables) BuildAuthProfiles(JsonObject? schemes, List<string> warnings)
+    private static (Dictionary<string, AuthProfile> Profiles, List<AppVariable> Variables) BuildAuthProfiles(
+        JsonObject? schemes, HashSet<string> usedSchemes, List<string> warnings)
     {
         var profiles = new Dictionary<string, AuthProfile>(StringComparer.Ordinal);
         var variables = new List<AppVariable>();
@@ -836,11 +960,26 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
             return (profiles, variables);
         }
 
+        // Nothing anywhere references a scheme: the spec declares auth without wiring it up, and importing
+        // no auth at all would leave nothing to switch on. Keep them all, and say so.
+        var keepAll = usedSchemes.Count == 0;
+        if (keepAll && schemes.Count > 0)
+        {
+            warnings.Add(
+                "No operation references a security scheme, so all of them were imported. Delete the auth "
+                + "profiles and variables you do not need.");
+        }
+
         foreach (var (name, node) in schemes)
         {
             if (node is not JsonObject scheme)
             {
                 continue;
+            }
+
+            if (!keepAll && !usedSchemes.Contains(name))
+            {
+                continue; // declared but never referenced - a credential for auth nobody asked for
             }
 
             var config = new AuthConfig();
@@ -964,14 +1103,16 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
             var url = Str(so["url"]) ?? "";
             if (so["variables"] is JsonObject serverVars)
             {
+                // Substituted into the URL, and NOT also added as variables. They used to be both, which
+                // made them inert - baseUrl already held the resolved URL, so nothing referenced them and
+                // setting "region" to eu changed nothing - and made them wrong across environments, since
+                // one server's variables were copied into every environment, first-value-wins, including
+                // ones whose URL is literal and has no such variable. Making them live instead would need
+                // recursive resolution (baseUrl containing {{region}}), which VariableResolver.Substitute
+                // deliberately does not do: it is a single pass. Edit baseUrl per environment.
                 foreach (var (varName, varDef) in serverVars)
                 {
-                    var value = Str(varDef?["default"]) ?? "";
-                    url = url.Replace("{" + varName + "}", value);
-                    if (!commonVars.Any(v => string.Equals(v.Key, varName, StringComparison.Ordinal)))
-                    {
-                        commonVars.Add(new AppVariable { Key = varName, Value = value, Description = "OpenAPI server variable" });
-                    }
+                    url = url.Replace("{" + varName + "}", Str(varDef?["default"]) ?? "");
                 }
             }
 
@@ -1240,6 +1381,26 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
 
     private static string ParamPlaceholder(JsonObject param, JsonObject schema)
     {
+        if (ConcreteParamValue(param, schema) is { } concrete)
+        {
+            return concrete;
+        }
+
+        var kind = Str(schema["format"]) ?? Str(schema["type"]);
+        return kind is null ? "" : $"<{kind}>";
+    }
+
+    /// <summary>
+    /// A real value the spec supplies for a parameter - an example, a default, or the first enum member -
+    /// or null when it supplies none.
+    ///
+    /// <para>Split out from <see cref="ParamPlaceholder"/> for path parameters, which need to tell "the
+    /// spec gave me something usable" from "it did not": the first goes into the URL, and the second
+    /// leaves the spec's own <c>{name}</c> there rather than a "&lt;string&gt;" that says nothing about
+    /// which parameter it is.</para>
+    /// </summary>
+    private static string? ConcreteParamValue(JsonObject param, JsonObject schema)
+    {
         if (Str(param["example"]) is { } ex)
         {
             return ex;
@@ -1255,14 +1416,13 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
             return def;
         }
 
-        // No example/default: a concrete enum value is a better starting point than a "<type>" hint.
+        // A concrete enum value is a better starting point than a "<type>" hint.
         if (schema["enum"] is JsonArray enumValues && enumValues.Count > 0 && Str(enumValues[0]) is { } first)
         {
             return first;
         }
 
-        var kind = Str(schema["format"]) ?? Str(schema["type"]);
-        return kind is null ? "" : $"<{kind}>";
+        return null;
     }
 
     private static string ParamDescription(JsonObject param, JsonObject schema, bool required, bool deprecated)

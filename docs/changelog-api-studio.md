@@ -110,6 +110,38 @@ All notable changes to this project are documented here. The format is based on
   printed in full: finding the field is the job, and a pane that spills a live credential into a
   screenshot is a bad trade for information nobody needed.
 
+### Fixed
+
+- **OpenAPI import created far too many environment variables, and one of them broke auth silently.** An
+  eight-operation spec produced fourteen variables per environment, of which three were correct. It now
+  produces two. Four separate causes:
+
+  **Path parameters are no longer variables at all.** Every distinct `{name}` in the spec used to become
+  one workspace-wide variable. That is wrong at scale — a mid-sized API turns into dozens of empty
+  variables — and wrong in kind, because the names *collide*: `/users/{id}`, `/users/{id}/orders` and
+  `/orders/{id}` all resolved to a single `id`, so filling it in for one request broke the other two. A
+  path parameter belongs to the one request whose URL contains it, so that is where it now lives —
+  keeping the spec's own `{id}`, or the example/default when the spec supplies one, which makes the
+  request runnable straight away.
+
+  **Security schemes nothing references no longer create profiles or credentials.** A spec declaring four
+  schemes and using one got four auth profiles and five variables, including a Basic auth username and
+  password for auth nobody asked for. A spec that references *no* scheme anywhere still gets all of them,
+  with a warning — importing none would leave nothing to switch on.
+
+  **Server variables are substituted into the URL and not also copied into the environments.** Being both
+  made them inert: `baseUrl` already held the resolved URL, so nothing referenced them and setting
+  `region` to `eu` changed nothing. They also leaked — one server's variables were copied into *every*
+  environment, first value wins, including environments whose URL is literal and has no such variable.
+
+  **A spec that declares `Authorization` as a header parameter no longer suppresses your token.** This
+  one failed silently. Such a header imported as an enabled row carrying a placeholder, and the auth
+  merge — correctly — refuses to overwrite a header the request already carries enabled. So `<string>`
+  went out as the Authorization header, the bearer token never did, and the 401s looked like the auth
+  profile was broken. It is now imported unchecked, with a warning saying why; a disabled row cannot
+  suppress the auth, so ticking it back on is a deliberate act with a visible consequence. The same
+  applies to an API-key-in-query scheme against a declared query parameter.
+
 ### Changed
 
 - **One OAuth engine instead of two behind an invisible switch.** `AuthConfig` carried both a

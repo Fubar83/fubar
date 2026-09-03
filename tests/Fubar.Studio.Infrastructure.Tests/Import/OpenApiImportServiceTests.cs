@@ -104,7 +104,9 @@ public class OpenApiImportServiceTests : IDisposable
         Assert.Equal("Pet Store", result.ApiTitle);
         Assert.Equal(3, result.RequestCount);
         Assert.Equal(2, result.EnvironmentCount);       // Production + Staging
-        Assert.Equal(2, result.AuthProfileCount);       // bearerAuth + apiKeyAuth
+        // bearerAuth only. apiKeyAuth is DECLARED and never referenced by any operation, so importing a
+        // profile and a credential variable for it would be furnishing auth nobody asked for.
+        Assert.Equal(1, result.AuthProfileCount);
         Assert.Empty(result.Warnings);
         Assert.True(Directory.Exists(Path.Combine(_root, "collections", "Pet Store", "pets")));
     }
@@ -118,7 +120,11 @@ public class OpenApiImportServiceTests : IDisposable
         var getPet = await LoadRequestByNameAsync("Get a pet");
 
         Assert.Equal("GET", getPet.Method);
-        Assert.Equal("{{baseUrl}}/pets/{{petId}}", getPet.Url);
+        // The spec's own {petId}, NOT {{petId}}. A path parameter is never an environment variable: the
+        // names collide across unrelated resources (/users/{id} and /orders/{id} would share one "id"),
+        // and it belongs to the one request whose URL contains it. Single braces are inert to the
+        // resolver, so this reads as the placeholder it is rather than an undefined variable.
+        Assert.Equal("{{baseUrl}}/pets/{petId}", getPet.Url);
         Assert.Equal(AuthType.None, getPet.Auth.Type); // "security": [] on the operation
     }
 
@@ -179,7 +185,7 @@ public class OpenApiImportServiceTests : IDisposable
         var production = environments.Single(e => e.Name == "Production");
 
         Assert.Equal("https://api.example.com/v1", production.Variables.Single(v => v.Key == "baseUrl").Value);
-        Assert.Contains(production.Variables, v => v.Key == "petId");                       // path param
+        Assert.DoesNotContain(production.Variables, v => v.Key == "petId");                 // path params are never variables
         Assert.Contains(production.Variables, v => v.Key == "bearerToken_bearerAuth" && v.Kind == VariableKind.Secret); // auth secret
 
         // The first imported environment becomes active so {{baseUrl}} resolves immediately.
