@@ -76,6 +76,53 @@ public class MovedBlockDetailTests
     }
 
     [Fact]
+    public void Each_pane_highlights_its_OWN_end_of_the_move()
+    {
+        // Both panes used to be handed the same row range, which is right for every difference except
+        // this one: the block was deleted at rows 1-2 and inserted at rows 5-6, so marking rows 1-2 in
+        // both panes highlighted the block on the left and two rows of unrelated context on the right.
+        var pane = Pane();
+
+        pane.SelectDifferenceAtRow(1);
+
+        Assert.Equal((1, 2), pane.CurrentRangeFor(DiffSide.Left));
+        Assert.Equal((5, 6), pane.CurrentRangeFor(DiffSide.Right));
+    }
+
+    [Fact]
+    public void Clicking_the_far_end_highlights_the_same_two_ends()
+    {
+        // Following a move means seeing where it went, from whichever end you started at.
+        var pane = Pane();
+
+        pane.SelectDifferenceAtRow(5);
+
+        Assert.Equal((1, 2), pane.CurrentRangeFor(DiffSide.Left));
+        Assert.Equal((5, 6), pane.CurrentRangeFor(DiffSide.Right));
+    }
+
+    [Fact]
+    public void An_ordinary_difference_still_marks_the_same_rows_on_both_sides()
+    {
+        // The per-side answer must collapse to the old one for everything that is not a move, or every
+        // difference in the file pays for this.
+        var rows = new List<DiffLine>
+        {
+            new(1, "header", 1, "header", ChangeKind.Unchanged),
+            new(2, "a", 2, "b", ChangeKind.Modified),
+            new(3, "tail", 3, "tail", ChangeKind.Unchanged),
+        };
+
+        var pane = new DiffPaneViewModel();
+        pane.Show(DiffResult.Create(rows));
+
+        pane.SelectDifferenceAtRow(1);
+
+        Assert.Equal((1, 1), pane.CurrentRangeFor(DiffSide.Left));
+        Assert.Equal((1, 1), pane.CurrentRangeFor(DiffSide.Right));
+    }
+
+    [Fact]
     public void The_two_ends_are_still_two_differences_to_navigation()
     {
         // The point of the whole change is what the close-up LOOKS at. Merging the ends into one

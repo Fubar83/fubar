@@ -104,6 +104,19 @@ All notable changes to this project are documented here. The format is based on
   reordered list of objects that used to report as identical now reports as changed until you pick a
   key for it, which is one right-click.
 
+- **A moved block is shown at both ends at once.** Clicking one highlights both: the block where it
+  *was* outlined in the left pane, where it *is* outlined in the right. The two panes give up their
+  lockstep scrolling for exactly as long as a move is selected, holding themselves level at the block's
+  two ends instead of at the same row — which is the only way both ends can be on screen together, and
+  the one difference where "the same row on both sides" is not what you want to look at. The offset is
+  measured from where the rows actually are, so a collapsed region above either end does not throw it
+  out. Everything else still scrolls in plain lockstep.
+
+- **The close-up keeps the gaps, so its two halves line up.** A hunk of three deletions and two
+  insertions used to give a three-line block above a two-line one, with nothing saying which of the
+  three the two corresponded to. Filler rows are kept now, so line N of the upper block is line N of the
+  lower one.
+
 - **The close-up shows both ends of a moved block.** A move is the one difference whose halves are not
   on the same rows — the block left the file at one place and turned up at another — so it is two
   differences, and the close-up used to build both of its sides from one of them: the block on one side,

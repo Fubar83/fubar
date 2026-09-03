@@ -29,6 +29,24 @@ public partial class DiffView : UserControl
     /// </summary>
     private bool _syncingScroll;
 
+    /// <summary>
+    /// The two rows the panes are being held level at, or -1 for ordinary lockstep.
+    ///
+    /// <para>Set only for a MOVE, whose two halves are at different rows by definition. Lockstep is
+    /// right for every other difference precisely because the panes are row-aligned - row N is the same
+    /// row on both sides - but a moved block breaks that on purpose: the block is at one row on the left
+    /// and another on the right, and holding the panes level would put at most one of its two ends on
+    /// screen. Offsetting them by the move's own distance puts both on screen at once, which is the only
+    /// way to actually read a move.</para>
+    ///
+    /// <para>Stored as ROWS, not as a pixel offset. Folding and word wrap both change what a row is worth
+    /// in pixels, and a cached offset would quietly drift the moment a region collapsed above either end.
+    /// Asking the text view where the rows are, every time, cannot drift.</para>
+    /// </summary>
+    private int _syncLeftRow = -1;
+
+    private int _syncRightRow = -1;
+
     public DiffView()
     {
         InitializeComponent();
@@ -155,12 +173,18 @@ public partial class DiffView : UserControl
             // fix: vertical goes through the TextEditor, which routes it to the text view internally,
             // and horizontal has to go through the text view itself because the editor's counterpart
             // silently does nothing. See EditorScroll.ScrollHorizontallyTo.
-            var vertical = from.TextView.VerticalOffset;
             var horizontal = from.TextView.HorizontalOffset;
+
+            // Vertical carries the move offset: zero for every ordinary difference, so this stays the
+            // plain offset copy it has always been, and the two ends' distance apart while a moved block
+            // is the current difference.
+            var offset = SyncOffset();
+            var vertical = from.TextView.VerticalOffset
+                + (ReferenceEquals(from, LeftPane) ? offset : -offset);
 
             if (Math.Abs(to.TextView.VerticalOffset - vertical) > 0.5)
             {
-                to.TextEditor.ScrollToVerticalOffset(vertical);
+                to.TextEditor.ScrollToVerticalOffset(Math.Max(0, vertical));
             }
 
             if (Math.Abs(to.TextView.HorizontalOffset - horizontal) > 0.5)
@@ -189,18 +213,35 @@ public partial class DiffView : UserControl
             return;
         }
 
-        // An ignored run is a difference you can be ON without it being a hunk - Shift+Alt+Up/Down stops
-        // there - so the marker has to be able to come from either. Without this, stepping onto one
-        // scrolled to it and left the highlight sitting on whichever hunk was selected before, pointing
-        // at the wrong row.
-        var (start, end) = _viewModel.HasCurrentHunk
-            ? (_viewModel.Hunks[_viewModel.CurrentHunk].StartIndex, _viewModel.Hunks[_viewModel.CurrentHunk].EndIndex)
-            : _viewModel.CurrentIgnoredRow >= 0
-                ? (_viewModel.CurrentIgnoredRow, _viewModel.CurrentIgnoredRowEnd)
-                : (-1, -1);
+        // Asked per SIDE, and the view model works out what that means. Both panes used to be handed the
+        // same row range, which is right for every difference except a MOVE - whose two halves are on
+        // different rows by definition, so one pane got the block and the other got whatever unrelated
+        // context happened to sit at those rows. It also covers an ignored run, which is a difference you
+        // can be on without it being a hunk at all.
+        var (leftStart, leftEnd) = _viewModel.CurrentRangeFor(DiffSide.Left);
+        var (rightStart, rightEnd) = _viewModel.CurrentRangeFor(DiffSide.Right);
 
-        LeftPane.SetCurrentHunk(start, end);
-        RightPane.SetCurrentHunk(start, end);
+        LeftPane.SetCurrentHunk(leftStart, leftEnd);
+        RightPane.SetCurrentHunk(rightStart, rightEnd);
+
+        // Hold the panes level at the move's two ends rather than at the same row. Cleared for anything
+        // else, so the offset lasts exactly as long as the move is the difference being read.
+        var moved = leftStart >= 0 && rightStart >= 0 && leftStart != rightStart;
+        var wasMoved = _syncLeftRow >= 0;
+
+        _syncLeftRow = moved ? leftStart : -1;
+        _syncRightRow = moved ? rightStart : -1;
+
+        // Take up the new offset now rather than waiting for the next scroll. Selecting a move by
+        // CLICKING it requests no scroll of its own - a click should not move the page - so without this
+        // the far end stayed off screen until something else happened to scroll, and the panes would
+        // then jump apart for no reason the reader could connect to what they did.
+        //
+        // Only when the offset actually changes, so an ordinary re-selection leaves the view alone.
+        if (moved || wasMoved)
+        {
+            ScrollTo(leftStart);
+        }
     }
 
     /// <summary>
@@ -312,6 +353,33 @@ public partial class DiffView : UserControl
         }
     }
 
+    /// <summary>
+    /// How far the right pane sits below the left, in pixels. Zero unless a moved block is selected.
+    ///
+    /// Asked of the text views rather than computed as rows x line height: lines are only uniformly tall
+    /// when nothing is folded and nothing wraps, and a collapsed region above either end would otherwise
+    /// throw the two panes out by exactly the rows it hid.
+    /// </summary>
+    private double SyncOffset()
+    {
+        if (_syncLeftRow < 0 || _syncRightRow < 0)
+        {
+            return 0;
+        }
+
+        var leftDocument = LeftPane.TextEditor.Document;
+        var rightDocument = RightPane.TextEditor.Document;
+
+        if (leftDocument is null || rightDocument is null
+            || _syncLeftRow >= leftDocument.LineCount || _syncRightRow >= rightDocument.LineCount)
+        {
+            return 0;
+        }
+
+        return RightPane.TextView.GetVisualTopByDocumentLine(_syncRightRow + 1)
+            - LeftPane.TextView.GetVisualTopByDocumentLine(_syncLeftRow + 1);
+    }
+
     private void ScrollTo(int rowIndex)
     {
         if (rowIndex < 0)
@@ -330,8 +398,13 @@ public partial class DiffView : UserControl
         _syncingScroll = true;
         try
         {
-            EditorScroll.CenterOnLine(LeftPane.TextEditor, LeftPane.TextView, rowIndex + 1);
-            EditorScroll.CenterOnLine(RightPane.TextEditor, RightPane.TextView, rowIndex + 1);
+            // Each pane on its OWN end when a move is selected, so both highlighted ends are on screen
+            // at once; on the same row for everything else, which is every other difference.
+            var leftRow = _syncLeftRow >= 0 ? _syncLeftRow : rowIndex;
+            var rightRow = _syncRightRow >= 0 ? _syncRightRow : rowIndex;
+
+            EditorScroll.CenterOnLine(LeftPane.TextEditor, LeftPane.TextView, leftRow + 1);
+            EditorScroll.CenterOnLine(RightPane.TextEditor, RightPane.TextView, rightRow + 1);
 
             // Sideways too, or navigating to a change beyond the right edge of a long line lands on a
             // row that looks unchanged. Each side is given ITS OWN columns: on a modified row the two

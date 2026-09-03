@@ -628,6 +628,25 @@ agree today (Resolve returns an override ahead of detection, so the suggestion I
 exists) - saying which key is in force is what lets the menu stop labelling someone's own override
 "(suggested)".
 
+**A MOVE is the one difference whose two halves are not on the same rows** (Diff), and three things
+follow from it. `DiffPaneViewModel.CurrentRangeFor(side)` answers per SIDE, so each pane outlines its own
+end - handing both panes the same range highlighted the block in one and unrelated context in the other.
+`RebuildDetail` sources each half of the close-up from its own end, so the pane shows the block where it
+was beside where it is, from whichever end was clicked. And `DiffView` holds the panes level at the two
+ENDS rather than at the same row while a move is selected (`_syncLeftRow`/`_syncRightRow`), which is the
+one deliberate exception to the lockstep scroll sync: with the ends fifteen rows apart, lockstep can show
+at most one of them. The offset is derived from `GetVisualTopByDocumentLine` every time rather than
+cached as pixels, because folding and wrapping both change what a row is worth and a cached figure drifts
+the moment a region collapses above either end. It is cleared for every other difference, so the
+exception lasts exactly as long as the move is what is being read.
+
+The two ends remain two DIFFERENCES - the counts, the map and next/previous are untouched. A block that
+moved really did leave one place and arrive at another, and merging them would be a different claim.
+
+The close-up keeps FILLER rows (`AlignedText.Build`, not `BuildCompact`), reversing the earlier call that
+a stacked close-up has no alignment to preserve. It does: a hunk of three deletions and two insertions
+gave a three-row block above a two-row one with nothing saying which rows corresponded.
+
 **An ignored difference is shown by its CHARACTERS, and can be navigated to** (Diff). Two changes with
 one principle: a difference the tool was told to ignore is still a difference, and the reader is
 entitled to see exactly what it is. `WithInlineSpans` now runs for ignored rows as well as modified ones,

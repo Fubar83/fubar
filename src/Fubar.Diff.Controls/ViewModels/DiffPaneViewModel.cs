@@ -94,6 +94,32 @@ public partial class DiffPaneViewModel : ObservableObject
         ? _result.Hunks[CurrentHunk].StartIndex
         : CurrentIgnoredRow;
 
+    /// <summary>
+    /// The rows one side should mark as the current difference, or (-1, -1) for none.
+    ///
+    /// <para>Per SIDE, because a MOVE is the one difference whose two halves are on different rows: the
+    /// block was deleted at one place and inserted at another, which the aligner reports as two hunks.
+    /// Marking the same row range in both panes therefore highlighted the block in one and a stretch of
+    /// unrelated context in the other - and highlighted only the end you happened to click, when the
+    /// whole point of following a move is seeing where it went.</para>
+    ///
+    /// <para>Everything else answers identically on both sides, so this collapses to the hunk's own rows
+    /// for every difference that is not a move.</para>
+    /// </summary>
+    public (int Start, int End) CurrentRangeFor(DiffSide side)
+    {
+        if (!HasCurrentHunk)
+        {
+            return CurrentIgnoredRow >= 0 ? (CurrentIgnoredRow, CurrentIgnoredRowEnd) : (-1, -1);
+        }
+
+        var hunk = _result.Hunks[CurrentHunk];
+
+        return MovedCounterpart(hunk, side) is { } moved
+            ? (moved.Start, moved.Start + moved.Length - 1)
+            : (hunk.StartIndex, hunk.EndIndex);
+    }
+
     /// <summary>First visible row, pushed up by the view so the diff map can draw its viewport box.</summary>
     [ObservableProperty]
     public partial int ViewportStart { get; set; }
@@ -308,8 +334,8 @@ public partial class DiffPaneViewModel : ObservableObject
         {
             var length = CurrentIgnoredRowEnd - CurrentIgnoredRow + 1;
 
-            DetailLeft = AlignedText.BuildCompact(_result, DiffSide.Left, CurrentIgnoredRow, length);
-            DetailRight = AlignedText.BuildCompact(_result, DiffSide.Right, CurrentIgnoredRow, length);
+            DetailLeft = AlignedText.Build(_result, DiffSide.Left, CurrentIgnoredRow, length);
+            DetailRight = AlignedText.Build(_result, DiffSide.Right, CurrentIgnoredRow, length);
 
             var ignoredRange = HunkNavigator.RangeOf(
                 _result.Lines, new DiffHunk(CurrentIgnoredRow, CurrentIgnoredRowEnd));
@@ -344,11 +370,15 @@ public partial class DiffPaneViewModel : ObservableObject
         var leftSource = MovedCounterpart(hunk, DiffSide.Left) ?? (hunk.StartIndex, hunk.Length);
         var rightSource = MovedCounterpart(hunk, DiffSide.Right) ?? (hunk.StartIndex, hunk.Length);
 
-        // Compact, not the fillers-included Build: the detail pane stacks old above new rather than
-        // side by side, so there is no row-count parity to preserve, and a filler would only insert
-        // a pointless blank line into what should read as one coherent block per side.
-        DetailLeft = AlignedText.BuildCompact(_result, DiffSide.Left, leftSource.Item1, leftSource.Item2);
-        DetailRight = AlignedText.BuildCompact(_result, DiffSide.Right, rightSource.Item1, rightSource.Item2);
+        // Fillers KEPT, which reverses an earlier decision here. The argument for dropping them was that
+        // the close-up stacks old above new rather than side by side, so there is no row-count parity to
+        // preserve and a filler is just a blank line. True as far as it goes - but it means a hunk of
+        // three deletions and two insertions gives a three-row block above a two-row one, and nothing
+        // says which of the three the two correspond to. Keeping the gaps makes row N of the upper block
+        // row N of the lower one, which is the only thing that makes reading them against each other -
+        // or scrolling them together - mean anything.
+        DetailLeft = AlignedText.Build(_result, DiffSide.Left, leftSource.Item1, leftSource.Item2);
+        DetailRight = AlignedText.Build(_result, DiffSide.Right, rightSource.Item1, rightSource.Item2);
 
         var leftRange = HunkNavigator.RangeOf(_result.Lines, new DiffHunk(leftSource.Item1, leftSource.Item1 + leftSource.Item2 - 1));
         var rightRange = HunkNavigator.RangeOf(_result.Lines, new DiffHunk(rightSource.Item1, rightSource.Item1 + rightSource.Item2 - 1));
