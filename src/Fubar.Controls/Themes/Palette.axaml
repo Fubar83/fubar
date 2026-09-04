@@ -88,6 +88,11 @@
             <SolidColorBrush x:Key="StatusConnFailedBg" Color="#E4E4E7" />
             <SolidColorBrush x:Key="StatusConnFailedFg" Color="#52525B" />
 
+            <!-- Log severity. Separate from the Status* family above, which is about HTTP status
+                 codes: an amber log line means "read this", not "4xx". -->
+            <SolidColorBrush x:Key="LogWarningFg" Color="#B45309" />
+            <SolidColorBrush x:Key="LogErrorFg" Color="#B91C1C" />
+
             <!-- Legacy aliases -->
             <SolidColorBrush x:Key="PostmanBlueBrush" Color="#2E7CF6" />
             <SolidColorBrush x:Key="PostmanGreenBrush" Color="#16A34A" />
@@ -175,6 +180,10 @@
             <SolidColorBrush x:Key="StatusServerErrorFg" Color="#F87171" />
             <SolidColorBrush x:Key="StatusConnFailedBg" Color="#3F3F46" />
             <SolidColorBrush x:Key="StatusConnFailedFg" Color="#A1A1AA" />
+
+            <!-- Log severity - see the Light block for why these are not the Status* brushes. -->
+            <SolidColorBrush x:Key="LogWarningFg" Color="#FBBF24" />
+            <SolidColorBrush x:Key="LogErrorFg" Color="#F87171" />
 
             <!-- Legacy aliases -->
             <SolidColorBrush x:Key="PostmanBlueBrush" Color="#3B82F6" />

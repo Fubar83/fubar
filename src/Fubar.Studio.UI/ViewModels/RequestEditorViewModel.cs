@@ -395,9 +395,22 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         {
             foreach (var c in outcome.Captures)
             {
-                _statusLog.Log(c.Ok
-                    ? $"Captured {{{{{c.VariableName}}}}} = \"{Truncate(c.Value)}\" ({c.Scope})"
-                    : $"Capture \"{c.VariableName}\" failed: {c.Error}");
+                if (!c.Ok)
+                {
+                    _statusLog.LogWarning($"Capture \"{c.VariableName}\" failed: {c.Error}");
+                    continue;
+                }
+
+                // The NAME and where it went, never the value. JsonRunReport already omits capture
+                // values for exactly this reason - "a report file is exactly the thing that gets
+                // attached to a build and kept" - and the log strip is the thing that gets
+                // screenshotted into a bug report, so the two must agree.
+                _statusLog.Log($"Captured {{{{{c.VariableName}}}}} → {c.Scope}");
+
+                if (c.Warning is { } warning)
+                {
+                    _statusLog.LogWarning(warning);
+                }
             }
 
             if (outcome.Captures.Count > 0)

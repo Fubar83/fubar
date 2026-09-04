@@ -2,6 +2,8 @@ using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Infrastructure;
 using Fubar.Controls;
 using Fubar.Studio.Application.Requests;
+using Fubar.Studio.Core.Diagnostics;
+using Fubar.Studio.Infrastructure.Diagnostics;
 using Fubar.Studio.Application.Running;
 using Fubar.Studio.Infrastructure;
 using Fubar.Studio.UI.Services;
@@ -53,6 +55,9 @@ internal static class Composition
                 services.AddSingleton<IResponseBaselineService, ResponseBaselineService>();
 
                 // Shared across every window (one theme, one log, all stateless services).
+                // The log sink is what makes "send us your log" answerable; the strip alone forgot
+                // everything on exit.
+                services.AddSingleton<ILogSink, RollingFileLog>();
                 services.AddSingleton<StatusLogViewModel>();
                 services.AddSingleton<ThemeManagerViewModel>();
 

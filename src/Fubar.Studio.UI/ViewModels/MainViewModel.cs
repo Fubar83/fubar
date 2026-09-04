@@ -63,6 +63,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsLogVisible { get; set; }
 
+    // Kept in step so the log can clear its unread badge when the user actually looks at it, rather
+    // than when something merely tried to raise it.
+    partial void OnIsLogVisibleChanged(bool value) => StatusLog.IsVisible = value;
+
     public MainViewModel(
         WorkspaceExplorerViewModel workspaceExplorer,
         EnvironmentManagerViewModel environmentManager,
@@ -92,6 +96,11 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorer.RunRequested += OnRunRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
         LeftPane.AuthProfilesSection.EditRequested += OpenAuthProfileEditor;
+
+        // A failure reported into a collapsed panel is not reported. The strip opens itself the first
+        // time something actually goes wrong; the badge on the shell covers everything after that.
+        StatusLog.RaiseRequested += () => IsLogVisible = true;
+        StatusLog.IsVisible = IsLogVisible;
 
         StatusLog.Log("Fubar shell ready.");
     }

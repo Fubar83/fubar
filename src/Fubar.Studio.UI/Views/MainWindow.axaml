@@ -160,6 +160,31 @@
                                   VerticalAlignment="Center"
                                   IsChecked="{Binding EnvironmentManager.SecretsRevealed}"
                                   ToolTip.Tip="Reveal secret variable values in tooltips" />
+
+                    <!-- The strip's permanent affordance. Ctrl+` used to be the ONLY way to open it,
+                         which meant every warning and every import FAILURE reported into a panel the
+                         user had no reason to know existed. -->
+                    <ToggleButton FontSize="11"
+                                  Padding="8,3"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding IsLogVisible}"
+                                  ToolTip.Tip="Status &amp; Log (Ctrl+`)">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="Log" VerticalAlignment="Center" />
+                            <Border Background="{DynamicResource LogWarningFg}"
+                                    CornerRadius="7"
+                                    Padding="5,0"
+                                    MinWidth="16"
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding StatusLog.AttentionCount}">
+                                <TextBlock Text="{Binding StatusLog.AttentionCount}"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource BgHeader}" />
+                            </Border>
+                        </StackPanel>
+                    </ToggleButton>
                 </StackPanel>
             </DockPanel>
         </Border>

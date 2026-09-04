@@ -1,17 +1,83 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:fc="using:Fubar.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="160"
              x:Class="Fubar.Studio.UI.Views.StatusLogView"
              x:DataType="vm:StatusLogViewModel">
 
-    <!-- Phase 5 adds real-time network telemetry rows here alongside debug log entries. -->
-    <ListBox ItemsSource="{Binding Entries}"
-             Margin="4"
-             Background="Transparent"
-             FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
-             FontSize="12" />
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- A log you cannot get out of the app is a log you cannot send to anyone, which is the whole
+             point of having one. Copy and the level filter live here rather than in a context menu for
+             the same reason the strip now raises itself: discoverability is the feature. -->
+        <Border Grid.Row="0"
+                Padding="6,3"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource BorderSubtle}">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="Show"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <ComboBox MinWidth="110"
+                              FontSize="11"
+                              VerticalAlignment="Center"
+                              ItemsSource="{Binding LevelOptions}"
+                              SelectedItem="{Binding MinimumLevel}"
+                              ToolTip.Tip="Hide entries below this level" />
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding LogFileLocation}"
+                               VerticalAlignment="Center"
+                               FontSize="10"
+                               MaxWidth="380"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondary}"
+                               ToolTip.Tip="{Binding LogFileLocation}" />
+                    <Button Classes="toolbar-btn"
+                            Content="Copy"
+                            FontSize="11"
+                            Command="{Binding CopyAllCommand}"
+                            ToolTip.Tip="Copy every visible entry, oldest first" />
+                    <Button Classes="toolbar-btn"
+                            Content="Clear"
+                            FontSize="11"
+                            Command="{Binding ClearCommand}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <ListBox Grid.Row="1"
+                 ItemsSource="{Binding VisibleEntries}"
+                 Margin="4"
+                 Background="Transparent"
+                 FontFamily="Cascadia Mono,Consolas,Menlo,monospace"
+                 FontSize="12">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:LogEntry">
+                    <!-- Level is carried by colour AND by the marker glyph, so it survives both themes
+                         and a reader who cannot separate the two colours. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="!"
+                                   FontWeight="Bold"
+                                   IsVisible="{Binding IsError}"
+                                   Foreground="{DynamicResource LogErrorFg}" />
+                        <TextBlock Text="▲"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsWarning}"
+                                   Foreground="{DynamicResource LogWarningFg}" />
+                        <TextBlock Text="{Binding Display}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+    </Grid>
 
 </UserControl>
