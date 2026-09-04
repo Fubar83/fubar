@@ -88,7 +88,9 @@ public class RedirectCredentialStrippingTests
 
     private sealed class SingleClientProvider(HttpClient client) : IScopedHttpClientProvider
     {
-        public HttpClient GetClient(string scope) => client;
+        public HttpClient GetClient(string scope, TransportSettings? transport = null, string? workspaceRootPath = null) => client;
+
+        public IReadOnlyList<string> ProblemsFor(string scope, TransportSettings? transport = null) => [];
     }
 
     private sealed class PassthroughResolver : IVariableResolver

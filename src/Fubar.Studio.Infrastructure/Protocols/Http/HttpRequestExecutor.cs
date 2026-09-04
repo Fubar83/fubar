@@ -42,8 +42,24 @@ public sealed class HttpRequestExecutor : IRequestExecutor
         {
             var url = BuildUrl(request, context);
 
-            // Cookies are isolated per (workspace, environment) - a DEV session cookie is never sent to PROD.
-            var client = _scopedClients.GetClient(SessionScope.For(context.Workspace, context.ActiveEnvironment));
+            // Cookies are isolated per (workspace, environment) - a DEV session cookie is never sent to
+            // PROD - and so is the transport configuration, which takes part in the cache key so two
+            // environments cannot end up sharing a handler carrying the wrong client certificate.
+            var scope = SessionScope.For(context.Workspace, context.ActiveEnvironment);
+            var transport = context.ActiveEnvironment?.Transport;
+            var client = _scopedClients.GetClient(scope, transport, context.Workspace.RootPath);
+
+            // A thumbprint that matched no certificate, or a CA file that would not load, otherwise
+            // arrives much later as a TLS handshake error that names none of them.
+            if (_scopedClients.ProblemsFor(scope, transport) is { Count: > 0 } problems)
+            {
+                return new ExecutionResult
+                {
+                    ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
+                    ErrorMessage = string.Join(" ", problems),
+                };
+            }
+
             using var response = await SendFollowingRedirectsAsync(client, request, url, context, linked.Token);
             var bodyBytes = await response.Content.ReadAsByteArrayAsync(linked.Token);
             var body = Encoding.UTF8.GetString(bodyBytes);
