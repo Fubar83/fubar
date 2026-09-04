@@ -20,11 +20,16 @@ public sealed class ResponseTestService : IResponseTestService
 {
     private readonly ISessionVariableStore _sessionStore;
     private readonly IEnvironmentStore _workspaceService;
+    private readonly IVariableWriter _variableWriter;
 
-    public ResponseTestService(ISessionVariableStore sessionStore, IEnvironmentStore workspaceService)
+    public ResponseTestService(
+        ISessionVariableStore sessionStore,
+        IEnvironmentStore workspaceService,
+        IVariableWriter variableWriter)
     {
         _sessionStore = sessionStore;
         _workspaceService = workspaceService;
+        _variableWriter = variableWriter;
     }
 
     public IReadOnlyList<AssertionResult> RunAssertions(IReadOnlyList<Assertion> assertions, ExecutionResult result)
@@ -80,9 +85,20 @@ public sealed class ResponseTestService : IResponseTestService
             }
             else
             {
-                SetEnvironmentVariable(activeEnvironment, name, value);
-                environmentDirty = true;
-                results.Add(new CaptureResult(true, name, value, activeEnvironment.Name, null));
+                // Through the writer, so the variable's own Kind decides where the value lands. A
+                // capture naming a Secret variable now writes to the keyring instead of overwriting the
+                // null the environment file is supposed to carry for it.
+                var write = _variableWriter.Write(workspace, activeEnvironment, name, value);
+                environmentDirty |= write.EnvironmentChanged;
+
+                results.Add(new CaptureResult(true, name, value, activeEnvironment.Name, null)
+                {
+                    // Only a Normal variable actually reaches the tracked file, so only that case is
+                    // worth warning about - a Secret one is already going somewhere safe.
+                    Warning = write.Kind == VariableKind.Normal
+                        ? CredentialNameHeuristic.DescribeEnvironmentCaptureRisk(name)
+                        : null,
+                });
             }
         }
 
@@ -92,19 +108,6 @@ public sealed class ResponseTestService : IResponseTestService
         }
 
         return results;
-    }
-
-    private static void SetEnvironmentVariable(WorkspaceEnvironment environment, string name, string? value)
-    {
-        var existing = environment.Variables.FirstOrDefault(v => v.Key == name);
-        if (existing is not null)
-        {
-            existing.Value = value ?? "";
-        }
-        else
-        {
-            environment.Variables.Add(new AppVariable { Key = name, Value = value ?? "" });
-        }
     }
 
     private static AssertionResult Evaluate(Assertion a, ExecutionResult result, Lazy<JsonNode?> body)
