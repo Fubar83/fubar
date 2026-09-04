@@ -7,6 +7,12 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <AnalysisLevel>latest</AnalysisLevel>
+
+    <!-- Audit transitive packages too, not just direct ones: a vulnerability three levels down is
+         still shipped in the binary. CI fails the build on one; this makes restore say so locally,
+         where it is cheaper to notice. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <InvariantGlobalization>false</InvariantGlobalization>
     <Authors>Fubar Contributors</Authors>

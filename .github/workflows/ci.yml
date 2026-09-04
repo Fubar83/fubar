@@ -8,6 +8,23 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege by default. Nothing here writes to the repository; a job that needs more says so
+# itself. Set here as well as in the repository's own Actions settings, so a change to that setting
+# cannot silently widen what these jobs can do.
+permissions:
+  contents: read
+
+# TODO(supply chain): pin every `uses:` to a commit SHA with the version in a trailing comment - a
+# tag is mutable, so `@v7` is a promise from whoever can move that tag. Dependabot already watches
+# the github-actions ecosystem and will keep pinned digests current. Get the digests with:
+#
+#   gh api repos/actions/checkout/commits/v7        --jq .sha
+#   gh api repos/actions/setup-dotnet/commits/v6    --jq .sha
+#   gh api repos/github/codeql-action/commits/v3    --jq .sha
+#
+# Left as a task rather than guessed at: a wrong digest fails every run, and inventing one would be
+# worse than the tag it replaced.
+
 # Cancel an in-progress run for a ref when a newer commit is pushed to it.
 concurrency:
   group: ci-${{ github.ref }}
@@ -31,3 +48,55 @@ jobs:
 
       - name: Test
         run: dotnet test Fubar.slnx --configuration Release --no-build --verbosity normal
+
+  # A known-vulnerable package is a build failure, not a warning nobody reads. Separate from
+  # build-test so its result is legible on its own: "the code is fine, a dependency is not" is a
+  # different problem from "the code does not compile", and they call for different reactions.
+  vulnerable-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Audit
+        run: |
+          set -euo pipefail
+          dotnet restore Fubar.slnx
+          dotnet list Fubar.slnx package --vulnerable --include-transitive 2>&1 | tee audit.txt
+          if grep -q 'has the following vulnerable' audit.txt; then
+            echo "::error::A referenced package has a known vulnerability - see the listing above."
+            exit 1
+          fi
+
+  # The suite that proves credential headers are dropped on a cross-origin redirect and that cookies
+  # stay isolated per environment. It self-skips unless FUBAR_E2E=1, which CI never set - so the two
+  # best security controls in the codebase were verified only when someone remembered to do it by
+  # hand. Two httpbin containers on DIFFERENT ports, because "different origin" is the whole point.
+  security-e2e:
+    runs-on: ubuntu-latest
+    services:
+      httpbin:
+        image: kennethreitz/httpbin
+        ports: ['8080:80']
+      httpbin-other:
+        image: kennethreitz/httpbin
+        ports: ['8081:80']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: End-to-end auth and cookie isolation
+        env:
+          FUBAR_E2E: '1'
+          FUBAR_E2E_BASEURL: http://localhost:8080
+          FUBAR_E2E_OTHERHOST: http://localhost:8081/get
+          # No falling back to the public httpbin here. A green tick that silently tested nothing is
+          # worse than a red one, and this is the job whose whole purpose is to be believed.
+          FUBAR_E2E_REQUIRE_LOCAL: '1'
+        run: dotnet test tests/Fubar.Studio.EndToEnd.Tests --configuration Release --verbosity normal
