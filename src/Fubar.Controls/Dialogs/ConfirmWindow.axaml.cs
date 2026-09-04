@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Layout;
 
-namespace Fubar.Diff.UI.Views;
+namespace Fubar.Controls;
 
 /// <summary>
 /// A question with room for the detail behind it, and one button per answer.

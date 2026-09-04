@@ -3,9 +3,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Fubar.Diff.UI.Views;
 
-namespace Fubar.Diff.UI.Services;
+namespace Fubar.Controls;
 
 /// <summary>
 /// <see cref="IConfirmationService"/> over a modal <see cref="ConfirmWindow"/>.

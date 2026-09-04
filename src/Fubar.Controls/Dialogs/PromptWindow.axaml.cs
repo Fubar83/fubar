@@ -1,7 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 
-namespace Fubar.Diff.UI.Views;
+namespace Fubar.Controls;
 
 /// <summary>
 /// Asks for one line of text. Closes with null for anything that is not an answer - Cancel, Escape,

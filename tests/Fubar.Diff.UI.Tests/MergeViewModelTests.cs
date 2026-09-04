@@ -1,3 +1,4 @@
+using Fubar.Controls;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Core.Comparison;

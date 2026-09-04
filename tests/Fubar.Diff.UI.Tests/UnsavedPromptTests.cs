@@ -1,3 +1,4 @@
+using Fubar.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Fubar.Diff.Application.Comparison;

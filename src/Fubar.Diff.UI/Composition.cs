@@ -1,3 +1,4 @@
+using Fubar.Controls;
 using System;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Folders;

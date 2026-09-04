@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Fubar.Diff.UI.Services;
+namespace Fubar.Controls;
 
 /// <summary>
 /// Puts a question to the user and waits for the answer.
