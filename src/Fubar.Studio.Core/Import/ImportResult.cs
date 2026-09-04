@@ -6,7 +6,7 @@ namespace Fubar.Studio.Core.Import;
 /// requests, folders, environments, auth profiles and variables created, plus any non-fatal warnings
 /// (e.g. an unsupported security scheme that was skipped).
 /// </summary>
-public sealed record OpenApiImportResult(
+public sealed record ImportResult(
     string ApiTitle,
     string TargetFolderPath,
     int RequestCount,

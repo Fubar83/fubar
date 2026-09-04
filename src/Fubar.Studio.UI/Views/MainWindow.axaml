@@ -134,8 +134,11 @@
                                           ToolTip.Tip="Import an OpenAPI / Swagger spec (JSON/YAML file or URL)"
                                           Command="{Binding WorkspaceExplorer.ImportOpenApiCommand}" />
                                 <MenuItem Header="Postman collection…"
-                                          ToolTip.Tip="Import a Postman Collection v2.1 JSON export"
+                                          ToolTip.Tip="Import a Postman Collection v2.1 export — previewed before anything is written"
                                           Command="{Binding WorkspaceExplorer.ImportPostmanCommand}" />
+                                <MenuItem Header="Postman environment…"
+                                          ToolTip.Tip="Import a Postman environment or globals export"
+                                          Command="{Binding WorkspaceExplorer.ImportPostmanEnvironmentCommand}" />
                                 <MenuItem Header="From curl…"
                                           ToolTip.Tip="Paste a curl command to import as a request"
                                           Command="{Binding WorkspaceExplorer.ImportCurlCommand}" />

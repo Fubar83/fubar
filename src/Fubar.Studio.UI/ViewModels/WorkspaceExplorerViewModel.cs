@@ -397,12 +397,21 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
 
         // The dialog does the picking/URL entry + parse + options; it returns null if cancelled.
-        var choice = await _importDialog.ShowAsync(root.FullPath);
-        if (choice is null)
+        if (await _importDialog.ShowAsync(root.FullPath) is { } choice)
         {
-            return;
+            await ApplyImportAsync(choice, root, "OpenAPI");
         }
+    }
 
+    /// <summary>
+    /// Writes the items the user ticked in the import dialog, whichever format they came from.
+    ///
+    /// <para>Shared because everything past parsing is the same work - which is the point of the
+    /// planner/apply split: the Postman import gets the preview, the per-item choice and the "your
+    /// manual edits survive" guarantee that only the OpenAPI one had.</para>
+    /// </summary>
+    private async Task ApplyImportAsync(ImportDialogResult choice, WorkspaceRootViewModel root, string format)
+    {
         try
         {
             var result = await _openApiImport.ApplyDiffAsync(
@@ -412,7 +421,9 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
                 $"{result.VariableCount} variables, {result.AuthProfileCount} auth profiles.");
             foreach (var warning in result.Warnings)
             {
-                _statusLog.Log($"  ⚠ {warning}");
+                // Warnings, not Info: an import that silently dropped a script or a body is exactly
+                // what the user needs to see, and this is where Postman's untranslated lines arrive.
+                _statusLog.LogWarning(warning);
             }
 
             RefreshRootFor(root.FullPath);
@@ -425,7 +436,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.LogError($"OpenAPI import failed: {ex.Message}");
+            _statusLog.LogError($"{format} import failed: {ex.Message}");
         }
     }
 
@@ -461,8 +472,17 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>Imports a Postman Collection v2.1 JSON file: its folder/request tree plus an environment
-    /// built from the collection variables.</summary>
+    /// <summary>
+    /// Imports a Postman collection through the same preview the OpenAPI import has always had, or an
+    /// environment export directly.
+    ///
+    /// <para>A collection used to be written straight into the workspace, with the outcome reported
+    /// into a status log that was collapsed by default - so re-importing silently overwrote whatever
+    /// had been edited since the last time, and the only notice was somewhere nobody was looking.</para>
+    ///
+    /// <para>An environment export has no requests, so there is nothing to preview and it still goes
+    /// through the direct path.</para>
+    /// </summary>
     [RelayCommand]
     private async Task ImportPostmanAsync()
     {
@@ -472,7 +492,31 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var file = await _filePicker.PickOpenFileAsync("Import Postman collection or environment (JSON)");
+        // The dialog picks the file, parses it, and shows the diff; null means cancelled, which means
+        // cancelled - offering a different file picker next would be answering a question nobody asked.
+        if (await _importDialog.ShowPostmanAsync(root.FullPath) is { } choice)
+        {
+            await ApplyImportAsync(choice, root, "Postman");
+        }
+    }
+
+    /// <summary>
+    /// Imports a Postman ENVIRONMENT or globals export.
+    ///
+    /// <para>Its own action rather than a branch inside the collection import: an environment produces
+    /// no requests, so the add/update/remove preview would list nothing and read as a failed parse.
+    /// Two file types, two menu items.</para>
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportPostmanEnvironmentAsync()
+    {
+        if (ActiveRoot is not { } root)
+        {
+            _statusLog.Log("Open a workspace before importing.");
+            return;
+        }
+
+        var file = await _filePicker.PickOpenFileAsync("Import a Postman environment export (JSON)");
         if (file is null)
         {
             return;
@@ -481,7 +525,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         try
         {
             var result = await _postmanImport.ImportAsync(file, root.FullPath);
-            _statusLog.Log($"Imported Postman collection \"{result.CollectionName}\": " +
+            _statusLog.Log($"Imported Postman \"{result.CollectionName}\": " +
                 $"{result.RequestCount} requests, {result.FolderCount} folders, {result.VariableCount} variables.");
             foreach (var warning in result.Warnings)
             {

@@ -411,7 +411,7 @@ public class OpenApiImportServiceTests : IDisposable
         Assert.Equal(2, plan.Environments.Count);
 
         // Apply without environments or auth profiles.
-        await _sut.ApplyAsync(plan, _root, new OpenApiImportOptions { CreateEnvironments = false, CreateAuthProfiles = false });
+        await _sut.ApplyAsync(plan, _root, new ImportOptions { CreateEnvironments = false, CreateAuthProfiles = false });
 
         Assert.Empty(await _ws.LoadEnvironmentsAsync(_root));
         Assert.Empty(await _ws.LoadAuthProfilesAsync(_root));
@@ -453,7 +453,7 @@ public class OpenApiImportServiceTests : IDisposable
 
         // Re-apply everything EXCEPT the manually edited request.
         var selected = diff.Requests.Where(r => r.Change != ImportChange.Unchanged && r.DisplayName != "List pets").ToList();
-        await _sut.ApplyDiffAsync(plan, selected, [], OpenApiImportOptions.Default, _root);
+        await _sut.ApplyDiffAsync(plan, selected, [], ImportOptions.Default, _root);
 
         Assert.Equal("{{baseUrl}}/pets?manual=1", (await _ws.LoadRequestAsync(listPath)).Url); // survived
     }
@@ -486,7 +486,7 @@ public class OpenApiImportServiceTests : IDisposable
         var removed = diff.Requests.Single(r => r.Change == ImportChange.Remove);
         Assert.Equal("Op B", removed.DisplayName);
 
-        await _sut.ApplyDiffAsync(plan, [removed], [], OpenApiImportOptions.Default, _root);
+        await _sut.ApplyDiffAsync(plan, [removed], [], ImportOptions.Default, _root);
         Assert.DoesNotContain(
             Directory.EnumerateFiles(Path.Combine(_root, "collections"), "*.json", SearchOption.AllDirectories),
             f => Path.GetFileNameWithoutExtension(f) == "Op B");

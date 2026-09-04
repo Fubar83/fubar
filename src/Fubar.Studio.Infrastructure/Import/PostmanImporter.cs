@@ -20,6 +20,72 @@ public sealed class PostmanImporter : IPostmanImportService
         _workspaceService = workspaceService;
     }
 
+    public string SourceDescription => "Postman collection";
+
+    /// <summary>A Postman export is a file you downloaded, not a URL you subscribe to.</summary>
+    public bool AcceptsUrl => false;
+
+    /// <summary>
+    /// Reads a collection into the same <see cref="ImportPlan"/> an OpenAPI spec produces, writing
+    /// nothing.
+    ///
+    /// <para>This is what lets a Postman import show the add / update / unchanged / remove preview the
+    /// OpenAPI one always had. It wrote straight into the workspace before, reporting into a status
+    /// log that was collapsed by default - so re-importing a collection silently overwrote whatever
+    /// had been edited since the last time.</para>
+    ///
+    /// <para>An ENVIRONMENT export is not planned: it produces no requests, so there is nothing to
+    /// preview. <see cref="ImportAsync"/> still handles those directly.</para>
+    /// </summary>
+    public async Task<ImportPlan> ParseAsync(string source, CancellationToken cancellationToken = default)
+    {
+        var json = await File.ReadAllTextAsync(source, cancellationToken);
+        if (JsonNode.Parse(json) is not JsonObject root)
+        {
+            throw new InvalidDataException("Not valid JSON.");
+        }
+
+        if (root["item"] is not JsonArray items)
+        {
+            throw new InvalidDataException(
+                "Not a Postman collection (expected a top-level \"item\" array; v2.1 export). "
+                + "An environment export has no requests to preview - import it directly.");
+        }
+
+        var collectionName = Str(root["info"]?["name"]) ?? Path.GetFileNameWithoutExtension(source);
+        var warnings = new List<string>();
+        var planned = new List<PlannedRequest>();
+
+        // Postman nests folders arbitrarily; a plan carries one folder name per request. Nested paths
+        // are joined with "/" so the structure survives rather than being flattened.
+        void Walk(JsonArray nodes, string folder)
+        {
+            foreach (var node in nodes.OfType<JsonObject>())
+            {
+                if (node["item"] is JsonArray children)
+                {
+                    var name = Str(node["name"]) ?? "Folder";
+                    Walk(children, folder.Length == 0 ? name : $"{folder}/{name}");
+                }
+                else if (node["request"] is not null)
+                {
+                    var model = BuildRequest(node, warnings);
+                    ApplyScripts(node, model, warnings);
+                    planned.Add(new PlannedRequest(folder, model));
+                }
+            }
+        }
+
+        Walk(items, "");
+
+        var variables = ReadCollectionVariables(root["variable"] as JsonArray);
+        var environments = variables.Count > 0
+            ? new List<WorkspaceEnvironment> { new() { Name = $"{collectionName} (imported)", Variables = variables } }
+            : [];
+
+        return new ImportPlan(collectionName, planned, environments, [], warnings);
+    }
+
     public async Task<PostmanImportResult> ImportAsync(string filePath, string workspaceRoot, CancellationToken cancellationToken = default)
     {
         var json = await File.ReadAllTextAsync(filePath, cancellationToken);

@@ -206,6 +206,9 @@ public partial class MainViewModel : ViewModelBase
         yield return new PaletteEntry("Import Postman collection...", "Command", null,
             () => WorkspaceExplorer.ImportPostmanCommand.ExecuteAsync(null));
 
+        yield return new PaletteEntry("Import Postman environment...", "Command", null,
+            () => WorkspaceExplorer.ImportPostmanEnvironmentCommand.ExecuteAsync(null));
+
         yield return new PaletteEntry("Import from curl...", "Command", null,
             () => WorkspaceExplorer.ImportCurlCommand.ExecuteAsync(null));
 

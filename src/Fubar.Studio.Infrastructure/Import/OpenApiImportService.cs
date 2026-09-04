@@ -24,6 +24,10 @@ namespace Fubar.Studio.Infrastructure.Import;
 /// </summary>
 public sealed partial class OpenApiImportService : IOpenApiImportService
 {
+    public string SourceDescription => "OpenAPI / Swagger";
+
+    public bool AcceptsUrl => true;
+
     private static readonly string[] HttpMethods = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
 
     private readonly IWorkspaceService _workspaceService;
@@ -35,15 +39,15 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         _httpClientFactory = httpClientFactory;
     }
 
-    public async Task<OpenApiImportResult> ImportAsync(string source, string workspaceRoot, CancellationToken cancellationToken = default)
+    public async Task<ImportResult> ImportAsync(string source, string workspaceRoot, CancellationToken cancellationToken = default)
     {
         var plan = await ParseAsync(source, cancellationToken);
-        return await ApplyAsync(plan, workspaceRoot, OpenApiImportOptions.Default, cancellationToken);
+        return await ApplyAsync(plan, workspaceRoot, ImportOptions.Default, cancellationToken);
     }
 
     // --- parse -------------------------------------------------------------------------------------
 
-    public async Task<OpenApiImportPlan> ParseAsync(string source, CancellationToken cancellationToken = default)
+    public async Task<ImportPlan> ParseAsync(string source, CancellationToken cancellationToken = default)
     {
         var text = await ReadSpecAsync(source, cancellationToken);
         var root = ParseToJsonObject(text);
@@ -131,7 +135,7 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         throw new InvalidDataException("The spec's root is not a JSON/YAML object.");
     }
 
-    private static OpenApiImportPlan BuildPlan(JsonObject root)
+    private static ImportPlan BuildPlan(JsonObject root)
     {
         var isV2 = root["swagger"] is not null;
         if (root["openapi"] is null && !isV2)
@@ -194,12 +198,12 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         var servers = isV2 ? SyntheticV2Servers(root) : root["servers"] as JsonArray;
         var environments = BuildEnvironments(servers, commonVars);
 
-        return new OpenApiImportPlan(title, requests, environments, profiles.Values.ToList(), warnings);
+        return new ImportPlan(title, requests, environments, profiles.Values.ToList(), warnings);
     }
 
     // --- apply -------------------------------------------------------------------------------------
 
-    public async Task<OpenApiImportResult> ApplyAsync(OpenApiImportPlan plan, string workspaceRoot, OpenApiImportOptions options, CancellationToken cancellationToken = default)
+    public async Task<ImportResult> ApplyAsync(ImportPlan plan, string workspaceRoot, ImportOptions options, CancellationToken cancellationToken = default)
     {
         // Reuse an existing folder (by name) rather than suffixing "Title 2", so re-importing the same
         // spec targets the same place and updates it.
@@ -284,7 +288,7 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
             authProfileCount = plan.AuthProfiles.Count;
         }
 
-        return new OpenApiImportResult(
+        return new ImportResult(
             plan.ApiTitle, apiFolder, requestCount, 1 + tagFolders.Count, environmentCount, authProfileCount, variableCount, plan.Warnings,
             created, updated);
     }
@@ -355,7 +359,7 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
 
     // --- diff --------------------------------------------------------------------------------------
 
-    public async Task<OpenApiImportDiff> DiffAsync(OpenApiImportPlan plan, string workspaceRoot, CancellationToken cancellationToken = default)
+    public async Task<ImportDiff> DiffAsync(ImportPlan plan, string workspaceRoot, CancellationToken cancellationToken = default)
     {
         var apiFolder = Path.Combine(workspaceRoot, "collections", SanitizeFolderName(plan.ApiTitle));
         var existing = await LoadExistingRequestsAsync(apiFolder, cancellationToken);
@@ -411,14 +415,14 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
             }
         }
 
-        return new OpenApiImportDiff(plan.ApiTitle, apiFolder, requestDiffs, variableDiffs, plan.Warnings);
+        return new ImportDiff(plan.ApiTitle, apiFolder, requestDiffs, variableDiffs, plan.Warnings);
     }
 
-    public async Task<OpenApiImportResult> ApplyDiffAsync(
-        OpenApiImportPlan plan,
+    public async Task<ImportResult> ApplyDiffAsync(
+        ImportPlan plan,
         IReadOnlyCollection<RequestDiff> selectedRequests,
         IReadOnlyCollection<VariableDiff> selectedVariables,
-        OpenApiImportOptions options,
+        ImportOptions options,
         string workspaceRoot,
         CancellationToken cancellationToken = default)
     {
@@ -473,11 +477,11 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         }
 
         var environmentCount = selectedVariables.Select(v => v.EnvironmentName).Distinct(StringComparer.Ordinal).Count();
-        return new OpenApiImportResult(
+        return new ImportResult(
             plan.ApiTitle, apiFolder, created + updated, 1 + tagFolders.Count, environmentCount, authProfileCount, variableCount, plan.Warnings, created, updated + removed);
     }
 
-    private async Task<int> ApplySelectedVariablesAsync(OpenApiImportPlan plan, IReadOnlyCollection<VariableDiff> selectedVariables, string workspaceRoot, CancellationToken cancellationToken)
+    private async Task<int> ApplySelectedVariablesAsync(ImportPlan plan, IReadOnlyCollection<VariableDiff> selectedVariables, string workspaceRoot, CancellationToken cancellationToken)
     {
         if (selectedVariables.Count == 0)
         {
@@ -558,7 +562,7 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         return folder;
     }
 
-    private static RequestModel PrepareAuth(RequestModel request, OpenApiImportOptions options)
+    private static RequestModel PrepareAuth(RequestModel request, ImportOptions options)
     {
         if (!options.CreateAuthProfiles && request.Auth.Type == AuthType.Profile)
         {

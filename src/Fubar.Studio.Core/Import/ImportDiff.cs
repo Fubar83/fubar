@@ -38,13 +38,13 @@ public sealed record VariableDiff(
     bool IsSecret);
 
 /// <summary>
-/// The result of comparing a parsed <see cref="OpenApiImportPlan"/> against the current workspace: what
+/// The result of comparing a parsed <see cref="ImportPlan"/> against the current workspace: what
 /// the import would add / update / leave unchanged / remove, for requests and environment variables. The
 /// UI presents this so the user can tick exactly which changes to apply (keeping manual edits), then
 /// hands the chosen <see cref="RequestDiff"/>/<see cref="VariableDiff"/> items to
 /// <see cref="IOpenApiImportService.ApplyDiffAsync"/>.
 /// </summary>
-public sealed record OpenApiImportDiff(
+public sealed record ImportDiff(
     string ApiTitle,
     string ApiFolderPath,
     IReadOnlyList<RequestDiff> Requests,

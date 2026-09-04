@@ -39,7 +39,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAuthProfileStore>(sp => sp.GetRequiredService<WorkspaceService>());
         services.AddSingleton<IFolderConfigStore>(sp => sp.GetRequiredService<WorkspaceService>());
         services.AddSingleton<IInheritanceResolver>(sp => sp.GetRequiredService<WorkspaceService>());
-        services.AddSingleton<IOpenApiImportService, OpenApiImportService>();
+        services.AddSingleton<OpenApiImportService>();
+        services.AddSingleton<IOpenApiImportService>(sp => sp.GetRequiredService<OpenApiImportService>());
+        // The format-independent half, shared by every importer: diff against the workspace, then
+        // apply what the user ticked.
+        services.AddSingleton<IImportApplyService>(sp => sp.GetRequiredService<OpenApiImportService>());
         services.AddSingleton<ICurlImportService, CurlImporter>();
         services.AddSingleton<ICurlExportService, CurlExporter>();
         services.AddSingleton<IPostmanImportService, PostmanImporter>();

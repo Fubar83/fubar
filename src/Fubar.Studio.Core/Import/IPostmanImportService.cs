@@ -8,7 +8,7 @@ public sealed record PostmanImportResult(string CollectionName, int RequestCount
 /// requests under <c>collections/</c>, and its collection variables become an environment. Postman's
 /// <c>{{variable}}</c> syntax matches this app's, so tokens carry over unchanged.
 /// </summary>
-public interface IPostmanImportService
+public interface IPostmanImportService : IImportPlanner
 {
     Task<PostmanImportResult> ImportAsync(string filePath, string workspaceRoot, CancellationToken cancellationToken = default);
 }

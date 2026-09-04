@@ -41,7 +41,7 @@ public class OpenApiImportNoiseTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private async Task<Core.Import.OpenApiImportPlan> PlanAsync(string spec)
+    private async Task<Core.Import.ImportPlan> PlanAsync(string spec)
     {
         var path = Path.Combine(_root, "spec.json");
         await File.WriteAllTextAsync(path, spec);
@@ -308,6 +308,6 @@ public class OpenApiImportNoiseTests : IDisposable
         Assert.True(plan.Requests.Single().Request.Headers.Single(h => h.Key == "Authorization").Enabled);
     }
 
-    private static string Url(Core.Import.OpenApiImportPlan plan, string requestName) =>
+    private static string Url(Core.Import.ImportPlan plan, string requestName) =>
         plan.Requests.Single(r => r.Request.Name == requestName).Request.Url;
 }

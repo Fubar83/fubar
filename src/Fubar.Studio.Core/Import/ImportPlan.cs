@@ -11,7 +11,7 @@ public sealed record PlannedRequest(string FolderName, RequestModel Request);
 /// Lets the UI preview what an import would create (and choose options) and then apply it. Produced by
 /// <see cref="IOpenApiImportService.ParseAsync"/>; consumed by <see cref="IOpenApiImportService.ApplyAsync"/>.
 /// </summary>
-public sealed record OpenApiImportPlan(
+public sealed record ImportPlan(
     string ApiTitle,
     IReadOnlyList<PlannedRequest> Requests,
     IReadOnlyList<WorkspaceEnvironment> Environments,

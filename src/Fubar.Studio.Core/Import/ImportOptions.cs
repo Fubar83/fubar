@@ -1,9 +1,9 @@
 namespace Fubar.Studio.Core.Import;
 
 /// <summary>
-/// Choices the user makes in the import preview before an <see cref="OpenApiImportPlan"/> is applied.
+/// Choices the user makes in the import preview before an <see cref="ImportPlan"/> is applied.
 /// </summary>
-public sealed record OpenApiImportOptions
+public sealed record ImportOptions
 {
     /// <summary>Existing collections folder to import into; null creates a new folder named after the
     /// API title directly under <c>collections/</c>.</summary>
@@ -15,5 +15,5 @@ public sealed record OpenApiImportOptions
     /// <summary>Whether to create the inferred auth profiles (and wire requests to them).</summary>
     public bool CreateAuthProfiles { get; init; } = true;
 
-    public static OpenApiImportOptions Default { get; } = new();
+    public static ImportOptions Default { get; } = new();
 }
