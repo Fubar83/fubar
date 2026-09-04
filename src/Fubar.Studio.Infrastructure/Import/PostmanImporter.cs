@@ -23,7 +23,22 @@ public sealed class PostmanImporter : IPostmanImportService
     public async Task<PostmanImportResult> ImportAsync(string filePath, string workspaceRoot, CancellationToken cancellationToken = default)
     {
         var json = await File.ReadAllTextAsync(filePath, cancellationToken);
-        if (JsonNode.Parse(json) is not JsonObject root || root["item"] is not JsonArray items)
+        if (JsonNode.Parse(json) is not JsonObject root)
+        {
+            throw new InvalidDataException("Not valid JSON.");
+        }
+
+        // An ENVIRONMENT export, which is a separate file type teams have and this could not read at
+        // all - so the variables a collection referenced arrived with nowhere to resolve from.
+        // Recognised by its own marker rather than by the absence of "item", so a malformed collection
+        // still gets the collection error rather than being silently treated as an environment.
+        if (Str(root["_postman_variable_scope"]) is "environment" or "globals"
+            || (root["values"] is JsonArray && root["item"] is null))
+        {
+            return await ImportEnvironmentAsync(root, filePath, workspaceRoot, cancellationToken);
+        }
+
+        if (root["item"] is not JsonArray items)
         {
             throw new InvalidDataException("Not a Postman collection (expected a top-level \"item\" array; v2.1 export).");
         }
@@ -66,6 +81,67 @@ public sealed class PostmanImporter : IPostmanImportService
         }
 
         return new PostmanImportResult(collectionName, requestCount, folderCount, variables.Count, warnings);
+    }
+
+    /// <summary>
+    /// Imports a Postman ENVIRONMENT export - a separate file type from a collection, and one this
+    /// could not read at all, so the variables an imported collection referenced had nowhere to
+    /// resolve from.
+    ///
+    /// <para>Postman's <c>secret</c> type becomes this app's <see cref="VariableKind.Secret"/>, and its
+    /// value is deliberately NOT carried across: a Secret variable's value lives in the OS keyring, and
+    /// writing it into <c>environments/*.json</c> on the way in would be the leak the rest of this
+    /// codebase is arranged to prevent - performed by the import itself. The user is told to re-enter
+    /// them, which is the honest cost of not having them on disk.</para>
+    /// </summary>
+    private async Task<PostmanImportResult> ImportEnvironmentAsync(
+        JsonObject root, string filePath, string workspaceRoot, CancellationToken cancellationToken)
+    {
+        var name = Str(root["name"]) ?? Path.GetFileNameWithoutExtension(filePath);
+        var warnings = new List<string>();
+        var variables = new List<AppVariable>();
+        var secrets = 0;
+
+        foreach (var value in (root["values"] as JsonArray)?.OfType<JsonObject>() ?? [])
+        {
+            if (Str(value["key"]) is not { Length: > 0 } key)
+            {
+                continue;
+            }
+
+            // Postman's "enabled: false" is a variable the user switched off rather than deleted;
+            // importing it as an ordinary one would silently turn it back on.
+            if (value["enabled"] is JsonValue enabled && enabled.TryGetValue<bool>(out var on) && !on)
+            {
+                warnings.Add($"\"{key}\" was disabled in the export and was not imported.");
+                continue;
+            }
+
+            var isSecret = string.Equals(Str(value["type"]), "secret", StringComparison.OrdinalIgnoreCase);
+            if (isSecret)
+            {
+                secrets++;
+            }
+
+            variables.Add(new AppVariable
+            {
+                Key = key,
+                Kind = isSecret ? VariableKind.Secret : VariableKind.Normal,
+                Value = isSecret ? null : Str(value["value"]),
+            });
+        }
+
+        if (secrets > 0)
+        {
+            warnings.Add(
+                $"{secrets} secret variable(s) were imported without their values - a secret lives in the OS "
+                + "keyring, never in the committed environment file. Re-enter them in the environment editor.");
+        }
+
+        var environment = new WorkspaceEnvironment { Name = name, Variables = variables };
+        await _workspaceService.SaveEnvironmentAsync(workspaceRoot, environment, cancellationToken);
+
+        return new PostmanImportResult(name, RequestCount: 0, FolderCount: 0, variables.Count, warnings);
     }
 
     /// <summary>

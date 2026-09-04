@@ -472,7 +472,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var file = await _filePicker.PickOpenFileAsync("Import Postman Collection (v2.1 JSON)");
+        var file = await _filePicker.PickOpenFileAsync("Import Postman collection or environment (JSON)");
         if (file is null)
         {
             return;
