@@ -55,14 +55,27 @@ foreach ($rid in $Runtimes) {
         '-o', $publishDir,
         '--nologo',
         '-p:DebugType=none',
-        '-p:DebugSymbols=false',
-        # Single-file deploy: one self-contained executable per platform. Avalonia's native libraries
-        # (Skia/HarfBuzz/etc.) are embedded and self-extracted at first launch; compression shrinks the
-        # download. Not trimmed - Avalonia relies on reflection/XAML, so trimming is unsafe here.
-        '-p:PublishSingleFile=true',
-        '-p:IncludeNativeLibrariesForSelfExtract=true',
-        '-p:EnableCompressionInSingleFile=true'
+        '-p:DebugSymbols=false'
     )
+
+    # Single-file everywhere EXCEPT macOS.
+    #
+    # A single-file bundle embeds Avalonia's native libraries (Skia/HarfBuzz) and self-extracts them at
+    # first launch. That is fine on Windows and Linux, and fatal on macOS: notarization requires the
+    # hardened runtime, under which every executable and dylib must be signed - and libraries extracted
+    # to a temp directory at runtime are neither signed nor inside the bundle that was. Gatekeeper
+    # rejects the app on a machine that has never seen it, which is precisely the machine that matters.
+    #
+    # So macOS gets the ordinary directory layout, every dylib laid out where codesign can reach it and
+    # where the signature stays attached. Not trimmed on any platform - Avalonia relies on reflection
+    # and XAML, so trimming is unsafe here.
+    if ($rid -like 'osx-*') {
+        Write-Host "    (macOS: not single-file, so every dylib can be signed for notarization)" -ForegroundColor DarkGray
+    } else {
+        $dotnetArgs += '-p:PublishSingleFile=true'
+        $dotnetArgs += '-p:IncludeNativeLibrariesForSelfExtract=true'
+        $dotnetArgs += '-p:EnableCompressionInSingleFile=true'
+    }
     if ($Version) { $dotnetArgs += "-p:Version=$Version" }
 
     dotnet @dotnetArgs

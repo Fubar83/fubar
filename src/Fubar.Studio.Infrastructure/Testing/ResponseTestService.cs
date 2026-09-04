@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
+using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Testing;
 using Fubar.Studio.Core.Variables;
+using Fubar.Studio.Infrastructure.Settings;
 using Fubar.Studio.Core.Workspaces;
 using Json.Path;
 
@@ -21,15 +23,20 @@ public sealed class ResponseTestService : IResponseTestService
     private readonly ISessionVariableStore _sessionStore;
     private readonly IEnvironmentStore _workspaceService;
     private readonly IVariableWriter _variableWriter;
+    private readonly IMachinePolicyService _policy;
 
     public ResponseTestService(
         ISessionVariableStore sessionStore,
         IEnvironmentStore workspaceService,
-        IVariableWriter variableWriter)
+        IVariableWriter variableWriter,
+        IMachinePolicyService? policy = null)
     {
         _sessionStore = sessionStore;
         _workspaceService = workspaceService;
         _variableWriter = variableWriter;
+        // Optional so the many tests that construct this directly need not care; no file means no
+        // policy, which is what every installation without one gets.
+        _policy = policy ?? NoPolicy.Instance;
     }
 
     public IReadOnlyList<AssertionResult> RunAssertions(IReadOnlyList<Assertion> assertions, ExecutionResult result)
@@ -89,6 +96,14 @@ public sealed class ResponseTestService : IResponseTestService
             {
                 results.Add(new CaptureResult(false, name, value, "environment",
                     "No active environment to write to."));
+            }
+            else if (_policy.Current.ForbidEnvironmentCaptures)
+            {
+                // Refused, and SAID - naming the policy rather than reporting a mysterious failure.
+                // Environment scope writes to a committed file, which is what an administrator turning
+                // this on is protecting against.
+                results.Add(new CaptureResult(false, name, value, "environment",
+                    "Environment-scoped captures are disabled by this machine's Fubar policy. Use Session scope."));
             }
             else
             {

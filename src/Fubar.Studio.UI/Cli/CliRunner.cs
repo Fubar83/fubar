@@ -188,6 +188,16 @@ public static class CliRunner
             return CouldNotRun;
         }
 
+        // Written before the report, so a run that is being audited is recorded even if the report
+        // path turns out to be unwritable. A failure here never changes the verdict: the run already
+        // happened, and telling the build the API is broken because a log file could not be appended
+        // to would be the wrong answer about the wrong thing.
+        if (request.AuditLogPath is { } auditPath
+            && RunAuditLog.Append(auditPath, report, workspace, environment) is { } auditError)
+        {
+            error.WriteLine($"Could not write the audit log \"{auditPath}\": {auditError}");
+        }
+
         if (request.ReportPath is { } reportPath)
         {
             try

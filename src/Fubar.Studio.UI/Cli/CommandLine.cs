@@ -78,6 +78,10 @@ public sealed record CliRequest
 
     /// <summary>Treat warnings - a credential-shaped value in a committed file - as failures.</summary>
     public bool Strict { get; init; }
+
+    /// <summary>Append one JSON line describing this run to the given file. Off unless asked for; a
+    /// machine policy can also turn it on for every run.</summary>
+    public string? AuditLogPath { get; init; }
 }
 
 /// <summary>Parses the arguments, and decides whether this invocation is a CLI one at all.</summary>
@@ -216,6 +220,15 @@ public static class CommandLine
                     request = request with { Strict = true };
                     break;
 
+                case "--audit-log":
+                    if (NextValue(args, ref i) is not { } auditPath)
+                    {
+                        return request with { Error = "--audit-log needs a path." };
+                    }
+
+                    request = request with { AuditLogPath = auditPath };
+                    break;
+
                 case "--quiet":
                 case "-q":
                     request = request with { Quiet = true };
@@ -298,6 +311,8 @@ public static class CommandLine
                                    extension when not given.
               --validate           Check every workspace file against its schema and exit.
               --strict             With --validate, treat warnings as failures.
+              --audit-log <path>   Append one JSON line per run: who, where, and the verdict.
+                                   Never a captured value or a body.
           -q, --quiet              Print nothing; the exit code is the answer.
           -h, --help               Show this.
               --version            Show the version.

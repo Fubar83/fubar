@@ -38,6 +38,9 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Optional so a headless test can construct the shell without a windowing stack. Null
     /// means no prompt can be shown, which is treated as "do not discard" rather than as consent.</summary>
     private readonly IConfirmationService? _confirmation;
+    private readonly IClipboardService? _clipboard;
+    private readonly Fubar.Studio.Core.Diagnostics.ILogSink? _logSink;
+    private readonly Fubar.Studio.Core.Settings.IMachinePolicyService? _policy;
     private RequestEditorViewModel? _dirtyTrackedRequest;
 
     public WorkspaceExplorerViewModel WorkspaceExplorer { get; }
@@ -81,7 +84,10 @@ public partial class MainViewModel : ViewModelBase
         IEditorViewModelFactory editorFactory,
         IRunDialogService runDialog,
         ITabDragHost tabDragHost,
-        IConfirmationService? confirmation = null)
+        IConfirmationService? confirmation = null,
+        IClipboardService? clipboard = null,
+        Fubar.Studio.Core.Diagnostics.ILogSink? logSink = null,
+        Fubar.Studio.Core.Settings.IMachinePolicyService? policy = null)
     {
         WorkspaceExplorer = workspaceExplorer;
         TabDragHost = tabDragHost;
@@ -93,6 +99,9 @@ public partial class MainViewModel : ViewModelBase
         _editorFactory = editorFactory;
         _runDialog = runDialog;
         _confirmation = confirmation;
+        _clipboard = clipboard;
+        _logSink = logSink;
+        _policy = policy;
 
         WorkspaceExplorer.PropertyChanged += OnWorkspaceExplorerPropertyChanged;
         WorkspaceExplorer.WorkspaceClosed += OnWorkspaceClosed;
@@ -158,6 +167,13 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Raised by Ctrl+Shift+P; the shell opens the palette over the window.</summary>
     public event Action<CommandPaletteViewModel>? PaletteRequested;
 
+    /// <summary>Raised by the palette's About entry; the shell shows the diagnostics window.</summary>
+    public event Action? AboutRequested;
+
+    /// <summary>Diagnostics for the About window. Built here because the shell owns the log and the
+    /// clipboard; the window itself only displays what it is given.</summary>
+    public AboutViewModel CreateAbout() => new(_clipboard, _logSink, _policy, StatusLog);
+
     [RelayCommand]
     private void OpenPalette() => PaletteRequested?.Invoke(new CommandPaletteViewModel(PaletteEntries()));
 
@@ -204,6 +220,9 @@ public partial class MainViewModel : ViewModelBase
 
         yield return new PaletteEntry("Toggle Status & Log", "Command", "Ctrl+`",
             () => { ToggleLogCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("About Fubar API Studio", "Command", null,
+            () => { AboutRequested?.Invoke(); return Task.CompletedTask; });
 
         foreach (var root in WorkspaceExplorer.Roots)
         {

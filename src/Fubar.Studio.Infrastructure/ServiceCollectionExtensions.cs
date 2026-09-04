@@ -44,6 +44,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICurlExportService, CurlExporter>();
         services.AddSingleton<IPostmanImportService, PostmanImporter>();
         services.AddSingleton<IAppSettingsService, AppSettingsService>();
+        services.AddSingleton<IMachinePolicyService, MachinePolicyService>();
         services.AddSingleton<ISecretStoreService, KeySharpSecretStoreService>();
         services.AddSingleton<ISessionVariableStore, SessionVariableStore>();
         services.AddSingleton<IVariableResolver, VariableResolver>();

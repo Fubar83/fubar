@@ -34,6 +34,8 @@ public partial class MainWindow : Window
                 this.GetVisualDescendants().OfType<Fubar.Controls.JsonEditor>().FirstOrDefault()?.OpenFind();
 
             viewModel.PaletteRequested += palette => new CommandPalette(palette).ShowDialog(this);
+
+            viewModel.AboutRequested += () => new AboutWindow(viewModel.CreateAbout()).ShowDialog(this);
         };
     }
 
