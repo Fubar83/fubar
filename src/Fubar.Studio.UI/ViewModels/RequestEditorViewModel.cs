@@ -147,6 +147,9 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         // the Body editor's schema validation.
         var bodySchema = request.Settings?["fubarOpenApi"]?["bodySchema"]?.ToJsonString();
         Body = RequestBodyViewModel.FromModel(request.Body, filePickerService, schemaValidator, bodySchema);
+        // So an upload chosen from inside the workspace is stored as a relative path, which is what
+        // makes a committed request work on a colleague's machine.
+        Body.WorkspaceRootPath = workspace.RootPath;
         Auth = new RequestAuthViewModel(new TokenRequestEditorViewModel(filePickerService, schemaValidator));
         Auth.LoadFrom(request.Auth);
         Response = new ResponsePanelViewModel(clipboardService, filePickerService, statusLog, schemaValidator, jsonPathEvaluator, responseBaseline, diffPreview);

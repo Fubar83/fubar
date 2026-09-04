@@ -110,12 +110,27 @@
                  on a wrapping Panel (not the grid itself) so it still resolves against
                  RequestBodyViewModel - setting DataContext and IsVisible on the very same element
                  would make IsVisible resolve against the *new* DataContext instead. -->
-            <Panel IsVisible="{Binding IsFormDataVisible}">
-                <fc:KeyValueGrid DataContext="{Binding FormData}"
+            <Grid IsVisible="{Binding IsFormDataVisible}" RowDefinitions="Auto,*">
+                <!-- Attaching a file is its own action rather than a per-row control, because
+                     fc:KeyValueGrid is shared, app-agnostic UI and a file part means nothing in the
+                     Params or Headers grids that also use it. -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,6">
+                    <Button Classes="secondary-btn"
+                            Content="Attach file..."
+                            Command="{Binding AddFileFieldCommand}"
+                            ToolTip.Tip="Add a multipart file part. Paths inside the workspace are stored relative, so a committed request still works elsewhere." />
+                    <TextBlock Text="A file row sends the file's contents; every other row sends its text."
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+
+                <fc:KeyValueGrid Grid.Row="1"
+                                 DataContext="{Binding FormData}"
                                  ItemsSource="{Binding Rows}"
                                  AddCommand="{Binding AddRowCommand}"
                                  RemoveCommand="{Binding RemoveRowCommand}" />
-            </Panel>
+            </Grid>
             <Panel IsVisible="{Binding IsUrlEncodedVisible}">
                 <fc:KeyValueGrid DataContext="{Binding UrlEncoded}"
                                  ItemsSource="{Binding Rows}"

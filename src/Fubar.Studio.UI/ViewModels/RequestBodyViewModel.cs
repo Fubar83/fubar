@@ -226,6 +226,57 @@ public partial class RequestBodyViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Adds a multipart file field, with the path stored relative to the workspace where it can be.
+    ///
+    /// <para>Its own action rather than a per-row control inside <c>fc:KeyValueGrid</c>: that grid is
+    /// shared, app-agnostic UI, and a file-part toggle is meaningful only in a FormData body. Teaching
+    /// the shared control about it would push a concept into <c>Fubar.Controls</c> that three of its
+    /// four users have no use for.</para>
+    /// </summary>
+    [RelayCommand]
+    private async Task AddFileFieldAsync()
+    {
+        var path = await _filePickerService.PickOpenFileAsync("Select a file to upload");
+        if (path is null)
+        {
+            return;
+        }
+
+        FormData.AddRow(new KeyValueRowViewModel
+        {
+            Key = Path.GetFileNameWithoutExtension(path),
+            Value = RelativeToWorkspace(path),
+            Kind = FieldKind.File,
+        });
+    }
+
+    /// <summary>
+    /// The workspace-relative form of <paramref name="path"/> when it sits inside the workspace.
+    ///
+    /// <para>Worth doing because the workspace is committed: <c>fixtures/avatar.png</c> works on a
+    /// colleague's machine and <c>C:\Users\me\Desktop\avatar.png</c> does not. A file from outside
+    /// keeps its absolute path, which is honest - there is nothing better to store.</para>
+    /// </summary>
+    private string RelativeToWorkspace(string path)
+    {
+        if (WorkspaceRootPath is not { Length: > 0 } root)
+        {
+            return path;
+        }
+
+        var relative = Path.GetRelativePath(root, path);
+
+        // GetRelativePath happily walks upwards; a ".." path is no more portable than an absolute one.
+        return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative)
+            ? path
+            : relative.Replace('\\', '/');
+    }
+
+    /// <summary>Set by the request editor so uploads can be stored workspace-relative. Null in the
+    /// tests and previews that construct a body on its own.</summary>
+    public string? WorkspaceRootPath { get; set; }
+
     public RequestBody ToModel() => new()
     {
         Type = Type,

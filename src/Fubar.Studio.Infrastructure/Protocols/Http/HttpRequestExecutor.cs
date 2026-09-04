@@ -273,6 +273,41 @@ public sealed class HttpRequestExecutor : IRequestExecutor
         _variableResolver.Substitute(input, context.Workspace, context.ActiveEnvironment);
 
     /// <summary>
+    /// Resolves an upload path against the workspace root when it is relative.
+    ///
+    /// <para>Relative is the shape worth encouraging: a workspace is committed, so a request pointing at
+    /// <c>fixtures/avatar.png</c> works on a colleague's machine while <c>C:\Users\me\Desktop\…</c>
+    /// does not. Absolute is still honoured - people do upload things from outside the workspace.</para>
+    /// </summary>
+    private static string ResolveWorkspacePath(string path, RequestExecutionContext context) =>
+        Path.IsPathRooted(path) ? path : Path.Combine(context.Workspace.RootPath, path);
+
+    /// <summary>
+    /// A content type for an upload, from the extension.
+    ///
+    /// <para>A guess, and the fallback is the honest one: <c>application/octet-stream</c> is what a
+    /// server should assume for bytes of unknown type, and getting this wrong is a much smaller
+    /// problem than refusing to send the file.</para>
+    /// </summary>
+    private static string GuessContentType(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".json" => "application/json",
+            ".xml" => "application/xml",
+            ".txt" or ".log" or ".csv" => "text/plain",
+            ".html" or ".htm" => "text/html",
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".svg" => "image/svg+xml",
+            ".webp" => "image/webp",
+            ".zip" => "application/zip",
+            ".gz" => "application/gzip",
+            _ => "application/octet-stream",
+        };
+
+    /// <summary>
     /// Builds the outgoing <see cref="HttpContent"/> for every <see cref="BodyType"/> the Body tab
     /// offers - previously only Json/RawText were handled here, so picking FormData/UrlEncoded/
     /// BinaryFile in the UI silently sent no body at all.
@@ -289,7 +324,33 @@ public sealed class HttpRequestExecutor : IRequestExecutor
                 var multipart = new MultipartFormDataContent();
                 foreach (var field in body.FormData.Where(f => f.Enabled && !string.IsNullOrWhiteSpace(f.Key)))
                 {
-                    multipart.Add(new StringContent(Resolve(field.Value, context)), field.Key);
+                    var resolved = Resolve(field.Value, context);
+
+                    if (field.Kind != FieldKind.File)
+                    {
+                        multipart.Add(new StringContent(resolved), field.Key);
+                        continue;
+                    }
+
+                    // A file part, which is the thing multipart exists for and which this could not do:
+                    // every field went out as StringContent, so picking FormData and choosing a file
+                    // sent its PATH as text.
+                    var path = ResolveWorkspacePath(resolved, context);
+
+                    if (!File.Exists(path))
+                    {
+                        // Names the FIELD as well as the path. A committed request can point at a file
+                        // a colleague does not have, and "could not find C:\...\avatar.png" on its own
+                        // leaves them hunting for which part of the body asked for it.
+                        multipart.Dispose();
+                        throw new FileNotFoundException(
+                            $"The form field \"{field.Key}\" points at \"{path}\", which does not exist.", path);
+                    }
+
+                    var part = new StreamContent(File.OpenRead(path));
+                    part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(GuessContentType(path));
+
+                    multipart.Add(part, field.Key, Path.GetFileName(path));
                 }
                 return multipart;
 
