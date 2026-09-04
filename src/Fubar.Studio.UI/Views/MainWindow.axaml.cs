@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Fubar.Studio.UI.ViewModels;
+using System.Linq;
 
 namespace Fubar.Studio.UI.Views;
 
@@ -14,6 +16,23 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // The two gestures whose target is a control rather than state: the left pane's filter box and
+        // AvaloniaEdit's find bar. Both are raised as events by the view model so it never reaches into
+        // the visual tree itself.
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is not MainViewModel viewModel)
+            {
+                return;
+            }
+
+            viewModel.FilterFocusRequested += () =>
+                this.FindControl<Fubar.Controls.SearchBox>("RequestFilterBox")?.Focus();
+
+            viewModel.FindRequested += () =>
+                this.GetVisualDescendants().OfType<Fubar.Controls.JsonEditor>().FirstOrDefault()?.OpenFind();
+        };
     }
 
     /// <summary>

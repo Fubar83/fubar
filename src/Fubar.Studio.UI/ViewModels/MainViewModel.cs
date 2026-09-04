@@ -152,6 +152,41 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ToggleLog() => IsLogVisible = !IsLogVisible;
 
+    /// <summary>Raised by Ctrl+P; the shell puts the caret in the left pane's filter box.</summary>
+    public event Action? FilterFocusRequested;
+
+    /// <summary>Raised by Ctrl+F; the shell opens the response editor's find bar.</summary>
+    public event Action? FindRequested;
+
+    [RelayCommand]
+    private void FocusFilter() => FilterFocusRequested?.Invoke();
+
+    /// <summary>
+    /// Ctrl+F. An event rather than something the view model does itself, because the find bar belongs
+    /// to AvaloniaEdit and lives inside a control - a view model that reached for it would be reaching
+    /// into the view.
+    /// </summary>
+    [RelayCommand]
+    private void FindInResponse()
+    {
+        if (ActiveRequest?.Response.HasResponse == true)
+        {
+            FindRequested?.Invoke();
+        }
+    }
+
+    /// <summary>Ctrl+R - runs whatever the left pane has selected, or the whole workspace when nothing
+    /// is. Same path as the context menu, so the two cannot disagree about what "run" means.</summary>
+    [RelayCommand]
+    private void RunActive()
+    {
+        var node = WorkspaceExplorer.SelectedNode ?? WorkspaceExplorer.ActiveRoot;
+        if (node is not null)
+        {
+            OnRunRequested(node);
+        }
+    }
+
     /// <summary>Whenever the active workspace tab changes (opened, switched, or closed down to
     /// none), reload the Environments/Auth Profiles groups and active-environment badge to match -
     /// or clear them if no workspace is open at all.</summary>

@@ -19,8 +19,17 @@
 
     <!-- The Status &amp; Log strip no longer has a control-bar button (the control bar is reserved for
          workspace-level actions and the environment selector), so Ctrl+` is the way to toggle it. -->
+    <!-- The whole application had four gestures - Ctrl+Enter, Ctrl+S, Ctrl+` and F7/F8 inside the diff
+         dialog - and no menu bar to discover any of them from. These are the ones a keyboard-first
+         tool is expected to have; they are documented in docs/api-studio.md, because an
+         undiscoverable shortcut is the same as no shortcut. -->
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+OemTilde" Command="{Binding ToggleLogCommand}" />
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding WorkspaceExplorer.NewRequestCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding WorkspaceExplorer.NewFolderCommand}" />
+        <KeyBinding Gesture="Ctrl+P" Command="{Binding FocusFilterCommand}" />
+        <KeyBinding Gesture="Ctrl+F" Command="{Binding FindInResponseCommand}" />
+        <KeyBinding Gesture="Ctrl+R" Command="{Binding RunActiveCommand}" />
     </Window.KeyBindings>
 
     <!-- No Design.DataContext: MainViewModel now requires its child view models via

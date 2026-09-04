@@ -179,6 +179,22 @@ apps share.
 Deeper design notes live in [`docs/`](docs/): the [Left Pane](docs/LeftPane.md),
 [Request Editor](docs/RequestEditorPane.md), and [Response Pane](docs/ResponsePane.md).
 
+## Keyboard
+
+There is no menu bar, so this list is the only place these are written down.
+
+| | |
+| --- | --- |
+| <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Send the request |
+| <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Filter the request tree — matches name, URL and method |
+| <kbd>Ctrl</kbd>+<kbd>F</kbd> | Find in the response |
+| <kbd>Ctrl</kbd>+<kbd>R</kbd> | Run the selected folder or request |
+| <kbd>Ctrl</kbd>+<kbd>N</kbd> | New request |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> | New folder |
+| <kbd>Ctrl</kbd>+<kbd>`</kbd> | Status &amp; Log |
+| <kbd>F7</kbd> / <kbd>F8</kbd> | Previous / next difference, in a comparison window |
+
 ## Tech stack
 
 - **[.NET 10](https://dotnet.microsoft.com/)** / C#
