@@ -15,12 +15,20 @@ public sealed class WorkspaceService : IWorkspaceService
     private const string EnvironmentsDirName = "environments";
     private const string AuthProfilesFileName = "auth-profiles.json";
     private const string FolderConfigFileName = "_folder.json";
+    private const string HistoryIgnoreRule = ".fubar/";
 
     public bool IsWorkspaceRoot(string directoryPath) =>
         File.Exists(Path.Combine(directoryPath, AppManifestFileName));
 
     public async Task<Workspace> LoadWorkspaceAsync(string rootPath, CancellationToken cancellationToken = default)
     {
+        // On OPEN as well as create, because the workspaces most at risk are the ones that already
+        // exist. This used to run only when creating a workspace, and only when no .gitignore was
+        // there - so pointing New Workspace at a repository you already have (which is the pitch:
+        // "a workspace belongs in the repository it tests") left execution history, response bodies
+        // and all, tracked by Git.
+        await EnsureHistoryIsIgnoredAsync(rootPath, cancellationToken);
+
         var manifestPath = Path.Combine(rootPath, AppManifestFileName);
         AppManifest manifest;
         await using (var manifestStream = File.OpenRead(manifestPath))
@@ -71,17 +79,61 @@ public sealed class WorkspaceService : IWorkspaceService
             Directory.CreateDirectory(Path.Combine(rootPath, CollectionsDirName));
             Directory.CreateDirectory(Path.Combine(rootPath, EnvironmentsDirName));
 
-            // .fubar/ is execution history - local-machine scratch state, and the one thing here that
-            // should NOT be committed beside the collections and environments.
+        }
+
+        return await LoadWorkspaceAsync(rootPath, cancellationToken);
+    }
+
+    /// <summary>
+    /// Makes sure execution history cannot be committed, by two independent routes because either alone
+    /// has a hole: the workspace-root rule does nothing when the repository root is somewhere above the
+    /// workspace, and the nested file does nothing if someone deletes it. Both are cheap and idempotent.
+    /// </summary>
+    public async Task EnsureHistoryIsIgnoredAsync(string rootPath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
             var gitignorePath = Path.Combine(rootPath, ".gitignore");
 
             if (!File.Exists(gitignorePath))
             {
-                await File.WriteAllTextAsync(gitignorePath, ".fubar/\n", cancellationToken);
+                await File.WriteAllTextAsync(gitignorePath, $"{HistoryIgnoreRule}\n", cancellationToken);
+            }
+            else if (!await AlreadyIgnoresHistoryAsync(gitignorePath, cancellationToken))
+            {
+                // Appended, never rewritten: this is the user's file and it is probably in their history.
+                // A leading newline only when the existing content does not end in one, so the rule does
+                // not land on the end of somebody's last pattern.
+                var existing = await File.ReadAllTextAsync(gitignorePath, cancellationToken);
+                var separator = existing.Length == 0 || existing.EndsWith('\n') ? "" : "\n";
+
+                await File.AppendAllTextAsync(
+                    gitignorePath,
+                    $"{separator}\n# Fubar execution history - local to this machine, never committed.\n{HistoryIgnoreRule}\n",
+                    cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A read-only checkout or a locked file must not stop the workspace opening. The second
+            // guard below still covers the actual history directory, which is the thing that matters.
+        }
+    }
+
+    /// <summary>True when some line already covers <c>.fubar/</c>, so reopening a workspace does not
+    /// append the rule again every time.</summary>
+    private static async Task<bool> AlreadyIgnoresHistoryAsync(string gitignorePath, CancellationToken cancellationToken)
+    {
+        foreach (var line in await File.ReadAllLinesAsync(gitignorePath, cancellationToken))
+        {
+            var trimmed = line.Trim().TrimStart('/');
+            if (trimmed is ".fubar" or ".fubar/" or ".fubar/*" or ".fubar/**")
+            {
+                return true;
             }
         }
 
-        return await LoadWorkspaceAsync(rootPath, cancellationToken);
+        return false;
     }
 
     public async Task<RequestModel> LoadRequestAsync(string requestFilePath, CancellationToken cancellationToken = default)

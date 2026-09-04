@@ -90,10 +90,18 @@ public class CreateWorkspaceTests : IDisposable
         Assert.Equal("Renamed", reopened.Manifest.Name);
     }
 
+    /// <summary>
+    /// An existing .gitignore is APPENDED to, never rewritten - it may already say things about this
+    /// repository that have nothing to do with us, and it is in the user's history.
+    ///
+    /// <para>This test used to assert the file came back byte-identical, and that assertion WAS the
+    /// leak: the rule was written only when no .gitignore existed, so the commonest case - a workspace
+    /// inside a repository that already has one - left execution history tracked. What it was really
+    /// protecting is that we do not clobber the user's rules, which is what it checks now.</para>
+    /// </summary>
     [Fact]
-    public async Task An_existing_gitignore_is_left_alone()
+    public async Task An_existing_gitignore_keeps_everything_it_already_said()
     {
-        // It may already say things about this repository that have nothing to do with us.
         Directory.CreateDirectory(_root);
         await File.WriteAllTextAsync(Path.Combine(_root, ".gitignore"), "node_modules/\n", CancellationToken.None);
 
@@ -101,7 +109,8 @@ public class CreateWorkspaceTests : IDisposable
 
         var ignore = await File.ReadAllTextAsync(Path.Combine(_root, ".gitignore"), CancellationToken.None);
 
-        Assert.Equal("node_modules/\n", ignore);
+        Assert.StartsWith("node_modules/\n", ignore, StringComparison.Ordinal);
+        Assert.Contains(".fubar/", ignore, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -112,5 +121,71 @@ public class CreateWorkspaceTests : IDisposable
         Assert.Equal(_root, workspace.RootPath);
         Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(_root, "collections")));
         Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(_root, "environments")));
+    }
+
+    /// <summary>
+    /// The case that leaked. The rule used to be written only when NO .gitignore existed, so aiming
+    /// New Workspace at a repository you already have - the documented way to use this - left
+    /// execution history, response bodies included, tracked by Git.
+    /// </summary>
+    [Fact]
+    public async Task Existing_gitignore_gains_the_fubar_rule()
+    {
+        Directory.CreateDirectory(_root);
+        var gitignore = Path.Combine(_root, ".gitignore");
+        await File.WriteAllTextAsync(gitignore, "bin/\nobj/\n");
+
+        await Service().CreateWorkspaceAsync(_root);
+
+        var lines = await File.ReadAllLinesAsync(gitignore);
+        Assert.Contains(".fubar/", lines);
+        // The user's own rules are appended to, never rewritten.
+        Assert.Contains("bin/", lines);
+        Assert.Contains("obj/", lines);
+    }
+
+    /// <summary>Opening a workspace repeatedly must not append the rule again each time.</summary>
+    [Fact]
+    public async Task The_fubar_rule_is_not_duplicated_on_reopen()
+    {
+        var workspace = await Service().CreateWorkspaceAsync(_root);
+        await Service().LoadWorkspaceAsync(workspace.RootPath);
+        await Service().LoadWorkspaceAsync(workspace.RootPath);
+
+        var lines = await File.ReadAllLinesAsync(Path.Combine(_root, ".gitignore"));
+        Assert.Single(lines, line => line.Trim() == ".fubar/");
+    }
+
+    /// <summary>
+    /// A workspace that is not itself the repository root gets no protection from a rule written into
+    /// its own .gitignore, so the history directory excludes itself as well.
+    /// </summary>
+    [Fact]
+    public async Task History_writes_a_gitignore_that_excludes_itself()
+    {
+        var workspace = await Service().CreateWorkspaceAsync(_root);
+        var history = new Fubar.Studio.Infrastructure.History.HistoryService();
+
+        await history.AppendAsync(workspace.RootPath, "req-1", new Fubar.Studio.Core.Models.ExecutionSnapshot());
+
+        Assert.Equal(
+            ["# Execution history: local to this machine, never committed.", "*"],
+            (await File.ReadAllLinesAsync(Path.Combine(_root, ".fubar", ".gitignore"))).Where(l => l.Length > 0));
+    }
+
+    /// <summary>An existing rule spelled another legal way is recognised rather than duplicated.</summary>
+    [Theory]
+    [InlineData(".fubar")]
+    [InlineData("/.fubar/")]
+    [InlineData(".fubar/**")]
+    public async Task An_equivalent_existing_rule_is_left_alone(string existingRule)
+    {
+        Directory.CreateDirectory(_root);
+        var gitignore = Path.Combine(_root, ".gitignore");
+        await File.WriteAllTextAsync(gitignore, existingRule + "\n");
+
+        await Service().CreateWorkspaceAsync(_root);
+
+        Assert.Equal([existingRule], (await File.ReadAllLinesAsync(gitignore)).Where(l => l.Length > 0));
     }
 }

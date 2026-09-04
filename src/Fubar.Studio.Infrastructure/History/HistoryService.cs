@@ -37,8 +37,34 @@ public sealed class HistoryService : IHistoryService
 
         var path = GetPath(workspaceRootPath, requestId);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        EnsureSelfIgnored(workspaceRootPath);
         await using var stream = File.Create(path);
         await JsonSerializer.SerializeAsync(stream, existing, FubarJson.Options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes <c>.fubar/.gitignore</c> containing <c>*</c>, so the history directory excludes itself.
+    ///
+    /// <para>The second of two independent guards - <c>WorkspaceService.EnsureHistoryIsIgnoredAsync</c>
+    /// is the first. This one matters because a workspace is often NOT the repository root: a rule
+    /// written into the workspace's own .gitignore does nothing about a repository two directories
+    /// above it, whereas a .gitignore inside the ignored directory works wherever it sits.</para>
+    /// </summary>
+    private static void EnsureSelfIgnored(string workspaceRootPath)
+    {
+        try
+        {
+            var path = Path.Combine(workspaceRootPath, ".fubar", ".gitignore");
+            if (!File.Exists(path))
+            {
+                File.WriteAllText(path, "# Execution history: local to this machine, never committed.\n*\n");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Never fail a send over this. AppendAsync's own caller already treats a history failure as
+            // reportable-but-not-fatal, and this is a smaller thing than that.
+        }
     }
 
     private static string GetPath(string workspaceRootPath, string requestId) =>
