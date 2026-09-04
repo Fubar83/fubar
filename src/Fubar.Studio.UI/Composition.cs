@@ -36,6 +36,9 @@ internal static class Composition
                 services.AddSingleton<IClipboardService, ClipboardService>();
                 services.AddSingleton<IImportDialogService, ImportDialogService>();
                 services.AddSingleton<IRunDialogService, RunDialogService>();
+                // Moved out of Fubar.Diff.UI: API Studio could discard an unsaved request edit
+                // without asking, while Diff has had the prompt from the start.
+                services.AddSingleton<IConfirmationService, ConfirmationService>();
 
                 // The diff engine, reused for the OpenAPI import preview and response comparisons.
                 // AddFubarDiffInfrastructure binds its Core ports (diff engine, JSON parser, text

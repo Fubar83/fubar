@@ -34,6 +34,10 @@ public partial class MainViewModel : ViewModelBase
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IEditorViewModelFactory _editorFactory;
     private readonly IRunDialogService _runDialog;
+
+    /// <summary>Optional so a headless test can construct the shell without a windowing stack. Null
+    /// means no prompt can be shown, which is treated as "do not discard" rather than as consent.</summary>
+    private readonly IConfirmationService? _confirmation;
     private RequestEditorViewModel? _dirtyTrackedRequest;
 
     public WorkspaceExplorerViewModel WorkspaceExplorer { get; }
@@ -76,7 +80,8 @@ public partial class MainViewModel : ViewModelBase
         IProtocolRegistry protocolRegistry,
         IEditorViewModelFactory editorFactory,
         IRunDialogService runDialog,
-        ITabDragHost tabDragHost)
+        ITabDragHost tabDragHost,
+        IConfirmationService? confirmation = null)
     {
         WorkspaceExplorer = workspaceExplorer;
         TabDragHost = tabDragHost;
@@ -87,6 +92,7 @@ public partial class MainViewModel : ViewModelBase
         _protocolRegistry = protocolRegistry;
         _editorFactory = editorFactory;
         _runDialog = runDialog;
+        _confirmation = confirmation;
 
         WorkspaceExplorer.PropertyChanged += OnWorkspaceExplorerPropertyChanged;
         WorkspaceExplorer.WorkspaceClosed += OnWorkspaceClosed;
@@ -190,10 +196,12 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Loads <paramref name="filePath"/> into the single main-canvas surface, replacing whatever
-    /// was open. Re-activating the already-open request is a no-op. Unlike the old tabbed dock,
-    /// there's nowhere to keep a second buffer around - switching away from unsaved changes just
-    /// logs a warning rather than blocking, matching the single-canvas/no-tabs design.
+    /// Loads <paramref name="filePath"/> into the single main-canvas surface, replacing whatever was
+    /// open. Re-activating the already-open request is a no-op.
+    ///
+    /// <para>There is nowhere to keep a second buffer, so replacing a dirty editor DESTROYS the edits -
+    /// which is why it now asks. It used to write a line to the status log and carry on, and that log
+    /// was collapsed by default, so the only notice of losing work went somewhere invisible.</para>
     /// </summary>
     public async Task OpenRequestAsync(string filePath)
     {
@@ -202,9 +210,9 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        if (ActiveRequest is { IsDirty: true } dirty)
+        if (!await ConfirmDiscardingActiveEditAsync())
         {
-            StatusLog.Log($"Switched away from \"{dirty.Name}\" with unsaved changes (Ctrl+S to save before switching).");
+            return;
         }
 
         var workspace = WorkspaceExplorer.FindWorkspaceForPath(filePath);
@@ -229,8 +237,43 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            StatusLog.Log($"Failed to open \"{filePath}\": {ex.Message}");
+            StatusLog.LogError($"Failed to open \"{filePath}\": {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Asks before the active editor's unsaved changes are thrown away, and returns whether to go
+    /// ahead. Save writes first; Cancel and a dismissed dialog both mean don't.
+    ///
+    /// <para>A dismissed dialog counting as "discard" is exactly the bug a prompt exists to prevent,
+    /// so <c>ChooseAsync</c>'s -1 is treated as Cancel - the same rule Fubar Diff states and pins with
+    /// its own tests. With no confirmation service wired at all the answer is also no: refusing to
+    /// switch is recoverable, silently destroying an edit is not.</para>
+    /// </summary>
+    public async Task<bool> ConfirmDiscardingActiveEditAsync()
+    {
+        if (ActiveRequest is not { IsDirty: true } dirty)
+        {
+            return true;
+        }
+
+        var choice = await UnsavedChangesPrompt.AskAsync(
+            isDirty: true,
+            dirty.Name,
+            _confirmation,
+            async () =>
+            {
+                await dirty.SaveCommand.ExecuteAsync(null);
+                return !dirty.IsDirty;
+            });
+
+        if (choice == UnsavedChoice.Keep)
+        {
+            StatusLog.LogWarning($"Kept the unsaved changes to \"{dirty.Name}\".");
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>Opens <paramref name="environment"/>'s variables for editing in the main canvas -

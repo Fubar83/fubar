@@ -1,14 +1,56 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Fubar.Studio.UI.ViewModels;
 
 namespace Fubar.Studio.UI.Views;
 
 public partial class MainWindow : Window
 {
+    /// <summary>Set once the user has answered the unsaved-changes prompt, so the second Close - the
+    /// one this handler issues itself - is not intercepted and asked about all over again.</summary>
+    private bool _closeConfirmed;
+
     public MainWindow()
     {
         InitializeComponent();
+    }
+
+    /// <summary>
+    /// Quitting used to discard an unsaved request without a word: there was no Closing handler at
+    /// all, and the only notice of losing work anywhere in the app went to a status log that is
+    /// collapsed by default.
+    ///
+    /// <para>The close is cancelled first and re-issued after the answer, because the prompt is async
+    /// and <see cref="WindowClosingEventArgs"/> cannot be awaited - deciding after the window has gone
+    /// is deciding too late.</para>
+    /// </summary>
+    protected override async void OnClosing(WindowClosingEventArgs e)
+    {
+        if (_closeConfirmed || DataContext is not MainViewModel viewModel)
+        {
+            base.OnClosing(e);
+            return;
+        }
+
+        e.Cancel = true;
+        base.OnClosing(e);
+
+        try
+        {
+            if (!await viewModel.ConfirmDiscardingActiveEditAsync())
+            {
+                return;
+            }
+        }
+        catch (Exception)
+        {
+            // Never trap the user in the application over a failed prompt. Losing an edit is bad; a
+            // window that cannot be closed is worse, and the log already carries the detail.
+        }
+
+        _closeConfirmed = true;
+        Close();
     }
 
     // No full-screen support. Avalonia's extended-client-area chrome draws a full-screen caption
