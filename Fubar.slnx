@@ -14,6 +14,7 @@
     <Project Path="src/Fubar.Diff.Controls/Fubar.Diff.Controls.csproj" />
     <Project Path="src/Fubar.Diff.Application/Fubar.Diff.Application.csproj" />
     <Project Path="src/Fubar.Diff.Infrastructure/Fubar.Diff.Infrastructure.csproj" />
+    <Project Path="src/Fubar.Diff.Infrastructure.Code/Fubar.Diff.Infrastructure.Code.csproj" />
     <Project Path="src/Fubar.Diff.UI/Fubar.Diff.UI.csproj" />
   </Folder>
   <Folder Name="/tests/shared/">

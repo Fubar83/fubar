@@ -30,6 +30,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Fubar.Diff.Infrastructure\Fubar.Diff.Infrastructure.csproj" />
+    <!-- The C# structural comparison. Referenced HERE and not by API Studio, which is what keeps
+         10.2 MB of Roslyn out of an app that never compares source files. -->
+    <ProjectReference Include="..\Fubar.Diff.Infrastructure.Code\Fubar.Diff.Infrastructure.Code.csproj" />
     <ProjectReference Include="..\Fubar.Diff.Application\Fubar.Diff.Application.csproj" />
     <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
   </ItemGroup>

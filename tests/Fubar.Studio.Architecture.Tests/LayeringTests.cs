@@ -46,6 +46,44 @@ public class LayeringTests
     // than on this one specifically. The assertions above carry the half that belongs on this side:
     // no app layer may depend on the UI control library.
 
+    /// <summary>
+    /// API Studio must not carry the C# compiler.
+    ///
+    /// <para>It did: <c>Composition.cs</c> called <c>AddFubarDiffInfrastructure()</c> to obtain a JSON
+    /// differ, and that assembly referenced Roslyn for the structural comparison - so
+    /// Microsoft.CodeAnalysis.CSharp (7.1 MB) and Microsoft.CodeAnalysis (3.1 MB) shipped inside an
+    /// application whose own composition root explains, correctly, that it never compares source
+    /// files. Roughly twelve times the size of its own assembly, for a port it never resolves.</para>
+    ///
+    /// <para>Asserted against the build OUTPUT, not against the managed reference graph, and that
+    /// distinction is the whole test. The first version of this walked
+    /// <c>GetReferencedAssemblies()</c> and passed happily with the bad project reference restored:
+    /// the C# compiler ELIDES a reference to an assembly whose types are never used, so the manifest
+    /// never mentions Roslyn - while MSBuild copies the transitive closure to the output anyway. The
+    /// reference graph says what was compiled against; only the directory says what ships.</para>
+    /// </summary>
+    [Fact]
+    public void No_compiler_ships_with_api_studio()
+    {
+        // The test's own output directory holds the same transitive closure, by the same copy rules,
+        // because this project references Fubar.Studio.UI.
+        var outputDirectory = Path.GetDirectoryName(UiAsm.Location)!;
+
+        var offenders = Directory
+            .EnumerateFiles(outputDirectory, "Microsoft.CodeAnalysis*.dll")
+            .Select(Path.GetFileName)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "Fubar.Studio.UI must not ship the C# compiler - it compares HTTP responses, never source "
+            + $"files, and this costs ~10 MB in the binary. Found: {string.Join(", ", offenders)}. "
+            + "The Roslyn adapter belongs in Fubar.Diff.Infrastructure.Code, which only Fubar Diff "
+            + "references; splitting the DI registration alone does NOT remove it, because a project "
+            + "reference is what puts an assembly in the output.");
+    }
+
     [Fact]
     public void Ui_view_models_do_not_depend_on_infrastructure()
     {

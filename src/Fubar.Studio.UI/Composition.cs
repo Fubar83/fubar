@@ -40,10 +40,16 @@ internal static class Composition
                 // without asking, while Diff has had the prompt from the start.
                 services.AddSingleton<IConfirmationService, ConfirmationService>();
 
-                // The diff engine, reused for the OpenAPI import preview and response comparisons.
-                // AddFubarDiffInfrastructure binds its Core ports (diff engine, JSON parser, text
-                // normalizer) exactly as it does inside Fubar Diff.
-                services.AddFubarDiffInfrastructure();
+                // The diff engine, reused for the OpenAPI import preview and response comparisons -
+                // the TEXT AND JSON half only.
+                //
+                // This used to be AddFubarDiffInfrastructure(), which binds every adapter Fubar Diff
+                // has: the folder scanner, the file copier, the change watcher, the settings stores,
+                // and the Roslyn C# parser. None of them mean anything to an API client, and the last
+                // put Microsoft.CodeAnalysis.CSharp (7.1 MB) and Microsoft.CodeAnalysis (3.1 MB) in
+                // this application's output - roughly twelve times the size of its own assembly.
+                // Fubar.Studio.Architecture.Tests now fails if the reference comes back.
+                services.AddFubarDiffTextAndJson();
                 services.AddSingleton<SignInService>();
                 services.AddSingleton<JsonSemanticPass>();
 

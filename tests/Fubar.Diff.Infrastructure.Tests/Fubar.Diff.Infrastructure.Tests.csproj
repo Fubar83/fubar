@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fubar.Diff.Infrastructure\Fubar.Diff.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Fubar.Diff.Infrastructure.Code\Fubar.Diff.Infrastructure.Code.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The C# syntax parser behind ICodeStructureParser, and NOTHING else.
+
+       A project of its own rather than a folder in Fubar.Diff.Infrastructure because a folder is not
+       a boundary: API Studio took the whole assembly to obtain a JSON differ, and so shipped
+       Microsoft.CodeAnalysis.CSharp (7.1 MB) and Microsoft.CodeAnalysis (3.1 MB) - roughly twelve
+       times the size of its own assembly - inside an application whose composition root correctly
+       explains that it never compares source files.
+
+       Splitting the DI registration alone would not have removed them: the reference is what puts an
+       assembly in the output, so only a project boundary the consumer does not cross does that.
+       Fubar.Studio.Architecture.Tests asserts the closure stays clean. -->
+  <PropertyGroup>
+    <RootNamespace>Fubar.Diff.Infrastructure.Code</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only the syntax half of Roslyn is used: no semantic model, no project, no compilation. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fubar.Diff.Core\Fubar.Diff.Core.csproj" />
+  </ItemGroup>
+
+</Project>
