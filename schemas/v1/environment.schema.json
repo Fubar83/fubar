@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fubar83.github.io/fubar/schemas/v1/environment.schema.json",
+  "title": "Fubar API Studio environment",
+  "description": "One environments/*.json. Committed - a secret variable's value lives in the OS keyring, never here.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "variables": { "type": "array", "items": { "$ref": "#/$defs/variable" } },
+    "transport": { "$ref": "#/$defs/transport" }
+  },
+  "$defs": {
+    "variable": {
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "key": { "type": "string" },
+        "value": {
+          "type": ["string", "null"],
+          "description": "Only a normal variable carries its value here. Secret and session variables must have null - their values live in the OS keyring and in memory."
+        },
+        "kind": { "enum": ["normal", "secret", "session"], "default": "normal" },
+        "description": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "secret" } }, "required": ["kind"] },
+          "then": {
+            "properties": { "value": { "type": "null" } },
+            "$comment": "A secret's value on disk is the leak this format exists to prevent."
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "session" } }, "required": ["kind"] },
+          "then": { "properties": { "value": { "type": "null" } } }
+        }
+      ]
+    },
+    "transport": {
+      "type": ["object", "null"],
+      "description": "How connections for this environment are made. Null uses the machine defaults.",
+      "properties": {
+        "clientCertificateThumbprint": {
+          "type": ["string", "null"],
+          "description": "A thumbprint into the OS certificate store - never a file path plus a password, which this committed file must not carry."
+        },
+        "certificateAuthorityPaths": { "type": "array", "items": { "type": "string" } },
+        "proxyUrl": { "type": ["string", "null"] },
+        "proxyBypass": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

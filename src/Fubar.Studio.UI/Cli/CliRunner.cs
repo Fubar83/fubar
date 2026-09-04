@@ -53,9 +53,9 @@ public static class CliRunner
             return CouldNotRun;
         }
 
-        if (request.Run is null)
+        if (request.Run is null && !request.Validate)
         {
-            error.WriteLine("Nothing to do. Use --run, or --help.");
+            error.WriteLine("Nothing to do. Use --run, --validate, or --help.");
             return CouldNotRun;
         }
 
@@ -73,6 +73,11 @@ public static class CliRunner
         {
             error.WriteLine(ex.Message);
             return CouldNotRun;
+        }
+
+        if (request.Validate)
+        {
+            return ValidateWorkspace(request, root, output, error);
         }
 
         WorkspaceEnvironment? environment = null;
@@ -347,6 +352,48 @@ public static class CliRunner
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)),
             Path.TrimEndingDirectorySeparator(b),
             StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Checks every workspace file against its schema, with the same exit contract as a run.
+    ///
+    /// <para>Problems are printed one per line as <c>path:pointer: message</c> - the shape a build log
+    /// and an editor's problem list both already parse - and warnings are labelled rather than folded
+    /// in, because failing someone's build over a deliberately public sandbox key would be wrong about
+    /// the case they understand better than this does. <c>--strict</c> is how a team opts into that.</para>
+    /// </summary>
+    private static int ValidateWorkspace(CliRequest request, string root, TextWriter output, TextWriter error)
+    {
+        IReadOnlyList<Fubar.Studio.Infrastructure.Workspaces.ValidationProblem> problems;
+        try
+        {
+            problems = new Fubar.Studio.Infrastructure.Workspaces.WorkspaceValidator().Validate(root);
+        }
+        catch (Exception ex)
+        {
+            error.WriteLine($"The workspace could not be validated: {ex.Message}");
+            return CouldNotRun;
+        }
+
+        var errors = problems.Count(p => p.IsError);
+        var warnings = problems.Count - errors;
+
+        if (!request.Quiet)
+        {
+            foreach (var problem in problems)
+            {
+                var where = string.IsNullOrEmpty(problem.Location) ? "" : problem.Location;
+                var line = $"{problem.Path}:{where}: {(problem.IsError ? "error" : "warning")}: {problem.Message}";
+
+                (problem.IsError ? error : output).WriteLine(line);
+            }
+
+            output.WriteLine(problems.Count == 0
+                ? "Workspace is valid."
+                : $"{errors} error(s), {warnings} warning(s).");
+        }
+
+        return errors > 0 || (request.Strict && warnings > 0) ? Failed : Passed;
+    }
 
     private static string Names(IReadOnlyList<WorkspaceEnvironment> environments) =>
         environments.Count == 0 ? "(none defined)" : string.Join(", ", environments.Select(e => e.Name));

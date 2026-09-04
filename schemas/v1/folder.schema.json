@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fubar83.github.io/fubar/schemas/v1/folder.schema.json",
+  "title": "Fubar API Studio folder settings",
+  "description": "_folder.json inside a collections subfolder. Cascades to every request beneath it; a closer folder wins.",
+  "type": "object",
+  "properties": {
+    "headers": { "type": "array", "items": { "$ref": "request.schema.json#/$defs/keyValue" } },
+    "authProfileId": { "type": ["string", "null"] },
+    "comparison": { "$ref": "request.schema.json#/$defs/comparison" }
+  }
+}

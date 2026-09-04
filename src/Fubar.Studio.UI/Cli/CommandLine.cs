@@ -65,6 +65,19 @@ public sealed record CliRequest
 
     /// <summary>Path to a dotenv-style file of the same assignments, for more than a couple of them.</summary>
     public string? EnvFilePath { get; init; }
+
+    /// <summary>
+    /// Check every workspace file against its schema instead of running anything. Same exit contract
+    /// as a run: 0 valid, 1 invalid, 2 could not tell.
+    ///
+    /// <para>What makes "a workspace is plain files in your repository" a workflow rather than a
+    /// claim - a malformed request.json can fail a pull request instead of being found by whoever
+    /// next opens it.</para>
+    /// </summary>
+    public bool Validate { get; init; }
+
+    /// <summary>Treat warnings - a credential-shaped value in a committed file - as failures.</summary>
+    public bool Strict { get; init; }
 }
 
 /// <summary>Parses the arguments, and decides whether this invocation is a CLI one at all.</summary>
@@ -75,7 +88,7 @@ public static class CommandLine
     /// window, because turning an unrecognised argument into a silent batch job is the kind of surprise
     /// nobody can debug.
     /// </summary>
-    private static readonly string[] Headless = ["--run", "--help", "-h", "--version"];
+    private static readonly string[] Headless = ["--run", "--validate", "--help", "-h", "--version"];
 
     public static bool IsHeadless(string[] args) =>
         args.Any(a => Headless.Contains(a, StringComparer.OrdinalIgnoreCase));
@@ -195,6 +208,14 @@ public static class CommandLine
                     request = request with { EnvFilePath = envFile };
                     break;
 
+                case "--validate":
+                    request = request with { Validate = true };
+                    break;
+
+                case "--strict":
+                    request = request with { Strict = true };
+                    break;
+
                 case "--quiet":
                 case "-q":
                     request = request with { Quiet = true };
@@ -275,6 +296,8 @@ public static class CommandLine
               --report <path>      Write a report.
               --report-format <f>  json (default) or junit. Inferred from the path's
                                    extension when not given.
+              --validate           Check every workspace file against its schema and exit.
+              --strict             With --validate, treat warnings as failures.
           -q, --quiet              Print nothing; the exit code is the answer.
           -h, --help               Show this.
               --version            Show the version.
@@ -310,5 +333,6 @@ public static class CommandLine
           FubarAPIStudio --run Orders --stop-on-failure
           FubarAPIStudio --run -w ./api-tests --filter smoke -q
           FubarAPIStudio --run --env CI --var api_key="$API_KEY" --report results.xml
+          FubarAPIStudio --validate -w ./api-tests
         """;
 }

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fubar83.github.io/fubar/schemas/v1/app.schema.json",
+  "title": "Fubar API Studio workspace",
+  "description": "fubar.json at a workspace root. Committed: nothing secret belongs here.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "id": { "type": "string", "description": "Stable id. Keys this workspace's secrets in the OS keyring." },
+    "name": { "type": "string" },
+    "version": { "type": "string", "default": "1.0.0" },
+    "activeEnvironmentId": { "type": ["string", "null"] },
+    "variables": {
+      "type": "array",
+      "description": "Workspace-wide defaults - the lowest-precedence variable source, below the active environment. For what is true about the API rather than about one deployment of it.",
+      "items": { "$ref": "environment.schema.json#/$defs/variable" }
+    }
+  }
+}
