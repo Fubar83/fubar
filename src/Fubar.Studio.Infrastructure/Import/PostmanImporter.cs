@@ -48,6 +48,7 @@ public sealed class PostmanImporter : IPostmanImportService
                 else if (node["request"] is not null)
                 {
                     var model = BuildRequest(node, warnings);
+                    ApplyScripts(node, model, warnings);
                     var path = _workspaceService.CreateRequest(parentDir, model.Name);
                     await _workspaceService.SaveRequestAsync(path, model, cancellationToken);
                     requestCount++;
@@ -65,6 +66,57 @@ public sealed class PostmanImporter : IPostmanImportService
         }
 
         return new PostmanImportResult(collectionName, requestCount, folderCount, variables.Count, warnings);
+    }
+
+    /// <summary>
+    /// Translates the item's <c>test</c> script into assertions and captures, and says what it could
+    /// not translate.
+    ///
+    /// <para>The <c>event</c> array was never read at all, so every script a team had written was
+    /// dropped in silence - and the assertions people wrote are the thing they most want to keep when
+    /// leaving Postman. What cannot be translated is now named, per request and line by line, rather
+    /// than disappearing.</para>
+    /// </summary>
+    private static void ApplyScripts(JsonObject item, RequestModel model, List<string> warnings)
+    {
+        foreach (var listener in (item["event"] as JsonArray)?.OfType<JsonObject>() ?? [])
+        {
+            var kind = Str(listener["listen"]);
+            var lines = (listener["script"]?["exec"] as JsonArray)?.Select(Str).OfType<string>().ToList() ?? [];
+
+            if (lines.Count == 0)
+            {
+                continue;
+            }
+
+            // A pre-request script runs BEFORE the send and can do anything - compute a signature, set
+            // a header. There is nothing declarative here that corresponds, so it is reported whole
+            // rather than half-translated into something that would run at the wrong time.
+            if (!string.Equals(kind, "test", StringComparison.OrdinalIgnoreCase))
+            {
+                warnings.Add(
+                    $"\"{model.Name}\": its {kind ?? "pre-request"} script was not imported "
+                    + $"({lines.Count} line(s)) - this app has no scripting.");
+                continue;
+            }
+
+            var translation = PostmanScriptTranslation.Translate(lines);
+
+            model.Assertions.AddRange(translation.Assertions);
+            model.Captures.AddRange(translation.Captures);
+
+            if (translation.AnythingTranslated)
+            {
+                warnings.Add(
+                    $"\"{model.Name}\": translated {translation.Assertions.Count} assertion(s) and "
+                    + $"{translation.Captures.Count} capture(s) from its test script.");
+            }
+
+            foreach (var line in translation.Untranslated)
+            {
+                warnings.Add($"\"{model.Name}\": could not translate  {line}");
+            }
+        }
     }
 
     private static RequestModel BuildRequest(JsonObject item, List<string> warnings)
