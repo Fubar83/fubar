@@ -316,7 +316,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Save failed: {ex.Message}");
+            _statusLog.LogError($"Save failed: {ex.Message}");
         }
     }
 
@@ -343,7 +343,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Copy as curl failed: {ex.Message}");
+            _statusLog.LogError($"Copy as curl failed: {ex.Message}");
         }
     }
 
@@ -433,7 +433,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
 
         if (outcome.HistoryError is { } historyError)
         {
-            _statusLog.Log($"Failed to record history for \"{Name}\": {historyError}");
+            _statusLog.LogWarning($"Failed to record history for \"{Name}\": {historyError}");
         }
     }
 
@@ -554,7 +554,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Could not save comparison settings: {ex.Message}");
+            _statusLog.LogError($"Could not save comparison settings: {ex.Message}");
         }
     }
 
@@ -639,7 +639,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Failed to load header/auth inheritance for \"{Name}\": {ex.Message}");
+            _statusLog.LogWarning($"Failed to load header/auth inheritance for \"{Name}\": {ex.Message}");
         }
         finally
         {
@@ -786,7 +786,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
             Response.StatusCode = 0;
             Response.StatusText = "Error";
             Response.LoadBody(result.ErrorMessage, result.BodyBytes);
-            _statusLog.Log($"Request failed: {result.ErrorMessage}");
+            _statusLog.LogError($"Request failed: {result.ErrorMessage}");
         }
         else
         {

@@ -396,7 +396,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"OpenAPI import failed: {ex.Message}");
+            _statusLog.LogError($"OpenAPI import failed: {ex.Message}");
         }
     }
 
@@ -428,7 +428,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"curl import failed: {ex.Message}");
+            _statusLog.LogError($"curl import failed: {ex.Message}");
         }
     }
 
@@ -467,7 +467,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Postman import failed: {ex.Message}");
+            _statusLog.LogError($"Postman import failed: {ex.Message}");
         }
     }
 
@@ -507,7 +507,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Rename failed: {ex.Message}");
+            _statusLog.LogError($"Rename failed: {ex.Message}");
         }
     }
 
@@ -537,7 +537,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Delete failed: {ex.Message}");
+            _statusLog.LogError($"Delete failed: {ex.Message}");
         }
     }
 
@@ -557,7 +557,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Duplicate failed: {ex.Message}");
+            _statusLog.LogError($"Duplicate failed: {ex.Message}");
         }
     }
 

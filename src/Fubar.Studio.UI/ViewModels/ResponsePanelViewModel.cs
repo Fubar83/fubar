@@ -449,7 +449,7 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Failed to save response body: {ex.Message}");
+            _statusLog.LogError($"Failed to save response body: {ex.Message}");
         }
     }
 

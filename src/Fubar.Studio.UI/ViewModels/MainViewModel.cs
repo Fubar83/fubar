@@ -218,7 +218,7 @@ public partial class MainViewModel : ViewModelBase
         var workspace = WorkspaceExplorer.FindWorkspaceForPath(filePath);
         if (workspace is null)
         {
-            StatusLog.Log($"Could not find the owning workspace for \"{filePath}\".");
+            StatusLog.LogError($"Could not find the owning workspace for \"{filePath}\".");
             return;
         }
 

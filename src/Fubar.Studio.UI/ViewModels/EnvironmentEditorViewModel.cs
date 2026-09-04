@@ -144,7 +144,7 @@ public partial class EnvironmentEditorViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Failed to save environment \"{Name}\": {ex.Message}");
+            _statusLog.LogError($"Failed to save environment \"{Name}\": {ex.Message}");
         }
     }
 }

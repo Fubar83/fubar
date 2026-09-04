@@ -188,7 +188,7 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Failed to save auth profile \"{Name}\": {ex.Message}");
+            _statusLog.LogError($"Failed to save auth profile \"{Name}\": {ex.Message}");
         }
     }
 }
