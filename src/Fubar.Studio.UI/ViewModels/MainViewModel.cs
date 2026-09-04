@@ -108,6 +108,13 @@ public partial class MainViewModel : ViewModelBase
         StatusLog.RaiseRequested += () => IsLogVisible = true;
         StatusLog.IsVisible = IsLogVisible;
 
+        // Opening a pre-floor request rewrites it into the current format. That is an edit to a
+        // committed file, so it is announced rather than done quietly - the user is about to see it in
+        // a diff and is entitled to know why.
+        _workspaceService.RequestMigrated += (path, changes) =>
+            StatusLog.LogWarning(
+                $"Updated \"{System.IO.Path.GetFileName(path)}\" to the current format: {string.Join("; ", changes)}.");
+
         StatusLog.Log("Fubar shell ready.");
     }
 

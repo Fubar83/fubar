@@ -311,6 +311,8 @@ public class CollectionRunServiceTests
 
     private sealed class FakeStore : IRequestStore
     {
+        /// <summary>No migration happens in a fake store, so nothing ever raises this.</summary>
+        public event Action<string, IReadOnlyList<string>>? RequestMigrated { add { } remove { } }
         private readonly HashSet<string> _failing = new(StringComparer.OrdinalIgnoreCase);
 
         public FakeStore FailOn(string path) { _failing.Add(path); return this; }

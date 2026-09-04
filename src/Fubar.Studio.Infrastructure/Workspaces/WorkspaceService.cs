@@ -137,10 +137,36 @@ public sealed class WorkspaceService : IWorkspaceService
 
     public async Task<RequestModel> LoadRequestAsync(string requestFilePath, CancellationToken cancellationToken = default)
     {
-        await using var stream = File.OpenRead(requestFilePath);
-        return await JsonSerializer.DeserializeAsync<RequestModel>(stream, FubarJson.Options, cancellationToken)
-            ?? throw new InvalidDataException($"\"{requestFilePath}\" did not deserialize to a valid request.json.");
+        RequestModel request;
+        await using (var stream = File.OpenRead(requestFilePath))
+        {
+            request = await JsonSerializer.DeserializeAsync<RequestModel>(stream, FubarJson.Options, cancellationToken)
+                ?? throw new InvalidDataException($"\"{requestFilePath}\" did not deserialize to a valid request.json.");
+        }
+
+        // Bring a pre-floor file up to the current shape ONCE, here, rather than through readers that
+        // ran on every load and kept three legacy shapes alive forever. See docs/decisions.md §C.
+        var migration = LegacyRequestMigration.Apply(request);
+        if (migration.Changed)
+        {
+            // Written back immediately so the conversion actually sticks - otherwise the next open
+            // migrates again and the user never sees the file settle. Reported through the event so
+            // the shell can say what it did: this is rewriting a file they are about to see in a diff.
+            await JsonFile.WriteAtomicAsync(requestFilePath, request, FubarJson.Options, cancellationToken);
+            RequestMigrated?.Invoke(requestFilePath, migration.Changes);
+        }
+
+        return request;
     }
+
+    /// <summary>
+    /// Raised after a <c>request.json</c> was rewritten into the current format, with what changed.
+    ///
+    /// <para>An event rather than a log call because Infrastructure has no business knowing about the
+    /// status strip - and this must be SAID somewhere: silently rewriting committed content is not a
+    /// thing to spring on someone.</para>
+    /// </summary>
+    public event Action<string, IReadOnlyList<string>>? RequestMigrated;
 
     public async Task SaveRequestAsync(string requestFilePath, RequestModel request, CancellationToken cancellationToken = default)
     {

@@ -51,21 +51,10 @@ public sealed class RequestModel
     public List<string> SuppressedInheritedHeaderKeys { get; set; } = [];
 
     /// <summary>
-    /// JSON paths whose differences are never reported when comparing this request's responses -
-    /// <c>$.meta.requestId</c>, <c>$..timestamp</c>, <c>$.items[*].updatedAt</c>. See
-    /// <c>Fubar.Diff.Core.Json.JsonPathPattern</c> for the syntax.
-    ///
-    /// Per request rather than global: which fields are noise is a property of the endpoint, and the
-    /// same field name can be meaningful on one response and a timestamp on another. Committed with
-    /// the request, so a team shares the rules rather than each rediscovering them.
+    /// SUPERSEDED by <see cref="Comparison"/>'s <c>IgnoredPaths</c>. Deserialised only so a pre-floor
+    /// file still loads; <c>LegacyRequestMigration</c> folds it into <see cref="Comparison"/> once, on
+    /// open, and clears it. Nothing reads it - read <see cref="Comparison"/>.
     /// </summary>
-    /// <remarks>
-    /// SUPERSEDED by <see cref="Comparison"/>'s <c>IgnoredPaths</c>, which sits in a hierarchy the
-    /// global and folder levels can also contribute to. Kept so request.json files written before that
-    /// existed still load: <see cref="EffectiveComparison"/> folds this into the new shape when the new
-    /// section is absent, and <see cref="MigrateLegacyIgnorePaths"/> rewrites it on the next save. Do
-    /// not read this field directly - read <see cref="EffectiveComparison"/>.
-    /// </remarks>
     public List<string> ResponseDiffIgnorePaths { get; set; } = [];
 
     /// <summary>
@@ -75,35 +64,9 @@ public sealed class RequestModel
     public ComparisonSettings? Comparison { get; set; }
 
     /// <summary>
-    /// <see cref="Comparison"/>, or a stand-in built from the legacy
-    /// <see cref="ResponseDiffIgnorePaths"/> when this file predates it. Every reader should go through
-    /// here so an un-migrated request keeps behaving exactly as it did.
-    /// </summary>
-    public ComparisonSettings? EffectiveComparison =>
-        Comparison ?? (ResponseDiffIgnorePaths.Count > 0
-            ? new ComparisonSettings { IgnoredPaths = [.. ResponseDiffIgnorePaths] }
-            : null);
-
-    /// <summary>
-    /// Folds the legacy field into <see cref="Comparison"/> and clears it, so the next save writes only
-    /// the new shape. A no-op once migrated, and never loses rules: it only runs while the new section
-    /// is absent, and copies before clearing.
-    /// </summary>
-    public void MigrateLegacyIgnorePaths()
-    {
-        if (Comparison is null && ResponseDiffIgnorePaths.Count > 0)
-        {
-            Comparison = new ComparisonSettings { IgnoredPaths = [.. ResponseDiffIgnorePaths] };
-        }
-
-        ResponseDiffIgnorePaths = [];
-    }
-
-    /// <summary>
-    /// Obsolete: variables now resolve strictly from the active <see cref="WorkspaceEnvironment"/>
-    /// (RequestEditorPane.md §1.3 - "Environment-Only Variables"; the request-local Variables tab
-    /// is removed). Kept only so older <c>request.json</c> files still deserialize; no longer read
-    /// by <c>IVariableResolver</c> or the request builder UI.
+    /// RETIRED: variables resolve from the active environment, the session store and the workspace
+    /// manifest. Deserialised only so a pre-floor file still loads; <c>LegacyRequestMigration</c>
+    /// drops it once, on open.
     /// </summary>
     public List<KeyValueItem> LocalVariables { get; set; } = [];
 

@@ -156,7 +156,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
 
         // The response pane owns Pin/Compare but knows nothing about requests, so it asks for the
         // rules when it needs them rather than being handed a snapshot that would go stale on save.
-        _comparisonOverrides = request.EffectiveComparison?.Clone();
+        _comparisonOverrides = request.Comparison?.Clone();
         Response.SettingsContextProvider = BuildSettingsContext;
 
         Method = request.Method;

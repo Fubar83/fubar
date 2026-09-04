@@ -45,9 +45,19 @@ public sealed partial class VariableResolver : IVariableResolver
         {
             // Fall back to session-only variables (e.g. an OAuth token) - never persisted, so they don't
             // appear in any environment file.
-            return _sessionStore.TryGet(scope, key, out var sessionValue)
-                ? new VariableResolution(true, sessionValue, "session")
-                : new VariableResolution(false, "", "");
+            if (_sessionStore.TryGet(scope, key, out var sessionValue))
+            {
+                return new VariableResolution(true, sessionValue, "session");
+            }
+
+            // Then the workspace manifest, the LOWEST precedence source: values that are true for the
+            // workspace and do not vary by environment.
+            //
+            // fubar.json documented these as "public workspace variables … committed to Git" from the
+            // start and nothing ever read them - built and never wired, the failure CLAUDE.md's closing
+            // section warns about. Bottom of the chain on purpose: an environment must always be able to
+            // override a workspace default, or picking one would stop meaning anything.
+            return ResolveFromManifest(workspace, key);
         }
 
         switch (variable.Kind)
@@ -65,8 +75,41 @@ public sealed partial class VariableResolver : IVariableResolver
                     : new VariableResolution(false, "", $"{activeEnvironment!.Name} (session not set)");
 
             default:
+                // A declared-but-empty environment entry falls through to the workspace default rather
+                // than shadowing it with "". Otherwise adding a key to one environment would silently
+                // blank it for that environment only, which reads as the manifest value being wrong.
+                if (string.IsNullOrEmpty(variable.Value) && ResolveFromManifest(workspace, key) is { IsDefined: true } fromManifest)
+                {
+                    return fromManifest;
+                }
+
                 return new VariableResolution(true, variable.Value ?? "", activeEnvironment!.Name);
         }
+    }
+
+    /// <summary>
+    /// The workspace manifest's own variables - <c>fubar.json</c>'s <c>variables</c> array.
+    ///
+    /// <para>Committed with the workspace and shared by every environment, so this is for what is true
+    /// about the API rather than about one deployment of it: a base path, a version segment, an
+    /// account id. Secrets have no business here - the file is committed - so a Secret or Session kind
+    /// declared at this level is refused rather than quietly read from disk.</para>
+    /// </summary>
+    private static VariableResolution ResolveFromManifest(Workspace workspace, string key)
+    {
+        if (workspace.Manifest.Variables.FirstOrDefault(v => v.Key == key) is not { } variable)
+        {
+            return new VariableResolution(false, "", "");
+        }
+
+        if (variable.Kind != VariableKind.Normal)
+        {
+            // Not silently ignored: the user marked it Secret expecting protection, and resolving it
+            // from a committed file would be the opposite of what they asked for.
+            return new VariableResolution(false, "", "workspace (secrets belong in an environment, not fubar.json)");
+        }
+
+        return new VariableResolution(true, variable.Value ?? "", "workspace");
     }
 
     public string Substitute(string? input, Workspace workspace, WorkspaceEnvironment? activeEnvironment)
@@ -114,6 +157,16 @@ public sealed partial class VariableResolver : IVariableResolver
             if (seen.Add(key))
             {
                 result.Add(new VariableSuggestion(key, "session", IsSession: true));
+            }
+        }
+
+        // Last, matching precedence - autocomplete should offer what would actually resolve, in the
+        // order it would resolve.
+        foreach (var variable in workspace.Manifest.Variables.Where(v => v.Kind == VariableKind.Normal))
+        {
+            if (seen.Add(variable.Key))
+            {
+                result.Add(new VariableSuggestion(variable.Key, "workspace", IsSession: false));
             }
         }
 

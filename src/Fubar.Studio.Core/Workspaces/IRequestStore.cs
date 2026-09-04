@@ -8,6 +8,15 @@ public interface IRequestStore
 {
     Task<RequestModel> LoadRequestAsync(string requestFilePath, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Raised when loading rewrote a <c>request.json</c> into the current format, with the file path
+    /// and what changed - see <c>LegacyRequestMigration</c>.
+    ///
+    /// <para>On the port because the rewrite has to be SAID somewhere: silently editing committed
+    /// content is not a thing to spring on someone who is about to look at their diff.</para>
+    /// </summary>
+    event Action<string, IReadOnlyList<string>>? RequestMigrated;
+
     Task SaveRequestAsync(string requestFilePath, RequestModel request, CancellationToken cancellationToken = default);
 
     /// <summary>Scans <c>{rootPath}/collections</c> and returns its direct children as a tree. Empty if
