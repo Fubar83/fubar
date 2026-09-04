@@ -36,6 +36,9 @@ internal static class Composition
                 services.AddSingleton<IClipboardService, ClipboardService>();
                 services.AddSingleton<IImportDialogService, ImportDialogService>();
                 services.AddSingleton<IRunDialogService, RunDialogService>();
+                // One object for the request editor's dependencies: it took 24 constructor parameters,
+                // which made adding one a five-place edit.
+                services.AddSingleton<RequestEditorServices>();
                 // Moved out of Fubar.Diff.UI: API Studio could discard an unsaved request edit
                 // without asking, while Diff has had the prompt from the start.
                 services.AddSingleton<IConfirmationService, ConfirmationService>();

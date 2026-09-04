@@ -77,48 +77,47 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     private readonly IAppSettingsService _appSettings;
     private readonly IFolderConfigStore _folderConfigStore;
 
+    /// <summary>
+    /// Four things about THIS editor, and one object for everything it needs from the rest of the app.
+    ///
+    /// <para>This took twenty-four parameters, which made adding a dependency a five-place edit - the
+    /// view model, the factory, and every test that built one. That is a large part of why the editor
+    /// was the least-tested type in the application while being the one every feature runs through.</para>
+    /// </summary>
     public RequestEditorViewModel(
         RequestModel request,
         string filePath,
         IProtocolProvider provider,
         Workspace workspace,
         EnvironmentManagerViewModel environmentManager,
-        IRequestStore requestStore,
-        IAuthProfileStore authProfileStore,
-        IInheritanceResolver inheritanceResolver,
-        IRequestExecutionService requestExecution,
-        IHistoryService historyService,
-        ICurlExportService curlExport,
-        IJsonSchemaValidator schemaValidator,
-        IJsonPathEvaluator jsonPathEvaluator,
-        IVariableResolver variableResolver,
-        IAuthProvider authProvider,
-        IOpenIdDiscoveryService discovery,
-        SignInService signIn,
-        IClipboardService clipboardService,
-        IFilePickerService filePickerService,
-        StatusLogViewModel statusLog,
-        IDiffPreviewService diffPreview,
-        IResponseBaselineService responseBaseline,
-        IAppSettingsService appSettings,
-        IFolderConfigStore folderConfigStore)
+        RequestEditorServices services)
     {
-        _appSettings = appSettings;
-        _folderConfigStore = folderConfigStore;
+        ArgumentNullException.ThrowIfNull(services);
+
+        var schemaValidator = services.SchemaValidator;
+        var jsonPathEvaluator = services.JsonPathEvaluator;
+        var filePickerService = services.FilePicker;
+        var clipboardService = services.Clipboard;
+        var statusLog = services.StatusLog;
+        var responseBaseline = services.ResponseBaseline;
+        var diffPreview = services.DiffPreview;
+
+        _appSettings = services.AppSettings;
+        _folderConfigStore = services.FolderConfigStore;
         _original = request;
         _workspace = workspace;
         _environmentManager = environmentManager;
-        _requestStore = requestStore;
-        _authProfileStore = authProfileStore;
-        _inheritanceResolver = inheritanceResolver;
-        _requestExecution = requestExecution;
-        _historyService = historyService;
-        _curlExport = curlExport;
+        _requestStore = services.RequestStore;
+        _authProfileStore = services.AuthProfileStore;
+        _inheritanceResolver = services.InheritanceResolver;
+        _requestExecution = services.RequestExecution;
+        _historyService = services.HistoryService;
+        _curlExport = services.CurlExport;
         _clipboardService = clipboardService;
-        _variableResolver = variableResolver;
-        _authProvider = authProvider;
-        _discovery = discovery;
-        _signIn = signIn;
+        _variableResolver = services.VariableResolver;
+        _authProvider = services.AuthProvider;
+        _discovery = services.Discovery;
+        _signIn = services.SignIn;
         _statusLog = statusLog;
         _diffPreview = diffPreview;
 
