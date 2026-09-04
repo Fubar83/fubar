@@ -55,6 +55,16 @@ public sealed record CliRequest
 
     /// <summary>Say nothing; the exit code is the answer. What -q means to grep and diff.</summary>
     public bool Quiet { get; init; }
+
+    /// <summary>
+    /// Raw <c>KEY=VALUE</c> strings from <c>--var</c>. The highest-precedence variable source, and the
+    /// one that makes a pipeline able to authenticate at all - a build agent has no OS keyring, so
+    /// before this a Secret variable resolved to nothing and the literal <c>{{token}}</c> was sent.
+    /// </summary>
+    public IReadOnlyList<string> Vars { get; init; } = [];
+
+    /// <summary>Path to a dotenv-style file of the same assignments, for more than a couple of them.</summary>
+    public string? EnvFilePath { get; init; }
 }
 
 /// <summary>Parses the arguments, and decides whether this invocation is a CLI one at all.</summary>
@@ -159,6 +169,32 @@ public static class CommandLine
                     request = request with { ReportFormat = format };
                     break;
 
+                case "--var":
+                    if (NextValue(args, ref i) is not { } assignment)
+                    {
+                        return request with { Error = "--var needs KEY=VALUE." };
+                    }
+
+                    // Refused rather than ignored: a malformed --var is a credential the caller
+                    // believes they passed, and running without it produces a 401 that points at the
+                    // API instead of at the typo.
+                    if (Fubar.Studio.Core.Variables.VariableAssignment.DescribeInvalid(assignment) is { } invalid)
+                    {
+                        return request with { Error = $"--var: {invalid}" };
+                    }
+
+                    request = request with { Vars = [.. request.Vars, assignment] };
+                    break;
+
+                case "--env-file":
+                    if (NextValue(args, ref i) is not { } envFile)
+                    {
+                        return request with { Error = "--env-file needs a path." };
+                    }
+
+                    request = request with { EnvFilePath = envFile };
+                    break;
+
                 case "--quiet":
                 case "-q":
                     request = request with { Quiet = true };
@@ -229,6 +265,10 @@ public static class CommandLine
           -w, --workspace <path>   Workspace root. Defaults to walking up from the run
                                    target (or the working directory) to the nearest fubar.json.
           -e, --env <name>         Environment to run against, by name or id.
+              --var KEY=VALUE      Supply a variable. Repeatable. Beats everything else,
+                                   including the environment file and the OS keyring.
+              --env-file <path>    Read KEY=VALUE lines from a file. Same idea, for more
+                                   than a couple of them.
               --filter <text>      Only run requests whose name contains this text.
               --stop-on-failure    Stop at the first failed or errored request.
               --delay <ms>         Wait this long between requests.
@@ -248,9 +288,27 @@ public static class CommandLine
         Assert on the status when you want it enforced. A cancelled or empty run
         exits 1 rather than 0, so a filter that matches nothing cannot pass by default.
 
+        Variables, highest precedence first:
+          --var KEY=VALUE
+          --env-file
+          FUBAR_VAR_<KEY> in the process environment
+          the active environment's session values
+          the OS keyring (secret variables)
+          the environment file
+
+        {{api_key}} is fed by FUBAR_VAR_API_KEY: the name is upper-cased and anything
+        that is not a letter or digit becomes an underscore, which is the only shape
+        some CI systems allow. Values supplied this way are never logged and never
+        written to an environment file.
+
+        A build agent has no OS keyring, so this is how a pipeline supplies a secret.
+        An unresolved {{variable}} stops the run with exit code 2 rather than sending
+        the literal text to the server.
+
         Examples:
           FubarAPIStudio --run --env Staging --report results.xml
           FubarAPIStudio --run Orders --stop-on-failure
           FubarAPIStudio --run -w ./api-tests --filter smoke -q
+          FubarAPIStudio --run --env CI --var api_key="$API_KEY" --report results.xml
         """;
 }

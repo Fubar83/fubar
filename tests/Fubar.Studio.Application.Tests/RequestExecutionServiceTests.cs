@@ -4,6 +4,7 @@ using Fubar.Studio.Core.History;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
 using Fubar.Studio.Core.Testing;
+using Fubar.Studio.Core.Variables;
 
 namespace Fubar.Studio.Application.Tests;
 
@@ -24,7 +25,7 @@ public class RequestExecutionServiceTests
         var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200, Body = "{\"id\":1}" });
         var tests = new FakeTestService();
         var history = new FakeHistoryService();
-        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, tests, history);
+        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, tests, history, PassThroughResolver.Instance);
 
         var result = await sut.RunAsync(new RequestRun(RequestWithTests(), Ws, null, EffectiveAuth: null));
 
@@ -39,7 +40,7 @@ public class RequestExecutionServiceTests
     public async Task Snapshot_carries_the_response_body_so_it_can_be_diffed_later()
     {
         var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200, Body = "{\"id\":1}" });
-        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, new FakeTestService(), new FakeHistoryService());
+        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
 
         var result = await sut.RunAsync(new RequestRun(RequestWithTests(), Ws, null, EffectiveAuth: null));
 
@@ -51,7 +52,7 @@ public class RequestExecutionServiceTests
     {
         var body = new string('x', HistoryBodyPolicy.MaxResponseBodyChars + 1);
         var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200, Body = body });
-        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, new FakeTestService(), new FakeHistoryService());
+        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
 
         var result = await sut.RunAsync(new RequestRun(RequestWithTests(), Ws, null, EffectiveAuth: null));
 
@@ -65,7 +66,7 @@ public class RequestExecutionServiceTests
         var executor = new FakeExecutorRegistry(new ExecutionResult { ErrorMessage = "boom" });
         var tests = new FakeTestService();
         var history = new FakeHistoryService();
-        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, tests, history);
+        var sut = new RequestExecutionService(new FakeAuthProvider(), executor, tests, history, PassThroughResolver.Instance);
 
         var result = await sut.RunAsync(new RequestRun(RequestWithTests(), Ws, null, EffectiveAuth: null));
 
@@ -79,7 +80,7 @@ public class RequestExecutionServiceTests
     public async Task Ensures_auth_only_when_effective_auth_is_supplied()
     {
         var auth = new FakeAuthProvider();
-        var sut = new RequestExecutionService(auth, new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 }), new FakeTestService(), new FakeHistoryService());
+        var sut = new RequestExecutionService(auth, new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 }), new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
 
         await sut.RunAsync(new RequestRun(new RequestModel { Name = "r" }, Ws, null, EffectiveAuth: null));
         Assert.Equal(0, auth.PrepareCount);
@@ -93,7 +94,7 @@ public class RequestExecutionServiceTests
     {
         var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 });
         var auth = new FakeAuthProvider { Applied = new AppliedAuth([new KeyValueItem { Key = "Authorization", Value = "Bearer tok" }], []) };
-        var sut = new RequestExecutionService(auth, executor, new FakeTestService(), new FakeHistoryService());
+        var sut = new RequestExecutionService(auth, executor, new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
 
         await sut.RunAsync(new RequestRun(new RequestModel { Name = "r" }, Ws, null, new AuthConfig { Type = AuthType.Bearer }));
 
@@ -105,7 +106,7 @@ public class RequestExecutionServiceTests
     {
         var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 401 }, new ExecutionResult { StatusCode = 200 });
         var auth = new FakeAuthProvider();
-        var sut = new RequestExecutionService(auth, executor, new FakeTestService(), new FakeHistoryService());
+        var sut = new RequestExecutionService(auth, executor, new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
 
         var result = await sut.RunAsync(new RequestRun(new RequestModel { Name = "r" }, Ws, null, new AuthConfig { Type = AuthType.OAuth2 }));
 
@@ -119,7 +120,7 @@ public class RequestExecutionServiceTests
     {
         var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 401 });
         var auth = new FakeAuthProvider();
-        var sut = new RequestExecutionService(auth, executor, new FakeTestService(), new FakeHistoryService());
+        var sut = new RequestExecutionService(auth, executor, new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
 
         await sut.RunAsync(new RequestRun(new RequestModel { Name = "r" }, Ws, null, new AuthConfig { Type = AuthType.Bearer }));
 
@@ -130,12 +131,96 @@ public class RequestExecutionServiceTests
     [Fact]
     public async Task History_persistence_failure_is_surfaced_not_thrown()
     {
-        var sut = new RequestExecutionService(new FakeAuthProvider(), new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 }), new FakeTestService(), new ThrowingHistoryService());
+        var sut = new RequestExecutionService(new FakeAuthProvider(), new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 }), new FakeTestService(), new ThrowingHistoryService(), PassThroughResolver.Instance);
 
         var result = await sut.RunAsync(new RequestRun(new RequestModel { Name = "r" }, Ws, null, null));
 
         Assert.Null(result.HistorySnapshot);
         Assert.Equal("disk full", result.HistoryError);
+    }
+
+    // --- the unresolved-variable gate --------------------------------------------------------------
+    //
+    // Substitute leaves what it cannot resolve exactly as it found it, so an undefined {{token}}
+    // travelled to the server as those nine literal characters and came back as a 401 that said
+    // nothing about a variable. UnresolvedVariables.Describe already existed and was applied to
+    // exactly one caller - the OAuth token request. The ordinary send, which is the path that carries
+    // credentials, took the same risk unguarded.
+
+    [Fact]
+    public async Task An_unresolved_url_variable_stops_the_send()
+    {
+        var sut = new RequestExecutionService(
+            new FakeAuthProvider(), new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 }),
+            new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
+
+        var result = await sut.RunAsync(new RequestRun(
+            new RequestModel { Name = "r", Url = "https://{{host}}/orders" }, Ws, null, EffectiveAuth: null));
+
+        Assert.False(result.Result.IsSuccess);
+        Assert.Contains("{{host}}", result.Result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task An_unresolved_header_stops_the_send()
+    {
+        var sut = new RequestExecutionService(
+            new FakeAuthProvider(), new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 }),
+            new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
+
+        var request = new RequestModel
+        {
+            Name = "r",
+            Url = "https://example.com",
+            Headers = [new KeyValueItem { Key = "Authorization", Value = "Bearer {{api_key}}", Enabled = true }],
+        };
+
+        var result = await sut.RunAsync(new RequestRun(request, Ws, null, EffectiveAuth: null));
+
+        Assert.Contains("{{api_key}}", result.Result.ErrorMessage);
+    }
+
+    /// <summary>A disabled row carrying an old placeholder does not travel, so it is not a reason to
+    /// refuse the send.</summary>
+    [Fact]
+    public async Task A_disabled_header_is_not_a_reason_to_refuse()
+    {
+        var sut = new RequestExecutionService(
+            new FakeAuthProvider(), new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 }),
+            new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
+
+        var request = new RequestModel
+        {
+            Name = "r",
+            Url = "https://example.com",
+            Headers = [new KeyValueItem { Key = "X-Old", Value = "{{gone}}", Enabled = false }],
+        };
+
+        var result = await sut.RunAsync(new RequestRun(request, Ws, null, EffectiveAuth: null));
+
+        Assert.Null(result.Result.ErrorMessage);
+        Assert.Equal(200, result.Result.StatusCode);
+    }
+
+    /// <summary>Both at once - otherwise it is one fix, one run, one new failure.</summary>
+    [Fact]
+    public async Task Every_unresolved_variable_is_named_at_once()
+    {
+        var sut = new RequestExecutionService(
+            new FakeAuthProvider(), new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 }),
+            new FakeTestService(), new FakeHistoryService(), PassThroughResolver.Instance);
+
+        var request = new RequestModel
+        {
+            Name = "r",
+            Url = "https://{{host}}/orders",
+            Headers = [new KeyValueItem { Key = "X-Key", Value = "{{api_key}}", Enabled = true }],
+        };
+
+        var result = await sut.RunAsync(new RequestRun(request, Ws, null, EffectiveAuth: null));
+
+        Assert.Contains("{{host}}", result.Result.ErrorMessage);
+        Assert.Contains("{{api_key}}", result.Result.ErrorMessage);
     }
 
     // --- fakes -------------------------------------------------------------------------------------

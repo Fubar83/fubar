@@ -3,6 +3,7 @@ using Fubar.Studio.Core.History;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
 using Fubar.Studio.Core.Testing;
+using Fubar.Studio.Core.Variables;
 
 namespace Fubar.Studio.Application.Requests;
 
@@ -13,17 +14,20 @@ public sealed class RequestExecutionService : IRequestExecutionService
     private readonly IExecutorRegistry _executorRegistry;
     private readonly IResponseTestService _testService;
     private readonly IHistoryService _historyService;
+    private readonly IVariableResolver _variableResolver;
 
     public RequestExecutionService(
         IAuthProvider authProvider,
         IExecutorRegistry executorRegistry,
         IResponseTestService testService,
-        IHistoryService historyService)
+        IHistoryService historyService,
+        IVariableResolver variableResolver)
     {
         _authProvider = authProvider;
         _executorRegistry = executorRegistry;
         _testService = testService;
         _historyService = historyService;
+        _variableResolver = variableResolver;
     }
 
     public async Task<RequestRunResult> RunAsync(RequestRun run, CancellationToken cancellationToken = default)
@@ -46,8 +50,28 @@ public sealed class RequestExecutionService : IRequestExecutionService
             sensitiveHeaderNames = prep.Applied.Headers.Select(h => h.Key).ToList();
         }
 
-        // 2. Execute via whichever protocol executor the request's kind resolves to.
+        // 1b. Refuse to send a placeholder.
+        //
+        // Substitute leaves what it cannot resolve exactly as it found it, so an undefined {{token}}
+        // travels to the server as those nine literal characters. The guard for this already existed
+        // and was applied to exactly one caller - the OAuth token request - where its own comment
+        // explains why it matters. The ordinary send took the same risk unguarded, which is worse: it
+        // is the path that carries credentials, and a header of "Bearer {{api_key}}" comes back as a
+        // 401 that says nothing about a variable.
         var context = new RequestExecutionContext(run.Workspace, run.Environment, sensitiveHeaderNames);
+
+        if (DescribeUnresolved(requestToExecute, run) is { } unresolved)
+        {
+            return new RequestRunResult(
+                new ExecutionResult { ErrorMessage = unresolved },
+                auth,
+                [],
+                [],
+                HistorySnapshot: null,
+                HistoryError: null);
+        }
+
+        // 2. Execute via whichever protocol executor the request's kind resolves to.
         var result = await executor.ExecuteAsync(requestToExecute, context, cancellationToken);
 
         // 2b. Retry once on 401 for acquire-based schemes: force a re-acquire and resend (a stale/expired
@@ -95,6 +119,30 @@ public sealed class RequestExecutionService : IRequestExecutionService
         }
 
         return new RequestRunResult(result, auth, assertions, captures, snapshot, historyError);
+    }
+
+    /// <summary>
+    /// Names the variables that would still be <c>{{tokens}}</c> when this request reached the wire, or
+    /// null when everything resolves.
+    ///
+    /// <para>Substitution happens inside the executor, so the check has to substitute too - testing the
+    /// raw request would flag every request that merely USES a variable. Only the parts that actually
+    /// travel are examined, and only enabled ones: a disabled header carrying an old placeholder is not
+    /// a reason to refuse a send.</para>
+    /// </summary>
+    private string? DescribeUnresolved(RequestModel request, RequestRun run)
+    {
+        string Resolve(string? text) => _variableResolver.Substitute(text, run.Workspace, run.Environment);
+
+        var texts = new List<string?> { Resolve(request.Url) };
+
+        texts.AddRange(request.Headers.Where(h => h.Enabled).Select(h => Resolve(h.Value)));
+        texts.AddRange(request.QueryParams.Where(p => p.Enabled).Select(p => Resolve(p.Value)));
+        texts.Add(Resolve(request.Body.Raw));
+        texts.AddRange(request.Body.FormData.Where(f => f.Enabled).Select(f => Resolve(f.Value)));
+        texts.AddRange(request.Body.UrlEncoded.Where(f => f.Enabled).Select(f => Resolve(f.Value)));
+
+        return UnresolvedVariables.Describe(UnresolvedVariables.In([.. texts]));
     }
 
     private static ExecutionSnapshot BuildSnapshot(RequestModel request, ExecutionResult result) => new()

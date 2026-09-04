@@ -3,6 +3,7 @@ using Fubar.Studio.Application.Running;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Running;
 using Fubar.Studio.Core.Workspaces;
+using Fubar.Studio.Infrastructure.Variables;
 
 namespace Fubar.Studio.UI.Cli;
 
@@ -29,6 +30,7 @@ public static class CliRunner
         IEnvironmentStore environments,
         TextWriter output,
         TextWriter error,
+        ExternalVariableSource? externalVariables = null,
         CancellationToken cancellationToken = default)
     {
         if (request.ShowHelp)
@@ -89,6 +91,36 @@ public static class CliRunner
                 error.WriteLine($"No environment called \"{wanted}\". Available: {Names(all)}");
                 return CouldNotRun;
             }
+        }
+
+        // Variables supplied from outside the workspace, loaded once the rest of the command line is
+        // known to be good. This is how a pipeline supplies a secret at all: a build agent has no OS
+        // keyring, so before this a Secret variable resolved to nothing and the literal {{token}} went
+        // out over the wire as text.
+        if (externalVariables is not null)
+        {
+            IReadOnlyList<string> envFileLines = [];
+
+            if (request.EnvFilePath is { } envFilePath)
+            {
+                try
+                {
+                    envFileLines = await File.ReadAllLinesAsync(envFilePath, cancellationToken);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Named and unreadable is "could not tell", never a quiet run without it: every
+                    // {{variable}} it was meant to supply would resolve to nothing and the failure
+                    // would point at the requests instead of at the path.
+                    error.WriteLine($"Could not read --env-file \"{envFilePath}\": {ex.Message}");
+                    return CouldNotRun;
+                }
+            }
+
+            externalVariables.LoadFrom(ExternalVariableSource.Build(
+                environment: null,
+                envFileLines: envFileLines,
+                varFlags: request.Vars));
         }
 
         RunPlan plan;

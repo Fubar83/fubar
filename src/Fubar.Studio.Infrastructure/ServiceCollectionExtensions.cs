@@ -48,6 +48,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISessionVariableStore, SessionVariableStore>();
         services.AddSingleton<IVariableResolver, VariableResolver>();
         services.AddSingleton<IVariableWriter, VariableWriter>();
+
+        // One instance, surfaced under the port and its concrete type: the CLI loads values into it
+        // once the command line has been validated (see CliRunner), and the GUI leaves it empty.
+        services.AddSingleton<ExternalVariableSource>();
+        services.AddSingleton<IExternalVariableSource>(sp => sp.GetRequiredService<ExternalVariableSource>());
         services.AddSingleton<IAuthProvider, AuthProvider>();
         services.AddSingleton<IOpenIdDiscoveryService, OpenIdDiscoveryService>();
         services.AddSingleton<IAuthorizationCodeListener, LoopbackAuthorizationCodeListener>();

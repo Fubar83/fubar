@@ -45,7 +45,8 @@ sealed class Program
                 host.Services.GetRequiredService<IRequestStore>(),
                 host.Services.GetRequiredService<IEnvironmentStore>(),
                 Console.Out,
-                Console.Error)
+                Console.Error,
+                host.Services.GetRequiredService<Fubar.Studio.Infrastructure.Variables.ExternalVariableSource>())
             .GetAwaiter()
             .GetResult();
     }
