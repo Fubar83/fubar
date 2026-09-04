@@ -61,8 +61,17 @@ public sealed class HttpRequestExecutor : IRequestExecutor
             }
 
             using var response = await SendFollowingRedirectsAsync(client, request, url, context, linked.Token);
-            var bodyBytes = await response.Content.ReadAsByteArrayAsync(linked.Token);
-            var body = Encoding.UTF8.GetString(bodyBytes);
+
+            // Bounded. ReadAsByteArrayAsync had no cap and the client's MaxResponseContentBufferSize was
+            // left at its default, so a response larger than memory took the whole application down -
+            // which needs no hostile server, only a badly paginated endpoint.
+            var (bodyBytes, truncated) = await ReadBodyAsync(response, linked.Token);
+
+            // Decoded by what the response SAID, not by assumption. This was Encoding.UTF8 regardless of
+            // charset, so a latin-1 or UTF-16 response rendered as mojibake - and assertions and
+            // captures then ran against the mangled text, reporting a difference in data that was fine.
+            var encoding = ResolveEncoding(response);
+            var body = truncated ? "" : encoding.GetString(bodyBytes);
 
             var headers = response.Headers
                 .Concat(response.Content.Headers)
@@ -79,6 +88,8 @@ public sealed class HttpRequestExecutor : IRequestExecutor
                 ContentType = response.Content.Headers.ContentType?.MediaType,
                 ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
                 SizeBytes = bodyBytes.Length,
+                BodyEncodingName = encoding.WebName,
+                BodyTooLarge = truncated,
             };
         }
         // A timeout fires the linked token via timeoutCts while the caller's own token stays unset.
@@ -166,6 +177,64 @@ public sealed class HttpRequestExecutor : IRequestExecutor
 
             uri = next;
             response.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Largest response body read into memory. Generous - this is a desktop tool and people legitimately
+    /// inspect large payloads - but finite, which is the whole point.
+    /// </summary>
+    public const int MaxResponseBytes = 64 * 1024 * 1024;
+
+    /// <summary>
+    /// Reads the body up to <see cref="MaxResponseBytes"/>, reporting whether it stopped early.
+    ///
+    /// <para>Read one chunk past the cap deliberately: a body of exactly the cap is fine, and the only
+    /// way to know a stream is longer is to ask for more than fits.</para>
+    /// </summary>
+    private static async Task<(byte[] Bytes, bool Truncated)> ReadBodyAsync(
+        HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+
+        var chunk = new byte[81920];
+        int read;
+
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > MaxResponseBytes)
+            {
+                return ([], true);
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return (buffer.ToArray(), false);
+    }
+
+    /// <summary>
+    /// The encoding the response declared, falling back to UTF-8.
+    ///
+    /// <para>A charset nobody recognises falls back rather than throwing: an unreadable body is a much
+    /// smaller problem than a send that fails outright, and the name is reported alongside so the
+    /// mojibake has an explanation rather than being a mystery.</para>
+    /// </summary>
+    private static Encoding ResolveEncoding(HttpResponseMessage response)
+    {
+        if (response.Content.Headers.ContentType?.CharSet is not { Length: > 0 } charset)
+        {
+            return Encoding.UTF8;
+        }
+
+        try
+        {
+            return Encoding.GetEncoding(charset.Trim('"', '\''));
+        }
+        catch (ArgumentException)
+        {
+            return Encoding.UTF8;
         }
     }
 

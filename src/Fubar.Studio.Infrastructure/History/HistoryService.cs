@@ -26,20 +26,40 @@ public sealed class HistoryService : IHistoryService
         return await JsonSerializer.DeserializeAsync<List<ExecutionSnapshot>>(stream, FubarJson.Options, cancellationToken) ?? [];
     }
 
+    /// <summary>
+    /// One append at a time per ledger file.
+    ///
+    /// <para>Appending is read-modify-write, so two windows sending the same request interleaved would
+    /// both read the same list and the second write would drop the first's entry. Per PATH rather than
+    /// one global lock, so a run of twenty different requests does not serialise on the slowest of
+    /// them. Same-process is enough: the ledger is local-machine state by design.</para>
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Locks =
+        new(StringComparer.OrdinalIgnoreCase);
+
     public async Task AppendAsync(string workspaceRootPath, string requestId, ExecutionSnapshot snapshot, CancellationToken cancellationToken = default)
     {
-        var existing = (await LoadAsync(workspaceRootPath, requestId, cancellationToken)).ToList();
-        existing.Insert(0, snapshot);
-        if (existing.Count > MaxEntriesPerRequest)
-        {
-            existing.RemoveRange(MaxEntriesPerRequest, existing.Count - MaxEntriesPerRequest);
-        }
-
         var path = GetPath(workspaceRootPath, requestId);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        EnsureSelfIgnored(workspaceRootPath);
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, existing, FubarJson.Options, cancellationToken);
+        var gate = Locks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var existing = (await LoadAsync(workspaceRootPath, requestId, cancellationToken)).ToList();
+            existing.Insert(0, snapshot);
+            if (existing.Count > MaxEntriesPerRequest)
+            {
+                existing.RemoveRange(MaxEntriesPerRequest, existing.Count - MaxEntriesPerRequest);
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            EnsureSelfIgnored(workspaceRootPath);
+            await JsonFile.WriteAtomicAsync(path, existing, FubarJson.Options, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     /// <summary>

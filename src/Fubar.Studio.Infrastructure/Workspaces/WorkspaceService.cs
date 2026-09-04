@@ -57,8 +57,7 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         Directory.CreateDirectory(rootPath);
         var manifestPath = Path.Combine(rootPath, AppManifestFileName);
-        await using var stream = File.Create(manifestPath);
-        await JsonSerializer.SerializeAsync(stream, manifest, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(manifestPath, manifest, FubarJson.Options, cancellationToken);
     }
 
     public async Task<Workspace> CreateWorkspaceAsync(string rootPath, CancellationToken cancellationToken = default)
@@ -146,8 +145,7 @@ public sealed class WorkspaceService : IWorkspaceService
     public async Task SaveRequestAsync(string requestFilePath, RequestModel request, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(requestFilePath)!);
-        await using var stream = File.Create(requestFilePath);
-        await JsonSerializer.SerializeAsync(stream, request, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(requestFilePath, request, FubarJson.Options, cancellationToken);
     }
 
     public IReadOnlyList<WorkspaceTreeNode> BuildCollectionsTree(string rootPath)
@@ -229,8 +227,7 @@ public sealed class WorkspaceService : IWorkspaceService
         var path = UniquePath(parentDirectory, fileName);
 
         var request = new RequestModel { Name = requestName };
-        using var stream = File.Create(path);
-        JsonSerializer.Serialize(stream, request, FubarJson.Options);
+        JsonFile.WriteAtomic(path, request, FubarJson.Options);
 
         return path;
     }
@@ -373,8 +370,7 @@ public sealed class WorkspaceService : IWorkspaceService
         var directory = Path.Combine(rootPath, EnvironmentsDirName);
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"{environment.Id}.json");
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, environment, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(path, environment, FubarJson.Options, cancellationToken);
     }
 
     public Task DeleteEnvironmentAsync(string rootPath, string environmentId, CancellationToken cancellationToken = default)
@@ -404,8 +400,7 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         Directory.CreateDirectory(rootPath);
         var path = Path.Combine(rootPath, AuthProfilesFileName);
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, profiles, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(path, profiles, FubarJson.Options, cancellationToken);
     }
 
     public async Task<FolderConfig> LoadFolderConfigAsync(string folderPath, CancellationToken cancellationToken = default)
@@ -424,8 +419,7 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         Directory.CreateDirectory(folderPath);
         var path = Path.Combine(folderPath, FolderConfigFileName);
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, config, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(path, config, FubarJson.Options, cancellationToken);
     }
 
     public async Task<InheritanceChain> GetInheritanceChainAsync(string rootPath, string requestFilePath, CancellationToken cancellationToken = default)

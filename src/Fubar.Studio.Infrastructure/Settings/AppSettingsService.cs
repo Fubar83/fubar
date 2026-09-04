@@ -37,10 +37,9 @@ public sealed class AppSettingsService : IAppSettingsService
 
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
-        var directory = Path.GetDirectoryName(SettingsPath)!;
-        Directory.CreateDirectory(directory);
-        await using var stream = File.Create(SettingsPath);
-        await JsonSerializer.SerializeAsync(stream, settings, FubarJson.Options, cancellationToken);
+        // Atomic, like every other Fubar document. The existing "a corrupt settings file falls back to
+        // defaults" behaviour is the safety net and stays; this removes the commonest cause of one.
+        await JsonFile.WriteAtomicAsync(SettingsPath, settings, FubarJson.Options, cancellationToken);
     }
 
     public AppSettings Load()

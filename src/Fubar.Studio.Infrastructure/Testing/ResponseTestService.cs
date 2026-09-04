@@ -39,7 +39,12 @@ public sealed class ResponseTestService : IResponseTestService
 
         foreach (var a in assertions.Where(a => a.Enabled))
         {
-            results.Add(Evaluate(a, result, body));
+            // An assertion about a body that was too large to read cannot be judged either way, so it
+            // FAILS rather than quietly passing - "the body has no error field" is a claim nobody
+            // checked.
+            results.Add(a.Source == ResponseField.JsonBody && result.BodyTooLarge
+                ? new AssertionResult(false, $"body {a.Target}", "(the response was too large to load)")
+                : Evaluate(a, result, body));
         }
 
         return results;
@@ -69,7 +74,9 @@ public sealed class ResponseTestService : IResponseTestService
             if (!found)
             {
                 results.Add(new CaptureResult(false, name, null, c.Scope.ToString(),
-                    $"No value for {Describe(c.Source, c.Expression)}."));
+                    c.Source == ResponseField.JsonBody && result.BodyTooLarge
+                        ? "The response was too large to load, so its body could not be read."
+                        : $"No value for {Describe(c.Source, c.Expression)}."));
                 continue;
             }
 
@@ -158,6 +165,14 @@ public sealed class ResponseTestService : IResponseTestService
                 return header is null ? (false, null) : (true, header.Value);
 
             case ResponseField.JsonBody:
+                // A body that was never loaded is not an absent field. Falling through would let a
+                // JSONPath assertion "not find" its value and a NotExists assertion PASS against a
+                // response nobody looked at, which is the one answer this must never give.
+                if (result.BodyTooLarge)
+                {
+                    return (false, null);
+                }
+
                 if (body.Value is null || string.IsNullOrWhiteSpace(target) || !JsonPath.TryParse(target, out var path))
                 {
                     return (false, null);

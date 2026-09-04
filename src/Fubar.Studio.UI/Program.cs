@@ -15,6 +15,11 @@ sealed class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Legacy code pages (windows-1252, shift_jis, …) are not registered on .NET by default, so a
+        // response declaring one would fall back to UTF-8 and render as mojibake. One call, before
+        // anything can decode a body.
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
         // The headless check comes first, before Avalonia is configured and before a window can be
         // created: a run that has to exit with a status code cannot also be showing a window. Only
         // flags that mean nothing on screen count (see CommandLine.IsHeadless), so starting the app

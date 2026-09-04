@@ -50,12 +50,50 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         return BuildPlan(root);
     }
 
+    /// <summary>Largest spec fetched over the network. A generous multiple of any real OpenAPI
+    /// document, and finite - <c>GetStringAsync</c> had no cap at all, so a URL returning something
+    /// enormous took the application down before it had parsed a byte.</summary>
+    public const int MaxSpecBytes = 32 * 1024 * 1024;
+
+    /// <summary>Fetching a spec should not hang the import dialog indefinitely.</summary>
+    private static readonly TimeSpan SpecFetchTimeout = TimeSpan.FromSeconds(60);
+
     private async Task<string> ReadSpecAsync(string source, CancellationToken cancellationToken)
     {
         if (Uri.TryCreate(source, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
         {
+            using var timeout = new CancellationTokenSource(SpecFetchTimeout);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+
             var client = _httpClientFactory.CreateClient();
-            return await client.GetStringAsync(uri, cancellationToken);
+            using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, linked.Token);
+            response.EnsureSuccessStatusCode();
+
+            // Checked before reading where the server declares it, and again while reading where it
+            // does not - a missing Content-Length is not a promise that the body is small.
+            if (response.Content.Headers.ContentLength is > MaxSpecBytes)
+            {
+                throw new InvalidDataException(
+                    $"The spec at {uri} is larger than {MaxSpecBytes / (1024 * 1024)} MB and was not fetched.");
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(linked.Token);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[81920];
+            int read;
+
+            while ((read = await stream.ReadAsync(chunk, linked.Token)) > 0)
+            {
+                if (buffer.Length + read > MaxSpecBytes)
+                {
+                    throw new InvalidDataException(
+                        $"The spec at {uri} is larger than {MaxSpecBytes / (1024 * 1024)} MB and was not fetched.");
+                }
+
+                buffer.Write(chunk, 0, read);
+            }
+
+            return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
         }
 
         return await File.ReadAllTextAsync(source, cancellationToken);
