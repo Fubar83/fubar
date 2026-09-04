@@ -233,7 +233,10 @@ public sealed class WorkspaceService : IWorkspaceService
             var request = JsonSerializer.Deserialize<RequestModel>(stream, FubarJson.Options);
             if (request is not null)
             {
-                summary = new RequestSummary(request.Method, request.Auth.Type != AuthType.Inherit);
+                // The URL comes free - the request is already deserialized here for its method and auth badge -
+                // and it is what makes the left pane filter able to match "orders" in a URL rather than only
+                // in a file name.
+                summary = new RequestSummary(request.Method, request.Auth.Type != AuthType.Inherit, request.Url);
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException)

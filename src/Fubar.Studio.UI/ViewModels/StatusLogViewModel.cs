@@ -41,12 +41,12 @@ public partial class StatusLogViewModel : ViewModelBase
     private readonly ILogSink? _sink;
     private readonly IClipboardService? _clipboard;
 
-    public StatusLogViewModel()
-        : this(null, null)
-    {
-    }
-
-    public StatusLogViewModel(ILogSink? sink, IClipboardService? clipboard)
+    /// <summary>
+    /// One constructor with optional dependencies rather than two overloads: this type IS resolved from
+    /// DI, and with two public constructors the container picks the greediest resolvable one - which
+    /// works until a registration changes and it silently starts picking the other.
+    /// </summary>
+    public StatusLogViewModel(ILogSink? sink = null, IClipboardService? clipboard = null)
     {
         _sink = sink;
         _clipboard = clipboard;

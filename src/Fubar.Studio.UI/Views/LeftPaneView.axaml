@@ -182,8 +182,18 @@
                         </Button.Flyout>
                     </Button>
                 </fc:Section.Action>
-                <Grid RowDefinitions="Auto,*">
-                    <TextBlock Grid.Row="0"
+                <Grid RowDefinitions="Auto,Auto,Auto,*">
+                    <!-- fc:SearchBox has existed in the design system from the start, themed, with a
+                         clear button - and was used only by the Gallery, whose demo watermark reads
+                         "Filter requests...". This is that control finally doing its job. -->
+                    <fc:SearchBox Grid.Row="0"
+                                  x:Name="RequestFilterBox"
+                                  Margin="8,6,8,4"
+                                  Watermark="Filter by name, URL or method"
+                                  IsVisible="{Binding WorkspaceExplorer.HasActiveRootChildren}"
+                                  Text="{Binding WorkspaceExplorer.Filter, Mode=TwoWay}" />
+
+                    <TextBlock Grid.Row="1"
                                Text="No requests yet."
                                IsVisible="{Binding !WorkspaceExplorer.HasActiveRootChildren}"
                                Margin="10,8"
@@ -191,11 +201,48 @@
                                Foreground="{DynamicResource TextSecondary}"
                                TextWrapping="Wrap" />
 
-                    <views:WorkspaceExplorerView Grid.Row="1" DataContext="{Binding WorkspaceExplorer}" />
+                    <!-- Said explicitly, because an empty tree otherwise reads as a workspace that
+                         failed to load rather than as a filter that matched nothing. -->
+                    <TextBlock Grid.Row="2"
+                               Text="Nothing matches that filter."
+                               IsVisible="{Binding WorkspaceExplorer.FilterMatchedNothing}"
+                               Margin="10,8"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" />
+
+                    <views:WorkspaceExplorerView Grid.Row="3" DataContext="{Binding WorkspaceExplorer}" />
                 </Grid>
             </fc:Section>
 
         </Grid>
+
+        <!-- The theme switcher LeftPane.md §4.1 has always specified. ThemeManagerViewModel was
+             written, registered and bound to nothing; this is the binding its own doc comment asks
+             for. Pinned to the bottom so it sits out of the way of the workspace content, and shown
+             whether or not a workspace is open - it is a preference, not workspace state. -->
+        <Border VerticalAlignment="Bottom"
+                Padding="8,5"
+                Background="{DynamicResource BgSidebar}"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource BorderSubtle}">
+            <DockPanel LastChildFill="False">
+                <TextBlock DockPanel.Dock="Left"
+                           Text="Theme"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <!-- ItemsSource is x:Static, not a binding path: ThemeOptions is a static member, and
+                     Fubar Diff's settings window already binds it this way. -->
+                <ComboBox DockPanel.Dock="Right"
+                          MinWidth="110"
+                          FontSize="11"
+                          VerticalAlignment="Center"
+                          ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
+                          SelectedItem="{Binding Theme.CurrentTheme, Mode=TwoWay}"
+                          ToolTip.Tip="Dark, Light, or follow the system" />
+            </DockPanel>
+        </Border>
 
     </Grid>
 

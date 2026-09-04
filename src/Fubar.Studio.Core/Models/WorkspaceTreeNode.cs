@@ -18,4 +18,4 @@ public sealed record WorkspaceTreeNode(
 /// method/auth badges (LeftPane.md §5) don't need a second pass over every <c>request.json</c>.
 /// Null for directory nodes.
 /// </summary>
-public sealed record RequestSummary(string Method, bool HasAuthOverride);
+public sealed record RequestSummary(string Method, bool HasAuthOverride, string? Url = null);

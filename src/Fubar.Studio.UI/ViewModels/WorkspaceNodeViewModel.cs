@@ -48,9 +48,14 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// run sends requests in the order they appear here, and taking that order from anywhere else would
     /// let the two disagree. What the user sees is the contract.</para>
     /// </summary>
+    /// <remarks>
+    /// Projects every child, filtered or not. A run must send what the collection HOLDS, not what the
+    /// left pane happens to be showing while someone types in the filter box - the filter is a way to
+    /// find things, never a way to select them.
+    /// </remarks>
     public WorkspaceTreeNode ToTreeNode() =>
         new(Name, FullPath, IsDirectory, [.. Children.Select(c => c.ToTreeNode())],
-            IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride));
+            IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url));
 
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
@@ -74,6 +79,77 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsDirty { get; set; }
 
+    /// <summary>The request's URL, null for a folder. Carried so the filter can match a host or a path
+    /// segment, not only a file name - the OpenAPI import names files after operation ids, which are
+    /// often the least memorable part of an endpoint.</summary>
+    [ObservableProperty]
+    public partial string? Url { get; set; }
+
+    /// <summary>Whether this node survives the current filter. True when there is no filter.</summary>
+    [ObservableProperty]
+    public partial bool IsVisible { get; set; } = true;
+
+    /// <summary>Expansion as the user last left it, remembered while a filter forces subtrees open so
+    /// clearing the box puts the tree back rather than leaving it splayed.</summary>
+    private bool? _expansionBeforeFilter;
+
+    /// <summary>
+    /// Applies <paramref name="filter"/> to this node and its descendants, returning whether anything
+    /// here survived.
+    ///
+    /// <para>A folder matches when ANY descendant does, and is force-expanded so the match is actually
+    /// on screen - a filtered tree that stays collapsed shows the user nothing, which is the commonest
+    /// way this feature gets built wrong. A folder that matches by its own name keeps all its children,
+    /// because "show me the Orders folder" means the folder, not an empty one.</para>
+    /// </summary>
+    public bool ApplyFilter(string? filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+        {
+            IsVisible = true;
+
+            // Only restore what the filter itself changed; expansion the user set while filtering is
+            // theirs and survives.
+            if (_expansionBeforeFilter is { } previous)
+            {
+                IsExpanded = previous;
+                _expansionBeforeFilter = null;
+            }
+
+            foreach (var child in Children)
+            {
+                child.ApplyFilter(null);
+            }
+
+            return true;
+        }
+
+        var selfMatches = Matches(filter);
+
+        var anyChildMatches = false;
+        foreach (var child in Children)
+        {
+            // Not short-circuited: every child needs its own visibility set, so this must not stop at
+            // the first match.
+            anyChildMatches |= child.ApplyFilter(selfMatches ? null : filter);
+        }
+
+        IsVisible = selfMatches || anyChildMatches;
+
+        if (anyChildMatches && !selfMatches)
+        {
+            _expansionBeforeFilter ??= IsExpanded;
+            IsExpanded = true;
+        }
+
+        return IsVisible;
+    }
+
+    private bool Matches(string filter) =>
+        Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || (Url?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
+        || (Method?.StartsWith(filter, StringComparison.OrdinalIgnoreCase) ?? false);
+
     /// <summary>Reconciles <see cref="Children"/> against a freshly scanned snapshot, by path identity.</summary>
     protected void SyncChildren(IReadOnlyList<WorkspaceTreeNode> incoming)
     {
@@ -96,6 +172,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                 {
                     Method = node.RequestSummary?.Method,
                     HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false,
+                    Url = node.RequestSummary?.Url,
                 };
                 child.SyncChildren(node.Children);
                 Children.Insert(Math.Min(i, Children.Count), child);
@@ -110,6 +187,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
                 existing.Name = node.Name;
                 existing.Method = node.RequestSummary?.Method;
+                existing.Url = node.RequestSummary?.Url;
                 existing.HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false;
                 existing.SyncChildren(node.Children);
             }

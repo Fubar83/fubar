@@ -13,7 +13,16 @@
              Background="{DynamicResource BgSidebar}">
 
     <!-- All tree-row styling comes from Fubar.Controls (AppStyles.axaml) now - this view declares
-         none of its own. -->
+         none of its own, except the one below, which is behaviour rather than styling. -->
+    <UserControl.Styles>
+        <!-- The filter hides CONTAINERS rather than removing items from the bound collection. Removing
+             them would mean maintaining a second, filtered tree alongside the real one - and the real
+             one is what a run walks (see WorkspaceNodeViewModel.ToTreeNode), so the two drifting apart
+             would silently change what a Run sends. Hiding keeps one tree with one meaning. -->
+        <Style Selector="TreeViewItem" x:DataType="vm:WorkspaceNodeViewModel">
+            <Setter Property="IsVisible" Value="{Binding IsVisible}" />
+        </Style>
+    </UserControl.Styles>
 
     <Grid>
 

@@ -203,6 +203,39 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial WorkspaceNodeViewModel? SelectedNode { get; set; }
 
+    /// <summary>
+    /// Narrows the tree to nodes matching by name, URL or method.
+    ///
+    /// <para>There was no way to find anything: an OpenAPI import routinely produces a hundred requests
+    /// in nested folders, so the app's flagship import created the one tree it could not navigate.</para>
+    /// </summary>
+    [ObservableProperty]
+    public partial string? Filter { get; set; }
+
+    partial void OnFilterChanged(string? value)
+    {
+        ApplyFilter();
+        OnPropertyChanged(nameof(IsFiltering));
+        OnPropertyChanged(nameof(FilterMatchedNothing));
+    }
+
+    /// <summary>Re-applies the current filter to every open workspace. Called on a filter change and
+    /// after a refresh, since a rescan brings in nodes that have never been filtered.</summary>
+    public void ApplyFilter()
+    {
+        foreach (var root in Roots)
+        {
+            root.ApplyFilter(Filter);
+        }
+    }
+
+    /// <summary>True when a filter is narrowing the tree - drives the "no matches" message, which is
+    /// what stops an empty tree reading as a workspace that failed to load.</summary>
+    public bool IsFiltering => !string.IsNullOrWhiteSpace(Filter);
+
+    /// <summary>True when a filter is in force and nothing survived it.</summary>
+    public bool FilterMatchedNothing => IsFiltering && Roots.All(r => !r.Children.Any(c => c.IsVisible));
+
     /// <summary>Raised when the user closes a workspace tab - MainViewModel clears the main canvas
     /// if it was showing something from that workspace.</summary>
     public event Action<Workspace>? WorkspaceClosed;
@@ -211,14 +244,10 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     /// button, not a tear-off) - the WindowManager closes the window unless it's the only one left.</summary>
     public event Action? WorkspacesEmptied;
 
-    [RelayCommand]
-    private void SelectWorkspace(WorkspaceRootViewModel? root)
-    {
-        if (root is not null)
-        {
-            ActiveRoot = root;
-        }
-    }
+    // SelectWorkspaceCommand used to live here, setting ActiveRoot. Deleted: the title bar's TabStrip
+    // binds SelectedItem to ActiveRoot two-way, so selecting a tab already sets it - the command was
+    // a second route to the same state that nothing ever called. Found by WiringTests, which is what
+    // that test is for.
 
     [RelayCommand]
     private void CloseWorkspace(WorkspaceRootViewModel? root)
