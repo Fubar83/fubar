@@ -32,6 +32,8 @@ public partial class MainWindow : Window
 
             viewModel.FindRequested += () =>
                 this.GetVisualDescendants().OfType<Fubar.Controls.JsonEditor>().FirstOrDefault()?.OpenFind();
+
+            viewModel.PaletteRequested += palette => new CommandPalette(palette).ShowDialog(this);
         };
     }
 

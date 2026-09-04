@@ -155,6 +155,82 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Raised by Ctrl+P; the shell puts the caret in the left pane's filter box.</summary>
     public event Action? FilterFocusRequested;
 
+    /// <summary>Raised by Ctrl+Shift+P; the shell opens the palette over the window.</summary>
+    public event Action<CommandPaletteViewModel>? PaletteRequested;
+
+    [RelayCommand]
+    private void OpenPalette() => PaletteRequested?.Invoke(new CommandPaletteViewModel(PaletteEntries()));
+
+    /// <summary>
+    /// Everything the palette offers: the shell's own commands, then every request in every open
+    /// workspace.
+    ///
+    /// <para>Requests are included because "open the request called X" is the commonest thing anyone
+    /// wants and, before the tree filter existed, took scrolling. Built fresh each time the palette
+    /// opens rather than cached - workspaces come and go, and a stale palette entry that opens a
+    /// deleted request is worse than a moment's work.</para>
+    /// </summary>
+    private IEnumerable<PaletteEntry> PaletteEntries()
+    {
+        yield return new PaletteEntry("New Request", "Command", "Ctrl+N",
+            () => { WorkspaceExplorer.NewRequestCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("New Folder", "Command", "Ctrl+Shift+N",
+            () => { WorkspaceExplorer.NewFolderCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("New Workspace...", "Command", null,
+            () => WorkspaceExplorer.NewWorkspaceCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Open Workspace...", "Command", null,
+            () => WorkspaceExplorer.OpenWorkspaceDirectoryCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Import OpenAPI / Swagger...", "Command", null,
+            () => WorkspaceExplorer.ImportOpenApiCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Import Postman collection...", "Command", null,
+            () => WorkspaceExplorer.ImportPostmanCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Import from curl...", "Command", null,
+            () => WorkspaceExplorer.ImportCurlCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Run selection", "Command", "Ctrl+R",
+            () => { RunActiveCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("Find in response", "Command", "Ctrl+F",
+            () => { FindInResponseCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("Filter requests", "Command", "Ctrl+P",
+            () => { FocusFilterCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("Toggle Status & Log", "Command", "Ctrl+`",
+            () => { ToggleLogCommand.Execute(null); return Task.CompletedTask; });
+
+        foreach (var root in WorkspaceExplorer.Roots)
+        {
+            foreach (var request in Requests(root))
+            {
+                var path = request.FullPath;
+                yield return new PaletteEntry(request.Name, root.Name, null, () => OpenRequestAsync(path));
+            }
+        }
+    }
+
+    private static IEnumerable<WorkspaceNodeViewModel> Requests(WorkspaceNodeViewModel node)
+    {
+        foreach (var child in node.Children)
+        {
+            if (!child.IsDirectory)
+            {
+                yield return child;
+            }
+
+            foreach (var descendant in Requests(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
     /// <summary>Raised by Ctrl+F; the shell opens the response editor's find bar.</summary>
     public event Action? FindRequested;
 

@@ -187,6 +187,7 @@ There is no menu bar, so this list is the only place these are written down.
 | --- | --- |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Send the request |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Command palette — every command and every open request, each showing its own shortcut |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Filter the request tree — matches name, URL and method |
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Find in the response |
 | <kbd>Ctrl</kbd>+<kbd>R</kbd> | Run the selected folder or request |
