@@ -71,10 +71,14 @@
                      WorkspaceNodeViewModel.Method/HasAuthOverride/IsDirty are only ever populated
                      for request files. -->
                 <TreeDataTemplate DataType="vm:WorkspaceNodeViewModel" ItemsSource="{Binding Children}">
-                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" HorizontalAlignment="Stretch" Margin="{Binding Depth, Converter={x:Static fc:TreeLevelIndentConverter.Instance}}" MinHeight="20">
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MinHeight="20">
+
+                        <!-- The indent rail. It reserves the level indent AND draws it, so the row carries no
+                             TreeLevelIndentConverter margin - applying both would indent twice. -->
+                        <fc:TreeIndentGuides Grid.Column="0" Depth="{Binding Depth}" VerticalAlignment="Stretch" />
 
                         <!-- Method Badge (fc:Badge - the reusable pill) -->
-                        <fc:Badge Grid.Column="0"
+                        <fc:Badge Grid.Column="1"
                                   Width="38"
                                   Height="16"
                                   CornerRadius="3"
@@ -88,7 +92,7 @@
                                   Background="{Binding Method, Converter={x:Static methodConv:MethodToBrushConverter.Instance}}" />
 
                         <!-- Name / inline rename -->
-                        <Panel Grid.Column="1" VerticalAlignment="Center">
+                        <Panel Grid.Column="2" VerticalAlignment="Center">
                             <TextBlock Text="{Binding Name}"
                                        IsVisible="{Binding !IsEditing}"
                                        TextTrimming="CharacterEllipsis"
@@ -108,7 +112,7 @@
                              must go out unauthenticated looked exactly like the ones carrying a
                              token. BadgeAuthNone had been in the palette for this the whole time and
                              was referenced by nothing. -->
-                        <fc:Badge Grid.Column="2"
+                        <fc:Badge Grid.Column="3"
                                   Content="Auth"
                                   FontSize="9"
                                   FontWeight="Normal"
@@ -128,7 +132,7 @@
                             </fc:Badge.IsVisible>
                         </fc:Badge>
 
-                        <fc:Badge Grid.Column="2"
+                        <fc:Badge Grid.Column="3"
                                   Content="No auth"
                                   FontSize="9"
                                   FontWeight="Normal"
@@ -142,7 +146,7 @@
                                   VerticalAlignment="Center" />
 
                         <!-- Dirty Indicator Dot (fc:StatusDot) -->
-                        <fc:StatusDot Grid.Column="3"
+                        <fc:StatusDot Grid.Column="4"
                                       Diameter="6"
                                       Background="{DynamicResource StatusDirty}"
                                       IsVisible="{Binding IsDirty}"

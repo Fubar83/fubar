@@ -10,6 +10,13 @@ tags by MinVer.
 
 ### Added
 
+- `TreeIndentGuides` — the vertical hairlines that make a tree read as a tree. Bound to a node's depth
+  in the row's `DataTemplate`, it reserves the level indent *and* draws a rail through it, so nesting is
+  expressed once rather than by a margin that says nothing about structure. Rows have to touch for the
+  per-row segments to join into a continuous line, which is why the row theme moved its breathing room
+  from vertical padding into `MinHeight`. New `TreeGuide` palette token, a shade stronger than
+  `BorderSubtle` so the rail survives crossing a selected row.
+
 - `SettingRow` — one line of a settings page: a `Header`, a muted `Description` under it, and the
   control itself (`Content`) on the right. The description is a real element rather than a tooltip,
   because an explanation nobody hovers to find is an explanation nobody reads — and "Normalize Unicode
@@ -22,6 +29,21 @@ tags by MinVer.
   reached a `ToggleButton` at all: one carrying the class rendered as a stock Fluent button among a row
   of flat ones. Checked state is a tinted fill with a blue border, and it wins over hover so an active
   toggle does not read as off while the pointer rests on it.
+
+### Fixed
+
+- **The explorer-tree row theme had never applied.** Its styles were selected as
+  `fc|TreeView TreeViewItem`, and Avalonia matches a type selector against a control's *style key* —
+  which `fc:TreeView` overrides to the base `TreeView` on purpose, to keep the Fluent template. So the
+  selector matched nothing that can exist, and every tree rendered in stock Fluent: 32px rows, no
+  palette hover, and a selected row filled with the raw accent (`#3B82F6`) as a full-bleed blue bar,
+  while `BgSelected` sat in the palette unused. The row look is now a `ControlTheme` applied through
+  `ItemContainerTheme` (as `TabStrip` and `SegmentedControl` already do), selected on the base type.
+  `TreeRowThemeTests` pins the rendered metrics and fill, because a selector that matches nothing
+  reports nothing.
+
+  Two traps in one bug, both silent: a descendant combinator *also* stops matching once a selector
+  reaches into a `/template/`, so spelling the type correctly would still not have been enough.
 
 ### Changed
 

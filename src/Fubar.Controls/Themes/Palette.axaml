@@ -43,6 +43,11 @@
             <SolidColorBrush x:Key="BgHover" Color="#EAECEF" />
             <SolidColorBrush x:Key="BgSelected" Color="#DCE3F0" />
             <SolidColorBrush x:Key="BorderSubtle" Color="#E1E4E8" />
+
+            <!-- Tree indent rails. A shade darker than BorderSubtle so the line still reads where it
+                 crosses a SELECTED row - against BgSelected, a BorderSubtle rail disappears entirely,
+                 and a guide that vanishes on the row you are looking at is the one place it is needed. -->
+            <SolidColorBrush x:Key="TreeGuide" Color="#CDD2D9" />
             <SolidColorBrush x:Key="TextPrimary" Color="#1F2328" />
             <SolidColorBrush x:Key="TextSecondary" Color="#656D76" />
 
@@ -140,6 +145,7 @@
             <SolidColorBrush x:Key="BgHover" Color="#282830" />
             <SolidColorBrush x:Key="BgSelected" Color="#2D323E" />
             <SolidColorBrush x:Key="BorderSubtle" Color="#2B2B32" />
+            <SolidColorBrush x:Key="TreeGuide" Color="#43434F" />
             <SolidColorBrush x:Key="TextPrimary" Color="#ECECEF" />
             <SolidColorBrush x:Key="TextSecondary" Color="#94949E" />
 
