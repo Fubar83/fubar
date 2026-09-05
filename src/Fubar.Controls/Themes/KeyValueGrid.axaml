@@ -14,8 +14,14 @@
             <ControlTemplate>
                 <DockPanel>
 
-                    <!-- Header -->
+                    <!-- Header, hidden while the grid is empty.
+
+                         KEY / VALUE / DESCRIPTION over nothing at all is three labels and a rule
+                         explaining a table that is not there - and several of these sit empty at once
+                         on the request editor's own tabs. It appears with the first row, which is the
+                         moment it starts meaning something. -->
                     <Border DockPanel.Dock="Top"
+                            IsVisible="{Binding ItemsSource, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static fc:CountToBoolConverter.Instance}}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,0,0,1"
                             Padding="6,0,6,8">

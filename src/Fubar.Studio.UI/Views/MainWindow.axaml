@@ -24,6 +24,15 @@
          tool is expected to have; they are documented in docs/api-studio.md, because an
          undiscoverable shortcut is the same as no shortcut. -->
     <Window.KeyBindings>
+        <!-- Ctrl+Enter and Ctrl+S lived on the Send and Save BUTTONS as Button.HotKey, so they worked
+             on a request and existed on neither the environment nor the auth-profile editor. Here they
+             dispatch to whatever is open. Button.HotKey registers into this same collection, so the
+             buttons carry none now - two bindings for one gesture would fire the command twice, and
+             sending a request twice is not a harmless duplicate. -->
+        <KeyBinding Gesture="Ctrl+Enter" Command="{Binding SendActiveCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveActiveCommand}" />
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding WorkspaceExplorer.OpenWorkspaceDirectoryCommand}" />
+        <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseActiveWorkspaceCommand}" />
         <KeyBinding Gesture="Ctrl+OemTilde" Command="{Binding ToggleLogCommand}" />
         <KeyBinding Gesture="Ctrl+N" Command="{Binding WorkspaceExplorer.NewRequestCommand}" />
         <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding WorkspaceExplorer.NewFolderCommand}" />
@@ -49,17 +58,13 @@
              so the window can still be moved/maximized from empty space in this row like a normal
              title bar. Window.Title is deliberately blank (see below) - the OS would otherwise draw
              it over/behind the first tab, since content and system decorations share this same row. -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*" Background="{DynamicResource BgHeader}">
+        <!-- No app-name text. It was 130px of permanent chrome naming the application you are already
+             inside - which the window, the taskbar and the icon all say - and it pushed the workspace
+             tabs off the left edge. Chrome, VS Code and Zed leave it out for the same reason: the row
+             is worth more as tabs. -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Background="{DynamicResource BgHeader}">
 
-            <TextBlock Grid.Column="0"
-                       Text="Fubar API Studio"
-                       FontWeight="Bold"
-                       FontSize="13"
-                       VerticalAlignment="Center"
-                       Margin="12,0,10,0"
-                       Foreground="{DynamicResource TextPrimary}" />
-
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom" Margin="8,0,0,0">
                 <!-- Reusable Chrome-style tab strip (Fubar.Controls). It owns all the drag/reorder/ghost/
                      tear-off/move-between-windows mechanics; the app supplies only the data (Roots), the
                      two-way selection (ActiveRoot), the close command, the tab-label template, and the
@@ -108,7 +113,7 @@
             <!-- Draggable filler: empty title-bar space behaves like a normal window title bar
                  (drag to move, double-click to maximize/restore). Needs an explicit Background
                  (even Transparent) to be hit-test visible at all. -->
-            <Panel Grid.Column="2"
+            <Panel Grid.Column="1"
                    Background="Transparent"
                    PointerPressed="TitleBarDragArea_OnPointerPressed"
                    DoubleTapped="TitleBarDragArea_OnDoubleTapped" />
@@ -209,7 +214,11 @@
 
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{DynamicResource BorderSubtle}" />
 
-            <Grid Grid.Column="2" RowDefinitions="*,4,*">
+            <!-- The response pane's row and its splitter collapse to zero height until a response
+                 exists - see MainWindow.axaml.cs. IsVisible alone is not enough: a Grid keeps a hidden
+                 child's row at full size, which CLAUDE.md records costing Fubar Diff a 190px blank
+                 band. -->
+            <Grid Grid.Column="2" x:Name="CanvasSplit" RowDefinitions="*,4,*">
 
                 <Panel Grid.Row="0">
                     <!-- ContentControl (not a direct <views:RequestEditorView DataContext="..."/>)

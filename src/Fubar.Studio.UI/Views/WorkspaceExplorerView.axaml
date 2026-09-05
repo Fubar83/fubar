@@ -83,7 +83,14 @@
                                      LostFocus="EditNameTextBox_OnLostFocus" />
                         </Panel>
 
-                        <!-- Auth Override Badge (fc:Badge) -->
+                        <!-- Auth Override Badge (fc:Badge).
+
+                             Two of them, because "this request states its own auth" and "this request
+                             deliberately sends none" are opposite facts that both used to render as
+                             one blue pill reading "Auth" - so the single request in a collection that
+                             must go out unauthenticated looked exactly like the ones carrying a
+                             token. BadgeAuthNone had been in the palette for this the whole time and
+                             was referenced by nothing. -->
                         <fc:Badge Grid.Column="2"
                                   Content="Auth"
                                   FontSize="9"
@@ -93,7 +100,28 @@
                                   CornerRadius="3"
                                   Padding="4,1"
                                   Margin="4,0"
-                                  IsVisible="{Binding HasAuthOverride}"
+                                  ToolTip.Tip="This request sets its own auth instead of inheriting"
+                                  IsVisible="{Binding !SendsNoAuth}"
+                                  VerticalAlignment="Center">
+                            <fc:Badge.IsVisible>
+                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                    <Binding Path="HasAuthOverride" />
+                                    <Binding Path="!SendsNoAuth" />
+                                </MultiBinding>
+                            </fc:Badge.IsVisible>
+                        </fc:Badge>
+
+                        <fc:Badge Grid.Column="2"
+                                  Content="No auth"
+                                  FontSize="9"
+                                  FontWeight="Normal"
+                                  Foreground="White"
+                                  Background="{DynamicResource BadgeAuthNone}"
+                                  CornerRadius="3"
+                                  Padding="4,1"
+                                  Margin="4,0"
+                                  ToolTip.Tip="This request deliberately sends no auth, overriding what it would inherit"
+                                  IsVisible="{Binding SendsNoAuth}"
                                   VerticalAlignment="Center" />
 
                         <!-- Dirty Indicator Dot (fc:StatusDot) -->

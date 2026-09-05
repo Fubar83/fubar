@@ -246,3 +246,34 @@ grant.
 **Say that the merge happened** (Studio). `ApplyStatus` reports what was filled in and that what was
 entered was kept. The merge is invisible otherwise, and someone burned once by a template wiping their
 client id will not press the button again to discover it now behaves.
+
+
+**Ctrl+Enter and Ctrl+S live in MainWindow's KeyBindings, and the buttons carry no HotKey** (Studio).
+They used to be `Button.HotKey` on Send and Save, which is why they worked on a request and existed on
+neither the environment nor the auth-profile editor. `Button.HotKey` registers into the WINDOW's own
+KeyBindings collection, so adding a window-level binding beside one fires the command twice - and
+sending a request twice is not a harmless duplicate. One binding each, dispatching through
+`SendActiveCommand` / `SaveActiveCommand`; `ISaveableEditor` is what lets Ctrl+S reach all three
+canvas surfaces without the shell knowing which is open.
+
+**The response pane's ROW is collapsed, not just its content hidden** (Studio). Before the first send
+it was three stacked empty states for one message - a strip saying "No response yet", four view tabs
+that could do nothing, and an empty editor showing line number 1. `IsVisible` alone would have left
+the editor exactly as cramped, because a Grid keeps a hidden child's row at full size; CLAUDE.md
+records the same trap costing Fubar Diff a 190px band. `MainWindow.ShowResponsePane` zeroes
+`CanvasSplit.RowDefinitions[1]` and `[2]` instead, from code-behind, because a `RowDefinition` is not
+in the visual tree and inherits no DataContext for a binding to resolve against.
+
+**The two toolbar rows were NOT merged, and `Window.WindowDecorationMargin` is why** (Studio). Putting
+the control bar's contents into the title row would save a row and a rule, and that row has ~700px of
+dead space. It needs the caption buttons reserved - right on Windows, left on macOS - and
+`WindowDecorationMargin` looks like the answer but is a TOP inset describing the title-bar height: it
+pushed the whole row down 30px, clipped the workspace tabs out of the 38px row, and left the
+environment selector under the close button. Verified by screenshot and reverted. Anyone trying again
+needs a real per-platform caption-button width, not that property.
+
+**A request that sends NO auth is badged "No auth", not "Auth"** (Studio). `HasAuthOverride` is
+`Auth.Type != Inherit`, which is true for `AuthType.None` too - so the one request in a collection that
+must go out unauthenticated rendered exactly like the ones carrying a token, in the same blue pill
+reading "Auth". `RequestSummary.SendsNoAuth` separates them, and `BadgeAuthNone` - a palette token that
+had been sitting there referenced by nothing - is what it is drawn in.

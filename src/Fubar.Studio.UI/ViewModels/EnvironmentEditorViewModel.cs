@@ -15,7 +15,7 @@ namespace Fubar.Studio.UI.ViewModels;
 /// in-memory <see cref="ISessionVariableStore"/>. Secret/Session values are never written to disk (see
 /// <see cref="AppVariable"/>'s doc comment); this editor reads/writes the real value transparently.
 /// </summary>
-public partial class EnvironmentEditorViewModel : ViewModelBase
+public partial class EnvironmentEditorViewModel : ViewModelBase, ISaveableEditor
 {
     private readonly Workspace _workspace;
     private readonly IEnvironmentStore _workspaceService;
@@ -99,6 +99,13 @@ public partial class EnvironmentEditorViewModel : ViewModelBase
             Rows.Remove(row);
         }
     }
+
+    /// <summary>
+    /// Ctrl+S, via the shell. Routed through the generated command rather than calling SaveAsync
+    /// directly so the command's own re-entrancy guard still applies - holding the key down must not
+    /// start a second write over the first.
+    /// </summary>
+    Task ISaveableEditor.SaveAsync() => SaveCommand.ExecuteAsync(null);
 
     [RelayCommand]
     private async Task SaveAsync()

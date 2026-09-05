@@ -179,6 +179,75 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void OpenSettings() => SettingsRequested?.Invoke();
 
+    // ---- The two shortcuts the docs already promised -----------------------------------------------
+    //
+    // docs/api-studio.md's Keyboard table has listed Ctrl+Enter as Send and Ctrl+S as Save since it was
+    // written. Neither appeared in any KeyBindings block or key handler: the two most-used actions in
+    // an API client had no shortcut at all, in an app with no menu bar to find one from. Fourth
+    // documented instance of built-and-never-wired here - this time the thing that was never wired was
+    // in the documentation rather than the code.
+
+    /// <summary>
+    /// Sends whatever is open, for Ctrl+Enter.
+    ///
+    /// <para>Silently does nothing when the canvas holds an environment or an auth profile: there is
+    /// no request to send, and a shortcut that reports an error for being pressed on the wrong screen
+    /// is worse than one that does nothing.</para>
+    /// </summary>
+    [RelayCommand]
+    private async Task SendActiveAsync()
+    {
+        if (ActiveRequest is { } request)
+        {
+            await request.SendCommand.ExecuteAsync(null);
+        }
+    }
+
+    /// <summary>
+    /// Saves whatever is open, for Ctrl+S - a request, an environment or an auth profile.
+    ///
+    /// <para>All three, not just requests: Ctrl+S is muscle memory, and one that works on two screens
+    /// out of three is worse than none, because the two that work teach you to trust it.</para>
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveActiveAsync()
+    {
+        if (ActiveEditor is ISaveableEditor editor)
+        {
+            await editor.SaveAsync();
+        }
+    }
+
+    /// <summary>Closes the active workspace tab, for Ctrl+W.</summary>
+    [RelayCommand]
+    private void CloseActiveWorkspace()
+    {
+        if (WorkspaceExplorer.ActiveRoot is { } root)
+        {
+            WorkspaceExplorer.CloseWorkspaceCommand.Execute(root);
+        }
+    }
+
+    /// <summary>
+    /// Whether the open editor has unsaved changes, for the Save button's own marker.
+    ///
+    /// <para>The dirty state was tracked and shown only as a dot on the tree row - which is the one
+    /// place you are not looking while typing into the editor. The Save button looked identical
+    /// whether or not there was anything to save.</para>
+    /// </summary>
+    public bool IsActiveDirty => ActiveRequest?.IsDirty == true;
+
+    /// <summary>
+    /// Whether there is a response to show, so the shell can give the whole canvas to the editor
+    /// until there is.
+    ///
+    /// <para>Before the first send the response pane was three stacked empty states for one message:
+    /// a strip saying "No response yet", four view tabs that could do nothing, and an empty editor
+    /// showing line number 1. Collapsing it outright roughly doubles the request editor on the screen
+    /// people spend the most time on. The splitter stays, so it can be dragged back at any time.</para>
+    /// </summary>
+    public bool HasResponse => ActiveRequest?.Response.HasResponse == true;
+
     /// <summary>Diagnostics for the About window. Built here because the shell owns the log and the
     /// clipboard; the window itself only displays what it is given.</summary>
     public AboutViewModel CreateAbout() => new(_clipboard, _logSink, _policy, StatusLog);
@@ -241,6 +310,15 @@ public partial class MainViewModel : ViewModelBase
 
         yield return new PaletteEntry("Run selection", "Command", "Ctrl+R",
             () => { RunActiveCommand.Execute(null); return Task.CompletedTask; });
+
+        // Where the request editor's one-item overflow menu went. Offered only with a request open,
+        // because with anything else on the canvas there is nothing to copy - a palette entry that
+        // does nothing when picked is worse than one that is absent.
+        if (ActiveRequest is { } copyable)
+        {
+            yield return new PaletteEntry("Copy as cURL", "Command", null,
+                () => copyable.CopyAsCurlCommand.ExecuteAsync(null));
+        }
 
         yield return new PaletteEntry("Find in response", "Command", "Ctrl+F",
             () => { FindInResponseCommand.Execute(null); return Task.CompletedTask; });
@@ -494,16 +572,31 @@ public partial class MainViewModel : ViewModelBase
         if (_dirtyTrackedRequest is { } previous)
         {
             previous.PropertyChanged -= OnActiveRequestPropertyChanged;
+            previous.Response.PropertyChanged -= OnActiveResponsePropertyChanged;
             ClearDirtyMarker(previous.FilePath);
             previous.Dispose();
         }
 
         _dirtyTrackedRequest = value as RequestEditorViewModel;
+        OnPropertyChanged(nameof(IsActiveDirty));
+        OnPropertyChanged(nameof(HasResponse));
 
         if (_dirtyTrackedRequest is { } current)
         {
             current.PropertyChanged += OnActiveRequestPropertyChanged;
+
+            // The response pane collapses until there is something to show, so the shell has to hear
+            // about the FIRST response as well as about edits.
+            current.Response.PropertyChanged += OnActiveResponsePropertyChanged;
             SyncDirtyMarker(current);
+        }
+    }
+
+    private void OnActiveResponsePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ResponsePanelViewModel.HasResponse))
+        {
+            OnPropertyChanged(nameof(HasResponse));
         }
     }
 
@@ -517,6 +610,11 @@ public partial class MainViewModel : ViewModelBase
 
     private void SyncDirtyMarker(RequestEditorViewModel request)
     {
+        // The editor's own marker, as well as the tree's. The dot on the tree row is in the one place
+        // you are NOT looking while typing into the editor, which is where the question "have I saved
+        // this?" actually gets asked.
+        OnPropertyChanged(nameof(IsActiveDirty));
+
         if (WorkspaceExplorer.FindNodeByPath(request.FilePath) is { } node)
         {
             node.IsDirty = request.IsDirty;

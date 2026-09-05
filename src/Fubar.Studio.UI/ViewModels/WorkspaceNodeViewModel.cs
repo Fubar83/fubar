@@ -55,7 +55,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// </remarks>
     public WorkspaceTreeNode ToTreeNode() =>
         new(Name, FullPath, IsDirectory, [.. Children.Select(c => c.ToTreeNode())],
-            IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url));
+            IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url, SendsNoAuth));
 
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
@@ -74,6 +74,16 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// <summary>True when the request's Auth tab is set to something other than Inherit.</summary>
     [ObservableProperty]
     public partial bool HasAuthOverride { get; set; }
+
+    /// <summary>
+    /// True when this request's own auth is explicitly None - it sends nothing, on purpose.
+    ///
+    /// <para>Distinguished from any other override because the tree used to badge it "Auth", which
+    /// says the opposite of the truth: the one request that must go out unauthenticated looked
+    /// exactly like the ones carrying a token.</para>
+    /// </summary>
+    [ObservableProperty]
+    public partial bool SendsNoAuth { get; set; }
 
     /// <summary>True while this request is the active canvas and has unsaved edits.</summary>
     [ObservableProperty]
@@ -172,6 +182,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                 {
                     Method = node.RequestSummary?.Method,
                     HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false,
+                    SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false,
                     Url = node.RequestSummary?.Url,
                 };
                 child.SyncChildren(node.Children);
@@ -189,6 +200,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                 existing.Method = node.RequestSummary?.Method;
                 existing.Url = node.RequestSummary?.Url;
                 existing.HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false;
+                existing.SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false;
                 existing.SyncChildren(node.Children);
             }
         }

@@ -33,7 +33,7 @@ namespace Fubar.Studio.UI.ViewModels;
 /// HTTP, so a GraphQL/WebSocket request document works identically once those protocols register
 /// their own provider + executor.
 /// </summary>
-public partial class RequestEditorViewModel : ViewModelBase, IDisposable
+public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, IDisposable
 {
     private readonly Workspace _workspace;
     private readonly EnvironmentManagerViewModel _environmentManager;
@@ -305,6 +305,13 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     /// <summary>Raised after a successful Save - MainViewModel uses this to refresh the Left Pane
     /// tree node's method/auth badges, which otherwise only refresh on external file-system events.</summary>
     public event Action? Saved;
+
+    /// <summary>
+    /// Ctrl+S, via the shell. Routed through the generated command rather than calling SaveAsync
+    /// directly so the command's own re-entrancy guard still applies - holding the key down must not
+    /// start a second write over the first.
+    /// </summary>
+    Task ISaveableEditor.SaveAsync() => SaveCommand.ExecuteAsync(null);
 
     [RelayCommand]
     private async Task SaveAsync()

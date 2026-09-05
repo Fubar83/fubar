@@ -38,7 +38,41 @@ public partial class MainWindow : Window
             viewModel.AboutRequested += () => new AboutWindow(viewModel.CreateAbout()).ShowDialog(this);
 
             viewModel.SettingsRequested += () => new SettingsWindow(viewModel.CreateSettings()).ShowDialog(this);
+
+            viewModel.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(MainViewModel.HasResponse))
+                {
+                    ShowResponsePane(viewModel.HasResponse);
+                }
+            };
+
+            ShowResponsePane(viewModel.HasResponse);
         };
+    }
+
+    /// <summary>
+    /// Gives the whole canvas to the editor until there is a response to show.
+    ///
+    /// <para>The ROW is collapsed, not just the child hidden: a Grid keeps a hidden child's row at its
+    /// full size, so <c>IsVisible</c> alone would have left the editor exactly as cramped as before
+    /// while an empty band sat under it. CLAUDE.md records the same trap costing Fubar Diff a 190px
+    /// blank band.</para>
+    ///
+    /// <para>Code-behind because a <c>RowDefinition</c> is not in the visual tree and inherits no
+    /// DataContext, so there is nothing for a binding on its <c>Height</c> to resolve against.</para>
+    /// </summary>
+    private void ShowResponsePane(bool show)
+    {
+        if (CanvasSplit.RowDefinitions.Count < 3)
+        {
+            return;
+        }
+
+        // Star, not a remembered pixel height: restoring an exact size would fight the splitter, and
+        // an even split is the layout this pane was designed around.
+        CanvasSplit.RowDefinitions[1].Height = show ? new GridLength(4) : new GridLength(0);
+        CanvasSplit.RowDefinitions[2].Height = show ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
     }
 
     /// <summary>

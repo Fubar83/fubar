@@ -24,7 +24,14 @@ public class WiringTests
     /// Commands that genuinely have no XAML binding, each with the reason. Anything not here must be
     /// reachable; anything here must say why it is not.
     /// </summary>
-    private static readonly Dictionary<string, string> Exempt = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, string> Exempt = new(StringComparer.Ordinal)
+    {
+        // Reached from the command palette, which builds its entries in C# rather than in markup. Its
+        // own button and flyout are gone: the overflow menu they opened held this one item, which is a
+        // button plus a flyout for a single action on the row where space is worth most.
+        ["RequestEditorViewModel.CopyAsCurlCommand"] =
+            "Invoked from MainViewModel.PaletteEntries, not from markup.",
+    };
 
     /// <summary>
     /// Reachable means bound in markup OR executed from code-behind.

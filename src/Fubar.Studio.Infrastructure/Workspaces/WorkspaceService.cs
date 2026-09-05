@@ -236,7 +236,11 @@ public sealed class WorkspaceService : IWorkspaceService
                 // The URL comes free - the request is already deserialized here for its method and auth badge -
                 // and it is what makes the left pane filter able to match "orders" in a URL rather than only
                 // in a file name.
-                summary = new RequestSummary(request.Method, request.Auth.Type != AuthType.Inherit, request.Url);
+                summary = new RequestSummary(
+                    request.Method,
+                    request.Auth.Type != AuthType.Inherit,
+                    request.Url,
+                    SendsNoAuth: request.Auth.Type == AuthType.None);
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException)
