@@ -8,8 +8,10 @@ using SkiaSharp;
 // tile, the same red - and the shape says which one you are looking at and what it does, which is what
 // a launcher, a dock and a taskbar all need from an icon at 16 pixels.
 //
-// API Studio was a red letter "F". A letter names the product and says nothing about what it does, and
-// at 16px an F is an F is any application starting with F. Fubar Diff had no icon AT ALL - its publish
+// API Studio was a red letter "F", then two arrows. A letter names the product and says nothing about
+// what it does - at 16px an F is any application starting with F - and the arrows read as a generic
+// transfer or sync mark rather than as anything to do with an API. Braces say "JSON payload" to the
+// people who use this, which is the one thing the app does all day. Fubar Diff had no icon AT ALL - its publish
 // script has always copied src/Fubar.Diff.UI/Assets/fubar.icns, a path that did not exist, so every
 // macOS build shipped with the generic application icon.
 
@@ -67,42 +69,47 @@ static byte[] RenderPng(int size, Action<SKCanvas, float> draw)
     return data.ToArray();
 }
 
-// API Studio: a request going out and a response coming back.
+// API Studio: curly braces - a JSON payload.
 //
-// The round trip IS the application - you send something and read what comes back - and two opposed
-// arrows are how every network tool has drawn that for thirty years. Solid polygons rather than a
-// stroked line with an arrowhead, because a thin stroke vanishes at 16px and an arrowhead becomes a
-// smudge; as one filled shape the shaft and head can never come apart.
+// What every developer reads as "the body of an API call" without being told, which is what this app
+// spends its whole life sending and reading. It also stays itself at 16px, where the detail of a more
+// pictorial mark would go: two shapes, a gap down the middle, nothing to lose.
+//
+// Drawn as a stroked path with round caps and joins rather than as text, so it does not depend on a
+// font being present or on two platforms agreeing what a brace looks like - the same reason the rest
+// of this file builds its shapes from geometry.
 static void DrawApiStudio(SKCanvas canvas, float s)
 {
-    using var red = new SKPaint { IsAntialias = true, Color = new SKColor(0xE1, 0x1D, 0x2A) };
+    using var red = new SKPaint
+    {
+        IsAntialias = true,
+        Color = new SKColor(0xE1, 0x1D, 0x2A),
+        Style = SKPaintStyle.Stroke,
+        StrokeWidth = s * 0.085f,
+        StrokeCap = SKStrokeCap.Round,
+        StrokeJoin = SKStrokeJoin.Round,
+    };
 
-    Arrow(canvas, red, s, y: 0.355f, pointingRight: true);
-    Arrow(canvas, red, s, y: 0.645f, pointingRight: false);
+    Brace(canvas, red, s, outerX: 0.40f, tipX: 0.245f, y0: 0.235f, y1: 0.765f);
+    Brace(canvas, red, s, outerX: 0.60f, tipX: 0.755f, y0: 0.235f, y1: 0.765f);
 }
 
-static void Arrow(SKCanvas canvas, SKPaint paint, float s, float y, bool pointingRight)
+/// One brace: out at the ends, in to a point at the middle. <paramref name="outerX"/> is the open end
+/// and <paramref name="tipX"/> the pinch, so the same routine draws both by swapping them over.
+static void Brace(SKCanvas canvas, SKPaint paint, float s, float outerX, float tipX, float y0, float y1)
 {
-    const float X0 = 0.20f;
-    const float X1 = 0.80f;
-    const float Thickness = 0.085f; // the shaft
-    const float Head = 0.145f;      // how far the head reaches back along the shaft
-    const float Spread = 0.30f;     // how far the head spans, top to bottom
+    var mid = (y0 + y1) / 2;
+    var spineX = (outerX + tipX) / 2;
+    var r = (y1 - y0) * 0.22f;
 
     using var path = new SKPath();
-
-    var near = pointingRight ? X0 : X1;
-    var tip = pointingRight ? X1 : X0;
-    var shoulder = pointingRight ? X1 - Head : X0 + Head;
-
-    path.MoveTo(near * s, (y - Thickness / 2) * s);
-    path.LineTo(shoulder * s, (y - Thickness / 2) * s);
-    path.LineTo(shoulder * s, (y - Spread / 2) * s);
-    path.LineTo(tip * s, y * s);
-    path.LineTo(shoulder * s, (y + Spread / 2) * s);
-    path.LineTo(shoulder * s, (y + Thickness / 2) * s);
-    path.LineTo(near * s, (y + Thickness / 2) * s);
-    path.Close();
+    path.MoveTo(outerX * s, y0 * s);
+    path.QuadTo(spineX * s, y0 * s, spineX * s, (y0 + r) * s);
+    path.LineTo(spineX * s, (mid - r * 0.55f) * s);
+    path.QuadTo(spineX * s, mid * s, tipX * s, mid * s);
+    path.QuadTo(spineX * s, mid * s, spineX * s, (mid + r * 0.55f) * s);
+    path.LineTo(spineX * s, (y1 - r) * s);
+    path.QuadTo(spineX * s, y1 * s, outerX * s, y1 * s);
 
     canvas.DrawPath(path, paint);
 }

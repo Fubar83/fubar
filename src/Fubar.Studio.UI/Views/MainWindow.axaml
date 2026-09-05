@@ -62,9 +62,22 @@
              inside - which the window, the taskbar and the icon all say - and it pushed the workspace
              tabs off the left edge. Chrome, VS Code and Zed leave it out for the same reason: the row
              is worth more as tabs. -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Background="{DynamicResource BgHeader}">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*" Background="{DynamicResource BgHeader}">
 
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom" Margin="8,0,0,0">
+            <!-- The app icon, where the OS would have drawn one. ExtendClientAreaToDecorationsHint
+                 means the system paints no icon in this row, so without this the window has no mark of
+                 its own anywhere - and the taskbar entry, the alt-tab card and this row would disagree
+                 about what the application looks like. Chrome and VS Code both put it exactly here.
+                 The PNG rather than the .ico: an Image renders one frame of an .ico unpredictably,
+                 while the 256px PNG scales down cleanly to whatever this row is. -->
+            <Image Grid.Column="0"
+                   Source="/Assets/fubar-256.png"
+                   Width="17" Height="17"
+                   Margin="11,0,3,0"
+                   VerticalAlignment="Center"
+                   IsHitTestVisible="False" />
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom" Margin="4,0,0,0">
                 <!-- Reusable Chrome-style tab strip (Fubar.Controls). It owns all the drag/reorder/ghost/
                      tear-off/move-between-windows mechanics; the app supplies only the data (Roots), the
                      two-way selection (ActiveRoot), the close command, the tab-label template, and the
@@ -113,7 +126,7 @@
             <!-- Draggable filler: empty title-bar space behaves like a normal window title bar
                  (drag to move, double-click to maximize/restore). Needs an explicit Background
                  (even Transparent) to be hit-test visible at all. -->
-            <Panel Grid.Column="1"
+            <Panel Grid.Column="2"
                    Background="Transparent"
                    PointerPressed="TitleBarDragArea_OnPointerPressed"
                    DoubleTapped="TitleBarDragArea_OnDoubleTapped" />

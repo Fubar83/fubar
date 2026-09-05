@@ -64,46 +64,9 @@ public class TreeFilterTests
         Assert.False(Folder(root, "Orders").Children.Single(c => c.Name == "list.json").IsVisible);
     }
 
-    /// <summary>
-    /// A filtered tree that stays collapsed shows the user nothing, which is the commonest way this
-    /// feature is built wrong.
-    /// </summary>
-    [Fact]
-    public void A_folder_containing_a_match_is_expanded()
-    {
-        var root = Tree();
-        Assert.False(Folder(root, "Orders").IsExpanded);
-
-        root.ApplyFilter("create");
-
-        Assert.True(Folder(root, "Orders").IsExpanded);
-    }
-
-    [Fact]
-    public void Clearing_the_filter_restores_the_previous_expansion()
-    {
-        var root = Tree();
-        root.ApplyFilter("create");
-        Assert.True(Folder(root, "Orders").IsExpanded);
-
-        root.ApplyFilter(null);
-
-        Assert.False(Folder(root, "Orders").IsExpanded);
-        Assert.All(root.Children, c => Assert.True(c.IsVisible));
-    }
-
-    /// <summary>Expansion the user chose while filtering is theirs, and survives the clear.</summary>
-    [Fact]
-    public void Expansion_the_user_set_is_not_undone()
-    {
-        var root = Tree();
-        Folder(root, "Users").IsExpanded = true;
-
-        root.ApplyFilter("create");
-        root.ApplyFilter(null);
-
-        Assert.True(Folder(root, "Users").IsExpanded);
-    }
+    // Three tests about folders expanding while filtering used to sit here. They were removed with
+    // the behaviour: the request tree is always expanded now, and the IsExpanded they asserted on was
+    // bound to no TreeViewItem, so the force-expand they guarded had never reached the screen.
 
     /// <summary>"Show me the Orders folder" means the folder, not an empty one.</summary>
     [Fact]

@@ -8,7 +8,7 @@ namespace Fubar.Studio.UI.ViewModels;
 /// One folder or request file node in the Workspace Explorer TreeView. Wraps the immutable
 /// <see cref="WorkspaceTreeNode"/> snapshot from <c>IWorkspaceService.BuildCollectionsTree</c> in
 /// a mutable, bindable form that <see cref="SyncChildren"/> reconciles in place on every refresh -
-/// preserving node identity (and so <see cref="IsExpanded"/>/selection state) for anything that
+/// preserving node identity (and so selection state) for anything that
 /// didn't actually change on disk, rather than rebuilding the whole subtree. For request file
 /// nodes, <see cref="Method"/>/<see cref="HasAuthOverride"/> back the Left Pane's method/auth
 /// badges (LeftPane.md §5) and <see cref="IsDirty"/> its unsaved-changes dot, kept live by
@@ -57,9 +57,6 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
         new(Name, FullPath, IsDirectory, [.. Children.Select(c => c.ToTreeNode())],
             IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url, SendsNoAuth));
 
-    [ObservableProperty]
-    public partial bool IsExpanded { get; set; }
-
     /// <summary>Inline-rename state: when true, the TreeView shows an editable TextBox instead of the label.</summary>
     [ObservableProperty]
     public partial bool IsEditing { get; set; }
@@ -99,32 +96,22 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsVisible { get; set; } = true;
 
-    /// <summary>Expansion as the user last left it, remembered while a filter forces subtrees open so
-    /// clearing the box puts the tree back rather than leaving it splayed.</summary>
-    private bool? _expansionBeforeFilter;
-
     /// <summary>
     /// Applies <paramref name="filter"/> to this node and its descendants, returning whether anything
     /// here survived.
     ///
-    /// <para>A folder matches when ANY descendant does, and is force-expanded so the match is actually
-    /// on screen - a filtered tree that stays collapsed shows the user nothing, which is the commonest
-    /// way this feature gets built wrong. A folder that matches by its own name keeps all its children,
-    /// because "show me the Orders folder" means the folder, not an empty one.</para>
+    /// <para>A folder matches when ANY descendant does. It used to force itself open as well, against
+    /// "a filtered tree that stays collapsed shows the user nothing" - which was never actually a risk
+    /// here, because that <c>IsExpanded</c> was bound to no container and the force-expand did nothing
+    /// at all. The tree is always open now, so there is nothing left to force. A folder that matches by
+    /// its own name keeps all its children, because "show me the Orders folder" means the folder, not
+    /// an empty one.</para>
     /// </summary>
     public bool ApplyFilter(string? filter)
     {
         if (string.IsNullOrWhiteSpace(filter))
         {
             IsVisible = true;
-
-            // Only restore what the filter itself changed; expansion the user set while filtering is
-            // theirs and survives.
-            if (_expansionBeforeFilter is { } previous)
-            {
-                IsExpanded = previous;
-                _expansionBeforeFilter = null;
-            }
 
             foreach (var child in Children)
             {
@@ -145,12 +132,6 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
         }
 
         IsVisible = selfMatches || anyChildMatches;
-
-        if (anyChildMatches && !selfMatches)
-        {
-            _expansionBeforeFilter ??= IsExpanded;
-            IsExpanded = true;
-        }
 
         return IsVisible;
     }

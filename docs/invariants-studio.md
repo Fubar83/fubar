@@ -302,3 +302,21 @@ screen shows, so the connection between the two is on the button rather than in 
 A field already captured says so instead of offering a button that silently does nothing on the second
 click. `CapturableField` exists for this; `CaptureFromResponseTests` covers the wiring, which was the
 half that had no tests - `TokenResponseFields` (reading the payload) always did.
+
+
+**The request tree is always expanded, and there is no chevron** (Studio). A workspace is a few dozen
+requests in a handful of folders; folding them away hid the only thing the pane is for behind a click,
+while costing a chevron on every folder row and a piece of state to remember, restore and reason about
+whenever the filter ran. The filter is how you narrow a long tree, not collapsing.
+`WorkspaceNodeViewModel.IsExpanded` is gone with it - and it turned out to have been bound to no
+`TreeViewItem` at all, so `ApplyFilter`'s careful force-expand-and-restore had never once reached the
+screen. Three tests asserting that behaviour went too. The chevron is hidden AND width-zeroed in
+`WorkspaceExplorerView`'s styles rather than in the shared `fc:TreeView` theme, because Fubar Diff's
+change tree still needs one.
+
+**Both title bars draw the app icon themselves** (both apps). `ExtendClientAreaToDecorationsHint` means
+the OS paints no icon in that row, so without an `Image` there the window carried no mark of its own
+anywhere and the taskbar entry, the alt-tab card and the title bar disagreed about what the application
+looked like. It is the 256px PNG, not the `.ico`: an `Image` picks one frame of an `.ico`
+unpredictably, while the PNG scales down cleanly. In both apps it replaced the product name in text -
+which named the application you are already inside while pushing the tabs off the left edge.
