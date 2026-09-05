@@ -320,3 +320,18 @@ anywhere and the taskbar entry, the alt-tab card and the title bar disagreed abo
 looked like. It is the 256px PNG, not the `.ico`: an `Image` picks one frame of an `.ico`
 unpredictably, while the PNG scales down cleanly. In both apps it replaced the product name in text -
 which named the application you are already inside while pushing the tabs off the left edge.
+
+
+**The app mark in the title bar is theme-switched; the OS icon is not** (both apps). Windows and macOS
+each show ONE application icon and never ask for a second, so `.ico` and `.icns` keep the off-white
+tile that has to hold up on any wallpaper. The title bar is drawn by the app, and there an off-white
+plaque on a near-black bar is the brightest thing in the window - backwards for a decoration. Each
+app's `App.axaml` declares an `AppMark` ImageBrush per theme variant and the title bar paints a Border
+with it. An ImageBrush and not an `Image.Source`, because a `DynamicResource` has to resolve to an
+object and a brush is the one image-shaped thing that already is one. The glyph stays the same red in
+both tiles: it is legible on either ground, and a mark that changed colour with the theme would read as
+two different applications.
+
+Asset paths there are RELATIVE, not `avares://`. The authority in an avares URI is the ASSEMBLY name -
+`FubarAPIStudio`, not the project name `Fubar.Studio.UI` - and getting it wrong builds cleanly and then
+throws `FileNotFoundException` at startup, on whichever theme happens to be selected first.

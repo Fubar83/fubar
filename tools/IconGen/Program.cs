@@ -26,16 +26,25 @@ void Write(string project, Action<SKCanvas, float> draw)
     Directory.CreateDirectory(assets);
 
     int[] sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256, 512, 1024];
-    var pngs = sizes.ToDictionary(s => s, s => RenderPng(s, draw));
+    var pngs = sizes.ToDictionary(s => s, s => RenderPng(s, draw, Tile.Light));
 
     File.WriteAllBytes(Path.Combine(assets, "fubar-256.png"), pngs[256]);
+
+    // A dark-mode tile for the places THIS app draws its own mark - the title bar. An off-white
+    // plaque on a near-black title bar is the brightest thing in the window, which is precisely
+    // backwards for a decoration.
+    //
+    // Only the in-app copy: the .ico and .icns below are what Windows and macOS show in a taskbar,
+    // a dock and an alt-tab card, and neither OS switches an application icon by theme. One icon is
+    // all they will ever ask for, and it has to hold up on a light background too.
+    File.WriteAllBytes(Path.Combine(assets, "fubar-256-dark.png"), RenderPng(256, draw, Tile.Dark));
     File.WriteAllBytes(Path.Combine(assets, "fubar.ico"), BuildIco([16, 24, 32, 48, 64, 128, 256], pngs));
     File.WriteAllBytes(Path.Combine(assets, "fubar.icns"), BuildIcns(pngs));
 
     Console.WriteLine($"Wrote fubar.ico, fubar.icns, fubar-256.png to {assets}");
 }
 
-static byte[] RenderPng(int size, Action<SKCanvas, float> draw)
+static byte[] RenderPng(int size, Action<SKCanvas, float> draw, Tile tile_)
 {
     using var surface = SKSurface.Create(new SKImageInfo(size, size, SKColorType.Rgba8888, SKAlphaType.Premul));
     var canvas = surface.Canvas;
@@ -45,8 +54,8 @@ static byte[] RenderPng(int size, Action<SKCanvas, float> draw)
     var tile = new SKRect(s * 0.04f, s * 0.04f, s * 0.96f, s * 0.96f);
     float radius = s * 0.22f;
 
-    // Rounded off-white tile with a faint border, so the icon reads on light AND dark backgrounds.
-    using (var bg = new SKPaint { IsAntialias = true, Color = new SKColor(0xFD, 0xFD, 0xFD) })
+    // Rounded tile with a faint border, so the icon reads on whatever sits behind it.
+    using (var bg = new SKPaint { IsAntialias = true, Color = tile_.Fill })
     {
         canvas.DrawRoundRect(tile, radius, radius, bg);
     }
@@ -56,7 +65,7 @@ static byte[] RenderPng(int size, Action<SKCanvas, float> draw)
         IsAntialias = true,
         Style = SKPaintStyle.Stroke,
         StrokeWidth = Math.Max(1f, s * 0.012f),
-        Color = new SKColor(0xE3, 0xE5, 0xEA),
+        Color = tile_.Border,
     })
     {
         canvas.DrawRoundRect(tile, radius, radius, border);
@@ -214,3 +223,15 @@ static void WriteBigEndian(Stream stream, uint value)
     stream.WriteByte((byte)(value >> 8));
     stream.WriteByte((byte)value);
 }
+
+/// The tile behind the glyph. The glyph itself is the same red in both: it is legible on either
+/// ground, and an icon whose MARK changed colour with the theme would read as two different apps.
+record Tile(SKColor Fill, SKColor Border)
+{
+    public static Tile Light { get; } = new(new SKColor(0xFD, 0xFD, 0xFD), new SKColor(0xE3, 0xE5, 0xEA));
+
+    // Sits just above the dark title bar it lands on (BgHeader is #1E1E22), so the tile reads as a
+    // plaque rather than as a hole.
+    public static Tile Dark { get; } = new(new SKColor(0x2A, 0x2A, 0x31), new SKColor(0x3A, 0x3A, 0x44));
+}
+

@@ -22,6 +22,34 @@
                      ThemeDictionaries respond to ThemeManagerViewModel's RequestedThemeVariant switch. -->
                 <ResourceInclude Source="avares://Fubar.Controls/Themes/Palette.axaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- The app mark, per theme.
+
+                 The OS icon cannot follow the theme - Windows and macOS each show one application
+                 icon and never ask for a second - but the title bar is drawn by this app, and an
+                 off-white plaque on a near-black title bar is the brightest thing in the window,
+                 which is backwards for a decoration.
+
+                 An ImageBrush rather than an Image Source: a DynamicResource has to resolve to an
+                 object, and a brush is the one image-shaped thing that already is one.
+
+                 Paths are relative, not avares:// - the authority in an avares URI is the ASSEMBLY
+                 name, which here is FubarAPIStudio rather than the project name, and getting that
+                 wrong fails at runtime on the first theme that needs it rather than at build. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <ImageBrush x:Key="AppMark" Stretch="Uniform"
+                                Source="/Assets/fubar-256.png" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <ImageBrush x:Key="AppMark" Stretch="Uniform"
+                                Source="/Assets/fubar-256.png" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <ImageBrush x:Key="AppMark" Stretch="Uniform"
+                                Source="/Assets/fubar-256-dark.png" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 

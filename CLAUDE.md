@@ -327,8 +327,11 @@ clean" - it is the only thing standing between a settings bug and a user discove
 - **`ExtendClientAreaToDecorationsHint` means `Window.Title` must be empty** (both apps). Both main
   windows draw their own tab strip into the native title-bar row; a non-empty Title has the OS paint
   its own text over the first tab. Both also snap `WindowState.FullScreen` back to `Maximized` in
-  `OnPropertyChanged`, because this Avalonia version draws a full-screen caption button that cannot be
-  removed or hidden (it lives outside the window's visual tree).
+  `OnPropertyChanged` - a belt-and-braces guard now that the full-screen caption button itself is
+  hidden. That button WAS unremovable when this was written: it is outside the window visual tree, so
+  `FindControl` cannot reach it. Avalonia 12 replaced the old `CaptionButtons` chrome with a
+  decorations template whose parts declare a ROLE, and a role is something a style selector can match -
+  see `AppStyles.axaml`.
 
 ## Workflow notes
 

@@ -71,12 +71,12 @@
                  It replaces the "Fubar Diff" text, which named the application you are already inside -
                  something the window, the taskbar and now the icon all say - while pushing the
                  comparison tabs off the left edge. -->
-            <Image Grid.Column="0"
-                   Source="/Assets/fubar-256.png"
-                   Width="17" Height="17"
-                   Margin="11,0,3,0"
-                   VerticalAlignment="Center"
-                   IsHitTestVisible="False" />
+            <Border Grid.Column="0"
+                    Width="17" Height="17"
+                    Margin="11,0,3,0"
+                    VerticalAlignment="Center"
+                    IsHitTestVisible="False"
+                    Background="{DynamicResource AppMark}" />
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom" Margin="4,0,0,0">
                 <fc:TabStrip x:Name="Tabs"

@@ -70,12 +70,12 @@
                  about what the application looks like. Chrome and VS Code both put it exactly here.
                  The PNG rather than the .ico: an Image renders one frame of an .ico unpredictably,
                  while the 256px PNG scales down cleanly to whatever this row is. -->
-            <Image Grid.Column="0"
-                   Source="/Assets/fubar-256.png"
-                   Width="17" Height="17"
-                   Margin="11,0,3,0"
-                   VerticalAlignment="Center"
-                   IsHitTestVisible="False" />
+            <Border Grid.Column="0"
+                    Width="17" Height="17"
+                    Margin="11,0,3,0"
+                    VerticalAlignment="Center"
+                    IsHitTestVisible="False"
+                    Background="{DynamicResource AppMark}" />
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom" Margin="4,0,0,0">
                 <!-- Reusable Chrome-style tab strip (Fubar.Controls). It owns all the drag/reorder/ghost/
