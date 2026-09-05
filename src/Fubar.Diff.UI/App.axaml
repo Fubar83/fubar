@@ -22,22 +22,10 @@
                 <ResourceInclude Source="avares://Fubar.Controls/Themes/Palette.axaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- The app mark, per theme. See Fubar.Studio.UI/App.axaml for why the OS icon cannot
-                 follow the theme and the title bar's copy has to. -->
-            <ResourceDictionary.ThemeDictionaries>
-                <ResourceDictionary x:Key="Default">
-                    <ImageBrush x:Key="AppMark" Stretch="Uniform"
-                                Source="/Assets/fubar-256.png" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Light">
-                    <ImageBrush x:Key="AppMark" Stretch="Uniform"
-                                Source="/Assets/fubar-256.png" />
-                </ResourceDictionary>
-                <ResourceDictionary x:Key="Dark">
-                    <ImageBrush x:Key="AppMark" Stretch="Uniform"
-                                Source="/Assets/fubar-256-dark.png" />
-                </ResourceDictionary>
-            </ResourceDictionary.ThemeDictionaries>
+            <!-- The app mark in the title bar. One image for both themes - the glyph is drawn on
+                 transparency, so there is no plaque to keep off a dark title bar. See
+                 Fubar.Studio.UI/App.axaml for why it is a brush and why the path is relative. -->
+            <ImageBrush x:Key="AppMark" Stretch="Uniform" Source="/Assets/fubar-256.png" />
         </ResourceDictionary>
     </Application.Resources>
 

@@ -4,9 +4,9 @@ using SkiaSharp;
 // Generates both apps' icons and writes .ico / .icns / .png into each app's Assets folder.
 // Run: dotnet run --project tools/IconGen
 //
-// One palette, two shapes. Both apps are obviously from the same family - the same off-white rounded
-// tile, the same red - and the shape says which one you are looking at and what it does, which is what
-// a launcher, a dock and a taskbar all need from an icon at 16 pixels.
+// One palette, two shapes. Both apps are obviously from the same family - the same red mark on nothing
+// at all - and the shape says which one you are looking at and what it does, which is what a launcher,
+// a dock and a taskbar all need from an icon at 16 pixels.
 //
 // API Studio was a red letter "F", then two arrows. A letter names the product and says nothing about
 // what it does - at 16px an F is any application starting with F - and the arrows read as a generic
@@ -14,6 +14,13 @@ using SkiaSharp;
 // people who use this, which is the one thing the app does all day. Fubar Diff had no icon AT ALL - its publish
 // script has always copied src/Fubar.Diff.UI/Assets/fubar.icns, a path that did not exist, so every
 // macOS build shipped with the generic application icon.
+//
+// NO TILE. These were drawn on an off-white rounded plaque, which made the mark the brightest thing in
+// a dark title bar and put a visible card edge around it in a taskbar full of icons that have none.
+// The glyph alone, on transparency, sits ON whatever is behind it in either theme - which is also why
+// there is one file per app now rather than a light one and a dark one: with the plaque gone the two
+// were the same image. The red carries both grounds by itself; a mark that changed colour with the
+// theme would read as two different apps.
 
 var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 
@@ -26,52 +33,22 @@ void Write(string project, Action<SKCanvas, float> draw)
     Directory.CreateDirectory(assets);
 
     int[] sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256, 512, 1024];
-    var pngs = sizes.ToDictionary(s => s, s => RenderPng(s, draw, Tile.Light));
+    var pngs = sizes.ToDictionary(s => s, s => RenderPng(s, draw));
 
     File.WriteAllBytes(Path.Combine(assets, "fubar-256.png"), pngs[256]);
-
-    // A dark-mode tile for the places THIS app draws its own mark - the title bar. An off-white
-    // plaque on a near-black title bar is the brightest thing in the window, which is precisely
-    // backwards for a decoration.
-    //
-    // Only the in-app copy: the .ico and .icns below are what Windows and macOS show in a taskbar,
-    // a dock and an alt-tab card, and neither OS switches an application icon by theme. One icon is
-    // all they will ever ask for, and it has to hold up on a light background too.
-    File.WriteAllBytes(Path.Combine(assets, "fubar-256-dark.png"), RenderPng(256, draw, Tile.Dark));
     File.WriteAllBytes(Path.Combine(assets, "fubar.ico"), BuildIco([16, 24, 32, 48, 64, 128, 256], pngs));
     File.WriteAllBytes(Path.Combine(assets, "fubar.icns"), BuildIcns(pngs));
 
     Console.WriteLine($"Wrote fubar.ico, fubar.icns, fubar-256.png to {assets}");
 }
 
-static byte[] RenderPng(int size, Action<SKCanvas, float> draw, Tile tile_)
+static byte[] RenderPng(int size, Action<SKCanvas, float> draw)
 {
     using var surface = SKSurface.Create(new SKImageInfo(size, size, SKColorType.Rgba8888, SKAlphaType.Premul));
     var canvas = surface.Canvas;
     canvas.Clear(SKColors.Transparent);
 
-    float s = size;
-    var tile = new SKRect(s * 0.04f, s * 0.04f, s * 0.96f, s * 0.96f);
-    float radius = s * 0.22f;
-
-    // Rounded tile with a faint border, so the icon reads on whatever sits behind it.
-    using (var bg = new SKPaint { IsAntialias = true, Color = tile_.Fill })
-    {
-        canvas.DrawRoundRect(tile, radius, radius, bg);
-    }
-
-    using (var border = new SKPaint
-    {
-        IsAntialias = true,
-        Style = SKPaintStyle.Stroke,
-        StrokeWidth = Math.Max(1f, s * 0.012f),
-        Color = tile_.Border,
-    })
-    {
-        canvas.DrawRoundRect(tile, radius, radius, border);
-    }
-
-    draw(canvas, s);
+    draw(canvas, size);
 
     using var image = surface.Snapshot();
     using var data = image.Encode(SKEncodedImageFormat.Png, 100);
@@ -87,6 +64,9 @@ static byte[] RenderPng(int size, Action<SKCanvas, float> draw, Tile tile_)
 // Drawn as a stroked path with round caps and joins rather than as text, so it does not depend on a
 // font being present or on two platforms agreeing what a brace looks like - the same reason the rest
 // of this file builds its shapes from geometry.
+//
+// The coordinates below run wider and taller than they did on the plaque: with no tile edge to keep
+// clear of, the glyph gets the canvas, and every one of those pixels is legibility at 16px.
 static void DrawApiStudio(SKCanvas canvas, float s)
 {
     using var red = new SKPaint
@@ -94,13 +74,13 @@ static void DrawApiStudio(SKCanvas canvas, float s)
         IsAntialias = true,
         Color = new SKColor(0xE1, 0x1D, 0x2A),
         Style = SKPaintStyle.Stroke,
-        StrokeWidth = s * 0.085f,
+        StrokeWidth = s * 0.10f,
         StrokeCap = SKStrokeCap.Round,
         StrokeJoin = SKStrokeJoin.Round,
     };
 
-    Brace(canvas, red, s, outerX: 0.40f, tipX: 0.245f, y0: 0.235f, y1: 0.765f);
-    Brace(canvas, red, s, outerX: 0.60f, tipX: 0.755f, y0: 0.235f, y1: 0.765f);
+    Brace(canvas, red, s, outerX: 0.38f, tipX: 0.194f, y0: 0.182f, y1: 0.818f);
+    Brace(canvas, red, s, outerX: 0.62f, tipX: 0.806f, y0: 0.182f, y1: 0.818f);
 }
 
 /// One brace: out at the ends, in to a point at the middle. <paramref name="outerX"/> is the open end
@@ -135,24 +115,24 @@ static void DrawDiff(SKCanvas canvas, float s)
     using var red = new SKPaint { IsAntialias = true, Color = crimson };
     using var ghost = new SKPaint { IsAntialias = true, Color = crimson.WithAlpha(0x4D) };
 
-    float rr = s * 0.025f;
+    float rr = s * 0.03f;
     SKRect N(float x0, float y0, float x1, float y1) => new(x0 * s, y0 * s, x1 * s, y1 * s);
 
-    float[] rows = [0.275f, 0.44f, 0.605f];
-    const float Height = 0.115f;
+    float[] rows = [0.23f, 0.428f, 0.626f];
+    const float Height = 0.138f;
 
     // Left column: three full-width bars - the original.
     foreach (var y in rows)
     {
-        canvas.DrawRoundRect(N(0.20f, y, 0.455f, y + Height), rr, rr, red);
+        canvas.DrawRoundRect(N(0.14f, y, 0.446f, y + Height), rr, rr, red);
     }
 
     // Right column: the same three, with the middle one short. One line changed, which is the whole
     // idea; the ghosted remainder shows how far it used to reach.
-    canvas.DrawRoundRect(N(0.545f, rows[0], 0.80f, rows[0] + Height), rr, rr, red);
-    canvas.DrawRoundRect(N(0.545f, rows[1], 0.665f, rows[1] + Height), rr, rr, red);
-    canvas.DrawRoundRect(N(0.685f, rows[1], 0.80f, rows[1] + Height), rr, rr, ghost);
-    canvas.DrawRoundRect(N(0.545f, rows[2], 0.80f, rows[2] + Height), rr, rr, red);
+    canvas.DrawRoundRect(N(0.554f, rows[0], 0.86f, rows[0] + Height), rr, rr, red);
+    canvas.DrawRoundRect(N(0.554f, rows[1], 0.698f, rows[1] + Height), rr, rr, red);
+    canvas.DrawRoundRect(N(0.722f, rows[1], 0.86f, rows[1] + Height), rr, rr, ghost);
+    canvas.DrawRoundRect(N(0.554f, rows[2], 0.86f, rows[2] + Height), rr, rr, red);
 }
 
 // Windows .ico as a container of PNG frames (Vista+; Avalonia reads these fine).
@@ -223,15 +203,3 @@ static void WriteBigEndian(Stream stream, uint value)
     stream.WriteByte((byte)(value >> 8));
     stream.WriteByte((byte)value);
 }
-
-/// The tile behind the glyph. The glyph itself is the same red in both: it is legible on either
-/// ground, and an icon whose MARK changed colour with the theme would read as two different apps.
-record Tile(SKColor Fill, SKColor Border)
-{
-    public static Tile Light { get; } = new(new SKColor(0xFD, 0xFD, 0xFD), new SKColor(0xE3, 0xE5, 0xEA));
-
-    // Sits just above the dark title bar it lands on (BgHeader is #1E1E22), so the tile reads as a
-    // plaque rather than as a hole.
-    public static Tile Dark { get; } = new(new SKColor(0x2A, 0x2A, 0x31), new SKColor(0x3A, 0x3A, 0x44));
-}
-

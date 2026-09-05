@@ -322,15 +322,21 @@ unpredictably, while the PNG scales down cleanly. In both apps it replaced the p
 which named the application you are already inside while pushing the tabs off the left edge.
 
 
-**The app mark in the title bar is theme-switched; the OS icon is not** (both apps). Windows and macOS
-each show ONE application icon and never ask for a second, so `.ico` and `.icns` keep the off-white
-tile that has to hold up on any wallpaper. The title bar is drawn by the app, and there an off-white
-plaque on a near-black bar is the brightest thing in the window - backwards for a decoration. Each
-app's `App.axaml` declares an `AppMark` ImageBrush per theme variant and the title bar paints a Border
-with it. An ImageBrush and not an `Image.Source`, because a `DynamicResource` has to resolve to an
-object and a brush is the one image-shaped thing that already is one. The glyph stays the same red in
-both tiles: it is legible on either ground, and a mark that changed colour with the theme would read as
-two different applications.
+**The app mark is one transparent glyph - no tile, no theme switch** (both apps). Every icon these
+apps ship is the bare red glyph on transparency, so it sits ON the surface behind it rather than on a
+card laid over it: the title bar in either theme, and the taskbar, dock and alt-tab card, where a
+plaque would have put a visible edge around the one icon in the row that has one.
+
+The glyph used to sit on an off-white rounded tile, which made it the brightest thing in a near-black
+title bar and needed a second dark-tiled PNG plus a `ThemeDictionaries` switch to fix. With the plaque
+gone those two files were the same image, so each app's `App.axaml` declares a single `AppMark`
+ImageBrush and the title bar paints a Border with it. An ImageBrush and not an `Image.Source`, because
+a `DynamicResource` has to resolve to an object and a brush is the one image-shaped thing that already
+is one. The glyph stays the same red in both themes: it is legible on either ground, and a mark that
+changed colour with the theme would read as two different applications.
+
+With no tile edge to keep clear of, the geometry in `tools/IconGen` runs about a fifth wider and taller
+than it did - that margin was the plaque's, and at 16px it is legibility.
 
 Asset paths there are RELATIVE, not `avares://`. The authority in an avares URI is the ASSEMBLY name -
 `FubarAPIStudio`, not the project name `Fubar.Studio.UI` - and getting it wrong builds cleanly and then
