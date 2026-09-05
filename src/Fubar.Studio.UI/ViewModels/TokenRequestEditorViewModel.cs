@@ -33,7 +33,29 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         Captures.CollectionChanged += (_, _) => RaiseChanged();
     }
 
-    public static IReadOnlyList<AuthTemplate> TemplateOptions => AuthTemplateCatalog.All;
+    /// <summary>
+    /// Everything this editor can be set up as, in one list.
+    ///
+    /// <para>The providers used to live in a SECOND picker, inside the sign-in box that only appeared
+    /// once the authorization-code template had already been applied. So "sign in with Google" was
+    /// four interactions - pick a grant, apply it, pick a provider, apply that - and the first two
+    /// required knowing that Google's sign-in IS an authorization-code grant, which is exactly the
+    /// knowledge the presets exist to not require. One list, one Apply.</para>
+    ///
+    /// <para>Cached, not rebuilt per call: these are records holding lists, so two separately
+    /// constructed copies are not equal, and a ComboBox whose SelectedItem is not one of its own items
+    /// shows its placeholder instead.</para>
+    /// </summary>
+    public static IReadOnlyList<AuthTemplate> TemplateOptions { get; } =
+    [
+        .. SignInProviderCatalog.All.Select(p => SignInProviderTemplate.For(p)),
+
+        // The catalog's own authorization-code entry is deliberately left out: every sign-in entry
+        // above IS one, and offering a nameless fifth would ask the user to tell them apart. It stays
+        // in the catalog because a profile saved before this reopens on it - Seed falls back to
+        // matching on Grant, which lands on the first sign-in entry.
+        .. AuthTemplateCatalog.All.Where(t => t.Grant != OAuth2GrantType.AuthorizationCode),
+    ];
 
     public static IReadOnlyList<string> MethodOptions { get; } = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -187,14 +209,59 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
 
     partial void OnExpiresInExpressionChanged(string value) => RaiseChanged();
 
+    /// <summary>
+    /// Fills the editor in from the chosen template, keeping what the user already supplied.
+    ///
+    /// <para>Also the provider path: a sign-in entry carries a <c>ProviderKey</c>, so choosing "Sign
+    /// in with Google" here does everything the separate provider picker and its second Apply button
+    /// used to do.</para>
+    /// </summary>
     [RelayCommand]
     private void ApplyTemplate()
     {
-        if (SelectedTemplate is { } template)
+        if (SelectedTemplate is not { } selected)
         {
-            Seed(template);
-            RaiseChanged();
+            return;
         }
+
+        // Rebuilt for the CURRENT tenant rather than used as listed: the cached options were built
+        // with each provider's default tenant, so applying the listed copy after typing a tenant id
+        // would quietly set Entra's URLs back to /common.
+        var provider = SignInProviderCatalog.ByKey(selected.ProviderKey);
+        var template = provider is null ? selected : SignInProviderTemplate.For(provider, Tenant);
+
+        Seed(template);
+
+        if (provider is not null)
+        {
+            AddScope(SignInProviderTemplate.ScopeValue(provider));
+
+            // Filled in but NOT fetched. Discover is a network call to someone else's service, and
+            // making a dropdown reach the internet is not a thing a dropdown should do.
+            Issuer = TemplateSeedMerge.Url(Issuer, provider.IssuerFor(Tenant) ?? "");
+        }
+
+        ApplyStatus = DescribeApply(provider);
+        RaiseChanged();
+    }
+
+    /// <summary>
+    /// What applying just did, and - the part that matters - what it did not touch.
+    ///
+    /// <para>The merge is invisible if nobody says it happened: someone who has been burned once by a
+    /// template wiping their client id will not press the button again to find out it now behaves.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    public partial string? ApplyStatus { get; private set; }
+
+    private string DescribeApply(SignInProvider? provider)
+    {
+        var what = provider is null
+            ? "Filled in this grant's request."
+            : $"Filled in {provider.DisplayName}'s endpoints, scopes and parameters.";
+
+        return $"{what} Anything you had already entered was kept.";
     }
 
     [RelayCommand]
@@ -318,12 +385,15 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     public Func<SignInRequest, Task<SignInResult>>? SignInHandler { get; set; }
 
     // ---- Which provider ---------------------------------------------------------------------------
+    //
+    // Derived from the selected template rather than picked separately. There used to be a second
+    // ComboBox and a second Apply button here, inside a box that only appeared once the
+    // authorization-code template had already been applied - so choosing Google meant four
+    // interactions, the first two of which required knowing that Google's sign-in IS an
+    // authorization-code grant. One list answers both questions now.
 
-    /// <summary>The providers "Sign in with…" offers, plus Custom for everything else.</summary>
-    public static IReadOnlyList<SignInProvider> SignInProviderOptions => SignInProviderCatalog.All;
-
-    [ObservableProperty]
-    public partial SignInProvider? SelectedProvider { get; set; }
+    /// <summary>The provider the selected template was built from, or null for the plain grants.</summary>
+    public SignInProvider? SelectedProvider => SignInProviderCatalog.ByKey(SelectedTemplate?.ProviderKey);
 
     /// <summary>The tenant, directory or domain, for the providers that need one.</summary>
     [ObservableProperty]
@@ -347,15 +417,16 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
 
     public bool HasConsoleUrl => !string.IsNullOrWhiteSpace(ConsoleUrl);
 
-    partial void OnSelectedProviderChanged(SignInProvider? value)
+    private void RefreshProvider()
     {
-        // The tenant default comes along with the provider, so switching to Microsoft does not leave an
-        // empty box that silently builds a URL containing a literal {tenant}.
-        if (value?.TenantDefault is { } tenant && string.IsNullOrWhiteSpace(Tenant))
+        // The tenant default comes with the provider, so choosing Microsoft does not leave an empty box
+        // that silently builds a URL containing a literal {tenant}.
+        if (SelectedProvider?.TenantDefault is { } tenant && string.IsNullOrWhiteSpace(Tenant))
         {
             Tenant = tenant;
         }
 
+        OnPropertyChanged(nameof(SelectedProvider));
         OnPropertyChanged(nameof(NeedsTenant));
         OnPropertyChanged(nameof(TenantLabel));
         OnPropertyChanged(nameof(TenantHelp));
@@ -366,38 +437,6 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasConsoleUrl));
     }
 
-    /// <summary>
-    /// Seeds the whole sign-in from the chosen provider: authorize and token endpoints, the scopes
-    /// that get a usable session, the extra parameters that provider needs, and a
-    /// <c>client_secret</c> field only where one is actually wanted.
-    ///
-    /// <para>Explicit rather than applied as the picker changes. It overwrites the request, and a
-    /// dropdown that discards someone's edited body because they were reading down the list is not a
-    /// convenience.</para>
-    /// </summary>
-    [RelayCommand]
-    private void ApplyProvider()
-    {
-        if (SelectedProvider is not { } provider)
-        {
-            return;
-        }
-
-        Seed(SignInProviderTemplate.For(provider, Tenant));
-        AddScope(SignInProviderTemplate.ScopeValue(provider));
-
-        // The issuer is filled in but NOT fetched: Discover is a network call on someone else's
-        // service, and doing it because a dropdown changed would make choosing a provider a thing that
-        // silently reaches the internet.
-        Issuer = provider.IssuerFor(Tenant) ?? "";
-
-        // Custom knows no endpoints, so what it seeds is a shape plus a prompt to go and discover them.
-        DiscoveryStatus = provider.IssuerTemplate is null && provider.AuthorizeEndpoint is null
-            ? "Paste your provider's issuer URL above and press Discover."
-            : null;
-
-        RaiseChanged();
-    }
 
     /// <summary>The provider's authorize endpoint. Filled by Discover when the provider publishes one.</summary>
     [ObservableProperty]
@@ -527,7 +566,11 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         Body.UrlEncoded.Rows.FirstOrDefault(r => string.Equals(r.Key, "client_id", StringComparison.OrdinalIgnoreCase))?.Value
         ?? "";
 
-    partial void OnSelectedTemplateChanged(AuthTemplate? value) => OnPropertyChanged(nameof(IsAuthorizationCode));
+    partial void OnSelectedTemplateChanged(AuthTemplate? value)
+    {
+        OnPropertyChanged(nameof(IsAuthorizationCode));
+        RefreshProvider();
+    }
 
     /// <summary>The issuer to look up. Usually pasted straight from the provider's own page.</summary>
     [ObservableProperty]
@@ -702,11 +745,16 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         RedirectPort = auth.RedirectPort ?? AuthorizationCodeFlow.EphemeralPort;
         Tenant = auth.SignInTenant ?? "";
 
-        // An unknown key - a profile written by a newer version, or one whose provider was removed -
-        // leaves the picker empty rather than refusing to load the profile. Everything the sign-in
-        // actually needs was saved as plain URLs and fields, so it still works; only the label is
-        // missing.
-        SelectedProvider = SignInProviderCatalog.ByKey(auth.SignInProviderKey);
+        // Selects the template the provider corresponds to, since the provider is no longer picked
+        // separately. An unknown key - a profile written by a newer version, or one whose provider was
+        // removed - leaves whatever the token request already resolved to, rather than refusing to
+        // load: everything the sign-in actually needs was saved as plain URLs and fields, so it still
+        // works, and only the label is missing.
+        if (SignInProviderCatalog.ByKey(auth.SignInProviderKey) is { } provider
+            && TemplateOptions.FirstOrDefault(t => t.ProviderKey == provider.Key) is { } template)
+        {
+            SelectedTemplate = template;
+        }
     }
 
     private bool ReadsAuthorizationCode() =>
@@ -721,36 +769,65 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         return config;
     }
 
-    private void Seed(AuthTemplate template)
+    /// <summary>
+    /// Fills the editor in from a template WITHOUT throwing away work already done.
+    ///
+    /// <para>It used to replace everything, so the natural order of doing this - Discover your
+    /// endpoints, fill in your client id, then change your mind about the grant - lost all of it, and
+    /// pressing Apply a second time after correcting one field lost the correction. What survives is
+    /// decided by <see cref="TemplateSeedMerge"/>, in Core, where the rule can be tested without a
+    /// UI; the short version is that a template seeds structure and never overwrites an answer only
+    /// the user has.</para>
+    ///
+    /// <para><paramref name="replace"/> is for LOADING a saved profile, where there is no user work to
+    /// protect and merging would blend two unrelated configurations.</para>
+    /// </summary>
+    private void Seed(AuthTemplate template, bool replace = false)
     {
         // The picker's selection must be one of ITS OWN options or the ComboBox shows its placeholder
         // instead - which is what happened after choosing a provider: a provider template is built on
-        // the fly and is not in the catalog, so "Set up" filled the whole screen in correctly and blanked
-        // the template box above it, reading as though something had failed. The two pickers answer
-        // different questions - which grant, and which provider - so the grant stays selected.
-        SelectedTemplate = AuthTemplateCatalog.All.FirstOrDefault(t => t.Key == template.Key)
-            ?? AuthTemplateCatalog.All.FirstOrDefault(t => t.Grant == template.Grant)
+        // the fly, and one built here is not reference- or value-equal to the cached list's copy.
+        SelectedTemplate = TemplateOptions.FirstOrDefault(t => t.Key == template.Key)
+            ?? TemplateOptions.FirstOrDefault(t => t.Grant == template.Grant)
             ?? template;
 
         Method = string.IsNullOrWhiteSpace(template.SeedRequest.Method) ? "POST" : template.SeedRequest.Method;
-        Url = template.SeedRequest.Url;
-        LoadHeaders(template.SeedRequest.Headers);
-        LoadBody(template.SeedRequest.Body);
-        LoadCaptures(template.SeedCaptures);
-        AccessTokenVariable = template.AccessTokenVariable;
-        ExpiryVariable = template.ExpiryVariable;
-        ExpiresInExpression = template.ExpiresInExpression ?? "";
 
-        // A provider seed brings its own authorize endpoint and parameters; the generic templates
-        // bring an empty string, which correctly clears whatever the last one left behind rather than
-        // leaving Google's authorize URL attached to a client-credentials request.
-        AuthorizeUrl = template.AuthorizeUrl;
-        LoadAuthorizeParameters(template.AuthorizeParameters);
+        Url = replace
+            ? template.SeedRequest.Url
+            : TemplateSeedMerge.Url(Url, template.SeedRequest.Url);
 
-        if (SignInProviderCatalog.ByKey(template.ProviderKey) is { } provider)
-        {
-            SelectedProvider = provider;
-        }
+        // A provider seed brings a real authorize endpoint; the generic ones bring an empty string,
+        // which must not wipe an endpoint Discover found.
+        AuthorizeUrl = replace
+            ? template.AuthorizeUrl
+            : TemplateSeedMerge.Url(AuthorizeUrl, template.AuthorizeUrl);
+
+        LoadHeaders(replace
+            ? template.SeedRequest.Headers
+            : TemplateSeedMerge.Fields(Headers.ToModel(), template.SeedRequest.Headers));
+
+        LoadBody(template.SeedRequest.Body, replace);
+
+        LoadCaptures(replace
+            ? template.SeedCaptures
+            : TemplateSeedMerge.Captures([.. Captures.Select(c => c.ToModel())], template.SeedCaptures));
+
+        LoadAuthorizeParameters(replace
+            ? template.AuthorizeParameters
+            : TemplateSeedMerge.Fields(AuthorizeParameters.ToModel(), template.AuthorizeParameters));
+
+        AccessTokenVariable = replace
+            ? template.AccessTokenVariable
+            : TemplateSeedMerge.Name(AccessTokenVariable, template.AccessTokenVariable);
+
+        ExpiryVariable = replace
+            ? template.ExpiryVariable
+            : TemplateSeedMerge.Name(ExpiryVariable, template.ExpiryVariable);
+
+        ExpiresInExpression = replace
+            ? template.ExpiresInExpression ?? ""
+            : TemplateSeedMerge.Name(ExpiresInExpression, template.ExpiresInExpression);
     }
 
     private void LoadAuthorizeParameters(IEnumerable<KeyValueItem> parameters)
@@ -771,21 +848,29 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         }
     }
 
-    private void LoadBody(RequestBody body)
+    private void LoadBody(RequestBody body, bool replace = true)
     {
-        Body.Type = body.Type;
-        Body.Raw = body.Raw ?? "";
-        Body.BinaryFilePath = body.BinaryFilePath;
-        Body.UrlEncoded.Rows.Clear();
-        foreach (var field in body.UrlEncoded)
+        // A raw body is one blob with no keys to merge on, so it is only ever replaced - and only when
+        // the template actually brings one, or switching to a form-encoded template would silently
+        // erase a hand-written JSON login body.
+        if (replace || !string.IsNullOrWhiteSpace(body.Raw))
         {
-            Body.UrlEncoded.AddRowQuietly(KeyValueRowViewModel.FromModel(field));
+            Body.Raw = body.Raw ?? "";
         }
 
-        Body.FormData.Rows.Clear();
-        foreach (var field in body.FormData)
+        Body.Type = body.Type;
+        Body.BinaryFilePath = body.BinaryFilePath;
+
+        Fill(Body.UrlEncoded, replace ? body.UrlEncoded : TemplateSeedMerge.Fields(Body.UrlEncoded.ToModel(), body.UrlEncoded));
+        Fill(Body.FormData, replace ? body.FormData : TemplateSeedMerge.Fields(Body.FormData.ToModel(), body.FormData));
+
+        static void Fill(KeyValueGridViewModel grid, IEnumerable<KeyValueItem> fields)
         {
-            Body.FormData.AddRowQuietly(KeyValueRowViewModel.FromModel(field));
+            grid.Rows.Clear();
+            foreach (var field in fields)
+            {
+                grid.AddRowQuietly(KeyValueRowViewModel.FromModel(field));
+            }
         }
     }
 

@@ -51,14 +51,22 @@
 
         <!-- Template picker -->
         <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="Template" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+            <TextBlock Text="Set up as" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
             <ComboBox ItemsSource="{Binding TemplateOptions}"
                       SelectedItem="{Binding SelectedTemplate}"
-                      MinWidth="240"
-                      PlaceholderText="Choose a template" />
+                      MinWidth="330"
+                      PlaceholderText="Choose what you are connecting to" />
             <Button Classes="secondary-btn" Content="Apply" Command="{Binding ApplyTemplateCommand}"
-                    ToolTip.Tip="Seed the request below from this template (overwrites the current fields)" />
+                    ToolTip.Tip="Fill in this provider's endpoints, scopes and fields. Anything you have already entered is kept." />
         </StackPanel>
+
+        <!-- Said out loud, because the merge is invisible otherwise. Applying used to replace
+             everything - URL, headers, body, captures - so anyone burned once by it losing their
+             client id will not press the button again to discover that it now keeps their work. -->
+        <TextBlock Text="{Binding ApplyStatus}"
+                   IsVisible="{Binding ApplyStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                   FontSize="11" TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextSecondary}" />
 
         <!-- Discovery: paste the issuer, get the token endpoint.
 
@@ -115,22 +123,12 @@
                 <TextBlock Text="Step 1 — sign in" FontSize="11" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimary}" />
 
-                <!-- Choosing a provider fills in the five pieces of provider trivia that otherwise
-                     stand between someone and a working sign-in: both endpoints, the scopes, the
-                     extra authorize parameters, and whether a client secret is wanted. Every one of
-                     them fails the same opaque way, so they are supplied rather than researched. -->
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="Sign in with" VerticalAlignment="Center" FontSize="11"
-                               Foreground="{DynamicResource TextSecondary}" />
-                    <ComboBox ItemsSource="{Binding SignInProviderOptions}"
-                              SelectedItem="{Binding SelectedProvider}"
-                              MinWidth="230"
-                              PlaceholderText="Choose a provider" />
-                    <Button Classes="secondary-btn" Content="Set up"
-                            Command="{Binding ApplyProviderCommand}"
-                            ToolTip.Tip="Fill in this provider's endpoints, scopes and parameters (overwrites the request below)" />
-                </StackPanel>
-
+                <!-- No provider picker here any more. It was a second ComboBox with a second Apply
+                     button, inside a box that only appeared once the authorization-code template had
+                     been applied - so choosing Google took four interactions, the first two of which
+                     required knowing that Google's sign-in IS an authorization-code grant. The
+                     template list at the top of this screen answers both questions at once; what
+                     stays here is the part that is genuinely per-provider input. -->
                 <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding NeedsTenant}">
                     <TextBlock Text="{Binding TenantLabel}" VerticalAlignment="Center" FontSize="11"
                                MinWidth="130"

@@ -24,14 +24,27 @@ public class SignInTests
     private static SignInProvider Provider(string key) =>
         SignInProviderCatalog.ByKey(key) ?? throw new InvalidOperationException($"no provider {key}");
 
+    /// <summary>
+    /// The whole setup, as a user does it: choose the provider in the one list, press Apply.
+    ///
+    /// <para>This used to be four steps - pick a grant, apply it, pick a provider, apply that - which
+    /// is what the single list replaced.</para>
+    /// </summary>
+    private static void SetUpAs(TokenRequestEditorViewModel editor, string providerKey)
+    {
+        editor.SelectedTemplate = TokenRequestEditorViewModel.TemplateOptions
+            .Single(t => t.ProviderKey == providerKey);
+
+        editor.ApplyTemplateCommand.Execute(null);
+    }
+
     // ---- what survives a save -----------------------------------------------------------------------
 
     [Fact]
     public void The_whole_sign_in_setup_round_trips_through_a_config()
     {
         var editor = Editor();
-        editor.SelectedProvider = Provider("google");
-        editor.ApplyProviderCommand.Execute(null);
+        SetUpAs(editor, "google");
         editor.RedirectPort = 8765;
 
         var config = new AuthConfig();
@@ -53,8 +66,7 @@ public class SignInTests
         // a saved config is loaded. Without inferring it from the request, a working profile reopened
         // looking as though its sign-in had been lost.
         var editor = Editor();
-        editor.SelectedProvider = Provider("microsoft");
-        editor.ApplyProviderCommand.Execute(null);
+        SetUpAs(editor, "microsoft");
 
         var config = new AuthConfig();
         editor.ApplyTo(config);
@@ -129,12 +141,138 @@ public class SignInTests
         // provider template is built on the fly rather than taken from the catalog. So "Set up" filled
         // the whole screen in correctly and blanked the template box above it, which reads as a failure.
         var editor = Editor();
-        editor.SelectedProvider = Provider("google");
-
-        editor.ApplyProviderCommand.Execute(null);
+        SetUpAs(editor, "google");
 
         Assert.Contains(editor.SelectedTemplate, TokenRequestEditorViewModel.TemplateOptions);
         Assert.True(editor.IsAuthorizationCode);
+    }
+
+    // ---- applying a template over work already done ---------------------------------------------------
+
+    [Fact]
+    public void Applying_a_provider_keeps_a_client_id_already_entered()
+    {
+        // The complaint this whole merge exists for. Applying used to replace the body outright, so
+        // filling in your client id and then pressing Apply again - to fix a tenant, to try another
+        // provider - silently threw it away.
+        var editor = Editor();
+        SetUpAs(editor, "google");
+
+        editor.Body.UrlEncoded.Rows.Single(r => r.Key == "client_id").Value = "123-abc.apps.googleusercontent.com";
+
+        SetUpAs(editor, "google");
+
+        Assert.Equal(
+            "123-abc.apps.googleusercontent.com",
+            editor.Body.UrlEncoded.Rows.Single(r => r.Key == "client_id").Value);
+    }
+
+    [Fact]
+    public void Switching_provider_keeps_what_only_the_user_knows()
+    {
+        // Realising halfway through that it is Entra, not Google. The endpoints must change; the
+        // client id and the header you added must not.
+        var editor = Editor();
+        SetUpAs(editor, "google");
+
+        editor.Body.UrlEncoded.Rows.Single(r => r.Key == "client_id").Value = "mine";
+        editor.Headers.AddRowQuietly(KeyValueRowViewModel.FromModel(
+            new KeyValueItem { Key = "X-Gateway", Value = "internal" }));
+
+        SetUpAs(editor, "microsoft");
+
+        Assert.Equal("mine", editor.Body.UrlEncoded.Rows.Single(r => r.Key == "client_id").Value);
+        Assert.Equal("internal", editor.Headers.Rows.Single(r => r.Key == "X-Gateway").Value);
+        Assert.Contains("login.microsoftonline.com", editor.Url, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Applying_after_discover_keeps_the_discovered_endpoints()
+    {
+        // Discover is the recommended way in, and it was the worst thing to do first: everything it
+        // found went the moment a template was applied.
+        var editor = Editor();
+        editor.Url = "https://login.example.com/oauth/token";
+        editor.AuthorizeUrl = "https://login.example.com/oauth/authorize";
+
+        editor.SelectedTemplate = TokenRequestEditorViewModel.TemplateOptions
+            .Single(t => t.ProviderKey == "custom");
+        editor.ApplyTemplateCommand.Execute(null);
+
+        Assert.Equal("https://login.example.com/oauth/token", editor.Url);
+        Assert.Equal("https://login.example.com/oauth/authorize", editor.AuthorizeUrl);
+    }
+
+    [Fact]
+    public void A_corrected_capture_survives_a_reapply()
+    {
+        var editor = Editor();
+        SetUpAs(editor, "google");
+
+        editor.Captures.Single(c => c.VariableName == AuthDefaults.AccessTokenVariable).Expression = "$.data.access_token";
+
+        SetUpAs(editor, "google");
+
+        Assert.Equal(
+            "$.data.access_token",
+            editor.Captures.Single(c => c.VariableName == AuthDefaults.AccessTokenVariable).Expression);
+    }
+
+    [Fact]
+    public void Changing_the_grant_still_changes_the_grant()
+    {
+        // The merge must not be so protective that applying a template stops doing its job.
+        var editor = Editor();
+        SetUpAs(editor, "google");
+
+        editor.SelectedTemplate = TokenRequestEditorViewModel.TemplateOptions
+            .Single(t => t.Key == "oauth2-client-credentials");
+        editor.ApplyTemplateCommand.Execute(null);
+
+        Assert.Equal("client_credentials", editor.Body.UrlEncoded.Rows.Single(r => r.Key == "grant_type").Value);
+    }
+
+    [Fact]
+    public void Applying_with_a_tenant_typed_in_uses_that_tenant()
+    {
+        // The listed options were built with each provider's default tenant. Applying the listed copy
+        // rather than rebuilding for the current one would quietly set Entra back to /common.
+        var editor = Editor();
+        editor.SelectedTemplate = TokenRequestEditorViewModel.TemplateOptions
+            .Single(t => t.ProviderKey == "microsoft");
+        editor.Tenant = "contoso.onmicrosoft.com";
+
+        editor.ApplyTemplateCommand.Execute(null);
+
+        Assert.Contains("contoso.onmicrosoft.com", editor.Url, StringComparison.Ordinal);
+        Assert.Contains("contoso.onmicrosoft.com", editor.AuthorizeUrl, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Applying_says_that_what_was_entered_was_kept()
+    {
+        // The merge is invisible otherwise, and someone burned once by a template wiping their client
+        // id will not press the button again to find out it now behaves.
+        var editor = Editor();
+        SetUpAs(editor, "google");
+
+        Assert.Contains("Google", editor.ApplyStatus!, StringComparison.Ordinal);
+        Assert.Contains("kept", editor.ApplyStatus!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Signing_in_with_a_provider_is_one_choice_not_two()
+    {
+        // It took four interactions: pick a grant, apply it, pick a provider, apply that - and the
+        // first two required knowing that Google's sign-in IS an authorization-code grant.
+        Assert.Contains(
+            TokenRequestEditorViewModel.TemplateOptions,
+            t => t.ProviderKey == "google" && t.Grant == OAuth2GrantType.AuthorizationCode);
+
+        // And no nameless generic entry beside them asking to be told apart.
+        Assert.DoesNotContain(
+            TokenRequestEditorViewModel.TemplateOptions,
+            t => t.Grant == OAuth2GrantType.AuthorizationCode && t.ProviderKey is null);
     }
 
     // ---- what the browser step is told --------------------------------------------------------------
@@ -143,8 +281,7 @@ public class SignInTests
     public async Task Signing_in_passes_the_pinned_port_and_the_extra_parameters()
     {
         var editor = Editor();
-        editor.SelectedProvider = Provider("google");
-        editor.ApplyProviderCommand.Execute(null);
+        SetUpAs(editor, "google");
         editor.RedirectPort = 8765;
 
         SignInRequest? seen = null;

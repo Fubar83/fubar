@@ -214,3 +214,35 @@ sit in a bordered strip pinned across the bottom of the sidebar, where changing 
 settings window's `Saved` event to `LeftPane.Theme.Initialize()`, which re-reads the file that was
 just written and applies without re-persisting. Drop that hook and the theme is saved correctly and
 does not appear until the next launch - which reads as the setting not working at all.
+
+
+**Applying a template MERGES; only loading a saved profile replaces** (Studio). `Seed` used to
+overwrite the URL, every header, every body field and every capture rule, so the natural order of
+setting OAuth up - Discover your endpoints, fill in your client id, then change your mind about the
+grant - threw all of it away, and pressing Apply a second time to fix one field threw away the fix.
+`TemplateSeedMerge` (Core, pure, tested) holds the rule: **a template seeds STRUCTURE and never
+overwrites an answer only the user has.** A whole-value `{{placeholder}}` is the template SAYING it
+does not know, so anything already there wins; a real value - a named provider's endpoint, a literal
+`grant_type` - does replace, because that is what applying a template is for. `{{BaseUrl}}/oauth/token`
+is deliberately NOT a placeholder: whole-value only, or the merge would delete exactly the composed
+URLs people work hardest to get right. Capture rules are keyed on the variable they write, and an
+existing rule is kept WHOLE so a corrected JSONPath survives. `Seed(template, replace: true)` is the
+one exception, used by `LoadFrom`, where there is no user work to protect and merging would blend two
+unrelated configurations.
+
+**Providers are entries in the ONE template list, not a second picker** (Studio). There used to be a
+provider ComboBox with its own Apply button, inside a box that only appeared once the
+authorization-code template had already been applied - so "sign in with Google" was four interactions,
+the first two of which required knowing that Google's sign-in IS an authorization-code grant, which is
+the exact knowledge the presets exist to not require. `TemplateOptions` is now the provider templates
+plus the non-sign-in catalog entries, and it is CACHED: these are records holding lists, so two
+separately constructed copies are not equal and a ComboBox whose SelectedItem is not one of its own
+items shows its placeholder instead. `ApplyTemplate` rebuilds the provider template for the CURRENT
+tenant rather than using the listed copy, which was built with the provider's default - otherwise
+applying after typing a tenant id quietly sets Entra's URLs back to `/common`. The catalog keeps its
+generic authorization-code entry, out of the list, so profiles saved before this still resolve by
+grant.
+
+**Say that the merge happened** (Studio). `ApplyStatus` reports what was filled in and that what was
+entered was kept. The merge is invisible otherwise, and someone burned once by a template wiping their
+client id will not press the button again to discover it now behaves.

@@ -58,17 +58,26 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   not as a failure afterwards. After Test the **token response** is shown, and any field is one click
   from becoming a capture, so the JSONPath comes from a response that actually arrived rather than a
   guess at what the provider calls things.
-- **Sign in with Google, Microsoft, GitHub — or any OpenID Connect provider.** Choose a provider and
-  press **Set up**: both endpoints, the scopes that get a usable session, the extra authorize
-  parameters that provider needs, and a `client_secret` field only where one is actually wanted. What
-  is left to supply is what is genuinely yours — a client ID, a tenant, a secret. The screen also says
-  what to do in the provider's own console, and links to it, because a sign-in cannot work until that
-  is done and nothing in this app can do it for you. Anything else publishing
+- **Sign in with Google, Microsoft, GitHub — or any OpenID Connect provider.** One list, one **Apply**:
+  both endpoints, the scopes that get a usable session, the extra authorize parameters that provider
+  needs, and a `client_secret` field only where one is actually wanted. What is left to supply is what
+  is genuinely yours — a client ID, a tenant, a secret. The screen also says what to do in the
+  provider's own console, and links to it, because a sign-in cannot work until that is done and
+  nothing in this app can do it for you. Anything else publishing
   `/.well-known/openid-configuration` — Okta, Auth0, Keycloak, Entra B2C — works through **Custom**:
   paste the issuer and press Discover.
 
-  Nothing a preset fills in is locked. It seeds the same editable request the manual path produces, so
-  a provider that changes something is a field you correct rather than a release you wait for.
+- **Applying a template keeps what you have already entered.** A template seeds *structure*; it never
+  overwrites an answer only you have. Your client ID stays whether you typed it literally or pointed
+  it at a different variable, endpoints Discover found are not replaced by a `{{placeholder}}`, a
+  JSONPath you corrected for a provider that nests its token stays corrected, and headers or authorize
+  parameters the template has never heard of are kept. What *does* change is what the template
+  actually knows: the grant, a named provider's endpoints, which fields exist. So changing your mind
+  halfway through — Google to Entra, one grant to another — costs you nothing you typed.
+
+  Nothing a preset fills in is locked either. It seeds the same editable request the manual path
+  produces, so a provider that changes something is a field you correct rather than a release you wait
+  for.
 
 - **The redirect URI you are told to register is one you can register.** It is shown before the first
   attempt rather than learned from a failure, and the port can be pinned so it stops changing every
