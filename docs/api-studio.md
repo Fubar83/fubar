@@ -188,6 +188,7 @@ There is no menu bar, so this list is the only place these are written down.
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Send the request |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Command palette — every command and every open request, each showing its own shortcut |
+| <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Filter the request tree — matches name, URL and method |
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Find in the response |
 | <kbd>Ctrl</kbd>+<kbd>R</kbd> | Run the selected folder or request |
@@ -196,6 +197,35 @@ There is no menu bar, so this list is the only place these are written down.
 | <kbd>Ctrl</kbd>+<kbd>`</kbd> | Status &amp; Log |
 | <kbd>F7</kbd> / <kbd>F8</kbd> | Previous / next difference, in a comparison window |
 
+
+## Settings
+
+<kbd>Ctrl</kbd>+<kbd>,</kbd>, or "Settings" in the command palette. Four groups, each row a header, a
+plain sentence saying what it does, and the control — no hovering to find out what an option was going
+to do to your requests.
+
+| Group | What is in it |
+| --- | --- |
+| **Appearance** | Theme — dark, light, or follow the system. |
+| **Sending** | Timeout in seconds, and the largest response to load. A request that names its own timeout still wins; a response over the size cap keeps its status, headers and timing and says the body was not loaded. |
+| **History** | Whether executions are recorded at all, how many are kept per request, and the largest response body to keep. |
+| **Comparing responses** | Your defaults for whitespace, case, reformatting, key order, list matching and null-vs-missing. |
+
+Three of these were constants with no way to change them: a user on a slow internal API had no way to
+stop every call timing out, a user pulling a large export had no way to raise the cap that refused to
+load it, and nobody could turn history off. History is worth deciding rather than inheriting — it
+keeps whole response bodies under `.fubar/`, which is never committed, and a login response body is a
+token. **Off** writes nothing at all, and a body limit of **zero** keeps the timing and status of every
+execution with no payloads on disk.
+
+The comparison defaults are the top of the global → folder → request hierarchy: a folder or a single
+request can override any one of them and keep inheriting the rest, so an unticked box here means "no
+global opinion" rather than "globally off". The rules about *particular fields* — which JSON paths to
+ignore, which field identifies a list's items — belong on the request or folder they describe, not
+here.
+
+Settings live outside any workspace, in `%AppData%/Fubar/settings.json` (or the platform equivalent).
+A corrupt or half-written file falls back to defaults rather than blocking startup.
 ## Tech stack
 
 - **[.NET 10](https://dotnet.microsoft.com/)** / C#

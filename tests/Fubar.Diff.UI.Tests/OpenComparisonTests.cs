@@ -255,9 +255,12 @@ public class OpenComparisonTests
 
         model.ApplyDefaults(AppSettings.Default with
         {
-            IgnoreWhitespace = true,
-            IgnoreComments = true,
-            Mode = ComparisonMode.Json,
+            Comparison = AppSettings.Default.Comparison with
+            {
+                IgnoreWhitespace = true,
+                IgnoreComments = true,
+                Mode = ComparisonMode.Json,
+            },
             Recent = [new RecentComparison("a.cs", "b.cs")],
         });
 

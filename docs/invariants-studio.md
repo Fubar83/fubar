@@ -117,3 +117,26 @@ nothing here", which is what keeps a request's rules readable as the complete tr
 setting to one side should break its compile until the other side has it too.
 
 
+
+
+**`AppSettings` is grouped, and the flat names survive as READ-ONLY shims** (Studio). It put a theme,
+a list of open folders and the root of the comparison hierarchy at one level, which is three
+different KINDS of thing: how the app looks, where the user was, and how their work behaves.
+`Appearance` / `Requests` / `History` / `Comparison` / `Session` now, with `LegacyTheme`,
+`LegacyOpenWorkspacePaths` and `LegacyActiveWorkspacePath` reading the old spellings and returning
+null on write, so `FubarJson`'s `WhenWritingNull` keeps them out of new files. `Comparison` stays
+nullable and is written as absent when empty: an unticked box means "no global opinion", which is
+what lets a folder or request decide instead, and is not the same as globally false.
+
+**Three send/history limits are settings, not constants, and each one has to reach the code that acts
+on it** (Studio). `Requests.DefaultTimeoutSeconds` (request's own timeout wins, then the setting, then
+a 100 s fallback), `Requests.MaxResponseMegabytes` (a response over it keeps its status, headers and
+timing and reports the body was not loaded), and the `History` group. `History.Enabled` off means
+nothing is written at all - not a shorter ledger - because history keeps whole response bodies on
+disk and a login response body IS a token. `History.MaxResponseBodyKilobytes` of **zero is a real
+setting** and must never be clamped up: it keeps the timing and status of every execution and no
+payloads, which is exactly what someone who does not want response bodies on disk is asking for.
+`History.MaxEntriesPerRequest` IS clamped to at least one, because "record history but keep none of
+it" is a slip - `Enabled` is the setting for wanting nothing kept. `RequestSettingsTests` and
+`HistoryServiceTests` assert the behaviour rather than the value in the file, which is the only kind
+of test that catches "built but never wired".

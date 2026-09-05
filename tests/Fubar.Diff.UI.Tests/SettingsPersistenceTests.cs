@@ -121,7 +121,7 @@ public class SettingsPersistenceTests
         tab.NormalizeStructure = true;
 
         Assert.True(store.Saves > before, "toggling Reformat should have saved");
-        Assert.True(store.Last.NormalizeStructure);
+        Assert.True(store.Last.Appearance.NormalizeStructure);
     }
 
     [AvaloniaFact]
@@ -134,13 +134,12 @@ public class SettingsPersistenceTests
 
         var toggles = new (string Name, Action Set, Func<AppSettings, bool> Read)[]
         {
-            ("IgnoreWhitespace", () => tab.IgnoreWhitespace = true, s => s.IgnoreWhitespace),
-            ("IgnoreCase", () => tab.IgnoreCase = true, s => s.IgnoreCase),
-            ("NormalizeStructure", () => tab.NormalizeStructure = true, s => s.NormalizeStructure),
-            ("CollapseUnchanged", () => tab.CollapseUnchanged = false, s => !s.CollapseUnchanged),
-            ("IgnoreComments", () => tab.IgnoreComments = true, s => s.IgnoreComments),
-            ("IsEditing", () => tab.IsEditing = true, s => s.Editing),
-            ("MatchArraysByPosition", () => tab.MatchArraysByPosition = true, s => s.MatchArraysByPosition),
+            ("IgnoreWhitespace", () => tab.IgnoreWhitespace = true, s => s.Comparison.IgnoreWhitespace),
+            ("IgnoreCase", () => tab.IgnoreCase = true, s => s.Comparison.IgnoreCase),
+            ("NormalizeStructure", () => tab.NormalizeStructure = true, s => s.Appearance.NormalizeStructure),
+            ("CollapseUnchanged", () => tab.CollapseUnchanged = false, s => !s.Appearance.CollapseUnchanged),
+            ("IgnoreComments", () => tab.IgnoreComments = true, s => s.Comparison.IgnoreComments),
+            ("MatchArraysByPosition", () => tab.MatchArraysByPosition = true, s => s.Json.MatchArraysByPosition),
         };
 
         foreach (var (name, set, read) in toggles)

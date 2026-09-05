@@ -2,6 +2,7 @@ using Fubar.Studio.Core.Auth;
 using Fubar.Studio.Core.History;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
+using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Testing;
 using Fubar.Studio.Core.Variables;
 
@@ -15,19 +16,22 @@ public sealed class RequestExecutionService : IRequestExecutionService
     private readonly IResponseTestService _testService;
     private readonly IHistoryService _historyService;
     private readonly IVariableResolver _variableResolver;
+    private readonly IAppSettingsService _settings;
 
     public RequestExecutionService(
         IAuthProvider authProvider,
         IExecutorRegistry executorRegistry,
         IResponseTestService testService,
         IHistoryService historyService,
-        IVariableResolver variableResolver)
+        IVariableResolver variableResolver,
+        IAppSettingsService settings)
     {
         _authProvider = authProvider;
         _executorRegistry = executorRegistry;
         _testService = testService;
         _historyService = historyService;
         _variableResolver = variableResolver;
+        _settings = settings;
     }
 
     public async Task<RequestRunResult> RunAsync(RequestRun run, CancellationToken cancellationToken = default)
@@ -104,9 +108,11 @@ public sealed class RequestExecutionService : IRequestExecutionService
         //    surfaced but never fails the run.
         ExecutionSnapshot? snapshot = null;
         string? historyError = null;
-        if (run.RecordHistory)
+        // The user setting is checked here as well as the caller's flag: a run can ask for no history,
+        // and someone who has turned history off entirely must get none whatever any caller asks for.
+        if (run.RecordHistory && _settings.Load().History.Enabled)
         {
-            var candidate = BuildSnapshot(run.Request, result);
+            var candidate = BuildSnapshot(run.Request, result, _settings.Load().History.MaxResponseBodyKilobytes * 1024);
             try
             {
                 await _historyService.AppendAsync(run.Workspace.RootPath, run.Request.Id, candidate, cancellationToken);
@@ -145,7 +151,7 @@ public sealed class RequestExecutionService : IRequestExecutionService
         return UnresolvedVariables.Describe(UnresolvedVariables.In([.. texts]));
     }
 
-    private static ExecutionSnapshot BuildSnapshot(RequestModel request, ExecutionResult result) => new()
+    private static ExecutionSnapshot BuildSnapshot(RequestModel request, ExecutionResult result, int maxBodyChars) => new()
     {
         Method = request.Method,
         Url = request.Url,
@@ -155,7 +161,7 @@ public sealed class RequestExecutionService : IRequestExecutionService
         ReasonPhrase = result.ReasonPhrase,
         ElapsedMilliseconds = result.ElapsedMilliseconds,
         SizeBytes = result.SizeBytes,
-        ResponseBody = HistoryBodyPolicy.Capture(result.Body),
+        ResponseBody = HistoryBodyPolicy.Capture(result.Body, maxBodyChars),
         ErrorMessage = result.ErrorMessage,
     };
 }

@@ -21,7 +21,7 @@ public class HistoryBodyPolicyTests
     [Fact]
     public void Capture_KeepsABodyExactlyAtTheCap()
     {
-        var body = new string('x', HistoryBodyPolicy.MaxResponseBodyChars);
+        var body = new string('x', HistoryBodyPolicy.DefaultMaxResponseBodyChars);
 
         Assert.Equal(body, HistoryBodyPolicy.Capture(body));
     }
@@ -33,7 +33,7 @@ public class HistoryBodyPolicyTests
     [Fact]
     public void Capture_DropsABodyOverTheCap()
     {
-        var body = new string('x', HistoryBodyPolicy.MaxResponseBodyChars + 1);
+        var body = new string('x', HistoryBodyPolicy.DefaultMaxResponseBodyChars + 1);
 
         Assert.Null(HistoryBodyPolicy.Capture(body));
     }

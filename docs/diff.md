@@ -281,7 +281,8 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   Four groups: General (theme, reloading, updating while you type, syntax highlighting), What counts as
   a difference (whitespace, case, encoding, comments, blank lines), JSON (key order, list matching,
   null vs missing) and Display (invisible characters, reformatting, and how the Pretty button lays a
-  document out). **Advanced** is collapsed and holds the three rules that need a pattern rather than a
+  document out). Whether the panes are editable is deliberately NOT among them: it is a per-session
+  toggle, so a tool for reading two files never reopens with a caret in your source. **Advanced** is collapsed and holds the three rules that need a pattern rather than a
   switch: ignored text (regular expressions whose matches stop counting — a build timestamp, a
   generated id), which field identifies a JSON list's items, and JSON paths never to report.
 - **Format differences are reported, not hidden** — two files whose content matches but whose

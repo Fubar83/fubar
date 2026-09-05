@@ -834,3 +834,25 @@ catch an accidentally quadratic scan (60 ms becomes minutes) rather than a 20% r
 timing assertion tight enough to catch the latter fails on a loaded CI agent instead.
 
 
+
+
+**`AppSettings` is grouped, and the flat names survive as READ-ONLY shims** (Diff). It was thirty-one
+properties at one level - a theme, a JSON indent width, a folder exclude list and the comparison mode
+all as peers - so adding one meant touching the record, `ApplyDefaults`, `CaptureOptions` and the
+settings window, and forgetting any of those left a setting that looked complete and did nothing.
+That is the failure recorded two entries above, and grouping is what stops the next one being added
+in the wrong place. Every old spelling still deserializes (`LegacyTheme`, `LegacyFolderExclude`, …):
+each setter folds the old property into its group and each getter returns null, so
+`JsonSettingsStore`'s `DefaultIgnoreCondition = WhenWritingNull` keeps them out of anything written
+from now on. **Do not drop that ignore condition** - without it a file carries both spellings of
+every preference and has no answer for which one wins; `The_old_flat_names_are_not_written_back`
+pins it. And in `ShellViewModel.Persist`, the theme is folded into the CAPTURED settings, never back
+into the pre-capture `_settings`: the tab writes the rest of the Appearance group, and reaching past
+it throws all of that away on every save.
+
+**Whether the panes are editable is NOT persisted, and used to be** (Diff). A tool whose job is
+reading two files would reopen days later with both panes editable over whatever source was last
+open, with nothing on screen tying that to the session that switched it on - one accidental toggle
+was permanent. `ComparisonViewModel.IsEditing` is per-session now; `editing` in an old settings file
+is read by nothing. Do not restore it to `CaptureOptions` "for consistency" with the other toggles:
+it is the one whose cost is somebody's source file rather than a preference.

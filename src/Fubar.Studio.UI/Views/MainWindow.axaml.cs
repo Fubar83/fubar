@@ -36,6 +36,8 @@ public partial class MainWindow : Window
             viewModel.PaletteRequested += palette => new CommandPalette(palette).ShowDialog(this);
 
             viewModel.AboutRequested += () => new AboutWindow(viewModel.CreateAbout()).ShowDialog(this);
+
+            viewModel.SettingsRequested += () => new SettingsWindow(viewModel.CreateSettings()).ShowDialog(this);
         };
     }
 

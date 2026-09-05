@@ -46,7 +46,7 @@ public partial class ThemeManagerViewModel : ViewModelBase
             // would silently wipe out OpenWorkspacePaths/ActiveWorkspacePath (WorkspaceExplorerViewModel
             // persists those to this same file).
             var settings = _settingsService.Load();
-            settings.Theme = value.ToString();
+            settings.Appearance.Theme = value.ToString();
             _ = _settingsService.SaveAsync(settings);
         }
     }
@@ -62,7 +62,7 @@ public partial class ThemeManagerViewModel : ViewModelBase
     public void Initialize()
     {
         var settings = _settingsService.Load();
-        var theme = Enum.TryParse<AppTheme>(settings.Theme, ignoreCase: true, out var parsed) ? parsed : AppTheme.System;
+        var theme = Enum.TryParse<AppTheme>(settings.Appearance.Theme, ignoreCase: true, out var parsed) ? parsed : AppTheme.System;
 
         // A restore, not a user choice - applying it is correct, re-persisting it back is not.
         // Apply() is called unconditionally (not just from the OnCurrentThemeChanged hook) because

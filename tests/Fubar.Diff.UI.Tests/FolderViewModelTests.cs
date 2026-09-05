@@ -511,16 +511,15 @@ public class FolderViewModelTests
 
         folders.ApplyDefaults(AppSettings.Default with
         {
-            FolderLinkedMode = true,
-            FolderLinkRules = [".a = .b"],
+            Folders = AppSettings.Default.Folders with { LinkedMode = true, LinkRules = [".a = .b"] },
         });
 
         Assert.True(folders.LinkedMode);
         Assert.Equal(".a = .b", folders.LinkRuleText);
 
         var captured = folders.CaptureOptions(AppSettings.Default);
-        Assert.True(captured.FolderLinkedMode);
-        Assert.Equal([".a = .b"], captured.FolderLinkRules);
+        Assert.True(captured.Folders.LinkedMode);
+        Assert.Equal([".a = .b"], captured.Folders.LinkRules);
     }
 
     [AvaloniaFact]
@@ -578,16 +577,15 @@ public class FolderViewModelTests
 
         folders.ApplyDefaults(AppSettings.Default with
         {
-            FolderShowIdentical = true,
-            FolderExclude = ["one", "two"],
+            Folders = AppSettings.Default.Folders with { ShowIdentical = true, Exclude = ["one", "two"] },
         });
 
         Assert.True(folders.ShowIdentical);
         Assert.Equal("one, two", folders.ExcludeList);
 
         var captured = folders.CaptureOptions(AppSettings.Default);
-        Assert.True(captured.FolderShowIdentical);
-        Assert.Equal(["one", "two"], captured.FolderExclude);
+        Assert.True(captured.Folders.ShowIdentical);
+        Assert.Equal(["one", "two"], captured.Folders.Exclude);
     }
 
     [AvaloniaFact]

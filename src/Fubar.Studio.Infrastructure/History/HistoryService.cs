@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Fubar.Studio.Core.History;
 using Fubar.Studio.Core.Models;
+using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Infrastructure.Json;
 
 namespace Fubar.Studio.Infrastructure.History;
@@ -12,7 +13,20 @@ namespace Fubar.Studio.Infrastructure.History;
 /// </summary>
 public sealed class HistoryService : IHistoryService
 {
-    private const int MaxEntriesPerRequest = 200;
+    /// <summary>Default executions kept per request; the user setting overrides it.</summary>
+    public const int DefaultMaxEntriesPerRequest = 200;
+
+    private readonly IAppSettingsService? _settings;
+
+    public HistoryService()
+    {
+    }
+
+    /// <summary>The settings-aware form. Optional so the many tests that construct this directly, and
+    /// the CLI which never records history, need not supply one.</summary>
+    public HistoryService(IAppSettingsService settings) => _settings = settings;
+
+    private HistorySettings Limits => _settings?.Load().History ?? new HistorySettings();
 
     public async Task<IReadOnlyList<ExecutionSnapshot>> LoadAsync(string workspaceRootPath, string requestId, CancellationToken cancellationToken = default)
     {
@@ -47,9 +61,14 @@ public sealed class HistoryService : IHistoryService
         {
             var existing = (await LoadAsync(workspaceRootPath, requestId, cancellationToken)).ToList();
             existing.Insert(0, snapshot);
-            if (existing.Count > MaxEntriesPerRequest)
+
+            // At least one, whatever the setting says: a cap of zero would mean appending an entry and
+            // immediately dropping it, which is a slower way of recording nothing. Turning history OFF
+            // is HistorySettings.Enabled's job, and it is checked before we get here.
+            var max = Math.Max(1, Limits.MaxEntriesPerRequest);
+            if (existing.Count > max)
             {
-                existing.RemoveRange(MaxEntriesPerRequest, existing.Count - MaxEntriesPerRequest);
+                existing.RemoveRange(max, existing.Count - max);
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

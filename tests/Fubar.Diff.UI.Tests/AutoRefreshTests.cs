@@ -376,9 +376,12 @@ public class AutoRefreshTests
     {
         var (tab, _, _) = Build();
 
-        tab.ApplyDefaults(AppSettings.Default with { AutoRefresh = false });
+        tab.ApplyDefaults(AppSettings.Default with
+        {
+            Refresh = AppSettings.Default.Refresh with { AutoRefresh = false },
+        });
         Assert.False(tab.AutoRefresh);
 
-        Assert.False(tab.CaptureOptions(AppSettings.Default).AutoRefresh);
+        Assert.False(tab.CaptureOptions(AppSettings.Default).Refresh.AutoRefresh);
     }
 }

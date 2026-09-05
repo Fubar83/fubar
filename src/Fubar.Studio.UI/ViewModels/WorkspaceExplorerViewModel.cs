@@ -107,8 +107,8 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
 
         var settings = _settingsService.Load();
-        settings.OpenWorkspacePaths = Roots.Select(r => r.FullPath).ToList();
-        settings.ActiveWorkspacePath = ActiveRoot?.FullPath;
+        settings.Session.OpenWorkspacePaths = Roots.Select(r => r.FullPath).ToList();
+        settings.Session.ActiveWorkspacePath = ActiveRoot?.FullPath;
         _ = _settingsService.SaveAsync(settings);
     }
 
@@ -120,7 +120,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     public async Task RestoreLastSessionAsync()
     {
         var settings = await _settingsService.LoadAsync();
-        if (settings.OpenWorkspacePaths.Count == 0)
+        if (settings.Session.OpenWorkspacePaths.Count == 0)
         {
             return;
         }
@@ -128,7 +128,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         _suppressPersist = true;
         try
         {
-            foreach (var path in settings.OpenWorkspacePaths)
+            foreach (var path in settings.Session.OpenWorkspacePaths)
             {
                 if (!_workspaceStore.IsWorkspaceRoot(path))
                 {
@@ -139,8 +139,8 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
                 Roots.Add(new WorkspaceRootViewModel(workspace, _requestStore));
             }
 
-            ActiveRoot = (settings.ActiveWorkspacePath is not null
-                ? Roots.FirstOrDefault(r => string.Equals(r.FullPath, settings.ActiveWorkspacePath, StringComparison.OrdinalIgnoreCase))
+            ActiveRoot = (settings.Session.ActiveWorkspacePath is not null
+                ? Roots.FirstOrDefault(r => string.Equals(r.FullPath, settings.Session.ActiveWorkspacePath, StringComparison.OrdinalIgnoreCase))
                 : null) ?? Roots.LastOrDefault();
         }
         finally

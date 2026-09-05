@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
+using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Variables;
 
 namespace Fubar.Studio.Infrastructure.Protocols.Http;
@@ -17,15 +18,23 @@ namespace Fubar.Studio.Infrastructure.Protocols.Http;
 /// </summary>
 public sealed class HttpRequestExecutor : IRequestExecutor
 {
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(100);
+    /// <summary>Fallback when no setting and no per-request timeout say otherwise.</summary>
+    private static readonly TimeSpan FallbackTimeout = TimeSpan.FromSeconds(100);
 
     private readonly IScopedHttpClientProvider _scopedClients;
     private readonly IVariableResolver _variableResolver;
+    private readonly IAppSettingsService? _settings;
 
-    public HttpRequestExecutor(IScopedHttpClientProvider scopedClients, IVariableResolver variableResolver)
+    /// <summary>Settings are optional so the many tests that construct this directly need not supply
+    /// them; without them the built-in defaults apply, which is what a first run gets anyway.</summary>
+    public HttpRequestExecutor(
+        IScopedHttpClientProvider scopedClients,
+        IVariableResolver variableResolver,
+        IAppSettingsService? settings = null)
     {
         _scopedClients = scopedClients;
         _variableResolver = variableResolver;
+        _settings = settings;
     }
 
     public RequestKind Kind => RequestKind.Http;
@@ -34,7 +43,12 @@ public sealed class HttpRequestExecutor : IRequestExecutor
     {
         var stopwatch = Stopwatch.StartNew();
 
-        var timeout = request.TimeoutSeconds is int s and > 0 ? TimeSpan.FromSeconds(s) : DefaultTimeout;
+        // The request wins, then the user setting, then the fallback. A request that names its own
+        // timeout means it, and a global default must not quietly override it.
+        var settings = _settings?.Load().Requests;
+        var timeout = request.TimeoutSeconds is int s and > 0
+            ? TimeSpan.FromSeconds(s)
+            : settings?.DefaultTimeoutSeconds is int d and > 0 ? TimeSpan.FromSeconds(d) : FallbackTimeout;
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
@@ -65,7 +79,8 @@ public sealed class HttpRequestExecutor : IRequestExecutor
             // Bounded. ReadAsByteArrayAsync had no cap and the client's MaxResponseContentBufferSize was
             // left at its default, so a response larger than memory took the whole application down -
             // which needs no hostile server, only a badly paginated endpoint.
-            var (bodyBytes, truncated) = await ReadBodyAsync(response, linked.Token);
+            var cap = settings?.MaxResponseMegabytes is int mb and > 0 ? mb * 1024 * 1024 : MaxResponseBytes;
+            var (bodyBytes, truncated) = await ReadBodyAsync(response, cap, linked.Token);
 
             // Decoded by what the response SAID, not by assumption. This was Encoding.UTF8 regardless of
             // charset, so a latin-1 or UTF-16 response rendered as mojibake - and assertions and
@@ -181,7 +196,8 @@ public sealed class HttpRequestExecutor : IRequestExecutor
     }
 
     /// <summary>
-    /// Largest response body read into memory. Generous - this is a desktop tool and people legitimately
+    /// Default largest response body read into memory, overridden by the user setting. Generous - this
+    /// is a desktop tool and people legitimately
     /// inspect large payloads - but finite, which is the whole point.
     /// </summary>
     public const int MaxResponseBytes = 64 * 1024 * 1024;
@@ -193,7 +209,7 @@ public sealed class HttpRequestExecutor : IRequestExecutor
     /// way to know a stream is longer is to ask for more than fits.</para>
     /// </summary>
     private static async Task<(byte[] Bytes, bool Truncated)> ReadBodyAsync(
-        HttpResponseMessage response, CancellationToken cancellationToken)
+        HttpResponseMessage response, int maxBytes, CancellationToken cancellationToken)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var buffer = new MemoryStream();
@@ -203,7 +219,7 @@ public sealed class HttpRequestExecutor : IRequestExecutor
 
         while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
         {
-            if (buffer.Length + read > MaxResponseBytes)
+            if (buffer.Length + read > maxBytes)
             {
                 return ([], true);
             }

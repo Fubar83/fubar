@@ -41,6 +41,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IClipboardService? _clipboard;
     private readonly Fubar.Studio.Core.Diagnostics.ILogSink? _logSink;
     private readonly Fubar.Studio.Core.Settings.IMachinePolicyService? _policy;
+    private readonly Fubar.Studio.Core.Settings.IAppSettingsService? _appSettings;
     private RequestEditorViewModel? _dirtyTrackedRequest;
 
     public WorkspaceExplorerViewModel WorkspaceExplorer { get; }
@@ -87,7 +88,8 @@ public partial class MainViewModel : ViewModelBase
         IConfirmationService? confirmation = null,
         IClipboardService? clipboard = null,
         Fubar.Studio.Core.Diagnostics.ILogSink? logSink = null,
-        Fubar.Studio.Core.Settings.IMachinePolicyService? policy = null)
+        Fubar.Studio.Core.Settings.IMachinePolicyService? policy = null,
+        Fubar.Studio.Core.Settings.IAppSettingsService? appSettings = null)
     {
         WorkspaceExplorer = workspaceExplorer;
         TabDragHost = tabDragHost;
@@ -102,6 +104,7 @@ public partial class MainViewModel : ViewModelBase
         _clipboard = clipboard;
         _logSink = logSink;
         _policy = policy;
+        _appSettings = appSettings;
 
         WorkspaceExplorer.PropertyChanged += OnWorkspaceExplorerPropertyChanged;
         WorkspaceExplorer.WorkspaceClosed += OnWorkspaceClosed;
@@ -170,9 +173,19 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Raised by the palette's About entry; the shell shows the diagnostics window.</summary>
     public event Action? AboutRequested;
 
+    /// <summary>Raised by Ctrl+, or the palette; the shell shows the settings window.</summary>
+    public event Action? SettingsRequested;
+
+    [RelayCommand]
+    private void OpenSettings() => SettingsRequested?.Invoke();
+
     /// <summary>Diagnostics for the About window. Built here because the shell owns the log and the
     /// clipboard; the window itself only displays what it is given.</summary>
     public AboutViewModel CreateAbout() => new(_clipboard, _logSink, _policy, StatusLog);
+
+    /// <summary>The settings window's context. Built here for the same reason About's is: the shell owns
+    /// the services, and the window only displays what it is given.</summary>
+    public SettingsViewModel CreateSettings() => new(_appSettings!, _policy);
 
     [RelayCommand]
     private void OpenPalette() => PaletteRequested?.Invoke(new CommandPaletteViewModel(PaletteEntries()));
@@ -223,6 +236,9 @@ public partial class MainViewModel : ViewModelBase
 
         yield return new PaletteEntry("Toggle Status & Log", "Command", "Ctrl+`",
             () => { ToggleLogCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("Settings...", "Command", "Ctrl+,",
+            () => { SettingsRequested?.Invoke(); return Task.CompletedTask; });
 
         yield return new PaletteEntry("About Fubar API Studio", "Command", null,
             () => { AboutRequested?.Invoke(); return Task.CompletedTask; });

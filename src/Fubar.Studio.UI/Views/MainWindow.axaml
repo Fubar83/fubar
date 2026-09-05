@@ -30,6 +30,7 @@
         <KeyBinding Gesture="Ctrl+P" Command="{Binding FocusFilterCommand}" />
         <KeyBinding Gesture="Ctrl+F" Command="{Binding FindInResponseCommand}" />
         <KeyBinding Gesture="Ctrl+Shift+P" Command="{Binding OpenPaletteCommand}" />
+        <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}" />
         <KeyBinding Gesture="Ctrl+R" Command="{Binding RunActiveCommand}" />
     </Window.KeyBindings>
 
