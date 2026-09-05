@@ -33,6 +33,35 @@ public sealed record AuthorizationCallback(string? Code, string? Error, string? 
 public static class AuthorizationCodeFlow
 {
     /// <summary>
+    /// The loopback host in the redirect URI.
+    ///
+    /// The IP literal, not <c>localhost</c>, per RFC 8252 §8.3: <c>localhost</c> depends on a name
+    /// resolution the app does not control, and on a machine where it resolves to ::1 first the
+    /// browser reaches a listener that is not there.
+    /// </summary>
+    public const string LoopbackHost = "127.0.0.1";
+
+    /// <summary>
+    /// Asks the OS for a free port rather than pinning one. See
+    /// <see cref="RedirectUriFor"/> for why a user may want the opposite.
+    /// </summary>
+    public const int EphemeralPort = 0;
+
+    /// <summary>
+    /// The redirect URI a given port produces, without starting a sign-in.
+    ///
+    /// <para>Exists because the URI has to be REGISTERED with the provider before the first attempt,
+    /// and deriving it from a failure is the worst way to learn it: the browser shows the provider's
+    /// own error page and this app is never told anything at all. So the editor shows it up front -
+    /// which it can only do for a pinned port, since an ephemeral one is not chosen until the moment
+    /// the listener binds.</para>
+    /// </summary>
+    public static string RedirectUriFor(int port, string redirectPath = "/callback") =>
+        port <= 0
+            ? $"http://{LoopbackHost}:<a free port>{redirectPath}"
+            : $"http://{LoopbackHost}:{port}{redirectPath}";
+
+    /// <summary>
     /// Builds the authorize URL and the secrets that go with it.
     ///
     /// The redirect URI is a LOOPBACK address, per RFC 8252 §7.3 - the only redirect a desktop app can
@@ -45,13 +74,15 @@ public static class AuthorizationCodeFlow
         string clientId,
         string? scopes,
         int port,
-        string redirectPath = "/callback")
+        string redirectPath = "/callback",
+        IEnumerable<KeyValuePair<string, string>>? extraParameters = null,
+        string redirectHost = LoopbackHost)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(authorizeEndpoint);
 
         var pkce = Pkce.Create();
         var state = Pkce.CreateState();
-        var redirectUri = $"http://127.0.0.1:{port}{redirectPath}";
+        var redirectUri = $"http://{redirectHost}:{port}{redirectPath}";
 
         var query = HttpUtility.ParseQueryString(string.Empty);
         query["response_type"] = "code";
@@ -64,6 +95,20 @@ public static class AuthorizationCodeFlow
         if (!string.IsNullOrWhiteSpace(scopes))
         {
             query["scope"] = scopes;
+        }
+
+        // Provider-specific extras, applied LAST so a provider that needs its own response_type or
+        // prompt can say so - and applied through the same collection, so they are encoded rather than
+        // pasted into the URL. The protocol parameters above are not special-cased into being
+        // unoverridable: a user who genuinely needs a different one has no other way to say it, and
+        // guessing which of somebody else's parameters are sacred is how this kind of allowlist gets
+        // in the way of exactly the provider it was meant to support.
+        foreach (var extra in extraParameters ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(extra.Key))
+            {
+                query[extra.Key.Trim()] = extra.Value ?? "";
+            }
         }
 
         // An authorize endpoint may already carry query parameters - a tenant, an audience - and

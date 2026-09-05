@@ -111,14 +111,100 @@
         <Border IsVisible="{Binding IsAuthorizationCode}"
                 Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="1" CornerRadius="6" Padding="10">
-            <StackPanel Spacing="6">
+            <StackPanel Spacing="8">
                 <TextBlock Text="Step 1 — sign in" FontSize="11" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimary}" />
 
+                <!-- Choosing a provider fills in the five pieces of provider trivia that otherwise
+                     stand between someone and a working sign-in: both endpoints, the scopes, the
+                     extra authorize parameters, and whether a client secret is wanted. Every one of
+                     them fails the same opaque way, so they are supplied rather than researched. -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Sign in with" VerticalAlignment="Center" FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <ComboBox ItemsSource="{Binding SignInProviderOptions}"
+                              SelectedItem="{Binding SelectedProvider}"
+                              MinWidth="230"
+                              PlaceholderText="Choose a provider" />
+                    <Button Classes="secondary-btn" Content="Set up"
+                            Command="{Binding ApplyProviderCommand}"
+                            ToolTip.Tip="Fill in this provider's endpoints, scopes and parameters (overwrites the request below)" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding NeedsTenant}">
+                    <TextBlock Text="{Binding TenantLabel}" VerticalAlignment="Center" FontSize="11"
+                               MinWidth="130"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <TextBox Text="{Binding Tenant}" MinWidth="260" FontSize="11"
+                             controls:VariableTooltip.Context="{Binding VariableContext}" />
+                </StackPanel>
+
+                <TextBlock Text="{Binding TenantHelp}"
+                           IsVisible="{Binding NeedsTenant}"
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <!-- What to do in the provider's OWN console. None of this app's screens can do it,
+                     and a sign-in cannot work until it is done, so saying it here is the difference
+                     between a working setup and a support question. -->
+                <TextBlock Text="{Binding SetupSummary}"
+                           IsVisible="{Binding SetupSummary, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <Button Classes="secondary-btn" Content="Open the provider's console"
+                        HorizontalAlignment="Left" FontSize="11" Padding="8,2" MinHeight="22"
+                        IsVisible="{Binding HasConsoleUrl}"
+                        Click="OpenConsole_OnClick" />
+
+                <fc:Banner IsVisible="{Binding HasProviderCaveat}" Message="{Binding ProviderCaveat}" />
+
                 <TextBox Text="{Binding AuthorizeUrl}"
-                         PlaceholderText="Authorize URL (Discover fills this in)"
+                         PlaceholderText="Authorize URL (a provider or Discover fills this in)"
                          FontSize="11"
                          controls:VariableTooltip.Context="{Binding VariableContext}" />
+
+                <!-- The redirect must be registered with the provider EXACTLY as written, and until
+                     the port could be pinned that was impossible to act on: it changed every attempt
+                     while this label told the user to register it. Now it is stable by choice, and
+                     shown BEFORE the first attempt rather than learned from a failure - the browser
+                     shows the provider's error page and this app hears nothing at all. -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Register this redirect URI with your provider:"
+                               FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                    <SelectableTextBlock Text="{Binding RedirectUri}"
+                                         FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
+                                         Foreground="{DynamicResource TextPrimary}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <CheckBox Content="Always use port" IsChecked="{Binding IsRedirectPortPinned}"
+                                  FontSize="11" VerticalAlignment="Center"
+                                  ToolTip.Tip="Most providers match the redirect URI exactly, so a port that changes every attempt can never be registered. Google and Microsoft ignore it." />
+                        <NumericUpDown Value="{Binding RedirectPort}"
+                                       IsEnabled="{Binding IsRedirectPortPinned}"
+                                       Minimum="1024" Maximum="65535" Increment="1"
+                                       FormatString="0" MinWidth="130" FontSize="11" />
+                    </StackPanel>
+
+                    <!-- With an ephemeral port this is the only place the number ever appears, and it
+                         is what a provider rejecting the redirect was rejecting. -->
+                    <SelectableTextBlock IsVisible="{Binding ShowsActualRedirectUri}"
+                                         Text="{Binding ActualRedirectUri, StringFormat='Last attempt listened on {0}'}"
+                                         FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
+                                         Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+
+                <Expander Header="Extra authorize parameters">
+                    <StackPanel Spacing="6" Margin="0,6,0,0">
+                        <TextBlock Text="Added to the authorize URL, not to the token request. Google needs access_type=offline before it will issue a refresh token; Auth0 needs audience or it returns an opaque token instead of a JWT."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondary}" />
+                        <fc:KeyValueGrid DataContext="{Binding AuthorizeParameters}"
+                                         ItemsSource="{Binding Rows}"
+                                         AddCommand="{Binding AddRowCommand}"
+                                         RemoveCommand="{Binding RemoveRowCommand}" />
+                    </StackPanel>
+                </Expander>
 
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button Classes="secondary-btn" Content="Sign in with browser"
@@ -128,19 +214,6 @@
                                IsVisible="{Binding SignInStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
                                VerticalAlignment="Center" FontSize="11" TextWrapping="Wrap"
                                Foreground="{DynamicResource TextSecondary}" />
-                </StackPanel>
-
-                <!-- The redirect must be registered with the provider EXACTLY as written. A sign-in
-                     that fails because it was not is the most opaque failure in this grant - the
-                     browser shows the provider's error page and this app never hears anything - so it
-                     is on screen to copy rather than discovered from a failure. -->
-                <StackPanel Spacing="2"
-                            IsVisible="{Binding RedirectUri, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}">
-                    <TextBlock Text="Register this redirect URI with your provider:"
-                               FontSize="11" Foreground="{DynamicResource TextSecondary}" />
-                    <SelectableTextBlock Text="{Binding RedirectUri}"
-                                         FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
-                                         Foreground="{DynamicResource TextPrimary}" />
                 </StackPanel>
             </StackPanel>
         </Border>

@@ -140,3 +140,53 @@ payloads, which is exactly what someone who does not want response bodies on dis
 it" is a slip - `Enabled` is the setting for wanting nothing kept. `RequestSettingsTests` and
 `HistoryServiceTests` assert the behaviour rather than the value in the file, which is the only kind
 of test that catches "built but never wired".
+
+
+**The browser half of a sign-in is persisted, and every part of it matters** (Studio). The authorize
+URL, the extra authorize parameters, the pinned redirect port, the provider and its tenant live on
+`AuthConfig` because none of them fit in `TokenRequest` - the browser round trip is not a request.
+They were not saved at all for a while, and the symptom was that a profile reopened with an empty
+authorize URL: every session began by rediscovering the provider before the sign-in button did
+anything, and the pinned port the provider had been told about came back as ephemeral. Two ordering
+rules keep it working. `LoadFrom` loads the sign-in AFTER the token-request branches, because two of
+those go through `Seed`, which sets the authorize URL from a template - loading first meant a config
+with no token request had its URL wiped by the default template's empty one. And `Seed` sets
+`SelectedTemplate` to a CATALOG entry, never to the provider template it was handed: a ComboBox shows
+its placeholder for a selection absent from its own items, so "Set up" filled the screen in correctly
+and blanked the template box above it.
+
+**The redirect port is pinnable, and that is not a preference** (Studio). It was ephemeral with no
+alternative - a different port every attempt - while the editor told the user to register the redirect
+URI with their provider, which was impossible for any provider that matches it exactly. Google and
+Entra ignore the port on loopback; GitHub, Okta, Auth0 and Keycloak do not, so the feature worked only
+for the two lenient providers and printed an unfollowable instruction everywhere else. The URI is now
+derived from the port (`AuthorizationCodeFlow.RedirectUriFor`) so it can be shown BEFORE the first
+attempt: deriving it from a failure is the worst way to learn it, because the browser shows the
+provider's own error page and this app is never told anything at all. An ephemeral port renders as
+`<a free port>` rather than a number, so nobody registers a URI that was never going to come back.
+
+**Provider presets are data, and their point is the parts that fail late** (Studio).
+`SignInProviderCatalog` holds facts about somebody else's service; `SignInProviderTemplate` is the one
+decision - given those facts, what the editor gets filled with. The entries that look like trivia are
+the ones worth testing: Google returns a refresh token only with `access_type=offline` and re-issues
+one only with `prompt=consent`, so without both the SECOND sign-in for an account silently has no
+refresh token and fails an hour later; Google's desktop clients are issued a client secret and the
+exchange needs it, while an Entra public client must NOT send one; GitHub's token endpoint answers
+form-encoded unless asked for JSON, which would defeat the JSONPath captures and report a 200 with no
+token. `SignInProviderTests` pins each of these. Presets are also COPIED into the editor rather than
+shared - the catalog's lists are static and the editor's rows are edited in place.
+
+**`AuthorizationCodeFlow.Build` lets an extra parameter override a protocol one, deliberately**
+(Studio). Extras are applied last and nothing is reserved. Guessing which of somebody else's
+parameters are sacred is how an allowlist ends up blocking exactly the provider it was meant to
+support, and a user who needs a different `response_mode` has no other way to say so. What is NOT
+negotiable is the state check in `ReadCallback` - that is a security control, not a convenience.
+
+**The loopback listener serves connections until one carries a query** (Studio). It used to accept
+exactly one. A browser opens more sockets than it sends requests on - Chrome speculatively
+pre-connects - and taking one of those as THE redirect ended the sign-in before the redirect arrived,
+reporting "the redirect carried neither a code nor an error" for one still in flight. For the same
+class of reason `ReadRequestLineAsync` reads until the line ends rather than taking whatever one
+`ReadAsync` returned: a request line carrying a provider-sized code and state can span TCP segments,
+and a truncated one is rejected as a state mismatch - the error that means "somebody forged this".
+The read is bounded because this socket is reachable by anything on the machine.

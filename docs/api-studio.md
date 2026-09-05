@@ -58,9 +58,28 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   not as a failure afterwards. After Test the **token response** is shown, and any field is one click
   from becoming a capture, so the JSONPath comes from a response that actually arrived rather than a
   guess at what the provider calls things.
-- **OAuth 2.0 that actually works** — Client Credentials and Refresh Token grants, configurable scopes
-  and client-auth method, a one-click **Test / Get token** and a **Verify request** preview. Access
-  tokens and expiry are stored as session variables and auto-refreshed when expired.
+- **Sign in with Google, Microsoft, GitHub — or any OpenID Connect provider.** Choose a provider and
+  press **Set up**: both endpoints, the scopes that get a usable session, the extra authorize
+  parameters that provider needs, and a `client_secret` field only where one is actually wanted. What
+  is left to supply is what is genuinely yours — a client ID, a tenant, a secret. The screen also says
+  what to do in the provider's own console, and links to it, because a sign-in cannot work until that
+  is done and nothing in this app can do it for you. Anything else publishing
+  `/.well-known/openid-configuration` — Okta, Auth0, Keycloak, Entra B2C — works through **Custom**:
+  paste the issuer and press Discover.
+
+  Nothing a preset fills in is locked. It seeds the same editable request the manual path produces, so
+  a provider that changes something is a field you correct rather than a release you wait for.
+
+- **The redirect URI you are told to register is one you can register.** It is shown before the first
+  attempt rather than learned from a failure, and the port can be pinned so it stops changing every
+  time. Google and Microsoft ignore the port on loopback; GitHub, Okta, Auth0 and Keycloak match the
+  whole URI, so for those a port that moves can never be registered at all.
+
+- **OAuth 2.0 that actually works** — Client Credentials, Refresh Token and Authorization Code + PKCE,
+  configurable scopes and client-auth method, a one-click **Test / Get token** and a **Verify request**
+  preview. Access tokens and expiry are stored as session variables and auto-refreshed when expired.
+  The authorization code and PKCE verifier live in memory for one workspace and environment and are
+  never written to disk.
 - **Auth profiles** — reusable Bearer / API key / Basic / OAuth2 profiles, inheritable down the folder
   tree, previewed as the exact headers that will be sent.
 - **OpenAPI / Swagger import** — pull a spec (JSON or YAML, from a file or URL) into a workspace:

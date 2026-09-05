@@ -190,8 +190,8 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         Auth.OAuth2.TestAuthHandler = async config => (await _authProvider.PrepareAsync(config, _workspace, _environmentManager.ActiveEnvironment)).Outcome;
         Auth.OAuth2.PreviewHandler = config => _authProvider.PreviewTokenRequest(config, _workspace, _environmentManager.ActiveEnvironment);
         Auth.OAuth2.DiscoveryHandler = issuer => _discovery.DiscoverAsync(issuer);
-        Auth.OAuth2.SignInHandler = (authorizeUrl, clientId, scopes) =>
-            _signIn.SignInAsync(authorizeUrl, clientId, scopes, _workspace, _environmentManager.ActiveEnvironment);
+        Auth.OAuth2.SignInHandler = request =>
+            _signIn.SignInAsync(request, _workspace, _environmentManager.ActiveEnvironment);
         Auth.OAuth2.VariableContext = VariableContext;
 
         // The active environment/secrets-reveal choice can change while this request stays open -

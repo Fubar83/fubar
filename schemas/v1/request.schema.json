@@ -76,7 +76,30 @@
         "expiryVariable": { "type": ["string", "null"] },
         "expiresInExpression": { "type": ["string", "null"] },
         "tokenRequest": { "type": ["object", "null"] },
-        "tokenCaptures": { "type": "array", "items": { "$ref": "#/$defs/capture" } }
+        "tokenCaptures": { "type": "array", "items": { "$ref": "#/$defs/capture" } },
+        "authorizeUrl": {
+          "type": ["string", "null"],
+          "description": "Where the browser is sent for an authorization code. Only the authorization-code grant has one."
+        },
+        "authorizeParameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/keyValue" },
+          "description": "Extra query parameters for authorizeUrl - Google's access_type=offline, Auth0's audience."
+        },
+        "redirectPort": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Loopback port to catch the redirect on. Absent or 0 asks the OS for a free one, which most providers cannot have registered against them."
+        },
+        "signInProviderKey": {
+          "type": ["string", "null"],
+          "description": "Which built-in provider preset this was set up with. A label only; an unknown value is ignored."
+        },
+        "signInTenant": {
+          "type": ["string", "null"],
+          "description": "The tenant, directory or domain the provider's URLs were built for."
+        }
       }
     },
     "capture": {

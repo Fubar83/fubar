@@ -70,8 +70,8 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
             PreviewHandler = config =>
                 _authProvider.PreviewTokenRequest(config, _workspace, _environmentManager.ActiveEnvironment),
             DiscoveryHandler = issuer => discovery.DiscoverAsync(issuer),
-            SignInHandler = (authorizeUrl, clientId, scopes) =>
-                signIn.SignInAsync(authorizeUrl, clientId, scopes, _workspace, _environmentManager.ActiveEnvironment),
+            SignInHandler = request =>
+                signIn.SignInAsync(request, _workspace, _environmentManager.ActiveEnvironment),
             VariableContext = new VariableTooltipContext(
                 variableResolver, workspace, environmentManager.ActiveEnvironment, SecretsRevealed: false),
         };
