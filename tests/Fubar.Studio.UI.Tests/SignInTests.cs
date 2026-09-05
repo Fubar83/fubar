@@ -350,7 +350,8 @@ public class SignInTests
         var result = await service.SignInAsync(
             new SignInRequest("https://login.example.com/authorize", "id", "openid", RedirectPort: 8765),
             Ws,
-            null);
+            null,
+            TestContext.Current.CancellationToken);
 
         Assert.True(result.Ok);
         Assert.Equal("the-code", session.Get(Scope, SignInService.CodeVariable));
@@ -367,7 +368,8 @@ public class SignInTests
         await service.SignInAsync(
             new SignInRequest("https://login.example.com/authorize", "id", null, RedirectPort: 8765),
             Ws,
-            null);
+            null,
+            TestContext.Current.CancellationToken);
 
         Assert.False(listener.PortWasReserved);
         Assert.Equal("http://127.0.0.1:8765/callback", listener.Seen!.RedirectUri);
@@ -390,7 +392,8 @@ public class SignInTests
         var result = await service.SignInAsync(
             new SignInRequest("https://login.example.com/authorize", "id", null),
             Ws,
-            null);
+            null,
+            TestContext.Current.CancellationToken);
 
         Assert.False(result.Ok);
         Assert.Null(session.Get(Scope, SignInService.CodeVariable));
@@ -414,7 +417,8 @@ public class SignInTests
         await new SignInService(listener, session).SignInAsync(
             new SignInRequest("https://login.example.com/authorize", "id", null, RedirectPort: 8765),
             Ws,
-            null);
+            null,
+            TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -423,7 +427,7 @@ public class SignInTests
         var listener = new FakeListener(new AuthorizationCallback("c", null, null));
 
         var result = await new SignInService(listener, new FakeSession())
-            .SignInAsync(new SignInRequest("", "id", null, RedirectPort: 8765), Ws, null);
+            .SignInAsync(new SignInRequest("", "id", null, RedirectPort: 8765), Ws, null, TestContext.Current.CancellationToken);
 
         Assert.False(result.Ok);
         Assert.Null(listener.Seen);
