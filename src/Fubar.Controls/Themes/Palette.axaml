@@ -60,6 +60,10 @@
             <SolidColorBrush x:Key="BgEditorCanvas" Color="#FFFFFF" />
             <SolidColorBrush x:Key="BorderEditor" Color="#E1E4E8" />
             <SolidColorBrush x:Key="BtnSendBg" Color="#2563EB" />
+            <!-- The one colour that means "this is the selected/active thing" - a tab indicator, a
+                 focus ring. Its own key rather than reusing BtnSendBg: the Send button is free to stop
+                 being accent-coloured without every selection marker in both apps changing with it. -->
+            <SolidColorBrush x:Key="AccentBrush" Color="#2563EB" />
             <SolidColorBrush x:Key="VariableValidBrush" Color="#2563EB" />
             <SolidColorBrush x:Key="VariableUndefinedBrush" Color="#D97706" />
             <SolidColorBrush x:Key="BgInheritedRow" Color="#F1F5F9" />
@@ -153,6 +157,7 @@
             <SolidColorBrush x:Key="BgEditorCanvas" Color="#1A1A1D" />
             <SolidColorBrush x:Key="BorderEditor" Color="#2B2B32" />
             <SolidColorBrush x:Key="BtnSendBg" Color="#3B82F6" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#3B82F6" />
             <SolidColorBrush x:Key="VariableValidBrush" Color="#3B82F6" />
             <SolidColorBrush x:Key="VariableUndefinedBrush" Color="#F59E0B" />
             <SolidColorBrush x:Key="BgInheritedRow" Color="#1E1E22" />

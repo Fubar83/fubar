@@ -48,8 +48,17 @@
         <Grid IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
               RowDefinitions="Auto,Auto,*">
 
-            <!-- Environments group -->
-            <fc:Section Grid.Row="0" Title="ENVIRONMENTS" x:DataType="vm:LeftPaneViewModel">
+            <!-- Environments group.
+
+                 Collapsible, and collapsed by default. Environments and Auth Profiles are set up once
+                 and then read from the toolbar's selector; the request tree is what the pane is
+                 actually FOR, and these two were taking around two hundred pixels off it permanently -
+                 including a whole row for "No auth profiles yet." saying nothing. Both remember their
+                 state, because a section that refolds itself every launch is worse than one that never
+                 folded. -->
+            <fc:Section Grid.Row="0" Title="ENVIRONMENTS" x:DataType="vm:LeftPaneViewModel"
+                        IsCollapsible="True"
+                        IsExpanded="{Binding IsEnvironmentsExpanded, Mode=TwoWay}">
                 <fc:Section.Action>
                     <Button Classes="icon-btn"
                             Content="+"
@@ -107,7 +116,9 @@
             </fc:Section>
 
             <!-- Auth Profiles group -->
-            <fc:Section Grid.Row="1" Title="AUTH PROFILES" x:DataType="vm:LeftPaneViewModel">
+            <fc:Section Grid.Row="1" Title="AUTH PROFILES" x:DataType="vm:LeftPaneViewModel"
+                        IsCollapsible="True"
+                        IsExpanded="{Binding IsAuthProfilesExpanded, Mode=TwoWay}">
                 <fc:Section.Action>
                     <Button Classes="icon-btn"
                             Content="+"
@@ -217,32 +228,11 @@
 
         </Grid>
 
-        <!-- The theme switcher LeftPane.md §4.1 has always specified. ThemeManagerViewModel was
-             written, registered and bound to nothing; this is the binding its own doc comment asks
-             for. Pinned to the bottom so it sits out of the way of the workspace content, and shown
-             whether or not a workspace is open - it is a preference, not workspace state. -->
-        <Border VerticalAlignment="Bottom"
-                Padding="8,5"
-                Background="{DynamicResource BgSidebar}"
-                BorderThickness="0,1,0,0"
-                BorderBrush="{DynamicResource BorderSubtle}">
-            <DockPanel LastChildFill="False">
-                <TextBlock DockPanel.Dock="Left"
-                           Text="Theme"
-                           VerticalAlignment="Center"
-                           FontSize="11"
-                           Foreground="{DynamicResource TextSecondary}" />
-                <!-- ItemsSource is x:Static, not a binding path: ThemeOptions is a static member, and
-                     Fubar Diff's settings window already binds it this way. -->
-                <ComboBox DockPanel.Dock="Right"
-                          MinWidth="110"
-                          FontSize="11"
-                          VerticalAlignment="Center"
-                          ItemsSource="{x:Static vm:ThemeManagerViewModel.ThemeOptions}"
-                          SelectedItem="{Binding Theme.CurrentTheme, Mode=TwoWay}"
-                          ToolTip.Tip="Dark, Light, or follow the system" />
-            </DockPanel>
-        </Border>
+        <!-- The theme switcher used to be pinned here, in a bordered strip across the bottom of every
+             session. It is in Settings now (Ctrl+,), with the rest of the preferences: theme is chosen
+             about once, and this was the least-used control in the app holding the most permanent piece
+             of chrome in the sidebar. Nothing was lost - ThemeManagerViewModel is still bound, just
+             from the settings window. -->
 
     </Grid>
 

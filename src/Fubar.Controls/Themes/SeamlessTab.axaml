@@ -2,113 +2,113 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:fc="using:Fubar.Controls">
 
-    <!-- Shared look for fc:SeamlessTabControl (see SeamlessTabControl.cs). Classic boxed tabs:
-         the selected tab merges into the bordered content area below it (no line under it), unselected
-         tabs are closed boxes joining one continuous horizontal line. Everything is scoped under
-         "fc|SeamlessTabControl ..." so ordinary TabControls elsewhere are unaffected.
+    <!-- Shared look for fc:SeamlessTabControl (see SeamlessTabControl.cs).
 
-         The one thing each host must supply is Background: set it (via DynamicResource, so it stays
-         theme-aware) to the colour that sits behind the tabs / fills the content area. The content
-         Border and the selected tab both bind to it (TemplateBinding Background) so the selected tab's
-         seam is painted out in exactly that colour. BorderEditor / TextPrimary / TextSecondary / BgHover
-         come from Palette.axaml. -->
+         Underline tabs: a label per tab with a 2px accent bar under the selected one, and a single
+         hairline under the whole strip separating it from the content. No box around any tab and no
+         box around the content area.
+
+         This replaced boxed tabs - each tab an outlined rounded rectangle whose bottom edge was
+         painted out to merge with a bordered content area below it. That construction was elaborate
+         (a full-width seam line drawn behind the tabs, an opaque selected tab covering the segment
+         under itself, a -1px margin to make the two meet) and every one of those borders was a line
+         on screen doing no work: with one strip in a pane, nothing needs boxing off from anything.
+         The panes read as more open for their absence, which is the whole reason.
+
+         The name still fits, and fits better: the seam between tabs and content is gone entirely
+         rather than painted over.
+
+         Each host still supplies Background - the colour behind the strip and behind the content.
+         BorderEditor / TextPrimary / TextSecondary / AccentBrush / BgHover come from Palette.axaml. -->
 
     <!-- Tab headers -->
 
-    <!-- No tab draws its own bottom border ("1,1,1,0") - the content box's top border is the single
-         horizontal line, so nothing can double it. Fluent's TabItem MinHeight (~48) is cleared so
-         Padding actually drives the (compact) header height. Stretch makes each tab fill the header
-         row so its side borders reach down to the content line and close the box at the corners. -->
     <Style Selector="fc|SeamlessTabControl TabItem">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderEditor}" />
-        <Setter Property="BorderThickness" Value="1,1,1,0" />
-        <Setter Property="CornerRadius" Value="6,6,0,0" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="MinHeight" Value="0" />
-        <Setter Property="Padding" Value="14,5" />
+        <Setter Property="Padding" Value="2,7" />
+        <Setter Property="Margin" Value="0,0,18,0" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
-        <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
 
     <Style Selector="fc|SeamlessTabControl TabItem:pointerover">
-        <Setter Property="Background" Value="{DynamicResource BgHover}" />
-    </Style>
-
-    <!-- Selected tab: opaque, painted in the control's own surface colour (Background), + bold text.
-         That opaque fill is exactly what merges the tab into the content: the tab sits IN FRONT of the
-         content box's full-width top line (declared first below = behind), and the fill spans precisely
-         the tab's interior between its side borders, so it paints out the line segment under the tab -
-         cleanly, right up to (but not over) the side borders, with no corner stubs and no separate
-         cover element. Binds to the ancestor control's Background so it tracks whatever surface the
-         host set and stays theme-aware. -->
-    <Style Selector="fc|SeamlessTabControl TabItem:selected">
-        <Setter Property="Background" Value="{Binding $parent[fc:SeamlessTabControl].Background}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
-    <!-- Replace Fluent's TabItem template outright: it draws its own accent selection underline via a
-         separate part that ignores the Border setters above. A plain Border + ContentPresenter renders
-         only what the setters say. -->
+    <!-- Weight is NOT changed on selection. Bolding the selected tab reflows the strip - every tab to
+         its right shifts as the selection moves, which is a distracting amount of motion for a click
+         that changed one pane. Colour and the accent bar carry it instead. -->
+    <Style Selector="fc|SeamlessTabControl TabItem:selected">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    </Style>
+
+    <!-- Replace Fluent's TabItem template outright: it draws its own accent pill via a separate part
+         that ignores the setters above, sized and positioned to its own taste. -->
     <Style Selector="fc|SeamlessTabControl TabItem">
         <Setter Property="Template">
             <ControlTemplate>
-                <Border Background="{TemplateBinding Background}"
-                        BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="{TemplateBinding CornerRadius}"
-                        Padding="{TemplateBinding Padding}">
-                    <ContentPresenter Content="{TemplateBinding Header}"
+                <Grid RowDefinitions="*,Auto" Background="{TemplateBinding Background}">
+                    <ContentPresenter Grid.Row="0"
+                                      Content="{TemplateBinding Header}"
+                                      Padding="{TemplateBinding Padding}"
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Center" />
-                </Border>
+
+                    <!-- Always present, transparent when unselected: a bar that appears and disappears
+                         would change the strip's height as the selection moves. -->
+                    <Border Grid.Row="1"
+                            Name="PART_Indicator"
+                            Height="2"
+                            CornerRadius="1"
+                            Background="Transparent" />
+                </Grid>
             </ControlTemplate>
         </Setter>
     </Style>
 
+    <Style Selector="fc|SeamlessTabControl TabItem:selected /template/ Border#PART_Indicator">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <Style Selector="fc|SeamlessTabControl TabItem:pointerover /template/ Border#PART_Indicator">
+        <Setter Property="Background" Value="{DynamicResource BorderEditor}" />
+    </Style>
+
+    <Style Selector="fc|SeamlessTabControl TabItem:selected:pointerover /template/ Border#PART_Indicator">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
     <!-- The control itself -->
 
-    <!-- Padding is the CONTENT-AREA padding (inset of the tab content from the box borders), applied
-         to PART_SelectedContentHost in the template below. Inter-tab spacing lives on the ItemsPanel
-         (Spacing), never a per-tab trailing Margin (which would leave a dangling gap after the last
-         tab that the seam line can't cover). -->
     <Style Selector="fc|SeamlessTabControl">
-        <Setter Property="Padding" Value="14,12" />
+        <Setter Property="Padding" Value="0,12" />
         <Setter Property="ItemsPanel">
             <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="2" />
+                <StackPanel Orientation="Horizontal" />
             </ItemsPanelTemplate>
         </Setter>
         <Setter Property="Template">
             <ControlTemplate>
                 <Grid RowDefinitions="Auto,*">
-                    <!-- Content box: one Border draws the single top seam line (full width, under the
-                         tabs too, so it can't misalign with itself). Margin="0,-1,0,0" pulls that top
-                         line UP by exactly the gap between the tab strip's row bottom and where the
-                         tabs actually render (~1px with the current compact header height), so the line
-                         lands right on the tabs' bottom edge. The inner ContentPresenter's matching
-                         Margin="0,1,0,0" pushes the content back down so only the border shifts. -->
-                    <Border Grid.Row="1"
-                            Margin="0,-1,0,0"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{DynamicResource BorderEditor}"
-                            BorderThickness="1"
-                            CornerRadius="0,0,6,6">
-                        <ContentPresenter Name="PART_SelectedContentHost"
-                                          Margin="0,1,0,0"
-                                          Padding="{TemplateBinding Padding}"
-                                          Content="{TemplateBinding SelectedContent}"
-                                          ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+                    <!-- One hairline the full width of the control, under the strip. The selected
+                         tab's accent bar sits ON it rather than breaking it, so the line stays
+                         continuous however the selection moves. -->
+                    <Border Grid.Row="0"
+                            BorderBrush="{DynamicResource BorderSubtle}"
+                            BorderThickness="0,0,0,1">
+                        <ItemsPresenter Name="PART_ItemsPresenter"
+                                        HorizontalAlignment="Left"
+                                        ItemsPanel="{TemplateBinding ItemsPanel}" />
                     </Border>
 
-                    <!-- Tabs render in FRONT of the content box above, so the selected tab's opaque
-                         Background paints out the seam line under it (see the TabItem:selected style). -->
-                    <ItemsPresenter Grid.Row="0"
-                                    Name="PART_ItemsPresenter"
-                                    HorizontalAlignment="Left"
-                                    Margin="0"
-                                    ItemsPanel="{TemplateBinding ItemsPanel}" />
+                    <ContentPresenter Grid.Row="1"
+                                      Name="PART_SelectedContentHost"
+                                      Padding="{TemplateBinding Padding}"
+                                      Background="{TemplateBinding Background}"
+                                      Content="{TemplateBinding SelectedContent}"
+                                      ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
                 </Grid>
             </ControlTemplate>
         </Setter>

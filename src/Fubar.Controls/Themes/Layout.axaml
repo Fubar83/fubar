@@ -90,6 +90,41 @@
          and a ContentPresenter for the body (host supplies the list / tree / empty-state). Draws a bottom
          divider via BorderThickness (default 0,0,0,1); set BorderThickness="0" on the last one in a
          stack. Content sits in a star row so a stretching child (a tree filling the pane) works. -->
+    <!-- The clickable header of a collapsible Section.
+
+         Fluent's ToggleButton theme is replaced OUTRIGHT rather than overridden setter by setter,
+         which was tried first and does not work: an expanded section's toggle is :checked, Fluent
+         paints a checked ToggleButton in the system accent, and its own ControlTheme wins over styles
+         nested in ours - so the one section open by default rendered as a solid blue bar across the
+         sidebar. A Border plus a ContentPresenter renders only what is asked for. Same reasoning as
+         SeamlessTab.axaml replacing Fluent's TabItem template. -->
+    <ControlTheme x:Key="SectionToggleTheme" TargetType="ToggleButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="PART_Band"
+                        Background="{TemplateBinding Background}"
+                        Padding="{TemplateBinding Padding}">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <!-- No :checked style at all - folded and unfolded look the same, because the chevron is what
+             says which one it is. -->
+        <Style Selector="^:pointerover /template/ Border#PART_Band">
+            <Setter Property="Background" Value="{DynamicResource BgHover}" />
+        </Style>
+    </ControlTheme>
+
     <ControlTheme x:Key="{x:Type fc:Section}" TargetType="fc:Section">
         <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtle}" />
         <Setter Property="BorderThickness" Value="0,0,0,1" />
@@ -99,20 +134,56 @@
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}">
                     <Grid RowDefinitions="Auto,*">
-                        <fc:SectionHeader Grid.Row="0"
-                                          Title="{TemplateBinding Title}"
-                                          Action="{TemplateBinding Action}"
-                                          Background="{DynamicResource BgHeader}"
-                                          Foreground="{DynamicResource TextPrimary}"
-                                          FontWeight="Bold"
-                                          Padding="10,7,6,7" />
+
+                        <!-- The title is a ToggleButton bound straight to IsExpanded rather than a
+                             command the host has to supply. A section that ships with a chevron doing
+                             nothing is this repository's own recurring failure; there is nothing to
+                             forget to wire if the control folds itself. The Action slot stays OUTSIDE
+                             it - a "+" nested inside the toggle would collapse the section on its way
+                             to adding something. -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                            <ToggleButton Grid.Column="0"
+                                          Theme="{StaticResource SectionToggleTheme}"
+                                          IsHitTestVisible="{TemplateBinding IsCollapsible}"
+                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <PathIcon Data="{DynamicResource IconChevron}"
+                                              Width="10" Height="10"
+                                              Classes="section-chevron"
+                                              IsVisible="{TemplateBinding IsCollapsible}"
+                                              Foreground="{DynamicResource TextSecondary}"
+                                              VerticalAlignment="Center" />
+                                    <TextBlock Text="{TemplateBinding Title}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextSecondary}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </ToggleButton>
+
+                            <ContentPresenter Grid.Column="1"
+                                              Content="{TemplateBinding Action}"
+                                              Margin="0,0,6,0"
+                                              VerticalAlignment="Center" />
+                        </Grid>
+
                         <ContentPresenter Grid.Row="1"
                                           Content="{TemplateBinding Content}"
-                                          ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          IsVisible="{TemplateBinding IsExpanded}" />
                     </Grid>
                 </Border>
             </ControlTemplate>
         </Setter>
+
+        <!-- Rotated rather than swapped for a second geometry, so the two states cannot drift apart. -->
+        <Style Selector="^ /template/ PathIcon.section-chevron">
+            <Setter Property="RenderTransform" Value="rotate(0deg)" />
+        </Style>
+
+        <Style Selector="^[IsExpanded=True] /template/ PathIcon.section-chevron">
+            <Setter Property="RenderTransform" Value="rotate(90deg)" />
+        </Style>
     </ControlTheme>
 
     <!-- EmptyState: centered icon + title + description + optional action. -->

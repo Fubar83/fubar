@@ -24,6 +24,12 @@ public class Section : ContentControl
     public static readonly StyledProperty<object?> ActionProperty =
         AvaloniaProperty.Register<Section, object?>(nameof(Action));
 
+    public static readonly StyledProperty<bool> IsCollapsibleProperty =
+        AvaloniaProperty.Register<Section, bool>(nameof(IsCollapsible));
+
+    public static readonly StyledProperty<bool> IsExpandedProperty =
+        AvaloniaProperty.Register<Section, bool>(nameof(IsExpanded), defaultValue: true);
+
     /// <summary>The group heading, shown upper-cased in the banded header.</summary>
     public string? Title
     {
@@ -36,6 +42,27 @@ public class Section : ContentControl
     {
         get => GetValue(ActionProperty);
         set => SetValue(ActionProperty, value);
+    }
+
+    /// <summary>
+    /// Whether the header can be clicked to fold the body away.
+    ///
+    /// <para>Opt-in, not the default: a section that collapses is only worth the affordance when there
+    /// is something ELSE competing for the same space. In a stack of three, two folding away so the
+    /// third can fill the pane is the whole point; a lone section with a chevron that gains nothing is
+    /// just one more thing to click by accident.</para>
+    /// </summary>
+    public bool IsCollapsible
+    {
+        get => GetValue(IsCollapsibleProperty);
+        set => SetValue(IsCollapsibleProperty, value);
+    }
+
+    /// <summary>Whether the body is shown. Ignored unless <see cref="IsCollapsible"/>.</summary>
+    public bool IsExpanded
+    {
+        get => GetValue(IsExpandedProperty);
+        set => SetValue(IsExpandedProperty, value);
     }
 
     protected override Type StyleKeyOverride => typeof(Section);

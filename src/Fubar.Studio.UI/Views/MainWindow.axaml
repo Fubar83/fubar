@@ -151,10 +151,9 @@
                             Orientation="Horizontal"
                             Spacing="6"
                             IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
-                    <TextBlock Text="Env"
-                               VerticalAlignment="Center"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextSecondary}" />
+                    <!-- No "Env" label. A dropdown listing this workspace's environment names, with
+                         "No environment" as its placeholder and Active Environment as its tooltip,
+                         does not need a word beside it saying what it is. -->
                     <ComboBox MinWidth="180"
                               FontSize="12"
                               VerticalAlignment="Center"

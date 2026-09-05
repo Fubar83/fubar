@@ -69,6 +69,12 @@ public sealed class SessionState
 
     /// <summary>Which of <see cref="OpenWorkspacePaths"/> was the active tab.</summary>
     public string? ActiveWorkspacePath { get; set; }
+
+    /// <summary>Whether the sidebar's Environments group is unfolded. Folded on a first run.</summary>
+    public bool EnvironmentsExpanded { get; set; }
+
+    /// <summary>Whether the sidebar's Auth Profiles group is unfolded. Folded on a first run.</summary>
+    public bool AuthProfilesExpanded { get; set; }
 }
 
 /// <summary>

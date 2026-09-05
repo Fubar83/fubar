@@ -183,9 +183,23 @@ public partial class MainViewModel : ViewModelBase
     /// clipboard; the window itself only displays what it is given.</summary>
     public AboutViewModel CreateAbout() => new(_clipboard, _logSink, _policy, StatusLog);
 
-    /// <summary>The settings window's context. Built here for the same reason About's is: the shell owns
-    /// the services, and the window only displays what it is given.</summary>
-    public SettingsViewModel CreateSettings() => new(_appSettings!, _policy);
+    /// <summary>
+    /// The settings window's context. Built here for the same reason About's is: the shell owns the
+    /// services, and the window only displays what it is given.
+    ///
+    /// <para>Saving re-applies the theme. Settings is the only place it is chosen now - it used to be
+    /// a switcher pinned to the sidebar footer, which applied as it changed - so without this the
+    /// choice would be written to the file and not appear until the next launch, which reads as the
+    /// setting not working.</para>
+    /// </summary>
+    public SettingsViewModel CreateSettings()
+    {
+        var settings = new SettingsViewModel(_appSettings!, _policy);
+
+        settings.Saved += () => LeftPane.Theme.Initialize();
+
+        return settings;
+    }
 
     [RelayCommand]
     private void OpenPalette() => PaletteRequested?.Invoke(new CommandPaletteViewModel(PaletteEntries()));

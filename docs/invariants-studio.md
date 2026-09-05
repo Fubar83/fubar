@@ -190,3 +190,27 @@ class of reason `ReadRequestLineAsync` reads until the line ends rather than tak
 `ReadAsync` returned: a request line carrying a provider-sized code and state can span TCP segments,
 and a truncated one is rejected as a state mismatch - the error that means "somebody forged this".
 The read is bounded because this socket is reachable by anything on the machine.
+
+
+**A collapsible `fc:Section`'s header replaces Fluent's ToggleButton theme outright** (Controls). The
+header is a `ToggleButton` bound straight to `IsExpanded`, and an expanded section's toggle is
+therefore `:checked` - which Fluent paints in the system accent, so the one section open by default
+rendered as a solid blue bar across the sidebar. Overriding `Background` on the base style does not
+reach it, and neither does adding `:checked`, `:pressed` and `:checked:pointerover` styles nested in
+the Section's own ControlTheme: Fluent's ControlTheme wins. `SectionToggleTheme` supplies a Border and
+a ContentPresenter instead, the same reasoning as `SeamlessTab.axaml` replacing Fluent's TabItem
+template. If a header ever goes blue again, that is what regressed.
+
+**Environments and Auth Profiles are folded by default, and the fold is remembered** (Studio). They
+are set up once and then chosen from the toolbar; the request tree is what the pane is for, and those
+two groups were taking roughly two hundred pixels off it in every session - one of them spending a
+whole row on "No auth profiles yet." The state lives in `SessionState` (`EnvironmentsExpanded` /
+`AuthProfilesExpanded`) rather than being session-only, because a group that refolds itself every
+launch is more annoying than one that never folded, which would have made the change a net loss.
+
+**The theme switcher is in Settings only, so saving settings must RE-APPLY it** (Studio). It used to
+sit in a bordered strip pinned across the bottom of the sidebar, where changing it went through
+`ThemeManagerViewModel.CurrentTheme` and applied itself. Now `MainViewModel.CreateSettings` hooks the
+settings window's `Saved` event to `LeftPane.Theme.Initialize()`, which re-reads the file that was
+just written and applies without re-persisting. Drop that hook and the theme is saved correctly and
+does not appear until the next launch - which reads as the setting not working at all.

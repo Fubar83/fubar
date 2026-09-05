@@ -12,4 +12,8 @@
     <!-- Trash can / delete -->
     <StreamGeometry x:Key="IconDelete">M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z</StreamGeometry>
 
+    <!-- Chevron, pointing right. A collapsible Section rotates it 90 degrees when open rather than
+         swapping in a second geometry, so the two states cannot drift apart in size or weight. -->
+    <StreamGeometry x:Key="IconChevron">M9.29 6.71a.996.996 0 0 0 0 1.41L13.17 12l-3.88 3.88a.996.996 0 1 0 1.41 1.41l4.59-4.59a.996.996 0 0 0 0-1.41L10.7 6.7c-.38-.38-1.02-.38-1.41.01z</StreamGeometry>
+
 </ResourceDictionary>

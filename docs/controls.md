@@ -59,7 +59,7 @@ app is a matter of overriding these keys.
 | --- | --- |
 | `Themes/ButtonStyles.axaml` | `Button` classes: `.toolbar-btn`, `.primary-btn`, `.secondary-btn`, `.icon-btn`, `.icon-btn-danger`, `.TabPill`, and `ToggleButton.toolbar-btn` (the same box with a checked state). All of them share one `ControlHeight` (30) so a toolbar row has a single baseline — never set `Height` on one to make it match its neighbours. |
 | `Themes/WorkspaceTabStyles.axaml` | `Border.WorkspaceTab` (+ `.Active`) — Chrome-style title-bar tabs. |
-| `Themes/SeamlessTab.axaml` | Styling for the `SeamlessTabControl` boxed-tab look. |
+| `Themes/SeamlessTab.axaml` | Styling for the `SeamlessTabControl` underline-tab look. |
 
 (All three are pulled in automatically by `Fubar.Controls.axaml`.)
 
@@ -76,6 +76,7 @@ Primitives — small, single-purpose, coloured through their own `Background`/`F
 | `IconButton` | `Button` | Compact, borderless, glyph-only button. |
 | `PillToggle` | `ToggleButton` | Rounded toggle segment for view/filter switchers. |
 | `SectionHeader` | `TemplatedControl` | `Title` + right-aligned `Action` slot. |
+| `Section` | `ContentControl` | A titled group over any children: `Title`, an `Action` slot (usually a "+"), and the body. `IsCollapsible` makes the header fold the body away, with `IsExpanded` two-way bindable so a host can remember it; without it no chevron is drawn, rather than one that does nothing. |
 | `LabeledField` | `HeaderedContentControl` | Caption (`Header`) + field (`Content`); stacked or inline. |
 | `SettingRow` | `HeaderedContentControl` | A settings-page row: `Header` + plain-language `Description` on the left, the control (`Content` — a `ToggleSwitch`, combo, number box) on the right. Write the description; a settings page whose explanations all live in tooltips is a page of terse labels. |
 | `Toolbar` | `ItemsControl` | Horizontal items strip with consistent spacing. |
@@ -98,7 +99,7 @@ Data / larger reusable controls:
 | Control | Kind | Notes |
 | --- | --- | --- |
 | `KeyValueGrid` | `TemplatedControl` | Dumb editable key/value(/description) grid. Bind `ItemsSource` (rows exposing `Enabled`/`Key`/`Value`/`Description`); `AddCommand`/`RemoveCommand`; optional `KeyCellTemplate`/`ValueCellTemplate`/`DescriptionCellTemplate` for richer cells. |
-| `SeamlessTabControl` | `TabControl` | Boxed tabs whose selected tab merges into the content area. Host sets `Background` to the surface behind the tabs. |
+| `SeamlessTabControl` | `TabControl` | Underline tabs: labels with an accent bar under the selected one and one hairline under the strip. No box around any tab and none around the content. Host sets `Background` to the surface behind them. |
 | `JsonEditor` | `UserControl` | Pretty-printed JSON editor: line numbers, TextMate highlighting, brace folding, Ctrl+F. Bind `Text`; `IsReadOnly`. |
 | `FocusHelper` | attached behavior | `fc:FocusHelper.FocusOnTrue="{Binding IsEditing}"` — focuses (and selects) an element when the flag flips true. |
 

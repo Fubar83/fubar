@@ -15,7 +15,7 @@
                 <fc:SectionHeader Title="SECTION + TREE" />
             </fc:Card.Header>
             <StackPanel Spacing="10">
-                <TextBlock Text="fc:Section is one component for a banded group header (Title + an Action slot such as a &quot;+&quot;) over any children - here three sections in a sidebar, each with different content: two flat ListRow lists and, last, an fc:TreeView. Hover/select a row to see the shared explorer-tree row look; expand the folders via the chevrons."
+                <TextBlock Text="fc:Section is one component for a group header (Title + an Action slot such as a &quot;+&quot;) over any children - here three sections in a sidebar, each with different content: two flat ListRow lists and, last, an fc:TreeView. The first two set IsCollapsible, so their headers fold; the last does not, and shows no chevron rather than one that does nothing. Hover/select a row to see the shared explorer-tree row look; expand the folders via the chevrons."
                            TextWrapping="Wrap"
                            Foreground="{DynamicResource TextSecondary}"
                            FontSize="12" />
@@ -30,7 +30,7 @@
                         ClipToBounds="True">
                     <StackPanel>
 
-                        <fc:Section Title="ENVIRONMENTS">
+                        <fc:Section Title="ENVIRONMENTS" IsCollapsible="True">
                             <fc:Section.Action>
                                 <Button Classes="icon-btn" Content="+" FontSize="14" Padding="6,0" ToolTip.Tip="New Environment" />
                             </fc:Section.Action>
@@ -45,7 +45,7 @@
                             </ItemsControl>
                         </fc:Section>
 
-                        <fc:Section Title="AUTH PROFILES">
+                        <fc:Section Title="AUTH PROFILES" IsCollapsible="True" IsExpanded="False">
                             <fc:Section.Action>
                                 <Button Classes="icon-btn" Content="+" FontSize="14" Padding="6,0" ToolTip.Tip="New Auth Profile" />
                             </fc:Section.Action>
