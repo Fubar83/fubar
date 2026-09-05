@@ -31,7 +31,8 @@
         <fc:TreeView ItemsSource="{Binding ActiveRoot.Children}"
                   SelectedItem="{Binding SelectedNode}"
                   Background="Transparent"
-                  Tapped="TreeView_OnTapped">
+                  Tapped="TreeView_OnTapped"
+                  PointerPressed="TreeView_OnPointerPressed">
 
             <fc:TreeView.ContextFlyout>
                 <MenuFlyout>

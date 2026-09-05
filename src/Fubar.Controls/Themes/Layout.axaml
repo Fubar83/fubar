@@ -255,6 +255,10 @@
          The description is a real element rather than a tooltip, so a settings page can be read
          top-to-bottom without hovering anything. -->
     <ControlTheme x:Key="{x:Type fc:SettingRow}" TargetType="fc:SettingRow">
+        <!-- A row filters itself out when the settings search does not match it. Here rather than in
+             each host's markup: the search term is an inherited attached property, so a window sets it
+             once at the top and no row can be forgotten. -->
+        <Setter Property="IsVisible" Value="{Binding MatchesFilter, RelativeSource={RelativeSource Self}}" />
         <Setter Property="Template">
             <ControlTemplate>
                 <Grid ColumnDefinitions="*,Auto" Margin="0,7">

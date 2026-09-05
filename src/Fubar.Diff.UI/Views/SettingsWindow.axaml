@@ -6,8 +6,8 @@
         x:Class="Fubar.Diff.UI.Views.SettingsWindow"
         x:DataType="vm:ComparisonViewModel"
         Title="Settings"
-        Width="560" Height="700"
-        MinWidth="460" MinHeight="420"
+        Width="840" Height="700"
+        MinWidth="700" MinHeight="460"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BgEditorCanvas}">
 
@@ -20,12 +20,65 @@
          for a way of working, and having them open by default made a page of ordinary switches look
          like a configuration language. -->
 
-    <Grid RowDefinitions="*,Auto">
+    <!-- Search + a category list on the left, the settings on the right. The window was one long
+         scroll of six groups, which is fine to read once and hopeless to come back to: finding
+         "ignore blank lines" again meant scrolling past everything else reading headings. A category
+         list beside the content is what every settings window people already use looks like - VS Code,
+         Firefox, macOS System Settings, Windows Settings.
 
-        <ScrollViewer Grid.Row="0" Padding="20,16">
+         fc:SettingRow.Filter is set ONCE here and inherits, so every row below filters itself against
+         what is typed. The alternative - a binding on each of two dozen rows - works until somebody
+         adds the twenty-fifth and forgets, leaving one setting that can never be found by searching
+         for it. Searching shows matches from every category at once and the category list steps
+         aside, which is what a search is for. -->
+    <Grid RowDefinitions="*,Auto"
+          fc:SettingRow.Filter="{Binding #SettingsSearch.Text}">
+
+        <Grid Grid.Row="0" ColumnDefinitions="230,*">
+
+            <Border Grid.Column="0"
+                    Background="{DynamicResource BgSidebar}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <fc:SearchBox x:Name="SettingsSearch"
+                                  DockPanel.Dock="Top"
+                                  Margin="10,12,10,8"
+                                  Watermark="Search settings" />
+
+                    <ListBox x:Name="CategoryList"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Margin="6,0,6,10"
+                             SelectedIndex="0"
+                             SelectionChanged="Category_OnSelectionChanged">
+                        <ListBoxItem Content="General" />
+                        <!-- Terser than the section heading it selects: a nav label has to fit, and "WHAT COUNTS AS A
+                             DIFFERENCE" is prose that belongs over the rows rather than in a list. -->
+                        <ListBoxItem Content="Differences" />
+                        <ListBoxItem Content="JSON" />
+                        <ListBoxItem Content="Display" />
+                        <ListBoxItem Content="The Pretty button" />
+                        <ListBoxItem Content="Advanced" />
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- Shown only when a search finds nothing. An empty pane otherwise reads as a window that
+                 failed to load rather than as a search that matched nothing. -->
+            <TextBlock Grid.Column="1"
+                       x:Name="NoMatches"
+                       Text="No setting matches that."
+                       IsVisible="False"
+                       Margin="24,20"
+                       FontSize="12"
+                       VerticalAlignment="Top"
+                       Foreground="{DynamicResource TextSecondary}" />
+
+            <ScrollViewer Grid.Column="1" Padding="20,16">
             <StackPanel Spacing="18">
 
-                <StackPanel>
+                <StackPanel x:Name="SecGeneral">
                     <TextBlock Text="GENERAL" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
                                Foreground="{DynamicResource TextSecondary}" />
 
@@ -51,9 +104,8 @@
                     </fc:SettingRow>
                 </StackPanel>
 
-                <fc:Divider />
 
-                <StackPanel>
+                <StackPanel x:Name="SecDifference">
                     <TextBlock Text="WHAT COUNTS AS A DIFFERENCE" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
                                Foreground="{DynamicResource TextSecondary}" />
 
@@ -94,9 +146,8 @@
                                TextWrapping="Wrap" Margin="0,4,0,0" />
                 </StackPanel>
 
-                <fc:Divider />
 
-                <StackPanel>
+                <StackPanel x:Name="SecJson">
                     <TextBlock Text="JSON" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
                                Foreground="{DynamicResource TextSecondary}" />
                     <TextBlock Text="Applies whenever a comparison turns out to be JSON. Reordered keys and reformatting are never differences, whatever these say."
@@ -119,9 +170,8 @@
                     </fc:SettingRow>
                 </StackPanel>
 
-                <fc:Divider />
 
-                <StackPanel>
+                <StackPanel x:Name="SecDisplay">
                     <TextBlock Text="DISPLAY" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
                                Foreground="{DynamicResource TextSecondary}" />
 
@@ -136,9 +186,8 @@
                     </fc:SettingRow>
                 </StackPanel>
 
-                <fc:Divider />
 
-                <StackPanel>
+                <StackPanel x:Name="SecPretty">
                     <TextBlock Text="THE PRETTY BUTTON" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"
                                Foreground="{DynamicResource TextSecondary}" />
                     <TextBlock Text="How the Json view lays a document out when you press Pretty. Display only - it never changes what was found, and never touches the file."
@@ -167,12 +216,11 @@
                     </fc:SettingRow>
                 </StackPanel>
 
-                <fc:Divider />
 
                 <!-- Collapsed on purpose: these are rules for particular files, written in regular
                      expressions and JSON paths, and most sessions never need one. Open by default they
                      made a page of ordinary switches look like something you had to configure. -->
-                <Expander Header="Advanced">
+                <Expander x:Name="SecAdvanced" Header="Advanced" IsExpanded="True">
                     <StackPanel Spacing="18" Margin="0,8,0,0">
 
                         <StackPanel Spacing="6">
@@ -288,7 +336,8 @@
                     </StackPanel>
                 </Expander>
             </StackPanel>
-        </ScrollViewer>
+            </ScrollViewer>
+        </Grid>
 
         <!-- Nothing here is applied on Close - every switch takes effect as it is flipped, and is
              remembered - so this is a dismiss button, not an OK button. -->

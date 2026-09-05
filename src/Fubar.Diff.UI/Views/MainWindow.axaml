@@ -12,6 +12,7 @@
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="Fubar.Diff.UI.Views.MainWindow"
         x:DataType="vm:ShellViewModel"
+        Icon="/Assets/fubar.ico"
         Title=""
         Width="1200" Height="800"
         Background="{DynamicResource BgEditorCanvas}"

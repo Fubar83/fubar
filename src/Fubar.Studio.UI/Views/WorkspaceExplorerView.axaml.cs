@@ -55,4 +55,38 @@ public partial class WorkspaceExplorerView : UserControl
             vm.ActivateSelectionCommand.Execute(null);
         }
     }
+
+    /// <summary>
+    /// Right-clicking a row selects it first, so the menu acts on what is under the pointer.
+    ///
+    /// <para>Every command in the flyout reads <c>SelectedNode</c>, and the flyout is attached to the
+    /// TREE rather than to a row - so right-clicking one request and choosing Delete deleted a
+    /// different one: whichever happened to be selected. That is the worst possible version of this
+    /// bug, because the menu appears next to the row you aimed at.</para>
+    ///
+    /// <para>Selecting on right-click is what Explorer, Finder and VS Code all do, so the fix is also
+    /// the behaviour people already expect. Right-clicking empty space below the tree clears the
+    /// selection instead, which is the same convention - and it makes New Request there create at the
+    /// workspace root rather than inside whatever was last clicked.</para>
+    ///
+    /// <para>Tunnelling, because the flyout opens on the bubbling pass: selecting afterwards would be
+    /// selecting after the menu had already decided what it applied to.</para>
+    /// </summary>
+    private void TreeView_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is not WorkspaceExplorerViewModel vm
+            || !e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+        {
+            return;
+        }
+
+        // An in-progress rename owns the pointer; stealing the selection would commit it by side
+        // effect, from a gesture that was not asking to.
+        if (vm.SelectedNode is { IsEditing: true })
+        {
+            return;
+        }
+
+        vm.SelectedNode = (e.Source as Control)?.DataContext as WorkspaceNodeViewModel;
+    }
 }

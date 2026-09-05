@@ -332,14 +332,14 @@
                                Foreground="{DynamicResource TextSecondary}" />
                 </StackPanel>
 
-                <TextBlock Text="Click Capture to write a field into a session variable — the path comes from the response, so it cannot be a guess."
+                <TextBlock Text="Each row is a value the provider actually returned. Saving one into a session variable is what makes it usable — the variable in the Bearer line at the top of this screen is the one requests send."
                            FontSize="11" TextWrapping="Wrap"
                            IsVisible="{Binding HasResponseFields}"
                            Foreground="{DynamicResource TextSecondary}" />
 
-                <ItemsControl ItemsSource="{Binding ResponseFields}" IsVisible="{Binding HasResponseFields}">
+                <ItemsControl ItemsSource="{Binding CapturableFields}" IsVisible="{Binding HasResponseFields}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="auth:TokenResponseField">
+                        <DataTemplate x:DataType="vm:CapturableField">
                             <Grid ColumnDefinitions="2*,3*,Auto" Margin="0,2">
                                 <TextBlock Grid.Column="0" Text="{Binding Path}"
                                            FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
@@ -350,10 +350,24 @@
                                            FontSize="11" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource TextSecondary}" />
-                                <Button Grid.Column="2" Classes="secondary-btn" Content="Capture"
+
+                                <!-- The button names the variable the value lands in. It used to say
+                                     "Capture", which is this codebase's word rather than anyone
+                                     else's and says nothing about where the value goes. -->
+                                <Button Grid.Column="2" Classes="secondary-btn"
+                                        Content="{Binding ActionLabel}"
+                                        IsVisible="{Binding !IsCaptured}"
                                         Padding="8,2" FontSize="11" MinHeight="22"
+                                        ToolTip.Tip="Write this value into a session variable every time the token request succeeds"
                                         Command="{Binding $parent[UserControl].((vm:TokenRequestEditorViewModel)DataContext).CaptureFieldCommand}"
                                         CommandParameter="{Binding}" />
+
+                                <!-- Already saved: says so, rather than offering a button that
+                                     silently does nothing on the second click. -->
+                                <TextBlock Grid.Column="2" Text="{Binding CapturedLabel}"
+                                           IsVisible="{Binding IsCaptured}"
+                                           FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondary}" />
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

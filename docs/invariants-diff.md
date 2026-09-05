@@ -856,3 +856,20 @@ open, with nothing on screen tying that to the session that switched it on - one
 was permanent. `ComparisonViewModel.IsEditing` is per-session now; `editing` in an old settings file
 is read by nothing. Do not restore it to `CaptureOptions` "for consistency" with the other toggles:
 it is the one whose cost is somebody's source file rather than a preference.
+
+
+**The settings window is a category list plus a search, and rows filter THEMSELVES** (Diff). It was one
+long scroll of six groups, which is fine to read once and hopeless to come back to: finding "ignore
+blank lines" again meant scrolling past everything else reading headings. `SettingRow.Filter` is an
+inherited attached property set ONCE at the top of the window, so every row below matches itself
+against what is typed - against its Description as well as its Header, because nobody searches for
+"NormalizeUnicode", they search for "encoding" or "accented", which is what the sentence under the
+header says. A per-row binding would work until somebody adds the twenty-fifth row and forgets, leaving
+one setting that can never be found by searching for it.
+
+`SettingsWindow.axaml.cs` only decides which containers to show. Two traps it now guards: the XAML's
+`SelectedIndex="0"` raises SelectionChanged from INSIDE `InitializeComponent`, before the constructor
+has filled in the section array - which crashed the process on first open until `_sections` was made
+nullable and every use guarded. And a section counts as a search hit only when it still holds a visible
+`SettingRow`; counting any content would make a section whose rows all filtered out look like a match
+while containing nothing you can change.

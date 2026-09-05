@@ -320,8 +320,11 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
 
     partial void OnResponseStatusChanged(string value) => OnPropertyChanged(nameof(HasResponse));
 
-    partial void OnResponseFieldsChanged(IReadOnlyList<TokenResponseField> value) =>
+    partial void OnResponseFieldsChanged(IReadOnlyList<TokenResponseField> value)
+    {
         OnPropertyChanged(nameof(HasResponseFields));
+        RefreshCapturableFields();
+    }
 
     private void ShowResponse(TokenResponse? response)
     {
@@ -338,25 +341,17 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     /// alone rather than duplicated - clicking twice is something people do.
     /// </summary>
     [RelayCommand]
-    private void CaptureField(TokenResponseField? field)
+    private void CaptureField(CapturableField? field)
     {
         if (field is null || Captures.Any(c => string.Equals(c.Expression, field.Path, StringComparison.Ordinal)))
         {
             return;
         }
 
-        var leaf = field.Path[(field.Path.LastIndexOf('.') + 1)..];
-
-        // The access token gets the variable the Bearer header already reads, so the commonest case
-        // is wired up correctly by one click rather than by knowing that convention.
-        var variable = leaf is "access_token" or "id_token"
-            ? (string.IsNullOrWhiteSpace(AccessTokenVariable) ? AuthDefaults.AccessTokenVariable : AccessTokenVariable)
-            : leaf;
-
         var row = new CaptureRowViewModel(new CaptureRule
         {
             Enabled = true,
-            VariableName = variable,
+            VariableName = field.Variable,
             Source = ResponseField.JsonBody,
             Expression = field.Path,
             Scope = CaptureScope.Session,
@@ -364,8 +359,47 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
 
         row.PropertyChanged += (_, _) => RaiseChanged();
         Captures.Add(row);
+        RefreshCapturableFields();
         RaiseChanged();
     }
+
+    /// <summary>
+    /// The response's fields as the screen offers them: each with the variable it would be saved into
+    /// and whether that has already been done.
+    ///
+    /// <para>The button used to say "Capture", which is this codebase's word rather than anyone
+    /// else's - it does not say what happens, where the value goes, or what to do with it afterwards.
+    /// It says "Save as {{name}}" now, naming the exact variable, so the connection to the
+    /// <c>Authorization: Bearer {{…}}</c> line at the top of the screen is on the button itself. A
+    /// field already captured says so instead of offering a button that silently does nothing on the
+    /// second click.</para>
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<CapturableField> CapturableFields { get; private set; } = [];
+
+    private void RefreshCapturableFields() =>
+        CapturableFields =
+        [
+            .. ResponseFields.Select(field =>
+            {
+                var leaf = field.Path[(field.Path.LastIndexOf('.') + 1)..];
+
+                // The access token gets the variable the Bearer header already reads, so the commonest
+                // case is wired up correctly by one click rather than by knowing that convention.
+                var variable = leaf is "access_token" or "id_token"
+                    ? (string.IsNullOrWhiteSpace(AccessTokenVariable) ? AuthDefaults.AccessTokenVariable : AccessTokenVariable)
+                    : leaf;
+
+                var captured = Captures.FirstOrDefault(c =>
+                    string.Equals(c.Expression, field.Path, StringComparison.Ordinal));
+
+                return new CapturableField(
+                    field.Path,
+                    field.Preview,
+                    captured?.VariableName ?? variable,
+                    captured is not null);
+            }),
+        ];
 
     [RelayCommand]
     private void VerifyRequest() => RequestPreview = PreviewHandler?.Invoke(ToAuthConfig());

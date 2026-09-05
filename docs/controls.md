@@ -78,7 +78,7 @@ Primitives — small, single-purpose, coloured through their own `Background`/`F
 | `SectionHeader` | `TemplatedControl` | `Title` + right-aligned `Action` slot. |
 | `Section` | `ContentControl` | A titled group over any children: `Title`, an `Action` slot (usually a "+"), and the body. `IsCollapsible` makes the header fold the body away, with `IsExpanded` two-way bindable so a host can remember it; without it no chevron is drawn, rather than one that does nothing. |
 | `LabeledField` | `HeaderedContentControl` | Caption (`Header`) + field (`Content`); stacked or inline. |
-| `SettingRow` | `HeaderedContentControl` | A settings-page row: `Header` + plain-language `Description` on the left, the control (`Content` — a `ToggleSwitch`, combo, number box) on the right. Write the description; a settings page whose explanations all live in tooltips is a page of terse labels. |
+| `SettingRow` | `HeaderedContentControl` | A settings-page row: `Header` + plain-language `Description` on the left, the control (`Content` — a `ToggleSwitch`, combo, number box) on the right. Write the description; a settings page whose explanations all live in tooltips is a page of terse labels. `SettingRow.Filter` is an inherited attached property: set it once on a settings window and every row hides itself when it does not match, matching on Header AND Description. |
 | `Toolbar` | `ItemsControl` | Horizontal items strip with consistent spacing. |
 | `Spinner` | `TemplatedControl` | Indeterminate rotating-ring loader; `Diameter`, colour = `Foreground`. |
 | `MetricChip` | `TemplatedControl` | Icon + monospace value readout (latency/size/count); `Icon`, `Text`, threshold colour via `Foreground`. |

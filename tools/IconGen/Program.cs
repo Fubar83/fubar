@@ -1,23 +1,39 @@
 using System.Text;
 using SkiaSharp;
 
-// Generates the app icon (a bold red "F" on a rounded off-white tile) and writes .ico / .icns / .png
-// into src/Fubar.Studio.UI/Assets. Run: dotnet run --project tools/IconGen
+// Generates both apps' icons and writes .ico / .icns / .png into each app's Assets folder.
+// Run: dotnet run --project tools/IconGen
+//
+// One palette, two shapes. Both apps are obviously from the same family - the same off-white rounded
+// tile, the same red - and the shape says which one you are looking at and what it does, which is what
+// a launcher, a dock and a taskbar all need from an icon at 16 pixels.
+//
+// API Studio was a red letter "F". A letter names the product and says nothing about what it does, and
+// at 16px an F is an F is any application starting with F. Fubar Diff had no icon AT ALL - its publish
+// script has always copied src/Fubar.Diff.UI/Assets/fubar.icns, a path that did not exist, so every
+// macOS build shipped with the generic application icon.
 
 var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-var assets = Path.Combine(repoRoot, "src", "Fubar.Studio.UI", "Assets");
-Directory.CreateDirectory(assets);
 
-int[] sizes = { 16, 20, 24, 32, 40, 48, 64, 128, 256, 512, 1024 };
-var pngs = sizes.ToDictionary(s => s, RenderPng);
+Write("Fubar.Studio.UI", DrawApiStudio);
+Write("Fubar.Diff.UI", DrawDiff);
 
-File.WriteAllBytes(Path.Combine(assets, "fubar-256.png"), pngs[256]);
-File.WriteAllBytes(Path.Combine(assets, "fubar.ico"), BuildIco([16, 24, 32, 48, 64, 128, 256], pngs));
-File.WriteAllBytes(Path.Combine(assets, "fubar.icns"), BuildIcns(pngs));
+void Write(string project, Action<SKCanvas, float> draw)
+{
+    var assets = Path.Combine(repoRoot, "src", project, "Assets");
+    Directory.CreateDirectory(assets);
 
-Console.WriteLine($"Wrote fubar.ico, fubar.icns, fubar-256.png to {assets}");
+    int[] sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256, 512, 1024];
+    var pngs = sizes.ToDictionary(s => s, s => RenderPng(s, draw));
 
-static byte[] RenderPng(int size)
+    File.WriteAllBytes(Path.Combine(assets, "fubar-256.png"), pngs[256]);
+    File.WriteAllBytes(Path.Combine(assets, "fubar.ico"), BuildIco([16, 24, 32, 48, 64, 128, 256], pngs));
+    File.WriteAllBytes(Path.Combine(assets, "fubar.icns"), BuildIcns(pngs));
+
+    Console.WriteLine($"Wrote fubar.ico, fubar.icns, fubar-256.png to {assets}");
+}
+
+static byte[] RenderPng(int size, Action<SKCanvas, float> draw)
 {
     using var surface = SKSurface.Create(new SKImageInfo(size, size, SKColorType.Rgba8888, SKAlphaType.Premul));
     var canvas = surface.Canvas;
@@ -44,19 +60,83 @@ static byte[] RenderPng(int size)
         canvas.DrawRoundRect(tile, radius, radius, border);
     }
 
-    // The red "F": stem + top bar + middle bar, built from rounded rects (font-independent).
-    var red = new SKColor(0xE1, 0x1D, 0x2A);
-    using var pen = new SKPaint { IsAntialias = true, Color = red };
-    float rr = s * 0.02f;
-
-    SKRect N(float x0, float y0, float x1, float y1) => new(x0 * s, y0 * s, x1 * s, y1 * s);
-    canvas.DrawRoundRect(N(0.34f, 0.24f, 0.45f, 0.78f), rr, rr, pen); // stem
-    canvas.DrawRoundRect(N(0.34f, 0.24f, 0.66f, 0.35f), rr, rr, pen); // top bar
-    canvas.DrawRoundRect(N(0.34f, 0.45f, 0.60f, 0.545f), rr, rr, pen); // middle bar
+    draw(canvas, s);
 
     using var image = surface.Snapshot();
     using var data = image.Encode(SKEncodedImageFormat.Png, 100);
     return data.ToArray();
+}
+
+// API Studio: a request going out and a response coming back.
+//
+// The round trip IS the application - you send something and read what comes back - and two opposed
+// arrows are how every network tool has drawn that for thirty years. Solid polygons rather than a
+// stroked line with an arrowhead, because a thin stroke vanishes at 16px and an arrowhead becomes a
+// smudge; as one filled shape the shaft and head can never come apart.
+static void DrawApiStudio(SKCanvas canvas, float s)
+{
+    using var red = new SKPaint { IsAntialias = true, Color = new SKColor(0xE1, 0x1D, 0x2A) };
+
+    Arrow(canvas, red, s, y: 0.355f, pointingRight: true);
+    Arrow(canvas, red, s, y: 0.645f, pointingRight: false);
+}
+
+static void Arrow(SKCanvas canvas, SKPaint paint, float s, float y, bool pointingRight)
+{
+    const float X0 = 0.20f;
+    const float X1 = 0.80f;
+    const float Thickness = 0.085f; // the shaft
+    const float Head = 0.145f;      // how far the head reaches back along the shaft
+    const float Spread = 0.30f;     // how far the head spans, top to bottom
+
+    using var path = new SKPath();
+
+    var near = pointingRight ? X0 : X1;
+    var tip = pointingRight ? X1 : X0;
+    var shoulder = pointingRight ? X1 - Head : X0 + Head;
+
+    path.MoveTo(near * s, (y - Thickness / 2) * s);
+    path.LineTo(shoulder * s, (y - Thickness / 2) * s);
+    path.LineTo(shoulder * s, (y - Spread / 2) * s);
+    path.LineTo(tip * s, y * s);
+    path.LineTo(shoulder * s, (y + Spread / 2) * s);
+    path.LineTo(shoulder * s, (y + Thickness / 2) * s);
+    path.LineTo(near * s, (y + Thickness / 2) * s);
+    path.Close();
+
+    canvas.DrawPath(path, paint);
+}
+
+// Fubar Diff: two versions of the same thing side by side, with one line that differs.
+//
+// Two columns of bars is the silhouette of every side-by-side diff ever drawn, and it survives being
+// shrunk to 16px as two columns of dashes - which still reads as "a comparison" once the detail is
+// gone. The difference is carried by one bar being visibly SHORTER on the right, because a length is
+// still legible at 16px where a second colour is not.
+static void DrawDiff(SKCanvas canvas, float s)
+{
+    var crimson = new SKColor(0xE1, 0x1D, 0x2A);
+    using var red = new SKPaint { IsAntialias = true, Color = crimson };
+    using var ghost = new SKPaint { IsAntialias = true, Color = crimson.WithAlpha(0x4D) };
+
+    float rr = s * 0.025f;
+    SKRect N(float x0, float y0, float x1, float y1) => new(x0 * s, y0 * s, x1 * s, y1 * s);
+
+    float[] rows = [0.275f, 0.44f, 0.605f];
+    const float Height = 0.115f;
+
+    // Left column: three full-width bars - the original.
+    foreach (var y in rows)
+    {
+        canvas.DrawRoundRect(N(0.20f, y, 0.455f, y + Height), rr, rr, red);
+    }
+
+    // Right column: the same three, with the middle one short. One line changed, which is the whole
+    // idea; the ghosted remainder shows how far it used to reach.
+    canvas.DrawRoundRect(N(0.545f, rows[0], 0.80f, rows[0] + Height), rr, rr, red);
+    canvas.DrawRoundRect(N(0.545f, rows[1], 0.665f, rows[1] + Height), rr, rr, red);
+    canvas.DrawRoundRect(N(0.685f, rows[1], 0.80f, rows[1] + Height), rr, rr, ghost);
+    canvas.DrawRoundRect(N(0.545f, rows[2], 0.80f, rows[2] + Height), rr, rr, red);
 }
 
 // Windows .ico as a container of PNG frames (Vista+; Avalonia reads these fine).

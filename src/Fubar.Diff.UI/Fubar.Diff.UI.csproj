@@ -7,6 +7,10 @@
     <RootNamespace>Fubar.Diff.UI</RootNamespace>
     <Product>Fubar Diff</Product>
     <ApplicationTitle>Fubar Diff</ApplicationTitle>
+    <!-- Windows .exe icon. The window icon is set in MainWindow.axaml and the macOS .app icon is wired
+         by build/publish-diff.ps1 from Assets/fubar.icns - which that script has always copied and
+         which, until the icons were drawn, did not exist, so every macOS build shipped generic. -->
+    <ApplicationIcon>Assets/fubar.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

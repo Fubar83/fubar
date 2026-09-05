@@ -277,3 +277,28 @@ needs a real per-platform caption-button width, not that property.
 must go out unauthenticated rendered exactly like the ones carrying a token, in the same blue pill
 reading "Auth". `RequestSummary.SendsNoAuth` separates them, and `BadgeAuthNone` - a palette token that
 had been sitting there referenced by nothing - is what it is drawn in.
+
+
+**Right-clicking a tree row SELECTS it first** (Studio). Every command in the explorer's context
+flyout reads `SelectedNode`, and the flyout is attached to the TREE rather than to a row - so
+right-clicking one request and choosing Delete deleted whichever one happened to be selected. That is
+the worst version of this bug, because the menu appears next to the row you aimed at.
+`TreeView_OnPointerPressed` sets the selection on a right press, which is what Explorer, Finder and VS
+Code all do; right-clicking empty space clears it, so New Request there creates at the workspace root.
+The handler is TUNNELLING - the flyout opens on the bubbling pass, so selecting afterwards would be
+selecting after the menu had already decided what it applied to - and it declines to act while a rename
+is in progress, since stealing the selection would commit that rename by side effect.
+
+**A switched-off key/value row is FADED, not merely unticked** (Controls). The tick box was the only
+signal that a header or parameter was not being sent, and an empty box is not a signal - it is a
+control, and a reader scanning a list of headers has no reason to read it as state. The row's Grid
+takes its Opacity from `!Enabled`. Opacity and NOT `IsEnabled`: a switched-off row must still be
+editable, because fixing a value before turning it back on is the whole reason to switch one off.
+
+**The token-response button names the variable it writes** (Studio). It said "Capture", which is this
+codebase's word rather than anyone else's and says nothing about where the value goes. It says "Save as
+{{oauth2_access_token}}" now - the same variable the `Authorization: Bearer` line at the top of the
+screen shows, so the connection between the two is on the button rather than in a paragraph above it.
+A field already captured says so instead of offering a button that silently does nothing on the second
+click. `CapturableField` exists for this; `CaptureFromResponseTests` covers the wiring, which was the
+half that had no tests - `TokenResponseFields` (reading the payload) always did.
