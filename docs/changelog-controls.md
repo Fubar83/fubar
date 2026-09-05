@@ -10,13 +10,21 @@ tags by MinVer.
 
 ### Added
 
-- `TreeIndentGuides` — the vertical hairlines that make a tree read as a tree. It lives in the
-  `TreeViewItem` template bound to `Level`, reserving `Level × 14px` and drawing the rails through the
+- `TreeIndentGuides` — the connector rails that make a tree read as a tree, in the shape everyone
+  already knows: a tee (`├`) into every row, an elbow (`└`) into the last one, and an ancestor's rail
+  carried down past its descendants only while that ancestor still has siblings below it. It lives in
+  the `TreeViewItem` template bound to `Level`, reserving `(Level + 1) × 14px` and drawing inside the
   space it reserved, so **the indent and the guides are the same thing** and every tree in an app gets
-  them without the host binding anything. Rows have to touch for the per-row segments to join into a
-  continuous line, which is why the row theme moved its breathing room from vertical padding into
-  `MinHeight`. New `TreeGuide` palette token, a shade stronger than `BorderSubtle` so the rail survives
-  crossing a selected row.
+  them without the host binding anything.
+
+  "Last child" is a fact about a row's position among its siblings — and about every ancestor's position
+  among theirs — so it is read from the container tree at render time rather than bound. Each owning
+  `ItemsControl`'s `ItemCount` is watched: without that, deleting the last request in a folder would
+  leave the new last row still drawing a tee into nothing.
+
+  Rows have to touch for the per-row segments to join up, which is why the row theme moved its
+  breathing room from vertical padding into `MinHeight`. New `TreeGuide` palette token, a shade stronger
+  than `BorderSubtle` so the rail survives crossing a selected row.
 
 - `SettingRow` — one line of a settings page: a `Header`, a muted `Description` under it, and the
   control itself (`Content`) on the right. The description is a real element rather than a tooltip,
