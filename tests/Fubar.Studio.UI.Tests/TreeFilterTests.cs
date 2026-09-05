@@ -14,20 +14,20 @@ public class TreeFilterTests
     {
         var root = new WorkspaceNodeViewModel("root", "/w", isDirectory: true);
 
-        var orders = new WorkspaceNodeViewModel("Orders", "/w/Orders", isDirectory: true, depth: 1);
-        orders.Children.Add(new WorkspaceNodeViewModel("create.json", "/w/Orders/create.json", false, 2)
+        var orders = new WorkspaceNodeViewModel("Orders", "/w/Orders", isDirectory: true);
+        orders.Children.Add(new WorkspaceNodeViewModel("create.json", "/w/Orders/create.json", false)
         {
             Method = "POST",
             Url = "https://api.example.com/v1/orders",
         });
-        orders.Children.Add(new WorkspaceNodeViewModel("list.json", "/w/Orders/list.json", false, 2)
+        orders.Children.Add(new WorkspaceNodeViewModel("list.json", "/w/Orders/list.json", false)
         {
             Method = "GET",
             Url = "https://api.example.com/v1/orders",
         });
 
-        var users = new WorkspaceNodeViewModel("Users", "/w/Users", isDirectory: true, depth: 1);
-        users.Children.Add(new WorkspaceNodeViewModel("get.json", "/w/Users/get.json", false, 2)
+        var users = new WorkspaceNodeViewModel("Users", "/w/Users", isDirectory: true);
+        users.Children.Add(new WorkspaceNodeViewModel("get.json", "/w/Users/get.json", false)
         {
             Method = "GET",
             Url = "https://api.example.com/v1/users/{id}",

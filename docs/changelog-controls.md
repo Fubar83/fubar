@@ -10,12 +10,13 @@ tags by MinVer.
 
 ### Added
 
-- `TreeIndentGuides` — the vertical hairlines that make a tree read as a tree. Bound to a node's depth
-  in the row's `DataTemplate`, it reserves the level indent *and* draws a rail through it, so nesting is
-  expressed once rather than by a margin that says nothing about structure. Rows have to touch for the
-  per-row segments to join into a continuous line, which is why the row theme moved its breathing room
-  from vertical padding into `MinHeight`. New `TreeGuide` palette token, a shade stronger than
-  `BorderSubtle` so the rail survives crossing a selected row.
+- `TreeIndentGuides` — the vertical hairlines that make a tree read as a tree. It lives in the
+  `TreeViewItem` template bound to `Level`, reserving `Level × 14px` and drawing the rails through the
+  space it reserved, so **the indent and the guides are the same thing** and every tree in an app gets
+  them without the host binding anything. Rows have to touch for the per-row segments to join into a
+  continuous line, which is why the row theme moved its breathing room from vertical padding into
+  `MinHeight`. New `TreeGuide` palette token, a shade stronger than `BorderSubtle` so the rail survives
+  crossing a selected row.
 
 - `SettingRow` — one line of a settings page: a `Header`, a muted `Description` under it, and the
   control itself (`Content`) on the right. The description is a real element rather than a tooltip,
@@ -30,7 +31,22 @@ tags by MinVer.
   of flat ones. Checked state is a tinted fill with a blue border, and it wins over hover so an active
   toggle does not read as off while the pointer rests on it.
 
+### Removed
+
+- **`TreeLevelIndentConverter`.** It indented a row by putting a level-sized margin on the row's
+  content, which is a second thing claiming to own the indent — and it was stacking with the one Fluent's
+  row template already applied, so a nested row sat ~30px in from its siblings on a 14px step. Indent is
+  `TreeIndentGuides` in the row template now, and nothing else. Hosts drop the `Margin` binding; there is
+  nothing to replace it with.
+
 ### Fixed
+
+- **Row indentation came from two places at once.** Fluent writes its level indent as an attribute
+  *inside* its own template, which makes it a local value — and a local value beats every style, so it
+  could not be turned off from outside. `TreeViewItem` now gets its own template (part names kept:
+  `PART_LayoutRoot`, `PART_HeaderPresenter`, `PART_ExpandCollapseChevron`, `PART_ItemsPresenter`), with
+  a bare rotating chevron in place of Fluent's bordered `ToggleButton` box, and one indent that the
+  guides both reserve and draw.
 
 - **The explorer-tree row theme had never applied.** Its styles were selected as
   `fc|TreeView TreeViewItem`, and Avalonia matches a type selector against a control's *style key* —

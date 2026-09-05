@@ -24,6 +24,38 @@
 
     <Styles.Resources>
 
+        <!-- The expander. A bare rotating chevron: Fluent's stock ToggleButton would put a filled,
+             bordered box in the middle of every folder row. -->
+        <ControlTheme x:Key="TreeChevronToggleTheme" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="16" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}">
+                        <PathIcon Data="{DynamicResource IconChevron}"
+                                  Width="8"
+                                  Height="8"
+                                  Classes="tree-chevron"
+                                  Foreground="{DynamicResource TextSecondary}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+
+            <!-- Rotated rather than swapped for a second geometry, so the two states cannot drift
+                 apart - the same trick fc:Section uses. -->
+            <Style Selector="^ /template/ PathIcon.tree-chevron">
+                <Setter Property="RenderTransform" Value="rotate(0deg)" />
+            </Style>
+
+            <Style Selector="^:checked /template/ PathIcon.tree-chevron">
+                <Setter Property="RenderTransform" Value="rotate(90deg)" />
+            </Style>
+        </ControlTheme>
+
         <!-- The row look is a keyed ControlTheme handed to the tree as its ItemContainerTheme rather
              than a "TreeView TreeViewItem ..." descendant style, for a second reason worth writing down:
              a descendant combinator ALSO stops matching once a selector reaches into a template, so
@@ -51,6 +83,57 @@
                  theme has to hand itself down or it would only ever style the top level. -->
             <Setter Property="ItemContainerTheme" Value="{DynamicResource FubarTreeViewItemTheme}" />
 
+            <!-- Our own row template, replacing Fluent's, for ONE reason: the indent.
+
+                 Fluent indents a row with a Level-sized margin written as an attribute inside its own
+                 template, which makes it a local value - and a local value beats every style, so there
+                 is no styling one's way out of it. A row therefore ended up indented twice, once by
+                 Fluent and once by whatever the app did to draw its own structure, and a nested request
+                 sat ~30px in from its siblings for no reason anyone could point at.
+
+                 So the indent is the rail and the rail is the indent: fc:TreeIndentGuides reserves
+                 Level * Step and draws the hairlines through the space it reserved. One number, one
+                 place, and the lines land exactly on the levels rather than near them.
+
+                 Part NAMES are kept (PART_LayoutRoot, PART_HeaderPresenter, PART_ExpandCollapseChevron,
+                 PART_ItemsPresenter) so the state styles above, and any host style reaching for the
+                 chevron, keep working against Fluent's vocabulary. -->
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <StackPanel>
+                        <Border x:Name="PART_LayoutRoot"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                MinHeight="{TemplateBinding MinHeight}"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid ColumnDefinitions="Auto,Auto,*">
+                                <fc:TreeIndentGuides Grid.Column="0"
+                                                     Depth="{TemplateBinding Level}"
+                                                     VerticalAlignment="Stretch" />
+
+                                <!-- Hidden rather than absent on a leaf, so a file's label still lines
+                                     up with the folder labels around it. -->
+                                <ToggleButton Grid.Column="1"
+                                              x:Name="PART_ExpandCollapseChevron"
+                                              Theme="{StaticResource TreeChevronToggleTheme}"
+                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                              IsVisible="{Binding ItemCount, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static fc:CountToBoolConverter.Instance}}" />
+
+                                <ContentPresenter Grid.Column="2"
+                                                  x:Name="PART_HeaderPresenter"
+                                                  Content="{TemplateBinding Header}"
+                                                  ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                                  VerticalAlignment="Stretch"
+                                                  HorizontalAlignment="Stretch" />
+                            </Grid>
+                        </Border>
+
+                        <ItemsPresenter x:Name="PART_ItemsPresenter"
+                                        IsVisible="{TemplateBinding IsExpanded}" />
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter>
+
             <Style Selector="^:pointerover /template/ Border#PART_LayoutRoot">
                 <Setter Property="Background" Value="{DynamicResource BgHover}" />
             </Style>
@@ -65,26 +148,6 @@
                 <Setter Property="Background" Value="{DynamicResource BgSelected}" />
             </Style>
 
-            <!-- The row content fills the row rather than sitting centred in it, so the rail a row
-                 draws reaches the row's own top and bottom edges and meets its neighbours. (TreeViewItem
-                 has no VerticalContentAlignment of its own - this is the presenter it would drive.) -->
-            <Style Selector="^ /template/ ContentPresenter#PART_HeaderPresenter">
-                <Setter Property="VerticalAlignment" Value="Stretch" />
-                <Setter Property="HorizontalAlignment" Value="Stretch" />
-            </Style>
-
-            <Style Selector="^ /template/ ToggleButton#PART_ExpandCollapseChevron">
-                <Setter Property="Padding" Value="8" />
-            </Style>
-
-            <!-- Fluent indents a row by putting a Level-sized margin on the chevron's container. Zeroed
-                 here so nesting is expressed in exactly ONE place - the row's own fc:TreeIndentGuides,
-                 which both reserves the indent and draws the rail through it. Left in, the two stacked
-                 up and a nested row sat ~24px in while its parent's siblings sat at 0, which is the
-                 uneven left edge the tree had before. -->
-            <Style Selector="^ /template/ Panel#PART_ExpandCollapseChevronContainer">
-                <Setter Property="Margin" Value="0" />
-            </Style>
         </ControlTheme>
 
     </Styles.Resources>

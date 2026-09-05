@@ -6,14 +6,16 @@ namespace Fubar.Controls;
 
 /// <summary>
 /// The vertical hairlines that make a tree read as a tree: one line per ancestor level, drawn down the
-/// left of a row at the same <see cref="TreeLevelIndentConverter.StepPixels"/> rhythm the rows are
-/// indented by.
+/// left of a row.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Put it in the row's DataTemplate as the first column, bound to the node's depth, INSTEAD of applying
-/// <see cref="TreeLevelIndentConverter"/> to the row's Margin - it reserves exactly the same width, so
-/// it indents the row as well as decorating it, and the two must not both be applied.
+/// It IS the indent, not a decoration laid over one: it reserves <see cref="Depth"/> x
+/// <see cref="Step"/> of width and draws the rails through the space it reserved. Nothing else may
+/// indent the row as well, or the two stack up - which is exactly what went wrong when this sat in a
+/// row's DataTemplate while the Fluent row template was still applying its own Level-sized margin.
+/// <c>Themes/TreeView.axaml</c> now places it inside the TreeViewItem template, bound to
+/// <c>Level</c>, so every tree gets it and no host has to remember.
 /// </para>
 /// <para>
 /// The lines are drawn per row and rely on rows being contiguous to join up into a continuous rail, so
@@ -28,11 +30,12 @@ public sealed class TreeIndentGuides : Control
     public static readonly StyledProperty<int> DepthProperty =
         AvaloniaProperty.Register<TreeIndentGuides, int>(nameof(Depth));
 
-    /// <summary>Pixels per level. Defaults to the same step the rows are indented by.</summary>
+    /// <summary>Pixels of indent per nesting level.</summary>
+    public const double DefaultStep = 14;
+
+    /// <summary>Pixels per level, and so the tree's indent step.</summary>
     public static readonly StyledProperty<double> StepProperty =
-        AvaloniaProperty.Register<TreeIndentGuides, double>(
-            nameof(Step),
-            defaultValue: TreeLevelIndentConverter.StepPixels);
+        AvaloniaProperty.Register<TreeIndentGuides, double>(nameof(Step), defaultValue: DefaultStep);
 
     public static readonly StyledProperty<IBrush?> LineBrushProperty =
         AvaloniaProperty.Register<TreeIndentGuides, IBrush?>(nameof(LineBrush));

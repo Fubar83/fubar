@@ -111,7 +111,7 @@ Smart (interactive) controls — own their gestures/state but stay app-agnostic 
 | `ITabDragHost` | interface | The app implements this (over its window manager) so `TabStrip` can move a tab's data between collections, tear off into a new window, and enumerate peer strips — the only app-specific seam the strip needs. |
 
 Also included: generic value converters — `EqualityConverter`, `InheritedOpacityConverter`,
-`TreeLevelIndentConverter` (reference via `{x:Static fc:<Name>.Instance}`).
+`CountToBoolConverter` (reference via `{x:Static fc:<Name>.Instance}`).
 
 ## Dumb vs smart (the design rule)
 

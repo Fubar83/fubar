@@ -552,7 +552,10 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        node.EditName = node.Name;
+        // Seeded with what the row SHOWS, not the file name. Renaming should start from the text you
+        // were looking at; WorkspaceService.RenamePath puts the original extension back when the new
+        // name has none, so typing "Login" over "Login" still lands on Login.json.
+        node.EditName = node.DisplayName;
         node.IsEditing = true;
     }
 
@@ -567,7 +570,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
         node.IsEditing = false;
         var newName = node.EditName.Trim();
-        if (string.IsNullOrEmpty(newName) || newName == node.Name)
+        if (string.IsNullOrEmpty(newName) || newName == node.DisplayName)
         {
             return;
         }

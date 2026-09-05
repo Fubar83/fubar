@@ -190,6 +190,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The request tree shows names, not file names.** `Create order.json` is now `Create order`. Every
+  request in a workspace is a `.json`, so the extension distinguished nothing while eating the width the
+  names need; folders, and any other file, keep theirs. Renaming starts from the name you were looking
+  at and `WorkspaceService.RenamePath` puts the extension back, so typing `Login` still lands on
+  `Login.json`.
+
+- **The tree has indent rails, and one indent step.** Nesting was carried by a left margin alone, which
+  says nothing about which folder a request belongs to; a hairline now runs down each level.
+  `WorkspaceNodeViewModel.Depth` is gone with the margin it fed — the row's own `TreeViewItem.Level` is
+  the only nesting number left, rather than two that could disagree.
+
 - **One OAuth engine instead of two behind an invisible switch.** `AuthConfig` carried both a
   fixed-form shape and a token-request shape, and `TokenRequest == null` silently chose which
   implementation ran — which is how a guard ended up on the branch nobody was on. Legacy configs are

@@ -16,8 +16,8 @@ namespace Fubar.Controls;
 /// against the style key too, so <c>fc|TreeView</c> matches no instance of this class. The theme selects
 /// on the base <c>TreeView</c> type instead, which means it dresses every TreeView in the app.</para>
 ///
-/// For per-row level indent that doesn't depend on the template, apply
-/// <see cref="TreeLevelIndentConverter"/> to the DataTemplate root's Margin.
+/// <para>Row indentation and its guide rails come from <see cref="TreeIndentGuides"/> inside the row
+/// template, so a host supplies only the row's content - never a level-based margin of its own.</para>
 /// </summary>
 public class TreeView : Avalonia.Controls.TreeView
 {

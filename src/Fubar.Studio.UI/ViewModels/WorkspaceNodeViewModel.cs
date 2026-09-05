@@ -16,27 +16,37 @@ namespace Fubar.Studio.UI.ViewModels;
 /// </summary>
 public partial class WorkspaceNodeViewModel : ViewModelBase
 {
-    public WorkspaceNodeViewModel(string name, string fullPath, bool isDirectory, int depth = 0)
+    private const string RequestExtension = ".json";
+
+    public WorkspaceNodeViewModel(string name, string fullPath, bool isDirectory)
     {
         Name = name;
         FullPath = fullPath;
         IsDirectory = isDirectory;
-        Depth = depth;
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayName))]
     public partial string Name { get; set; }
+
+    /// <summary>
+    /// What the tree shows: <see cref="Name"/> without the <c>.json</c> a request file is stored as.
+    /// How a workspace persists a request is not something the person reading the list has to carry,
+    /// and the extension is the same six characters on every row - it distinguishes nothing while
+    /// eating the width that the actual names need.
+    ///
+    /// <para>Only <c>.json</c>, and only on files: anything else on disk keeps its full name, because
+    /// then the extension is telling you something.</para>
+    /// </summary>
+    public string DisplayName =>
+        !IsDirectory && Name.EndsWith(RequestExtension, StringComparison.OrdinalIgnoreCase)
+            ? Name[..^RequestExtension.Length]
+            : Name;
 
     [ObservableProperty]
     public partial string FullPath { get; set; }
 
     public bool IsDirectory { get; }
-
-    /// <summary>Nesting depth within the visible tree - 0 for a workspace's top-level
-    /// collections/ entries, incrementing per folder level. Drives the Left Pane's own indent step
-    /// (see <c>TreeLevelIndentConverter</c>) rather than relying on FluentTheme's built-in
-    /// TreeViewItem indentation, which an app-level resource override couldn't reach.</summary>
-    public int Depth { get; }
 
     public ObservableCollection<WorkspaceNodeViewModel> Children { get; } = [];
 
@@ -159,7 +169,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
             if (existing is null)
             {
-                var child = new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory, Depth + 1)
+                var child = new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory)
                 {
                     Method = node.RequestSummary?.Method,
                     HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false,

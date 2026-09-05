@@ -23,7 +23,7 @@ public sealed partial class WorkspaceRootViewModel : WorkspaceNodeViewModel, IDi
     private readonly DispatcherTimer _debounceTimer;
 
     public WorkspaceRootViewModel(Workspace workspace, IRequestStore workspaceService)
-        : base(workspace.Manifest.Name, workspace.RootPath, isDirectory: true, depth: -1)
+        : base(workspace.Manifest.Name, workspace.RootPath, isDirectory: true)
     {
         Workspace = workspace;
         _workspaceService = workspaceService;
