@@ -6,7 +6,8 @@ using Fubar.Studio.Core.Settings;
 
 namespace Fubar.Studio.UI.ViewModels;
 
-/// <summary>Theme choice exposed by the Left Pane header's theme switcher (LeftPane.md §4.1).</summary>
+/// <summary>Theme choice, offered by the settings window (Ctrl+,). It was a switcher pinned to the
+/// Left Pane footer (LeftPane.md §4.1) until Settings existed to hold it.</summary>
 public enum AppTheme
 {
     System,
@@ -15,7 +16,7 @@ public enum AppTheme
 }
 
 /// <summary>
-/// Drives the Left Pane header's theme switcher: Dark / Light / System Default. Bind
+/// Drives the settings window’s theme row: Dark / Light / System Default. Bind
 /// <see cref="CurrentTheme"/> two-way (e.g. a ComboBox's <c>SelectedItem</c>) - every change applies
 /// instantly via <c>Avalonia.Application.Current.RequestedThemeVariant</c> (no restart - every view binds
 /// <c>DynamicResource</c> tokens from Fubar.Controls' <c>Palette.axaml</c> <c>ThemeDictionaries</c>) and
@@ -46,7 +47,7 @@ public partial class ThemeManagerViewModel : ViewModelBase
             // would silently wipe out OpenWorkspacePaths/ActiveWorkspacePath (WorkspaceExplorerViewModel
             // persists those to this same file).
             var settings = _settingsService.Load();
-            settings.Theme = value.ToString();
+            settings.Appearance.Theme = value.ToString();
             _ = _settingsService.SaveAsync(settings);
         }
     }
@@ -58,11 +59,17 @@ public partial class ThemeManagerViewModel : ViewModelBase
     /// this runs on the UI thread before Avalonia's dispatcher loop is pumping, so blocking on the
     /// async path here would deadlock (the awaited continuation can never resume on the very thread
     /// that's blocked waiting for it).
+    ///
+    /// <para>Also called after the settings window saves. The theme switcher used to live in the
+    /// sidebar footer, where changing it went through <see cref="CurrentTheme"/> and applied itself;
+    /// now that Settings is the only place it is chosen, something has to re-read the file the
+    /// settings window just wrote - otherwise the choice persists and does not appear until the next
+    /// launch. Re-reading rather than being told the value keeps one source of truth.</para>
     /// </summary>
     public void Initialize()
     {
         var settings = _settingsService.Load();
-        var theme = Enum.TryParse<AppTheme>(settings.Theme, ignoreCase: true, out var parsed) ? parsed : AppTheme.System;
+        var theme = Enum.TryParse<AppTheme>(settings.Appearance.Theme, ignoreCase: true, out var parsed) ? parsed : AppTheme.System;
 
         // A restore, not a user choice - applying it is correct, re-persisting it back is not.
         // Apply() is called unconditionally (not just from the OnCurrentThemeChanged hook) because

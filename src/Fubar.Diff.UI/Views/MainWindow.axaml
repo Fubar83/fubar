@@ -12,6 +12,7 @@
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="Fubar.Diff.UI.Views.MainWindow"
         x:DataType="vm:ShellViewModel"
+        Icon="/Assets/fubar.ico"
         Title=""
         Width="1200" Height="800"
         Background="{DynamicResource BgEditorCanvas}"
@@ -62,15 +63,22 @@
              collapsed file-picker summary the toolbar used to carry. -->
         <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*" Background="{DynamicResource BgHeader}">
 
-            <TextBlock Grid.Column="0"
-                       Text="Fubar Diff"
-                       FontWeight="Bold"
-                       FontSize="13"
-                       VerticalAlignment="Center"
-                       Margin="12,0,10,0"
-                       Foreground="{DynamicResource TextPrimary}" />
+            <!-- The app icon, where the OS would have drawn one. ExtendClientAreaToDecorationsHint
+                 means the system paints no icon in this row, so without this the window carried no mark
+                 of its own at all. The PNG rather than the .ico: an Image renders one frame of an .ico
+                 unpredictably, while the 256px PNG scales down cleanly.
 
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom">
+                 It replaces the "Fubar Diff" text, which named the application you are already inside -
+                 something the window, the taskbar and now the icon all say - while pushing the
+                 comparison tabs off the left edge. -->
+            <Border Grid.Column="0"
+                    Width="17" Height="17"
+                    Margin="11,0,3,0"
+                    VerticalAlignment="Center"
+                    IsHitTestVisible="False"
+                    Background="{DynamicResource AppMark}" />
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom" Margin="4,0,0,0">
                 <fc:TabStrip x:Name="Tabs"
                              VerticalAlignment="Bottom"
                              Background="Transparent"

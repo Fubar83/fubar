@@ -13,7 +13,27 @@
              Background="{DynamicResource BgSidebar}">
 
     <!-- All tree-row styling comes from Fubar.Controls (AppStyles.axaml) now - this view declares
-         none of its own. -->
+         none of its own, except the one below, which is behaviour rather than styling. -->
+    <UserControl.Styles>
+        <!-- The filter hides CONTAINERS rather than removing items from the bound collection. Removing
+             them would mean maintaining a second, filtered tree alongside the real one - and the real
+             one is what a run walks (see WorkspaceNodeViewModel.ToTreeNode), so the two drifting apart
+             would silently change what a Run sends. Hiding keeps one tree with one meaning. -->
+        <Style Selector="TreeViewItem" x:DataType="vm:WorkspaceNodeViewModel">
+            <Setter Property="IsVisible" Value="{Binding IsVisible}" />
+
+            <!-- Folding lives on the NODE, not on the container. Containers are rebuilt whenever
+                 SyncChildren reconciles against a file-system change, and a fold remembered by the
+                 container would spring open every time someone saved a request. Two-way, so the +/-
+                 box writes back to the node it came from. Open to begin with (see IsExpanded).
+
+                 Through fc:TreeItemState rather than straight onto TreeViewItem.IsExpanded: the
+                 expander writes a fold as a LOCAL value, which outranks a style setter permanently, so
+                 binding IsExpanded here would work until the first fold by hand and be ignored after
+                 that - filter matches included. -->
+            <Setter Property="fc:TreeItemState.ExpandedPath" Value="IsExpanded" />
+        </Style>
+    </UserControl.Styles>
 
     <Grid>
 
@@ -22,7 +42,8 @@
         <fc:TreeView ItemsSource="{Binding ActiveRoot.Children}"
                   SelectedItem="{Binding SelectedNode}"
                   Background="Transparent"
-                  Tapped="TreeView_OnTapped">
+                  Tapped="TreeView_OnTapped"
+                  PointerPressed="TreeView_OnPointerPressed">
 
             <fc:TreeView.ContextFlyout>
                 <MenuFlyout>
@@ -45,8 +66,7 @@
                      WorkspaceNodeViewModel.Method/HasAuthOverride/IsDirty are only ever populated
                      for request files. -->
                 <TreeDataTemplate DataType="vm:WorkspaceNodeViewModel" ItemsSource="{Binding Children}">
-                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" HorizontalAlignment="Stretch" Margin="{Binding Depth, Converter={x:Static fc:TreeLevelIndentConverter.Instance}}" MinHeight="20">
-
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MinHeight="20">
                         <!-- Method Badge (fc:Badge - the reusable pill) -->
                         <fc:Badge Grid.Column="0"
                                   Width="38"
@@ -63,7 +83,7 @@
 
                         <!-- Name / inline rename -->
                         <Panel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Name}"
+                            <TextBlock Text="{Binding DisplayName}"
                                        IsVisible="{Binding !IsEditing}"
                                        TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextPrimary}" />
@@ -74,7 +94,14 @@
                                      LostFocus="EditNameTextBox_OnLostFocus" />
                         </Panel>
 
-                        <!-- Auth Override Badge (fc:Badge) -->
+                        <!-- Auth Override Badge (fc:Badge).
+
+                             Two of them, because "this request states its own auth" and "this request
+                             deliberately sends none" are opposite facts that both used to render as
+                             one blue pill reading "Auth" - so the single request in a collection that
+                             must go out unauthenticated looked exactly like the ones carrying a
+                             token. BadgeAuthNone had been in the palette for this the whole time and
+                             was referenced by nothing. -->
                         <fc:Badge Grid.Column="2"
                                   Content="Auth"
                                   FontSize="9"
@@ -84,7 +111,28 @@
                                   CornerRadius="3"
                                   Padding="4,1"
                                   Margin="4,0"
-                                  IsVisible="{Binding HasAuthOverride}"
+                                  ToolTip.Tip="This request sets its own auth instead of inheriting"
+                                  IsVisible="{Binding !SendsNoAuth}"
+                                  VerticalAlignment="Center">
+                            <fc:Badge.IsVisible>
+                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                    <Binding Path="HasAuthOverride" />
+                                    <Binding Path="!SendsNoAuth" />
+                                </MultiBinding>
+                            </fc:Badge.IsVisible>
+                        </fc:Badge>
+
+                        <fc:Badge Grid.Column="2"
+                                  Content="No auth"
+                                  FontSize="9"
+                                  FontWeight="Normal"
+                                  Foreground="White"
+                                  Background="{DynamicResource BadgeAuthNone}"
+                                  CornerRadius="3"
+                                  Padding="4,1"
+                                  Margin="4,0"
+                                  ToolTip.Tip="This request deliberately sends no auth, overriding what it would inherit"
+                                  IsVisible="{Binding SendsNoAuth}"
                                   VerticalAlignment="Center" />
 
                         <!-- Dirty Indicator Dot (fc:StatusDot) -->

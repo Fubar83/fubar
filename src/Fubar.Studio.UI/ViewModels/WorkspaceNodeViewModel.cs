@@ -8,7 +8,7 @@ namespace Fubar.Studio.UI.ViewModels;
 /// One folder or request file node in the Workspace Explorer TreeView. Wraps the immutable
 /// <see cref="WorkspaceTreeNode"/> snapshot from <c>IWorkspaceService.BuildCollectionsTree</c> in
 /// a mutable, bindable form that <see cref="SyncChildren"/> reconciles in place on every refresh -
-/// preserving node identity (and so <see cref="IsExpanded"/>/selection state) for anything that
+/// preserving node identity (and so selection state) for anything that
 /// didn't actually change on disk, rather than rebuilding the whole subtree. For request file
 /// nodes, <see cref="Method"/>/<see cref="HasAuthOverride"/> back the Left Pane's method/auth
 /// badges (LeftPane.md §5) and <see cref="IsDirty"/> its unsaved-changes dot, kept live by
@@ -16,27 +16,37 @@ namespace Fubar.Studio.UI.ViewModels;
 /// </summary>
 public partial class WorkspaceNodeViewModel : ViewModelBase
 {
-    public WorkspaceNodeViewModel(string name, string fullPath, bool isDirectory, int depth = 0)
+    private const string RequestExtension = ".json";
+
+    public WorkspaceNodeViewModel(string name, string fullPath, bool isDirectory)
     {
         Name = name;
         FullPath = fullPath;
         IsDirectory = isDirectory;
-        Depth = depth;
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayName))]
     public partial string Name { get; set; }
+
+    /// <summary>
+    /// What the tree shows: <see cref="Name"/> without the <c>.json</c> a request file is stored as.
+    /// How a workspace persists a request is not something the person reading the list has to carry,
+    /// and the extension is the same six characters on every row - it distinguishes nothing while
+    /// eating the width that the actual names need.
+    ///
+    /// <para>Only <c>.json</c>, and only on files: anything else on disk keeps its full name, because
+    /// then the extension is telling you something.</para>
+    /// </summary>
+    public string DisplayName =>
+        !IsDirectory && Name.EndsWith(RequestExtension, StringComparison.OrdinalIgnoreCase)
+            ? Name[..^RequestExtension.Length]
+            : Name;
 
     [ObservableProperty]
     public partial string FullPath { get; set; }
 
     public bool IsDirectory { get; }
-
-    /// <summary>Nesting depth within the visible tree - 0 for a workspace's top-level
-    /// collections/ entries, incrementing per folder level. Drives the Left Pane's own indent step
-    /// (see <c>TreeLevelIndentConverter</c>) rather than relying on FluentTheme's built-in
-    /// TreeViewItem indentation, which an app-level resource override couldn't reach.</summary>
-    public int Depth { get; }
 
     public ObservableCollection<WorkspaceNodeViewModel> Children { get; } = [];
 
@@ -48,12 +58,14 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// run sends requests in the order they appear here, and taking that order from anywhere else would
     /// let the two disagree. What the user sees is the contract.</para>
     /// </summary>
+    /// <remarks>
+    /// Projects every child, filtered or not. A run must send what the collection HOLDS, not what the
+    /// left pane happens to be showing while someone types in the filter box - the filter is a way to
+    /// find things, never a way to select them.
+    /// </remarks>
     public WorkspaceTreeNode ToTreeNode() =>
         new(Name, FullPath, IsDirectory, [.. Children.Select(c => c.ToTreeNode())],
-            IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride));
-
-    [ObservableProperty]
-    public partial bool IsExpanded { get; set; }
+            IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url, SendsNoAuth));
 
     /// <summary>Inline-rename state: when true, the TreeView shows an editable TextBox instead of the label.</summary>
     [ObservableProperty]
@@ -70,9 +82,93 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool HasAuthOverride { get; set; }
 
+    /// <summary>
+    /// True when this request's own auth is explicitly None - it sends nothing, on purpose.
+    ///
+    /// <para>Distinguished from any other override because the tree used to badge it "Auth", which
+    /// says the opposite of the truth: the one request that must go out unauthenticated looked
+    /// exactly like the ones carrying a token.</para>
+    /// </summary>
+    [ObservableProperty]
+    public partial bool SendsNoAuth { get; set; }
+
     /// <summary>True while this request is the active canvas and has unsaved edits.</summary>
     [ObservableProperty]
     public partial bool IsDirty { get; set; }
+
+    /// <summary>The request's URL, null for a folder. Carried so the filter can match a host or a path
+    /// segment, not only a file name - the OpenAPI import names files after operation ids, which are
+    /// often the least memorable part of an endpoint.</summary>
+    [ObservableProperty]
+    public partial string? Url { get; set; }
+
+    /// <summary>Whether this node survives the current filter. True when there is no filter.</summary>
+    [ObservableProperty]
+    public partial bool IsVisible { get; set; } = true;
+
+    /// <summary>
+    /// Whether this folder is unfolded. Two-way bound to the row's container, so folding survives the
+    /// refresh that <see cref="SyncChildren"/> runs on every file-system change - the container may be
+    /// rebuilt, this node is not.
+    ///
+    /// <para>Open to begin with: a workspace is a few dozen requests, and opening one to a wall of
+    /// folded folders hides the only thing the pane is for.</para>
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; } = true;
+
+    /// <summary>
+    /// Applies <paramref name="filter"/> to this node and its descendants, returning whether anything
+    /// here survived.
+    ///
+    /// <para>A folder matches when ANY descendant does, and unfolds itself so the match is on screen -
+    /// a filter that finds a request inside a folded folder and leaves it folded has shown you nothing.
+    /// This is live again now that folding is: it was written once before, against an
+    /// <see cref="IsExpanded"/> that was bound to no container, and did nothing at all. A folder that
+    /// matches by its own name keeps all its children, because "show me the Orders folder" means the
+    /// folder, not an empty one.</para>
+    ///
+    /// <para>Clearing the filter leaves everything it opened open. Re-folding would undo the folding
+    /// the person did by hand, and there is no way to tell the two apart afterwards.</para>
+    /// </summary>
+    public bool ApplyFilter(string? filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+        {
+            IsVisible = true;
+
+            foreach (var child in Children)
+            {
+                child.ApplyFilter(null);
+            }
+
+            return true;
+        }
+
+        var selfMatches = Matches(filter);
+
+        var anyChildMatches = false;
+        foreach (var child in Children)
+        {
+            // Not short-circuited: every child needs its own visibility set, so this must not stop at
+            // the first match.
+            anyChildMatches |= child.ApplyFilter(selfMatches ? null : filter);
+        }
+
+        IsVisible = selfMatches || anyChildMatches;
+
+        if (anyChildMatches)
+        {
+            IsExpanded = true;
+        }
+
+        return IsVisible;
+    }
+
+    private bool Matches(string filter) =>
+        Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+        || (Url?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
+        || (Method?.StartsWith(filter, StringComparison.OrdinalIgnoreCase) ?? false);
 
     /// <summary>Reconciles <see cref="Children"/> against a freshly scanned snapshot, by path identity.</summary>
     protected void SyncChildren(IReadOnlyList<WorkspaceTreeNode> incoming)
@@ -92,10 +188,12 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
             if (existing is null)
             {
-                var child = new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory, Depth + 1)
+                var child = new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory)
                 {
                     Method = node.RequestSummary?.Method,
                     HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false,
+                    SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false,
+                    Url = node.RequestSummary?.Url,
                 };
                 child.SyncChildren(node.Children);
                 Children.Insert(Math.Min(i, Children.Count), child);
@@ -110,7 +208,9 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
                 existing.Name = node.Name;
                 existing.Method = node.RequestSummary?.Method;
+                existing.Url = node.RequestSummary?.Url;
                 existing.HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false;
+                existing.SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false;
                 existing.SyncChildren(node.Children);
             }
         }

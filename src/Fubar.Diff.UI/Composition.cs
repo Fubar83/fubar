@@ -1,8 +1,10 @@
+using Fubar.Controls;
 using System;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Folders;
 using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Infrastructure;
+using Fubar.Diff.Infrastructure.Code;
 using Fubar.Diff.UI.Services;
 using Fubar.Diff.UI.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +26,8 @@ internal static class Composition
                 // Core ports -> Infrastructure adapters (diff engine, normalizer, file reader/writer,
                 // JSON parser, settings).
                 services.AddFubarDiffInfrastructure();
+                // The structural C# comparison, which is this app's alone.
+                services.AddFubarDiffCodeStructure();
 
                 // Application-layer use cases.
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();

@@ -114,4 +114,46 @@ public sealed class AuthConfig
     /// <summary>JSONPath to the relative <c>expires_in</c> seconds in the token response, used only to
     /// compute <see cref="ExpiryVariable"/> for caching. Kept out of the user captures grid.</summary>
     public string? ExpiresInExpression { get; set; }
+
+    // Signing a PERSON in (authorization code). The browser half is not a request, so none of it fits
+    // in TokenRequest - and until these existed none of it was saved at all: a profile reopened with
+    // an empty authorize URL, so every session began by rediscovering the provider before the sign-in
+    // button could do anything.
+
+    /// <summary>
+    /// Where to send the browser for an authorization code. Filled by Discover or by choosing a
+    /// provider; <c>null</c> for every grant that needs no browser.
+    /// </summary>
+    public string? AuthorizeUrl { get; set; }
+
+    /// <summary>
+    /// Extra query parameters for <see cref="AuthorizeUrl"/> - Google's <c>access_type=offline</c>,
+    /// Auth0's <c>audience</c>. Provider requirements rather than user preferences, which is why a
+    /// preset seeds them; still editable, because the next provider will want something else.
+    /// </summary>
+    public List<KeyValueItem> AuthorizeParameters { get; set; } = [];
+
+    /// <summary>
+    /// The loopback port to catch the redirect on. <c>null</c> or 0 asks the OS for a free one.
+    ///
+    /// <para>Worth pinning, and worth persisting once pinned: the redirect URI carries the port, and
+    /// most providers match it exactly, so a port that changes per attempt makes the URI impossible to
+    /// register. Google and Entra are the exceptions that ignore it - which is precisely why the
+    /// default cannot simply be "always ephemeral".</para>
+    /// </summary>
+    public int? RedirectPort { get; set; }
+
+    /// <summary>
+    /// Which <c>SignInProvider</c> this was set up for, so a saved profile reopens on it. Purely a UI
+    /// affordance - nothing about sending depends on it, and an unknown key is ignored rather than
+    /// rejected, so a profile written by a newer version still loads.
+    /// </summary>
+    public string? SignInProviderKey { get; set; }
+
+    /// <summary>
+    /// The tenant, directory or domain a provider's URLs were built for - Entra's tenant id, an Okta
+    /// domain. Kept beside the key so reopening a profile shows what it was set up against, rather
+    /// than a generic URL the user has to reverse-engineer.
+    /// </summary>
+    public string? SignInTenant { get; set; }
 }

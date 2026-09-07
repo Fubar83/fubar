@@ -39,14 +39,25 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAuthProfileStore>(sp => sp.GetRequiredService<WorkspaceService>());
         services.AddSingleton<IFolderConfigStore>(sp => sp.GetRequiredService<WorkspaceService>());
         services.AddSingleton<IInheritanceResolver>(sp => sp.GetRequiredService<WorkspaceService>());
-        services.AddSingleton<IOpenApiImportService, OpenApiImportService>();
+        services.AddSingleton<OpenApiImportService>();
+        services.AddSingleton<IOpenApiImportService>(sp => sp.GetRequiredService<OpenApiImportService>());
+        // The format-independent half, shared by every importer: diff against the workspace, then
+        // apply what the user ticked.
+        services.AddSingleton<IImportApplyService>(sp => sp.GetRequiredService<OpenApiImportService>());
         services.AddSingleton<ICurlImportService, CurlImporter>();
         services.AddSingleton<ICurlExportService, CurlExporter>();
         services.AddSingleton<IPostmanImportService, PostmanImporter>();
         services.AddSingleton<IAppSettingsService, AppSettingsService>();
+        services.AddSingleton<IMachinePolicyService, MachinePolicyService>();
         services.AddSingleton<ISecretStoreService, KeySharpSecretStoreService>();
         services.AddSingleton<ISessionVariableStore, SessionVariableStore>();
         services.AddSingleton<IVariableResolver, VariableResolver>();
+        services.AddSingleton<IVariableWriter, VariableWriter>();
+
+        // One instance, surfaced under the port and its concrete type: the CLI loads values into it
+        // once the command line has been validated (see CliRunner), and the GUI leaves it empty.
+        services.AddSingleton<ExternalVariableSource>();
+        services.AddSingleton<IExternalVariableSource>(sp => sp.GetRequiredService<ExternalVariableSource>());
         services.AddSingleton<IAuthProvider, AuthProvider>();
         services.AddSingleton<IOpenIdDiscoveryService, OpenIdDiscoveryService>();
         services.AddSingleton<IAuthorizationCodeListener, LoopbackAuthorizationCodeListener>();

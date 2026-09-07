@@ -116,6 +116,46 @@ jobs:
           RIDS: ${{ matrix.rids }}
           VERSION: ${{ needs.resolve.outputs.version }}
 
+      # ---- OS code signing -------------------------------------------------------------------
+      #
+      # The provenance attestation below proves this build came from this repository; it says nothing
+      # to SmartScreen or Gatekeeper, which is what a user actually meets. Both steps are SKIPPED
+      # while their secrets are absent, so a fork - and this repository before the accounts exist -
+      # still produces working unsigned artifacts rather than a red build. See the runbooks.
+      #
+      # Traditional OV certificates now require hardware tokens and cannot be used from CI, which is
+      # why this is Azure Trusted Signing rather than a PFX in a secret.
+      - name: Sign (Windows)
+        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_CERTIFICATE_PROFILE }}
+          files-folder: ${{ github.workspace }}/artifacts/publish
+          files-folder-filter: exe
+          files-folder-recurse: true
+
+      # Inside-out, then notarize, then staple. Order is not negotiable: the hardened runtime requires
+      # every nested binary to be signed BEFORE the bundle that contains them, and stapling has to
+      # happen after notarization or the ticket is not there to attach.
+      - name: Sign and notarize (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: ./build/sign-macos.sh
+
+      # ---- provenance ------------------------------------------------------------------------
+      #
+      # Attested AFTER signing, so the attestation covers the bytes that ship.
+
       # Cryptographically attests that these exact archives were built by this workflow from this commit
       # (Sigstore-backed, free). Consumers verify with:
       #   gh attestation verify <file> --repo ${{ github.repository }}
@@ -156,12 +196,33 @@ jobs:
           done | sort -k2 > ../SHA256SUMS.txt
           echo "== SHA256SUMS.txt =="; cat ../SHA256SUMS.txt
 
+      # The artefact a security review asks for by name, and one step to produce. Attached to the
+      # release rather than kept internally, because the point of an SBOM is that the person
+      # evaluating the download can read it without asking anyone.
+      - uses: actions/checkout@v4
+        with:
+          path: src
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          dotnet tool install --global CycloneDX
+          "$HOME/.dotnet/tools/dotnet-CycloneDX" src/Fubar.slnx -o . --json --filename sbom.json
+          echo "== packages in sbom.json =="
+          grep -c '"purl"' sbom.json || true
+
       # generate_release_notes compares against the PREVIOUS TAG IN THE REPOSITORY, which with per-app
       # tags may well be the other app's. The notes are a starting point to edit, not the release.
       - uses: softprops/action-gh-release@v3
         with:
           name: ${{ needs.resolve.outputs.name }} ${{ needs.resolve.outputs.version }}
           files: |
+            dist/**/*
+            SHA256SUMS.txt
+            sbom.json|
             dist/**/*
             SHA256SUMS.txt
           generate_release_notes: true

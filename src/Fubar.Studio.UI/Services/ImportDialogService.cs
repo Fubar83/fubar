@@ -13,27 +13,39 @@ namespace Fubar.Studio.UI.Services;
 /// (or null on cancel). Resolves the owner window lazily so it doesn't depend on DI construction order.</summary>
 public sealed class ImportDialogService : IImportDialogService
 {
-    private readonly IOpenApiImportService _import;
+    private readonly IOpenApiImportService _openApi;
+    private readonly IPostmanImportService _postman;
+    private readonly IImportApplyService _apply;
     private readonly IFilePickerService _filePicker;
     private readonly IRequestStore _requests;
     private readonly IRequestSerializer _serializer;
     private readonly IDiffPreviewService _diffPreview;
 
     public ImportDialogService(
-        IOpenApiImportService import,
+        IOpenApiImportService openApi,
+        IPostmanImportService postman,
+        IImportApplyService apply,
         IFilePickerService filePicker,
         IRequestStore requests,
         IRequestSerializer serializer,
         IDiffPreviewService diffPreview)
     {
-        _import = import;
+        _openApi = openApi;
+        _postman = postman;
+        _apply = apply;
         _filePicker = filePicker;
         _requests = requests;
         _serializer = serializer;
         _diffPreview = diffPreview;
     }
 
-    public async Task<ImportDialogResult?> ShowAsync(string workspaceRoot)
+    public Task<ImportDialogResult?> ShowAsync(string workspaceRoot) => ShowAsync(_openApi, workspaceRoot);
+
+    public Task<ImportDialogResult?> ShowPostmanAsync(string workspaceRoot) => ShowAsync(_postman, workspaceRoot);
+
+    /// <summary>One dialog, whichever planner produced the plan - the preview, the tick boxes and the
+    /// apply are the same work regardless of what was read.</summary>
+    private async Task<ImportDialogResult?> ShowAsync(IImportPlanner planner, string workspaceRoot)
     {
         if (Avalonia.Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime lifetime)
         {
@@ -47,7 +59,7 @@ public sealed class ImportDialogService : IImportDialogService
         }
 
         var viewModel = new ImportOpenApiViewModel(
-            _import, _filePicker, _requests, _serializer, _diffPreview, workspaceRoot);
+            planner, _apply, _filePicker, _requests, _serializer, _diffPreview, workspaceRoot);
         var dialog = new ImportOpenApiDialog(viewModel);
         return await dialog.ShowDialog<ImportDialogResult?>(owner);
     }

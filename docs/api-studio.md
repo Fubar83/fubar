@@ -58,9 +58,37 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   not as a failure afterwards. After Test the **token response** is shown, and any field is one click
   from becoming a capture, so the JSONPath comes from a response that actually arrived rather than a
   guess at what the provider calls things.
-- **OAuth 2.0 that actually works** — Client Credentials and Refresh Token grants, configurable scopes
-  and client-auth method, a one-click **Test / Get token** and a **Verify request** preview. Access
-  tokens and expiry are stored as session variables and auto-refreshed when expired.
+- **Sign in with Google, Microsoft, GitHub — or any OpenID Connect provider.** One list, one **Apply**:
+  both endpoints, the scopes that get a usable session, the extra authorize parameters that provider
+  needs, and a `client_secret` field only where one is actually wanted. What is left to supply is what
+  is genuinely yours — a client ID, a tenant, a secret. The screen also says what to do in the
+  provider's own console, and links to it, because a sign-in cannot work until that is done and
+  nothing in this app can do it for you. Anything else publishing
+  `/.well-known/openid-configuration` — Okta, Auth0, Keycloak, Entra B2C — works through **Custom**:
+  paste the issuer and press Discover.
+
+- **Applying a template keeps what you have already entered.** A template seeds *structure*; it never
+  overwrites an answer only you have. Your client ID stays whether you typed it literally or pointed
+  it at a different variable, endpoints Discover found are not replaced by a `{{placeholder}}`, a
+  JSONPath you corrected for a provider that nests its token stays corrected, and headers or authorize
+  parameters the template has never heard of are kept. What *does* change is what the template
+  actually knows: the grant, a named provider's endpoints, which fields exist. So changing your mind
+  halfway through — Google to Entra, one grant to another — costs you nothing you typed.
+
+  Nothing a preset fills in is locked either. It seeds the same editable request the manual path
+  produces, so a provider that changes something is a field you correct rather than a release you wait
+  for.
+
+- **The redirect URI you are told to register is one you can register.** It is shown before the first
+  attempt rather than learned from a failure, and the port can be pinned so it stops changing every
+  time. Google and Microsoft ignore the port on loopback; GitHub, Okta, Auth0 and Keycloak match the
+  whole URI, so for those a port that moves can never be registered at all.
+
+- **OAuth 2.0 that actually works** — Client Credentials, Refresh Token and Authorization Code + PKCE,
+  configurable scopes and client-auth method, a one-click **Test / Get token** and a **Verify request**
+  preview. Access tokens and expiry are stored as session variables and auto-refreshed when expired.
+  The authorization code and PKCE verifier live in memory for one workspace and environment and are
+  never written to disk.
 - **Auth profiles** — reusable Bearer / API key / Basic / OAuth2 profiles, inheritable down the folder
   tree, previewed as the exact headers that will be sent.
 - **OpenAPI / Swagger import** — pull a spec (JSON or YAML, from a file or URL) into a workspace:
@@ -179,6 +207,55 @@ apps share.
 Deeper design notes live in [`docs/`](docs/): the [Left Pane](docs/LeftPane.md),
 [Request Editor](docs/RequestEditorPane.md), and [Response Pane](docs/ResponsePane.md).
 
+## Keyboard
+
+There is no menu bar, so this list is the only place these are written down.
+
+| | |
+| --- | --- |
+| <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Send the request |
+| <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save — the request, environment or auth profile that is open |
+| <kbd>Ctrl</kbd>+<kbd>O</kbd> | Open a workspace |
+| <kbd>Ctrl</kbd>+<kbd>W</kbd> | Close the active workspace |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Command palette — every command and every open request, each showing its own shortcut |
+| <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Filter the request tree — matches name, URL and method |
+| <kbd>Ctrl</kbd>+<kbd>F</kbd> | Find in the response |
+| <kbd>Ctrl</kbd>+<kbd>R</kbd> | Run the selected folder or request |
+| <kbd>Ctrl</kbd>+<kbd>N</kbd> | New request |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd> | New folder |
+| <kbd>Ctrl</kbd>+<kbd>`</kbd> | Status &amp; Log |
+| <kbd>F7</kbd> / <kbd>F8</kbd> | Previous / next difference, in a comparison window |
+
+
+## Settings
+
+<kbd>Ctrl</kbd>+<kbd>,</kbd>, or "Settings" in the command palette. Four groups, each row a header, a
+plain sentence saying what it does, and the control — no hovering to find out what an option was going
+to do to your requests.
+
+| Group | What is in it |
+| --- | --- |
+| **Appearance** | Theme — dark, light, or follow the system. |
+| **Sending** | Timeout in seconds, and the largest response to load. A request that names its own timeout still wins; a response over the size cap keeps its status, headers and timing and says the body was not loaded. |
+| **History** | Whether executions are recorded at all, how many are kept per request, and the largest response body to keep. |
+| **Comparing responses** | Your defaults for whitespace, case, reformatting, key order, list matching and null-vs-missing. |
+
+Three of these were constants with no way to change them: a user on a slow internal API had no way to
+stop every call timing out, a user pulling a large export had no way to raise the cap that refused to
+load it, and nobody could turn history off. History is worth deciding rather than inheriting — it
+keeps whole response bodies under `.fubar/`, which is never committed, and a login response body is a
+token. **Off** writes nothing at all, and a body limit of **zero** keeps the timing and status of every
+execution with no payloads on disk.
+
+The comparison defaults are the top of the global → folder → request hierarchy: a folder or a single
+request can override any one of them and keep inheriting the rest, so an unticked box here means "no
+global opinion" rather than "globally off". The rules about *particular fields* — which JSON paths to
+ignore, which field identifies a list's items — belong on the request or folder they describe, not
+here.
+
+Settings live outside any workspace, in `%AppData%/Fubar/settings.json` (or the platform equivalent).
+A corrupt or half-written file falls back to defaults rather than blocking startup.
 ## Tech stack
 
 - **[.NET 10](https://dotnet.microsoft.com/)** / C#

@@ -1,3 +1,4 @@
+using Fubar.Controls;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -523,29 +524,32 @@ public partial class FolderViewModel : ViewModelBase
     /// <summary>Seeds from the persisted defaults.</summary>
     public void ApplyDefaults(AppSettings settings)
     {
-        ShowIdentical = settings.FolderShowIdentical;
-        LinkedMode = settings.FolderLinkedMode;
+        ShowIdentical = settings.Folders.ShowIdentical;
+        LinkedMode = settings.Folders.LinkedMode;
 
-        if (settings.FolderExclude.Count > 0)
+        if (settings.Folders.Exclude.Count > 0)
         {
-            ExcludeList = string.Join(", ", settings.FolderExclude);
+            ExcludeList = string.Join(", ", settings.Folders.Exclude);
         }
 
         // Empty means "never customised", which keeps the built-in conventions rather than leaving a
         // settings file written before this existed with no rules at all.
-        if (settings.FolderLinkRules.Count > 0)
+        if (settings.Folders.LinkRules.Count > 0)
         {
-            LinkRuleText = string.Join(Environment.NewLine, settings.FolderLinkRules);
+            LinkRuleText = string.Join(Environment.NewLine, settings.Folders.LinkRules);
         }
     }
 
     /// <summary>The current values, for the shell to persist.</summary>
     public AppSettings CaptureOptions(AppSettings settings) => settings with
     {
-        FolderShowIdentical = ShowIdentical,
-        FolderLinkedMode = LinkedMode,
-        FolderExclude = ParseExclusions(),
-        FolderLinkRules = [.. FileLinker.Parse(LinkRuleText).Select(rule => rule.ToString())],
+        Folders = settings.Folders with
+        {
+            ShowIdentical = ShowIdentical,
+            LinkedMode = LinkedMode,
+            Exclude = ParseExclusions(),
+            LinkRules = [.. FileLinker.Parse(LinkRuleText).Select(rule => rule.ToString())],
+        },
     };
 
     // ---- Internals ------------------------------------------------------------------------------

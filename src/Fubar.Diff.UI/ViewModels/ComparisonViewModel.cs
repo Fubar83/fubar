@@ -1,3 +1,4 @@
+using Fubar.Controls;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -712,43 +713,42 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         _loadingSettings = true;
         try
         {
-            IgnoreWhitespace = settings.IgnoreWhitespace;
-            IgnoreCase = settings.IgnoreCase;
-            NormalizeStructure = settings.NormalizeStructure;
-            NormalizeUnicode = settings.NormalizeUnicode;
-            ShowInvisibles = settings.ShowInvisibles;
-            CollapseUnchanged = settings.CollapseUnchanged;
-            WordWrap = settings.WordWrap;
-            IsEditing = settings.Editing;
-            JsonIndentSize = settings.JsonIndentSize;
-            JsonUseTabs = settings.JsonUseTabs;
-            JsonInlineSimpleContainers = settings.JsonInlineSimpleContainers;
-            JsonSortProperties = settings.JsonSortProperties;
-            AutoRefresh = settings.AutoRefresh;
-            LiveDiff = settings.LiveDiff;
-            IgnoreComments = settings.IgnoreComments;
-            IgnoreBlankLines = settings.IgnoreBlankLines;
-            CodeStructure = settings.CodeStructure;
-            SyntaxHighlighting = settings.SyntaxHighlighting;
-            ReportPropertyOrder = settings.ReportPropertyOrder;
-            MatchArraysByPosition = settings.MatchArraysByPosition;
-            IgnoreNullVsMissing = settings.IgnoreNullVsMissing;
-            Mode = settings.Mode;
+            IgnoreWhitespace = settings.Comparison.IgnoreWhitespace;
+            IgnoreCase = settings.Comparison.IgnoreCase;
+            NormalizeStructure = settings.Appearance.NormalizeStructure;
+            NormalizeUnicode = settings.Comparison.NormalizeUnicode;
+            ShowInvisibles = settings.Appearance.ShowInvisibles;
+            CollapseUnchanged = settings.Appearance.CollapseUnchanged;
+            WordWrap = settings.Appearance.WordWrap;
+            JsonIndentSize = settings.JsonFormatting.IndentSize;
+            JsonUseTabs = settings.JsonFormatting.UseTabs;
+            JsonInlineSimpleContainers = settings.JsonFormatting.InlineSimpleContainers;
+            JsonSortProperties = settings.JsonFormatting.SortProperties;
+            AutoRefresh = settings.Refresh.AutoRefresh;
+            LiveDiff = settings.Refresh.LiveDiff;
+            IgnoreComments = settings.Comparison.IgnoreComments;
+            IgnoreBlankLines = settings.Comparison.IgnoreBlankLines;
+            CodeStructure = settings.Comparison.CodeStructure;
+            SyntaxHighlighting = settings.Appearance.SyntaxHighlighting;
+            ReportPropertyOrder = settings.Json.ReportPropertyOrder;
+            MatchArraysByPosition = settings.Json.MatchArraysByPosition;
+            IgnoreNullVsMissing = settings.Json.IgnoreNullVsMissing;
+            Mode = settings.Comparison.Mode;
 
             ArrayKeyOverrides.Clear();
-            foreach (var (path, key) in settings.ArrayKeyOverrides)
+            foreach (var (path, key) in settings.Json.ArrayKeyOverrides)
             {
                 ArrayKeyOverrides.Add(new ArrayKeyOverrideEntry(path, key));
             }
 
             IgnoredLinePatterns.Clear();
-            foreach (var pattern in settings.IgnoredLinePatterns)
+            foreach (var pattern in settings.Comparison.IgnoredLinePatterns)
             {
                 IgnoredLinePatterns.Add(pattern);
             }
 
             IgnoredPaths.Clear();
-            foreach (var path in settings.IgnoredPaths)
+            foreach (var path in settings.Json.IgnoredPaths)
             {
                 IgnoredPaths.Add(path);
             }
@@ -785,33 +785,58 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         return byPath;
     }
 
+    /// <summary>
+    /// Folds this session's toolbar state back into the persisted settings.
+    ///
+    /// <para>Nested rather than one flat list, so a group's members are written together and an option
+    /// added to the model cannot be silently forgotten here.</para>
+    ///
+    /// <para><c>IsEditing</c> is deliberately NOT among them, though it used to be. A tool for READING
+    /// two files would reopen days later with both panes editable over whatever source was last open,
+    /// with nothing on screen tying that to the session that switched it on. It is a per-session
+    /// toggle now.</para>
+    /// </summary>
     public AppSettings CaptureOptions(AppSettings settings) => settings with
     {
-        IgnoreWhitespace = IgnoreWhitespace,
-        IgnoreCase = IgnoreCase,
-        NormalizeStructure = NormalizeStructure,
-        NormalizeUnicode = NormalizeUnicode,
-        ShowInvisibles = ShowInvisibles,
-        CollapseUnchanged = CollapseUnchanged,
-        WordWrap = WordWrap,
-        Editing = IsEditing,
-        JsonIndentSize = JsonIndentSize,
-        JsonUseTabs = JsonUseTabs,
-        JsonInlineSimpleContainers = JsonInlineSimpleContainers,
-        JsonSortProperties = JsonSortProperties,
-        AutoRefresh = AutoRefresh,
-        LiveDiff = LiveDiff,
-        IgnoreComments = IgnoreComments,
-        IgnoreBlankLines = IgnoreBlankLines,
-        CodeStructure = CodeStructure,
-        SyntaxHighlighting = SyntaxHighlighting,
-        ReportPropertyOrder = ReportPropertyOrder,
-        MatchArraysByPosition = MatchArraysByPosition,
-        IgnoreNullVsMissing = IgnoreNullVsMissing,
-        Mode = Mode,
-        ArrayKeyOverrides = OverridesByPath(),
-        IgnoredLinePatterns = [.. IgnoredLinePatterns],
-        IgnoredPaths = [.. IgnoredPaths],
+        Appearance = settings.Appearance with
+        {
+            NormalizeStructure = NormalizeStructure,
+            ShowInvisibles = ShowInvisibles,
+            CollapseUnchanged = CollapseUnchanged,
+            WordWrap = WordWrap,
+            SyntaxHighlighting = SyntaxHighlighting,
+        },
+        Comparison = settings.Comparison with
+        {
+            Mode = Mode,
+            IgnoreWhitespace = IgnoreWhitespace,
+            IgnoreCase = IgnoreCase,
+            NormalizeUnicode = NormalizeUnicode,
+            IgnoreComments = IgnoreComments,
+            IgnoreBlankLines = IgnoreBlankLines,
+            CodeStructure = CodeStructure,
+            IgnoredLinePatterns = [.. IgnoredLinePatterns],
+        },
+        Json = settings.Json with
+        {
+            ReportPropertyOrder = ReportPropertyOrder,
+            MatchArraysByPosition = MatchArraysByPosition,
+            IgnoreNullVsMissing = IgnoreNullVsMissing,
+            ArrayKeyOverrides = OverridesByPath(),
+            IgnoredPaths = [.. IgnoredPaths],
+        },
+        JsonFormatting = settings.JsonFormatting with
+        {
+            IndentSize = JsonIndentSize,
+            UseTabs = JsonUseTabs,
+            InlineSimpleContainers = JsonInlineSimpleContainers,
+            SortProperties = JsonSortProperties,
+        },
+        Refresh = settings.Refresh with
+        {
+            AutoRefresh = AutoRefresh,
+            LiveDiff = LiveDiff,
+        },
     };
 
     public ThemeManagerViewModel ThemeManager { get; }

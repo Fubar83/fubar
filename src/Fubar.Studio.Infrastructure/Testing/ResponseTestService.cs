@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
+using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Testing;
 using Fubar.Studio.Core.Variables;
+using Fubar.Studio.Infrastructure.Settings;
 using Fubar.Studio.Core.Workspaces;
 using Json.Path;
 
@@ -20,11 +22,21 @@ public sealed class ResponseTestService : IResponseTestService
 {
     private readonly ISessionVariableStore _sessionStore;
     private readonly IEnvironmentStore _workspaceService;
+    private readonly IVariableWriter _variableWriter;
+    private readonly IMachinePolicyService _policy;
 
-    public ResponseTestService(ISessionVariableStore sessionStore, IEnvironmentStore workspaceService)
+    public ResponseTestService(
+        ISessionVariableStore sessionStore,
+        IEnvironmentStore workspaceService,
+        IVariableWriter variableWriter,
+        IMachinePolicyService? policy = null)
     {
         _sessionStore = sessionStore;
         _workspaceService = workspaceService;
+        _variableWriter = variableWriter;
+        // Optional so the many tests that construct this directly need not care; no file means no
+        // policy, which is what every installation without one gets.
+        _policy = policy ?? NoPolicy.Instance;
     }
 
     public IReadOnlyList<AssertionResult> RunAssertions(IReadOnlyList<Assertion> assertions, ExecutionResult result)
@@ -34,7 +46,12 @@ public sealed class ResponseTestService : IResponseTestService
 
         foreach (var a in assertions.Where(a => a.Enabled))
         {
-            results.Add(Evaluate(a, result, body));
+            // An assertion about a body that was too large to read cannot be judged either way, so it
+            // FAILS rather than quietly passing - "the body has no error field" is a claim nobody
+            // checked.
+            results.Add(a.Source == ResponseField.JsonBody && result.BodyTooLarge
+                ? new AssertionResult(false, $"body {a.Target}", "(the response was too large to load)")
+                : Evaluate(a, result, body));
         }
 
         return results;
@@ -64,7 +81,9 @@ public sealed class ResponseTestService : IResponseTestService
             if (!found)
             {
                 results.Add(new CaptureResult(false, name, null, c.Scope.ToString(),
-                    $"No value for {Describe(c.Source, c.Expression)}."));
+                    c.Source == ResponseField.JsonBody && result.BodyTooLarge
+                        ? "The response was too large to load, so its body could not be read."
+                        : $"No value for {Describe(c.Source, c.Expression)}."));
                 continue;
             }
 
@@ -78,11 +97,30 @@ public sealed class ResponseTestService : IResponseTestService
                 results.Add(new CaptureResult(false, name, value, "environment",
                     "No active environment to write to."));
             }
+            else if (_policy.Current.ForbidEnvironmentCaptures)
+            {
+                // Refused, and SAID - naming the policy rather than reporting a mysterious failure.
+                // Environment scope writes to a committed file, which is what an administrator turning
+                // this on is protecting against.
+                results.Add(new CaptureResult(false, name, value, "environment",
+                    "Environment-scoped captures are disabled by this machine's Fubar policy. Use Session scope."));
+            }
             else
             {
-                SetEnvironmentVariable(activeEnvironment, name, value);
-                environmentDirty = true;
-                results.Add(new CaptureResult(true, name, value, activeEnvironment.Name, null));
+                // Through the writer, so the variable's own Kind decides where the value lands. A
+                // capture naming a Secret variable now writes to the keyring instead of overwriting the
+                // null the environment file is supposed to carry for it.
+                var write = _variableWriter.Write(workspace, activeEnvironment, name, value);
+                environmentDirty |= write.EnvironmentChanged;
+
+                results.Add(new CaptureResult(true, name, value, activeEnvironment.Name, null)
+                {
+                    // Only a Normal variable actually reaches the tracked file, so only that case is
+                    // worth warning about - a Secret one is already going somewhere safe.
+                    Warning = write.Kind == VariableKind.Normal
+                        ? CredentialNameHeuristic.DescribeEnvironmentCaptureRisk(name)
+                        : null,
+                });
             }
         }
 
@@ -92,19 +130,6 @@ public sealed class ResponseTestService : IResponseTestService
         }
 
         return results;
-    }
-
-    private static void SetEnvironmentVariable(WorkspaceEnvironment environment, string name, string? value)
-    {
-        var existing = environment.Variables.FirstOrDefault(v => v.Key == name);
-        if (existing is not null)
-        {
-            existing.Value = value ?? "";
-        }
-        else
-        {
-            environment.Variables.Add(new AppVariable { Key = name, Value = value ?? "" });
-        }
     }
 
     private static AssertionResult Evaluate(Assertion a, ExecutionResult result, Lazy<JsonNode?> body)
@@ -155,6 +180,14 @@ public sealed class ResponseTestService : IResponseTestService
                 return header is null ? (false, null) : (true, header.Value);
 
             case ResponseField.JsonBody:
+                // A body that was never loaded is not an absent field. Falling through would let a
+                // JSONPath assertion "not find" its value and a NotExists assertion PASS against a
+                // response nobody looked at, which is the one answer this must never give.
+                if (result.BodyTooLarge)
+                {
+                    return (false, null);
+                }
+
                 if (body.Value is null || string.IsNullOrWhiteSpace(target) || !JsonPath.TryParse(target, out var path))
                 {
                     return (false, null);

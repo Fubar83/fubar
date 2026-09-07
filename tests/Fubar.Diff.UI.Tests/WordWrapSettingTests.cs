@@ -181,7 +181,7 @@ public class WordWrapSettingTests
         var (tab, _) = Build();
 
         Assert.False(tab.WordWrap);
-        Assert.False(AppSettings.Default.WordWrap);
+        Assert.False(AppSettings.Default.Appearance.WordWrap);
     }
 
     [AvaloniaFact]
@@ -189,10 +189,13 @@ public class WordWrapSettingTests
     {
         var (tab, _) = Build();
 
-        tab.ApplyDefaults(AppSettings.Default with { WordWrap = true });
+        tab.ApplyDefaults(AppSettings.Default with
+        {
+            Appearance = AppSettings.Default.Appearance with { WordWrap = true },
+        });
 
         Assert.True(tab.WordWrap);
         Assert.True(tab.Pane.WordWrap);
-        Assert.True(tab.CaptureOptions(AppSettings.Default).WordWrap);
+        Assert.True(tab.CaptureOptions(AppSettings.Default).Appearance.WordWrap);
     }
 }

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fubar83.github.io/fubar/schemas/v1/auth-profiles.schema.json",
+  "title": "Fubar API Studio auth profiles",
+  "description": "auth-profiles.json at a workspace root: named, reusable auth a request or folder selects by id.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["name"],
+    "properties": {
+      "id": { "type": "string" },
+      "name": { "type": "string" },
+      "config": { "$ref": "request.schema.json#/$defs/auth" }
+    }
+  }
+}

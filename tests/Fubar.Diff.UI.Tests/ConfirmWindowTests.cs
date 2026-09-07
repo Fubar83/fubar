@@ -1,3 +1,4 @@
+using Fubar.Controls;
 using Avalonia.Headless.XUnit;
 using Fubar.Diff.UI.Views;
 

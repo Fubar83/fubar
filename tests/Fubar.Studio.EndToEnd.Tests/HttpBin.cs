@@ -36,11 +36,39 @@ public static class HttpBin
         OtherHostEcho = otherHostEcho;
     }
 
-    /// <summary>Skips the calling test unless live e2e is explicitly enabled via <c>FUBAR_E2E=1</c>.</summary>
-    public static void RequireLive() =>
+    /// <summary>
+    /// Skips the calling test unless live e2e is explicitly enabled via <c>FUBAR_E2E=1</c>.
+    ///
+    /// <para>With <c>FUBAR_E2E_REQUIRE_LOCAL=1</c> it does the opposite of skipping: it FAILS unless
+    /// both endpoints are local. CI sets that, because this suite is the only thing verifying that
+    /// credential headers are dropped across a cross-origin redirect and that cookies stay isolated
+    /// per environment - and a job that silently skipped, or silently tested the public httpbin from
+    /// a build agent, would be a green tick standing for nothing. Locally the fallback is still a
+    /// convenience; in CI it is a lie.</para>
+    /// </summary>
+    public static void RequireLive()
+    {
+        if (Environment.GetEnvironmentVariable("FUBAR_E2E_REQUIRE_LOCAL") == "1")
+        {
+            Assert.True(
+                Environment.GetEnvironmentVariable("FUBAR_E2E") == "1",
+                "FUBAR_E2E_REQUIRE_LOCAL=1 but FUBAR_E2E is not 1 - this suite must actually run here.");
+
+            Assert.True(
+                IsLoopback(BaseUrl) && IsLoopback(OtherHostEcho),
+                $"FUBAR_E2E_REQUIRE_LOCAL=1 but the endpoints are not local ({BaseUrl}, {OtherHostEcho}). "
+                + "Refusing to verify the redirect and cookie controls against a public service.");
+
+            return;
+        }
+
         Assert.SkipUnless(
             Environment.GetEnvironmentVariable("FUBAR_E2E") == "1",
             "Live httpbin e2e tests are opt-in. Set FUBAR_E2E=1 to run them.");
+    }
+
+    private static bool IsLoopback(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.IsLoopback;
 
     /// <summary>A real, DI-wired execution pipeline (no OS keyring, no history writes). Reuse a single
     /// instance across requests that must share cookie jars (see the cookie-isolation test).</summary>

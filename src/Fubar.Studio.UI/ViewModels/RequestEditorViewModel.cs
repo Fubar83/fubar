@@ -33,7 +33,7 @@ namespace Fubar.Studio.UI.ViewModels;
 /// HTTP, so a GraphQL/WebSocket request document works identically once those protocols register
 /// their own provider + executor.
 /// </summary>
-public partial class RequestEditorViewModel : ViewModelBase, IDisposable
+public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, IDisposable
 {
     private readonly Workspace _workspace;
     private readonly EnvironmentManagerViewModel _environmentManager;
@@ -77,48 +77,47 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     private readonly IAppSettingsService _appSettings;
     private readonly IFolderConfigStore _folderConfigStore;
 
+    /// <summary>
+    /// Four things about THIS editor, and one object for everything it needs from the rest of the app.
+    ///
+    /// <para>This took twenty-four parameters, which made adding a dependency a five-place edit - the
+    /// view model, the factory, and every test that built one. That is a large part of why the editor
+    /// was the least-tested type in the application while being the one every feature runs through.</para>
+    /// </summary>
     public RequestEditorViewModel(
         RequestModel request,
         string filePath,
         IProtocolProvider provider,
         Workspace workspace,
         EnvironmentManagerViewModel environmentManager,
-        IRequestStore requestStore,
-        IAuthProfileStore authProfileStore,
-        IInheritanceResolver inheritanceResolver,
-        IRequestExecutionService requestExecution,
-        IHistoryService historyService,
-        ICurlExportService curlExport,
-        IJsonSchemaValidator schemaValidator,
-        IJsonPathEvaluator jsonPathEvaluator,
-        IVariableResolver variableResolver,
-        IAuthProvider authProvider,
-        IOpenIdDiscoveryService discovery,
-        SignInService signIn,
-        IClipboardService clipboardService,
-        IFilePickerService filePickerService,
-        StatusLogViewModel statusLog,
-        IDiffPreviewService diffPreview,
-        IResponseBaselineService responseBaseline,
-        IAppSettingsService appSettings,
-        IFolderConfigStore folderConfigStore)
+        RequestEditorServices services)
     {
-        _appSettings = appSettings;
-        _folderConfigStore = folderConfigStore;
+        ArgumentNullException.ThrowIfNull(services);
+
+        var schemaValidator = services.SchemaValidator;
+        var jsonPathEvaluator = services.JsonPathEvaluator;
+        var filePickerService = services.FilePicker;
+        var clipboardService = services.Clipboard;
+        var statusLog = services.StatusLog;
+        var responseBaseline = services.ResponseBaseline;
+        var diffPreview = services.DiffPreview;
+
+        _appSettings = services.AppSettings;
+        _folderConfigStore = services.FolderConfigStore;
         _original = request;
         _workspace = workspace;
         _environmentManager = environmentManager;
-        _requestStore = requestStore;
-        _authProfileStore = authProfileStore;
-        _inheritanceResolver = inheritanceResolver;
-        _requestExecution = requestExecution;
-        _historyService = historyService;
-        _curlExport = curlExport;
+        _requestStore = services.RequestStore;
+        _authProfileStore = services.AuthProfileStore;
+        _inheritanceResolver = services.InheritanceResolver;
+        _requestExecution = services.RequestExecution;
+        _historyService = services.HistoryService;
+        _curlExport = services.CurlExport;
         _clipboardService = clipboardService;
-        _variableResolver = variableResolver;
-        _authProvider = authProvider;
-        _discovery = discovery;
-        _signIn = signIn;
+        _variableResolver = services.VariableResolver;
+        _authProvider = services.AuthProvider;
+        _discovery = services.Discovery;
+        _signIn = services.SignIn;
         _statusLog = statusLog;
         _diffPreview = diffPreview;
 
@@ -147,6 +146,9 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         // the Body editor's schema validation.
         var bodySchema = request.Settings?["fubarOpenApi"]?["bodySchema"]?.ToJsonString();
         Body = RequestBodyViewModel.FromModel(request.Body, filePickerService, schemaValidator, bodySchema);
+        // So an upload chosen from inside the workspace is stored as a relative path, which is what
+        // makes a committed request work on a colleague's machine.
+        Body.WorkspaceRootPath = workspace.RootPath;
         Auth = new RequestAuthViewModel(new TokenRequestEditorViewModel(filePickerService, schemaValidator));
         Auth.LoadFrom(request.Auth);
         Response = new ResponsePanelViewModel(clipboardService, filePickerService, statusLog, schemaValidator, jsonPathEvaluator, responseBaseline, diffPreview);
@@ -156,7 +158,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
 
         // The response pane owns Pin/Compare but knows nothing about requests, so it asks for the
         // rules when it needs them rather than being handed a snapshot that would go stale on save.
-        _comparisonOverrides = request.EffectiveComparison?.Clone();
+        _comparisonOverrides = request.Comparison?.Clone();
         Response.SettingsContextProvider = BuildSettingsContext;
 
         Method = request.Method;
@@ -188,8 +190,8 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         Auth.OAuth2.TestAuthHandler = async config => (await _authProvider.PrepareAsync(config, _workspace, _environmentManager.ActiveEnvironment)).Outcome;
         Auth.OAuth2.PreviewHandler = config => _authProvider.PreviewTokenRequest(config, _workspace, _environmentManager.ActiveEnvironment);
         Auth.OAuth2.DiscoveryHandler = issuer => _discovery.DiscoverAsync(issuer);
-        Auth.OAuth2.SignInHandler = (authorizeUrl, clientId, scopes) =>
-            _signIn.SignInAsync(authorizeUrl, clientId, scopes, _workspace, _environmentManager.ActiveEnvironment);
+        Auth.OAuth2.SignInHandler = request =>
+            _signIn.SignInAsync(request, _workspace, _environmentManager.ActiveEnvironment);
         Auth.OAuth2.VariableContext = VariableContext;
 
         // The active environment/secrets-reveal choice can change while this request stays open -
@@ -304,6 +306,13 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
     /// tree node's method/auth badges, which otherwise only refresh on external file-system events.</summary>
     public event Action? Saved;
 
+    /// <summary>
+    /// Ctrl+S, via the shell. Routed through the generated command rather than calling SaveAsync
+    /// directly so the command's own re-entrancy guard still applies - holding the key down must not
+    /// start a second write over the first.
+    /// </summary>
+    Task ISaveableEditor.SaveAsync() => SaveCommand.ExecuteAsync(null);
+
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -316,7 +325,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Save failed: {ex.Message}");
+            _statusLog.LogError($"Save failed: {ex.Message}");
         }
     }
 
@@ -343,7 +352,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Copy as curl failed: {ex.Message}");
+            _statusLog.LogError($"Copy as curl failed: {ex.Message}");
         }
     }
 
@@ -395,9 +404,22 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         {
             foreach (var c in outcome.Captures)
             {
-                _statusLog.Log(c.Ok
-                    ? $"Captured {{{{{c.VariableName}}}}} = \"{Truncate(c.Value)}\" ({c.Scope})"
-                    : $"Capture \"{c.VariableName}\" failed: {c.Error}");
+                if (!c.Ok)
+                {
+                    _statusLog.LogWarning($"Capture \"{c.VariableName}\" failed: {c.Error}");
+                    continue;
+                }
+
+                // The NAME and where it went, never the value. JsonRunReport already omits capture
+                // values for exactly this reason - "a report file is exactly the thing that gets
+                // attached to a build and kept" - and the log strip is the thing that gets
+                // screenshotted into a bug report, so the two must agree.
+                _statusLog.Log($"Captured {{{{{c.VariableName}}}}} → {c.Scope}");
+
+                if (c.Warning is { } warning)
+                {
+                    _statusLog.LogWarning(warning);
+                }
             }
 
             if (outcome.Captures.Count > 0)
@@ -420,7 +442,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
 
         if (outcome.HistoryError is { } historyError)
         {
-            _statusLog.Log($"Failed to record history for \"{Name}\": {historyError}");
+            _statusLog.LogWarning($"Failed to record history for \"{Name}\": {historyError}");
         }
     }
 
@@ -541,7 +563,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Could not save comparison settings: {ex.Message}");
+            _statusLog.LogError($"Could not save comparison settings: {ex.Message}");
         }
     }
 
@@ -626,7 +648,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Failed to load header/auth inheritance for \"{Name}\": {ex.Message}");
+            _statusLog.LogWarning($"Failed to load header/auth inheritance for \"{Name}\": {ex.Message}");
         }
         finally
         {
@@ -773,7 +795,7 @@ public partial class RequestEditorViewModel : ViewModelBase, IDisposable
             Response.StatusCode = 0;
             Response.StatusText = "Error";
             Response.LoadBody(result.ErrorMessage, result.BodyBytes);
-            _statusLog.Log($"Request failed: {result.ErrorMessage}");
+            _statusLog.LogError($"Request failed: {result.ErrorMessage}");
         }
         else
         {

@@ -15,12 +15,20 @@ public sealed class WorkspaceService : IWorkspaceService
     private const string EnvironmentsDirName = "environments";
     private const string AuthProfilesFileName = "auth-profiles.json";
     private const string FolderConfigFileName = "_folder.json";
+    private const string HistoryIgnoreRule = ".fubar/";
 
     public bool IsWorkspaceRoot(string directoryPath) =>
         File.Exists(Path.Combine(directoryPath, AppManifestFileName));
 
     public async Task<Workspace> LoadWorkspaceAsync(string rootPath, CancellationToken cancellationToken = default)
     {
+        // On OPEN as well as create, because the workspaces most at risk are the ones that already
+        // exist. This used to run only when creating a workspace, and only when no .gitignore was
+        // there - so pointing New Workspace at a repository you already have (which is the pitch:
+        // "a workspace belongs in the repository it tests") left execution history, response bodies
+        // and all, tracked by Git.
+        await EnsureHistoryIsIgnoredAsync(rootPath, cancellationToken);
+
         var manifestPath = Path.Combine(rootPath, AppManifestFileName);
         AppManifest manifest;
         await using (var manifestStream = File.OpenRead(manifestPath))
@@ -49,8 +57,7 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         Directory.CreateDirectory(rootPath);
         var manifestPath = Path.Combine(rootPath, AppManifestFileName);
-        await using var stream = File.Create(manifestPath);
-        await JsonSerializer.SerializeAsync(stream, manifest, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(manifestPath, manifest, FubarJson.Options, cancellationToken);
     }
 
     public async Task<Workspace> CreateWorkspaceAsync(string rootPath, CancellationToken cancellationToken = default)
@@ -71,31 +78,100 @@ public sealed class WorkspaceService : IWorkspaceService
             Directory.CreateDirectory(Path.Combine(rootPath, CollectionsDirName));
             Directory.CreateDirectory(Path.Combine(rootPath, EnvironmentsDirName));
 
-            // .fubar/ is execution history - local-machine scratch state, and the one thing here that
-            // should NOT be committed beside the collections and environments.
-            var gitignorePath = Path.Combine(rootPath, ".gitignore");
-
-            if (!File.Exists(gitignorePath))
-            {
-                await File.WriteAllTextAsync(gitignorePath, ".fubar/\n", cancellationToken);
-            }
         }
 
         return await LoadWorkspaceAsync(rootPath, cancellationToken);
     }
 
+    /// <summary>
+    /// Makes sure execution history cannot be committed, by two independent routes because either alone
+    /// has a hole: the workspace-root rule does nothing when the repository root is somewhere above the
+    /// workspace, and the nested file does nothing if someone deletes it. Both are cheap and idempotent.
+    /// </summary>
+    public async Task EnsureHistoryIsIgnoredAsync(string rootPath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var gitignorePath = Path.Combine(rootPath, ".gitignore");
+
+            if (!File.Exists(gitignorePath))
+            {
+                await File.WriteAllTextAsync(gitignorePath, $"{HistoryIgnoreRule}\n", cancellationToken);
+            }
+            else if (!await AlreadyIgnoresHistoryAsync(gitignorePath, cancellationToken))
+            {
+                // Appended, never rewritten: this is the user's file and it is probably in their history.
+                // A leading newline only when the existing content does not end in one, so the rule does
+                // not land on the end of somebody's last pattern.
+                var existing = await File.ReadAllTextAsync(gitignorePath, cancellationToken);
+                var separator = existing.Length == 0 || existing.EndsWith('\n') ? "" : "\n";
+
+                await File.AppendAllTextAsync(
+                    gitignorePath,
+                    $"{separator}\n# Fubar execution history - local to this machine, never committed.\n{HistoryIgnoreRule}\n",
+                    cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A read-only checkout or a locked file must not stop the workspace opening. The second
+            // guard below still covers the actual history directory, which is the thing that matters.
+        }
+    }
+
+    /// <summary>True when some line already covers <c>.fubar/</c>, so reopening a workspace does not
+    /// append the rule again every time.</summary>
+    private static async Task<bool> AlreadyIgnoresHistoryAsync(string gitignorePath, CancellationToken cancellationToken)
+    {
+        foreach (var line in await File.ReadAllLinesAsync(gitignorePath, cancellationToken))
+        {
+            var trimmed = line.Trim().TrimStart('/');
+            if (trimmed is ".fubar" or ".fubar/" or ".fubar/*" or ".fubar/**")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public async Task<RequestModel> LoadRequestAsync(string requestFilePath, CancellationToken cancellationToken = default)
     {
-        await using var stream = File.OpenRead(requestFilePath);
-        return await JsonSerializer.DeserializeAsync<RequestModel>(stream, FubarJson.Options, cancellationToken)
-            ?? throw new InvalidDataException($"\"{requestFilePath}\" did not deserialize to a valid request.json.");
+        RequestModel request;
+        await using (var stream = File.OpenRead(requestFilePath))
+        {
+            request = await JsonSerializer.DeserializeAsync<RequestModel>(stream, FubarJson.Options, cancellationToken)
+                ?? throw new InvalidDataException($"\"{requestFilePath}\" did not deserialize to a valid request.json.");
+        }
+
+        // Bring a pre-floor file up to the current shape ONCE, here, rather than through readers that
+        // ran on every load and kept three legacy shapes alive forever. See docs/decisions.md §C.
+        var migration = LegacyRequestMigration.Apply(request);
+        if (migration.Changed)
+        {
+            // Written back immediately so the conversion actually sticks - otherwise the next open
+            // migrates again and the user never sees the file settle. Reported through the event so
+            // the shell can say what it did: this is rewriting a file they are about to see in a diff.
+            await JsonFile.WriteAtomicAsync(requestFilePath, request, FubarJson.Options, cancellationToken);
+            RequestMigrated?.Invoke(requestFilePath, migration.Changes);
+        }
+
+        return request;
     }
+
+    /// <summary>
+    /// Raised after a <c>request.json</c> was rewritten into the current format, with what changed.
+    ///
+    /// <para>An event rather than a log call because Infrastructure has no business knowing about the
+    /// status strip - and this must be SAID somewhere: silently rewriting committed content is not a
+    /// thing to spring on someone.</para>
+    /// </summary>
+    public event Action<string, IReadOnlyList<string>>? RequestMigrated;
 
     public async Task SaveRequestAsync(string requestFilePath, RequestModel request, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(requestFilePath)!);
-        await using var stream = File.Create(requestFilePath);
-        await JsonSerializer.SerializeAsync(stream, request, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(requestFilePath, request, FubarJson.Options, cancellationToken);
     }
 
     public IReadOnlyList<WorkspaceTreeNode> BuildCollectionsTree(string rootPath)
@@ -157,7 +233,14 @@ public sealed class WorkspaceService : IWorkspaceService
             var request = JsonSerializer.Deserialize<RequestModel>(stream, FubarJson.Options);
             if (request is not null)
             {
-                summary = new RequestSummary(request.Method, request.Auth.Type != AuthType.Inherit);
+                // The URL comes free - the request is already deserialized here for its method and auth badge -
+                // and it is what makes the left pane filter able to match "orders" in a URL rather than only
+                // in a file name.
+                summary = new RequestSummary(
+                    request.Method,
+                    request.Auth.Type != AuthType.Inherit,
+                    request.Url,
+                    SendsNoAuth: request.Auth.Type == AuthType.None);
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException)
@@ -177,8 +260,7 @@ public sealed class WorkspaceService : IWorkspaceService
         var path = UniquePath(parentDirectory, fileName);
 
         var request = new RequestModel { Name = requestName };
-        using var stream = File.Create(path);
-        JsonSerializer.Serialize(stream, request, FubarJson.Options);
+        JsonFile.WriteAtomic(path, request, FubarJson.Options);
 
         return path;
     }
@@ -321,8 +403,7 @@ public sealed class WorkspaceService : IWorkspaceService
         var directory = Path.Combine(rootPath, EnvironmentsDirName);
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"{environment.Id}.json");
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, environment, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(path, environment, FubarJson.Options, cancellationToken);
     }
 
     public Task DeleteEnvironmentAsync(string rootPath, string environmentId, CancellationToken cancellationToken = default)
@@ -352,8 +433,7 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         Directory.CreateDirectory(rootPath);
         var path = Path.Combine(rootPath, AuthProfilesFileName);
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, profiles, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(path, profiles, FubarJson.Options, cancellationToken);
     }
 
     public async Task<FolderConfig> LoadFolderConfigAsync(string folderPath, CancellationToken cancellationToken = default)
@@ -372,8 +452,7 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         Directory.CreateDirectory(folderPath);
         var path = Path.Combine(folderPath, FolderConfigFileName);
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, config, FubarJson.Options, cancellationToken);
+        await JsonFile.WriteAtomicAsync(path, config, FubarJson.Options, cancellationToken);
     }
 
     public async Task<InheritanceChain> GetInheritanceChainAsync(string rootPath, string requestFilePath, CancellationToken cancellationToken = default)

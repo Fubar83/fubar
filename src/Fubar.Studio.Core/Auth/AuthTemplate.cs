@@ -16,6 +16,19 @@ namespace Fubar.Studio.Core.Auth;
 /// <param name="AccessTokenVariable">The session variable the <c>Authorization: Bearer</c> header reads.</param>
 /// <param name="ExpiryVariable">The session variable holding the token's expiry (unix seconds).</param>
 /// <param name="ExpiresInExpression">JSONPath to relative <c>expires_in</c> seconds, or <c>null</c> for none.</param>
+/// <param name="AuthorizeUrl">
+/// The browser half's endpoint, for the grants that have one. Empty for the rest, and for the generic
+/// authorization-code template, which cannot know it - that is what Discover and the provider presets
+/// are for.
+/// </param>
+/// <param name="AuthorizeParameters">
+/// Extra query parameters for the authorize URL. Part of the template rather than typed each time
+/// because they are provider facts, not user choices - see <see cref="SignInProvider"/>.
+/// </param>
+/// <param name="ProviderKey">
+/// The <see cref="SignInProvider"/> this was seeded from, or null for a hand-built template. Persisted
+/// so a saved profile reopens on the provider it was set up for.
+/// </param>
 public sealed record AuthTemplate(
     string Key,
     string DisplayName,
@@ -24,8 +37,15 @@ public sealed record AuthTemplate(
     IReadOnlyList<CaptureRule> SeedCaptures,
     string AccessTokenVariable,
     string ExpiryVariable,
-    string? ExpiresInExpression)
+    string? ExpiresInExpression,
+    string AuthorizeUrl = "",
+    IReadOnlyList<KeyValueItem>? AuthorizeParameters = null,
+    string? ProviderKey = null)
 {
+    /// <summary>Never null, so callers need not decide what an absent list means.</summary>
+    public IReadOnlyList<KeyValueItem> AuthorizeParameters { get; init; } = AuthorizeParameters ?? [];
+
+
     /// <summary>Shown as the template's label in the picker.</summary>
     public override string ToString() => DisplayName;
 }

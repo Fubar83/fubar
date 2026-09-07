@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:fc="using:Fubar.Controls">
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:chrome="using:Avalonia.Controls.Chrome">
 
     <!-- Shared app-shell styles so every app on Fubar.Controls looks identical without defining any
          styles of its own: the window font, the request-tree row look, and the flat list-row look
@@ -47,6 +48,20 @@
         <Setter Property="OnContent" Value="" />
         <Setter Property="OffContent" Value="" />
         <Setter Property="MinWidth" Value="0" />
+    </Style>
+
+    <!-- No full-screen caption button. Minimise, maximise and close are what a window offers; the
+         diagonal fourth button is a mode neither app has any use for, and both already snap
+         WindowState.FullScreen back to Maximized the moment it is entered - so it was a button whose
+         only effect was to be undone.
+
+         CLAUDE.md recorded that this button "cannot be removed or hidden (it lives outside the
+         window's visual tree)". That was true of FindControl, which is how it was tried, and true of
+         the Avalonia 11 chrome it was written against. Avalonia 12 replaced CaptionButtons with a
+         decorations template whose parts declare a ROLE, and a role is something a selector can match
+         - so this needs no part name and survives the template being rewritten again. -->
+    <Style Selector="Button[(chrome|WindowDecorationProperties.ElementRole)=FullScreenButton]">
+        <Setter Property="IsVisible" Value="False" />
     </Style>
 
 </Styles>

@@ -53,10 +53,16 @@
                  open the way to a difference five levels down. TwoWay because expanding by hand is the
                  row's own state, and a one-way binding would have the next navigation silently
                  disagree with what the user just did - the same reason the View menu's two genuine
-                 two-way MenuItems say so explicitly. -->
+                 two-way MenuItems say so explicitly.
+
+                 Through fc:TreeItemState and not a Setter on TreeViewItem.IsExpanded, which is what
+                 this was and which cannot work: the expander writes a fold as a LOCAL value, and a
+                 local value outranks a style setter permanently. So the first fold by hand severed the
+                 binding, and from then on navigating to a difference inside a folded node left it
+                 folded - exactly the case the comment above says this exists for. -->
             <TreeView.Styles>
                 <Style Selector="TreeViewItem" x:DataType="vm:JsonChangeNodeViewModel">
-                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                    <Setter Property="fc:TreeItemState.ExpandedPath" Value="IsExpanded" />
                 </Style>
             </TreeView.Styles>
 

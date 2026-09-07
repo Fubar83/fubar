@@ -34,6 +34,14 @@ public partial class MainViewModel : ViewModelBase
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IEditorViewModelFactory _editorFactory;
     private readonly IRunDialogService _runDialog;
+
+    /// <summary>Optional so a headless test can construct the shell without a windowing stack. Null
+    /// means no prompt can be shown, which is treated as "do not discard" rather than as consent.</summary>
+    private readonly IConfirmationService? _confirmation;
+    private readonly IClipboardService? _clipboard;
+    private readonly Fubar.Studio.Core.Diagnostics.ILogSink? _logSink;
+    private readonly Fubar.Studio.Core.Settings.IMachinePolicyService? _policy;
+    private readonly Fubar.Studio.Core.Settings.IAppSettingsService? _appSettings;
     private RequestEditorViewModel? _dirtyTrackedRequest;
 
     public WorkspaceExplorerViewModel WorkspaceExplorer { get; }
@@ -63,6 +71,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsLogVisible { get; set; }
 
+    // Kept in step so the log can clear its unread badge when the user actually looks at it, rather
+    // than when something merely tried to raise it.
+    partial void OnIsLogVisibleChanged(bool value) => StatusLog.IsVisible = value;
+
     public MainViewModel(
         WorkspaceExplorerViewModel workspaceExplorer,
         EnvironmentManagerViewModel environmentManager,
@@ -72,7 +84,12 @@ public partial class MainViewModel : ViewModelBase
         IProtocolRegistry protocolRegistry,
         IEditorViewModelFactory editorFactory,
         IRunDialogService runDialog,
-        ITabDragHost tabDragHost)
+        ITabDragHost tabDragHost,
+        IConfirmationService? confirmation = null,
+        IClipboardService? clipboard = null,
+        Fubar.Studio.Core.Diagnostics.ILogSink? logSink = null,
+        Fubar.Studio.Core.Settings.IMachinePolicyService? policy = null,
+        Fubar.Studio.Core.Settings.IAppSettingsService? appSettings = null)
     {
         WorkspaceExplorer = workspaceExplorer;
         TabDragHost = tabDragHost;
@@ -83,6 +100,11 @@ public partial class MainViewModel : ViewModelBase
         _protocolRegistry = protocolRegistry;
         _editorFactory = editorFactory;
         _runDialog = runDialog;
+        _confirmation = confirmation;
+        _clipboard = clipboard;
+        _logSink = logSink;
+        _policy = policy;
+        _appSettings = appSettings;
 
         WorkspaceExplorer.PropertyChanged += OnWorkspaceExplorerPropertyChanged;
         WorkspaceExplorer.WorkspaceClosed += OnWorkspaceClosed;
@@ -92,6 +114,18 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorer.RunRequested += OnRunRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
         LeftPane.AuthProfilesSection.EditRequested += OpenAuthProfileEditor;
+
+        // A failure reported into a collapsed panel is not reported. The strip opens itself the first
+        // time something actually goes wrong; the badge on the shell covers everything after that.
+        StatusLog.RaiseRequested += () => IsLogVisible = true;
+        StatusLog.IsVisible = IsLogVisible;
+
+        // Opening a pre-floor request rewrites it into the current format. That is an edit to a
+        // committed file, so it is announced rather than done quietly - the user is about to see it in
+        // a diff and is entitled to know why.
+        _workspaceService.RequestMigrated += (path, changes) =>
+            StatusLog.LogWarning(
+                $"Updated \"{System.IO.Path.GetFileName(path)}\" to the current format: {string.Join("; ", changes)}.");
 
         StatusLog.Log("Fubar shell ready.");
     }
@@ -129,6 +163,235 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand]
     private void ToggleLog() => IsLogVisible = !IsLogVisible;
+
+    /// <summary>Raised by Ctrl+P; the shell puts the caret in the left pane's filter box.</summary>
+    public event Action? FilterFocusRequested;
+
+    /// <summary>Raised by Ctrl+Shift+P; the shell opens the palette over the window.</summary>
+    public event Action<CommandPaletteViewModel>? PaletteRequested;
+
+    /// <summary>Raised by the palette's About entry; the shell shows the diagnostics window.</summary>
+    public event Action? AboutRequested;
+
+    /// <summary>Raised by Ctrl+, or the palette; the shell shows the settings window.</summary>
+    public event Action? SettingsRequested;
+
+    [RelayCommand]
+    private void OpenSettings() => SettingsRequested?.Invoke();
+
+    // ---- The two shortcuts the docs already promised -----------------------------------------------
+    //
+    // docs/api-studio.md's Keyboard table has listed Ctrl+Enter as Send and Ctrl+S as Save since it was
+    // written. Neither appeared in any KeyBindings block or key handler: the two most-used actions in
+    // an API client had no shortcut at all, in an app with no menu bar to find one from. Fourth
+    // documented instance of built-and-never-wired here - this time the thing that was never wired was
+    // in the documentation rather than the code.
+
+    /// <summary>
+    /// Sends whatever is open, for Ctrl+Enter.
+    ///
+    /// <para>Silently does nothing when the canvas holds an environment or an auth profile: there is
+    /// no request to send, and a shortcut that reports an error for being pressed on the wrong screen
+    /// is worse than one that does nothing.</para>
+    /// </summary>
+    [RelayCommand]
+    private async Task SendActiveAsync()
+    {
+        if (ActiveRequest is { } request)
+        {
+            await request.SendCommand.ExecuteAsync(null);
+        }
+    }
+
+    /// <summary>
+    /// Saves whatever is open, for Ctrl+S - a request, an environment or an auth profile.
+    ///
+    /// <para>All three, not just requests: Ctrl+S is muscle memory, and one that works on two screens
+    /// out of three is worse than none, because the two that work teach you to trust it.</para>
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveActiveAsync()
+    {
+        if (ActiveEditor is ISaveableEditor editor)
+        {
+            await editor.SaveAsync();
+        }
+    }
+
+    /// <summary>Closes the active workspace tab, for Ctrl+W.</summary>
+    [RelayCommand]
+    private void CloseActiveWorkspace()
+    {
+        if (WorkspaceExplorer.ActiveRoot is { } root)
+        {
+            WorkspaceExplorer.CloseWorkspaceCommand.Execute(root);
+        }
+    }
+
+    /// <summary>
+    /// Whether the open editor has unsaved changes, for the Save button's own marker.
+    ///
+    /// <para>The dirty state was tracked and shown only as a dot on the tree row - which is the one
+    /// place you are not looking while typing into the editor. The Save button looked identical
+    /// whether or not there was anything to save.</para>
+    /// </summary>
+    public bool IsActiveDirty => ActiveRequest?.IsDirty == true;
+
+    /// <summary>
+    /// Whether there is a response to show, so the shell can give the whole canvas to the editor
+    /// until there is.
+    ///
+    /// <para>Before the first send the response pane was three stacked empty states for one message:
+    /// a strip saying "No response yet", four view tabs that could do nothing, and an empty editor
+    /// showing line number 1. Collapsing it outright roughly doubles the request editor on the screen
+    /// people spend the most time on. The splitter stays, so it can be dragged back at any time.</para>
+    /// </summary>
+    public bool HasResponse => ActiveRequest?.Response.HasResponse == true;
+
+    /// <summary>Diagnostics for the About window. Built here because the shell owns the log and the
+    /// clipboard; the window itself only displays what it is given.</summary>
+    public AboutViewModel CreateAbout() => new(_clipboard, _logSink, _policy, StatusLog);
+
+    /// <summary>
+    /// The settings window's context. Built here for the same reason About's is: the shell owns the
+    /// services, and the window only displays what it is given.
+    ///
+    /// <para>Saving re-applies the theme. Settings is the only place it is chosen now - it used to be
+    /// a switcher pinned to the sidebar footer, which applied as it changed - so without this the
+    /// choice would be written to the file and not appear until the next launch, which reads as the
+    /// setting not working.</para>
+    /// </summary>
+    public SettingsViewModel CreateSettings()
+    {
+        var settings = new SettingsViewModel(_appSettings!, _policy);
+
+        settings.Saved += () => LeftPane.Theme.Initialize();
+
+        return settings;
+    }
+
+    [RelayCommand]
+    private void OpenPalette() => PaletteRequested?.Invoke(new CommandPaletteViewModel(PaletteEntries()));
+
+    /// <summary>
+    /// Everything the palette offers: the shell's own commands, then every request in every open
+    /// workspace.
+    ///
+    /// <para>Requests are included because "open the request called X" is the commonest thing anyone
+    /// wants and, before the tree filter existed, took scrolling. Built fresh each time the palette
+    /// opens rather than cached - workspaces come and go, and a stale palette entry that opens a
+    /// deleted request is worse than a moment's work.</para>
+    /// </summary>
+    private IEnumerable<PaletteEntry> PaletteEntries()
+    {
+        yield return new PaletteEntry("New Request", "Command", "Ctrl+N",
+            () => { WorkspaceExplorer.NewRequestCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("New Folder", "Command", "Ctrl+Shift+N",
+            () => { WorkspaceExplorer.NewFolderCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("New Workspace...", "Command", null,
+            () => WorkspaceExplorer.NewWorkspaceCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Open Workspace...", "Command", null,
+            () => WorkspaceExplorer.OpenWorkspaceDirectoryCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Import OpenAPI / Swagger...", "Command", null,
+            () => WorkspaceExplorer.ImportOpenApiCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Import Postman collection...", "Command", null,
+            () => WorkspaceExplorer.ImportPostmanCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Import Postman environment...", "Command", null,
+            () => WorkspaceExplorer.ImportPostmanEnvironmentCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Import from curl...", "Command", null,
+            () => WorkspaceExplorer.ImportCurlCommand.ExecuteAsync(null));
+
+        yield return new PaletteEntry("Run selection", "Command", "Ctrl+R",
+            () => { RunActiveCommand.Execute(null); return Task.CompletedTask; });
+
+        // Where the request editor's one-item overflow menu went. Offered only with a request open,
+        // because with anything else on the canvas there is nothing to copy - a palette entry that
+        // does nothing when picked is worse than one that is absent.
+        if (ActiveRequest is { } copyable)
+        {
+            yield return new PaletteEntry("Copy as cURL", "Command", null,
+                () => copyable.CopyAsCurlCommand.ExecuteAsync(null));
+        }
+
+        yield return new PaletteEntry("Find in response", "Command", "Ctrl+F",
+            () => { FindInResponseCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("Filter requests", "Command", "Ctrl+P",
+            () => { FocusFilterCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("Toggle Status & Log", "Command", "Ctrl+`",
+            () => { ToggleLogCommand.Execute(null); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("Settings...", "Command", "Ctrl+,",
+            () => { SettingsRequested?.Invoke(); return Task.CompletedTask; });
+
+        yield return new PaletteEntry("About Fubar API Studio", "Command", null,
+            () => { AboutRequested?.Invoke(); return Task.CompletedTask; });
+
+        foreach (var root in WorkspaceExplorer.Roots)
+        {
+            foreach (var request in Requests(root))
+            {
+                var path = request.FullPath;
+                yield return new PaletteEntry(request.Name, root.Name, null, () => OpenRequestAsync(path));
+            }
+        }
+    }
+
+    private static IEnumerable<WorkspaceNodeViewModel> Requests(WorkspaceNodeViewModel node)
+    {
+        foreach (var child in node.Children)
+        {
+            if (!child.IsDirectory)
+            {
+                yield return child;
+            }
+
+            foreach (var descendant in Requests(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    /// <summary>Raised by Ctrl+F; the shell opens the response editor's find bar.</summary>
+    public event Action? FindRequested;
+
+    [RelayCommand]
+    private void FocusFilter() => FilterFocusRequested?.Invoke();
+
+    /// <summary>
+    /// Ctrl+F. An event rather than something the view model does itself, because the find bar belongs
+    /// to AvaloniaEdit and lives inside a control - a view model that reached for it would be reaching
+    /// into the view.
+    /// </summary>
+    [RelayCommand]
+    private void FindInResponse()
+    {
+        if (ActiveRequest?.Response.HasResponse == true)
+        {
+            FindRequested?.Invoke();
+        }
+    }
+
+    /// <summary>Ctrl+R - runs whatever the left pane has selected, or the whole workspace when nothing
+    /// is. Same path as the context menu, so the two cannot disagree about what "run" means.</summary>
+    [RelayCommand]
+    private void RunActive()
+    {
+        var node = WorkspaceExplorer.SelectedNode ?? WorkspaceExplorer.ActiveRoot;
+        if (node is not null)
+        {
+            OnRunRequested(node);
+        }
+    }
 
     /// <summary>Whenever the active workspace tab changes (opened, switched, or closed down to
     /// none), reload the Environments/Auth Profiles groups and active-environment badge to match -
@@ -181,10 +444,12 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Loads <paramref name="filePath"/> into the single main-canvas surface, replacing whatever
-    /// was open. Re-activating the already-open request is a no-op. Unlike the old tabbed dock,
-    /// there's nowhere to keep a second buffer around - switching away from unsaved changes just
-    /// logs a warning rather than blocking, matching the single-canvas/no-tabs design.
+    /// Loads <paramref name="filePath"/> into the single main-canvas surface, replacing whatever was
+    /// open. Re-activating the already-open request is a no-op.
+    ///
+    /// <para>There is nowhere to keep a second buffer, so replacing a dirty editor DESTROYS the edits -
+    /// which is why it now asks. It used to write a line to the status log and carry on, and that log
+    /// was collapsed by default, so the only notice of losing work went somewhere invisible.</para>
     /// </summary>
     public async Task OpenRequestAsync(string filePath)
     {
@@ -193,15 +458,15 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        if (ActiveRequest is { IsDirty: true } dirty)
+        if (!await ConfirmDiscardingActiveEditAsync())
         {
-            StatusLog.Log($"Switched away from \"{dirty.Name}\" with unsaved changes (Ctrl+S to save before switching).");
+            return;
         }
 
         var workspace = WorkspaceExplorer.FindWorkspaceForPath(filePath);
         if (workspace is null)
         {
-            StatusLog.Log($"Could not find the owning workspace for \"{filePath}\".");
+            StatusLog.LogError($"Could not find the owning workspace for \"{filePath}\".");
             return;
         }
 
@@ -220,8 +485,43 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            StatusLog.Log($"Failed to open \"{filePath}\": {ex.Message}");
+            StatusLog.LogError($"Failed to open \"{filePath}\": {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Asks before the active editor's unsaved changes are thrown away, and returns whether to go
+    /// ahead. Save writes first; Cancel and a dismissed dialog both mean don't.
+    ///
+    /// <para>A dismissed dialog counting as "discard" is exactly the bug a prompt exists to prevent,
+    /// so <c>ChooseAsync</c>'s -1 is treated as Cancel - the same rule Fubar Diff states and pins with
+    /// its own tests. With no confirmation service wired at all the answer is also no: refusing to
+    /// switch is recoverable, silently destroying an edit is not.</para>
+    /// </summary>
+    public async Task<bool> ConfirmDiscardingActiveEditAsync()
+    {
+        if (ActiveRequest is not { IsDirty: true } dirty)
+        {
+            return true;
+        }
+
+        var choice = await UnsavedChangesPrompt.AskAsync(
+            isDirty: true,
+            dirty.Name,
+            _confirmation,
+            async () =>
+            {
+                await dirty.SaveCommand.ExecuteAsync(null);
+                return !dirty.IsDirty;
+            });
+
+        if (choice == UnsavedChoice.Keep)
+        {
+            StatusLog.LogWarning($"Kept the unsaved changes to \"{dirty.Name}\".");
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>Opens <paramref name="environment"/>'s variables for editing in the main canvas -
@@ -272,16 +572,31 @@ public partial class MainViewModel : ViewModelBase
         if (_dirtyTrackedRequest is { } previous)
         {
             previous.PropertyChanged -= OnActiveRequestPropertyChanged;
+            previous.Response.PropertyChanged -= OnActiveResponsePropertyChanged;
             ClearDirtyMarker(previous.FilePath);
             previous.Dispose();
         }
 
         _dirtyTrackedRequest = value as RequestEditorViewModel;
+        OnPropertyChanged(nameof(IsActiveDirty));
+        OnPropertyChanged(nameof(HasResponse));
 
         if (_dirtyTrackedRequest is { } current)
         {
             current.PropertyChanged += OnActiveRequestPropertyChanged;
+
+            // The response pane collapses until there is something to show, so the shell has to hear
+            // about the FIRST response as well as about edits.
+            current.Response.PropertyChanged += OnActiveResponsePropertyChanged;
             SyncDirtyMarker(current);
+        }
+    }
+
+    private void OnActiveResponsePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ResponsePanelViewModel.HasResponse))
+        {
+            OnPropertyChanged(nameof(HasResponse));
         }
     }
 
@@ -295,6 +610,11 @@ public partial class MainViewModel : ViewModelBase
 
     private void SyncDirtyMarker(RequestEditorViewModel request)
     {
+        // The editor's own marker, as well as the tree's. The dot on the tree row is in the one place
+        // you are NOT looking while typing into the editor, which is where the question "have I saved
+        // this?" actually gets asked.
+        OnPropertyChanged(nameof(IsActiveDirty));
+
         if (WorkspaceExplorer.FindNodeByPath(request.FilePath) is { } node)
         {
             node.IsDirty = request.IsDirty;

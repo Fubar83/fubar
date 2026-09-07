@@ -288,11 +288,11 @@ public sealed partial class OpenComparisonViewModel : ViewModelBase
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        IgnoreWhitespace = settings.IgnoreWhitespace;
-        IgnoreCase = settings.IgnoreCase;
-        IgnoreComments = settings.IgnoreComments;
-        IgnoreBlankLines = settings.IgnoreBlankLines;
-        Mode = settings.Mode;
+        IgnoreWhitespace = settings.Comparison.IgnoreWhitespace;
+        IgnoreCase = settings.Comparison.IgnoreCase;
+        IgnoreComments = settings.Comparison.IgnoreComments;
+        IgnoreBlankLines = settings.Comparison.IgnoreBlankLines;
+        Mode = settings.Comparison.Mode;
         Recent = settings.Recent;
     }
 

@@ -48,8 +48,17 @@
         <Grid IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
               RowDefinitions="Auto,Auto,*">
 
-            <!-- Environments group -->
-            <fc:Section Grid.Row="0" Title="ENVIRONMENTS" x:DataType="vm:LeftPaneViewModel">
+            <!-- Environments group.
+
+                 Collapsible, and collapsed by default. Environments and Auth Profiles are set up once
+                 and then read from the toolbar's selector; the request tree is what the pane is
+                 actually FOR, and these two were taking around two hundred pixels off it permanently -
+                 including a whole row for "No auth profiles yet." saying nothing. Both remember their
+                 state, because a section that refolds itself every launch is worse than one that never
+                 folded. -->
+            <fc:Section Grid.Row="0" Title="ENVIRONMENTS" x:DataType="vm:LeftPaneViewModel"
+                        IsCollapsible="True"
+                        IsExpanded="{Binding IsEnvironmentsExpanded, Mode=TwoWay}">
                 <fc:Section.Action>
                     <Button Classes="icon-btn"
                             Content="+"
@@ -107,7 +116,9 @@
             </fc:Section>
 
             <!-- Auth Profiles group -->
-            <fc:Section Grid.Row="1" Title="AUTH PROFILES" x:DataType="vm:LeftPaneViewModel">
+            <fc:Section Grid.Row="1" Title="AUTH PROFILES" x:DataType="vm:LeftPaneViewModel"
+                        IsCollapsible="True"
+                        IsExpanded="{Binding IsAuthProfilesExpanded, Mode=TwoWay}">
                 <fc:Section.Action>
                     <Button Classes="icon-btn"
                             Content="+"
@@ -182,8 +193,18 @@
                         </Button.Flyout>
                     </Button>
                 </fc:Section.Action>
-                <Grid RowDefinitions="Auto,*">
-                    <TextBlock Grid.Row="0"
+                <Grid RowDefinitions="Auto,Auto,Auto,*">
+                    <!-- fc:SearchBox has existed in the design system from the start, themed, with a
+                         clear button - and was used only by the Gallery, whose demo watermark reads
+                         "Filter requests...". This is that control finally doing its job. -->
+                    <fc:SearchBox Grid.Row="0"
+                                  x:Name="RequestFilterBox"
+                                  Margin="8,6,8,4"
+                                  Watermark="Filter by name, URL or method"
+                                  IsVisible="{Binding WorkspaceExplorer.HasActiveRootChildren}"
+                                  Text="{Binding WorkspaceExplorer.Filter, Mode=TwoWay}" />
+
+                    <TextBlock Grid.Row="1"
                                Text="No requests yet."
                                IsVisible="{Binding !WorkspaceExplorer.HasActiveRootChildren}"
                                Margin="10,8"
@@ -191,11 +212,27 @@
                                Foreground="{DynamicResource TextSecondary}"
                                TextWrapping="Wrap" />
 
-                    <views:WorkspaceExplorerView Grid.Row="1" DataContext="{Binding WorkspaceExplorer}" />
+                    <!-- Said explicitly, because an empty tree otherwise reads as a workspace that
+                         failed to load rather than as a filter that matched nothing. -->
+                    <TextBlock Grid.Row="2"
+                               Text="Nothing matches that filter."
+                               IsVisible="{Binding WorkspaceExplorer.FilterMatchedNothing}"
+                               Margin="10,8"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" />
+
+                    <views:WorkspaceExplorerView Grid.Row="3" DataContext="{Binding WorkspaceExplorer}" />
                 </Grid>
             </fc:Section>
 
         </Grid>
+
+        <!-- The theme switcher used to be pinned here, in a bordered strip across the bottom of every
+             session. It is in Settings now (Ctrl+,), with the rest of the preferences: theme is chosen
+             about once, and this was the least-used control in the app holding the most permanent piece
+             of chrome in the sidebar. Nothing was lost - ThemeManagerViewModel is still bound, just
+             from the settings window. -->
 
     </Grid>
 

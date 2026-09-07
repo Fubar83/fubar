@@ -6,6 +6,52 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+
+- **An Environment-scoped capture no longer writes its value to a tracked file.** The rule deciding
+  where a variable's value may live was enforced in the environment editor's Save and nowhere else;
+  the capture path assigned `AppVariable.Value` directly and persisted it, so capturing
+  `$.access_token` put the token in `environments/*.json` — the file the product tells you to commit.
+  When the target variable was marked *Secret*, its on-disk value (documented as always null) was
+  overwritten with the real secret. One `IVariableWriter` is now the only code that assigns a value,
+  and both callers go through it: an existing variable keeps its kind, so a capture naming a Secret
+  variable writes to the OS keyring instead of demoting it.
+
+  A capture into a *Normal* variable whose name looks like a credential still succeeds — you may mean
+  it — but says so, and points at Session scope.
+
+- **Execution history is always ignored by Git.** `.fubar/` holds up to 200 responses per request,
+  bodies included. The ignore rule was written only when creating a workspace, and only when no
+  `.gitignore` already existed — so aiming *New Workspace* at a repository you already had, which is
+  the documented way to use it, left all of that tracked. The rule is now appended to an existing
+  `.gitignore` (never rewriting it), applied on open as well as create, and `.fubar/.gitignore`
+  additionally makes the directory exclude itself, which holds even when the repository root sits
+  above the workspace.
+
+- **The status log no longer prints captured values.** It logged `Captured {{token}} = "eyJhbGci…"`.
+  The JSON and JUnit reports have always omitted capture values for exactly this reason; the log
+  strip is the thing that gets screenshotted into a bug report, so the two now agree. The variable's
+  name and destination are logged; its value is not.
+
+> **If you used an earlier build, check your workspaces** — see the advisory in
+> [SECURITY.md](../SECURITY.md). Anything found must be **rotated at the provider**, not just
+> deleted: a fix cannot un-commit a credential.
+
+### Fixed
+
+- **Switching request no longer discards unsaved edits without asking, and neither does quitting.**
+  Only one request is open at a time, so opening another one destroys the outgoing editor's changes;
+  that used to write a line to the status log - collapsed by default - and carry on. Closing the
+  window did not even do that: there was no handler for it at all. Both now ask, with Save, Discard
+  and Cancel. Anything that is not an explicit answer means keep, including a dismissed dialog and a
+  save that failed.
+
+- **The Status & Log strip raises itself when something goes wrong**, and carries an unread count on
+  a permanent toolbar toggle. Ctrl+` used to be the only way to open it, which meant auth failures,
+  capture failures and import failures all reported somewhere with no route to it. Entries now carry
+  a severity, can be filtered and copied, and are written to a rolling daily file under
+  `%AppData%/Fubar/logs/` kept for seven days - so "send us your log" is answerable at all.
+
 ### Added
 
 - **Run a collection from the command line, for CI.** `FubarAPIStudio --run --env Staging --report
@@ -143,6 +189,23 @@ All notable changes to this project are documented here. The format is based on
   applies to an API-key-in-query scheme against a declared query parameter.
 
 ### Changed
+
+- **The request tree shows names, not file names.** `Create order.json` is now `Create order`. Every
+  request in a workspace is a `.json`, so the extension distinguished nothing while eating the width the
+  names need; folders, and any other file, keep theirs. Renaming starts from the name you were looking
+  at and `WorkspaceService.RenamePath` puts the extension back, so typing `Login` still lands on
+  `Login.json`.
+
+- **Folders fold again**, from a `+` / `−` box on the connector, open to begin with. A filter unfolds
+  every folder holding a match, or it would find a request and leave it out of sight; clearing the
+  filter leaves what it opened open, because re-folding would undo the folding you did by hand and
+  nothing afterwards can tell the two apart. Folded state lives on the node, not the row container, so
+  it survives the refresh that runs on every file-system change.
+
+- **The tree has indent rails, and one indent step.** Nesting was carried by a left margin alone, which
+  says nothing about which folder a request belongs to; a hairline now runs down each level.
+  `WorkspaceNodeViewModel.Depth` is gone with the margin it fed — the row's own `TreeViewItem.Level` is
+  the only nesting number left, rather than two that could disagree.
 
 - **One OAuth engine instead of two behind an invisible switch.** `AuthConfig` carried both a
   fixed-form shape and a token-request shape, and `TokenRequest == null` silently chose which

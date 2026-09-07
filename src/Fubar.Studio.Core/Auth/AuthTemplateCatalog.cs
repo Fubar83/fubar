@@ -53,7 +53,11 @@ public static class AuthTemplateCatalog
     /// </summary>
     private static AuthTemplate AuthorizationCode() => new(
         Key: "oauth2-authorization-code",
-        DisplayName: "OAuth 2.0 - Authorization Code + PKCE (sign in)",
+        // Names the providers, because this entry is the only route to them: the preset picker lives
+        // inside the section this template reveals, so a list entry saying only "Authorization Code"
+        // hides "sign in with Google" behind knowing that Google's sign-in IS an authorization code
+        // grant - which is exactly the knowledge the presets exist to not require.
+        DisplayName: "Sign in as a person - Google, Microsoft, GitHub or any OIDC provider",
         Grant: OAuth2GrantType.AuthorizationCode,
         SeedRequest: new AuthTokenRequest
         {

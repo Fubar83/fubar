@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
+using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Variables;
 
 namespace Fubar.Studio.Infrastructure.Protocols.Http;
@@ -17,15 +18,23 @@ namespace Fubar.Studio.Infrastructure.Protocols.Http;
 /// </summary>
 public sealed class HttpRequestExecutor : IRequestExecutor
 {
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(100);
+    /// <summary>Fallback when no setting and no per-request timeout say otherwise.</summary>
+    private static readonly TimeSpan FallbackTimeout = TimeSpan.FromSeconds(100);
 
     private readonly IScopedHttpClientProvider _scopedClients;
     private readonly IVariableResolver _variableResolver;
+    private readonly IAppSettingsService? _settings;
 
-    public HttpRequestExecutor(IScopedHttpClientProvider scopedClients, IVariableResolver variableResolver)
+    /// <summary>Settings are optional so the many tests that construct this directly need not supply
+    /// them; without them the built-in defaults apply, which is what a first run gets anyway.</summary>
+    public HttpRequestExecutor(
+        IScopedHttpClientProvider scopedClients,
+        IVariableResolver variableResolver,
+        IAppSettingsService? settings = null)
     {
         _scopedClients = scopedClients;
         _variableResolver = variableResolver;
+        _settings = settings;
     }
 
     public RequestKind Kind => RequestKind.Http;
@@ -34,7 +43,12 @@ public sealed class HttpRequestExecutor : IRequestExecutor
     {
         var stopwatch = Stopwatch.StartNew();
 
-        var timeout = request.TimeoutSeconds is int s and > 0 ? TimeSpan.FromSeconds(s) : DefaultTimeout;
+        // The request wins, then the user setting, then the fallback. A request that names its own
+        // timeout means it, and a global default must not quietly override it.
+        var settings = _settings?.Load().Requests;
+        var timeout = request.TimeoutSeconds is int s and > 0
+            ? TimeSpan.FromSeconds(s)
+            : settings?.DefaultTimeoutSeconds is int d and > 0 ? TimeSpan.FromSeconds(d) : FallbackTimeout;
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
@@ -42,11 +56,37 @@ public sealed class HttpRequestExecutor : IRequestExecutor
         {
             var url = BuildUrl(request, context);
 
-            // Cookies are isolated per (workspace, environment) - a DEV session cookie is never sent to PROD.
-            var client = _scopedClients.GetClient(SessionScope.For(context.Workspace, context.ActiveEnvironment));
+            // Cookies are isolated per (workspace, environment) - a DEV session cookie is never sent to
+            // PROD - and so is the transport configuration, which takes part in the cache key so two
+            // environments cannot end up sharing a handler carrying the wrong client certificate.
+            var scope = SessionScope.For(context.Workspace, context.ActiveEnvironment);
+            var transport = context.ActiveEnvironment?.Transport;
+            var client = _scopedClients.GetClient(scope, transport, context.Workspace.RootPath);
+
+            // A thumbprint that matched no certificate, or a CA file that would not load, otherwise
+            // arrives much later as a TLS handshake error that names none of them.
+            if (_scopedClients.ProblemsFor(scope, transport) is { Count: > 0 } problems)
+            {
+                return new ExecutionResult
+                {
+                    ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
+                    ErrorMessage = string.Join(" ", problems),
+                };
+            }
+
             using var response = await SendFollowingRedirectsAsync(client, request, url, context, linked.Token);
-            var bodyBytes = await response.Content.ReadAsByteArrayAsync(linked.Token);
-            var body = Encoding.UTF8.GetString(bodyBytes);
+
+            // Bounded. ReadAsByteArrayAsync had no cap and the client's MaxResponseContentBufferSize was
+            // left at its default, so a response larger than memory took the whole application down -
+            // which needs no hostile server, only a badly paginated endpoint.
+            var cap = settings?.MaxResponseMegabytes is int mb and > 0 ? mb * 1024 * 1024 : MaxResponseBytes;
+            var (bodyBytes, truncated) = await ReadBodyAsync(response, cap, linked.Token);
+
+            // Decoded by what the response SAID, not by assumption. This was Encoding.UTF8 regardless of
+            // charset, so a latin-1 or UTF-16 response rendered as mojibake - and assertions and
+            // captures then ran against the mangled text, reporting a difference in data that was fine.
+            var encoding = ResolveEncoding(response);
+            var body = truncated ? "" : encoding.GetString(bodyBytes);
 
             var headers = response.Headers
                 .Concat(response.Content.Headers)
@@ -63,6 +103,8 @@ public sealed class HttpRequestExecutor : IRequestExecutor
                 ContentType = response.Content.Headers.ContentType?.MediaType,
                 ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
                 SizeBytes = bodyBytes.Length,
+                BodyEncodingName = encoding.WebName,
+                BodyTooLarge = truncated,
             };
         }
         // A timeout fires the linked token via timeoutCts while the caller's own token stays unset.
@@ -153,6 +195,65 @@ public sealed class HttpRequestExecutor : IRequestExecutor
         }
     }
 
+    /// <summary>
+    /// Default largest response body read into memory, overridden by the user setting. Generous - this
+    /// is a desktop tool and people legitimately
+    /// inspect large payloads - but finite, which is the whole point.
+    /// </summary>
+    public const int MaxResponseBytes = 64 * 1024 * 1024;
+
+    /// <summary>
+    /// Reads the body up to <see cref="MaxResponseBytes"/>, reporting whether it stopped early.
+    ///
+    /// <para>Read one chunk past the cap deliberately: a body of exactly the cap is fine, and the only
+    /// way to know a stream is longer is to ask for more than fits.</para>
+    /// </summary>
+    private static async Task<(byte[] Bytes, bool Truncated)> ReadBodyAsync(
+        HttpResponseMessage response, int maxBytes, CancellationToken cancellationToken)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+
+        var chunk = new byte[81920];
+        int read;
+
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+            {
+                return ([], true);
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return (buffer.ToArray(), false);
+    }
+
+    /// <summary>
+    /// The encoding the response declared, falling back to UTF-8.
+    ///
+    /// <para>A charset nobody recognises falls back rather than throwing: an unreadable body is a much
+    /// smaller problem than a send that fails outright, and the name is reported alongside so the
+    /// mojibake has an explanation rather than being a mystery.</para>
+    /// </summary>
+    private static Encoding ResolveEncoding(HttpResponseMessage response)
+    {
+        if (response.Content.Headers.ContentType?.CharSet is not { Length: > 0 } charset)
+        {
+            return Encoding.UTF8;
+        }
+
+        try
+        {
+            return Encoding.GetEncoding(charset.Trim('"', '\''));
+        }
+        catch (ArgumentException)
+        {
+            return Encoding.UTF8;
+        }
+    }
+
     private static Uri? RedirectLocation(HttpResponseMessage response) =>
         response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther
             or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect
@@ -188,6 +289,41 @@ public sealed class HttpRequestExecutor : IRequestExecutor
         _variableResolver.Substitute(input, context.Workspace, context.ActiveEnvironment);
 
     /// <summary>
+    /// Resolves an upload path against the workspace root when it is relative.
+    ///
+    /// <para>Relative is the shape worth encouraging: a workspace is committed, so a request pointing at
+    /// <c>fixtures/avatar.png</c> works on a colleague's machine while <c>C:\Users\me\Desktop\…</c>
+    /// does not. Absolute is still honoured - people do upload things from outside the workspace.</para>
+    /// </summary>
+    private static string ResolveWorkspacePath(string path, RequestExecutionContext context) =>
+        Path.IsPathRooted(path) ? path : Path.Combine(context.Workspace.RootPath, path);
+
+    /// <summary>
+    /// A content type for an upload, from the extension.
+    ///
+    /// <para>A guess, and the fallback is the honest one: <c>application/octet-stream</c> is what a
+    /// server should assume for bytes of unknown type, and getting this wrong is a much smaller
+    /// problem than refusing to send the file.</para>
+    /// </summary>
+    private static string GuessContentType(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".json" => "application/json",
+            ".xml" => "application/xml",
+            ".txt" or ".log" or ".csv" => "text/plain",
+            ".html" or ".htm" => "text/html",
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".svg" => "image/svg+xml",
+            ".webp" => "image/webp",
+            ".zip" => "application/zip",
+            ".gz" => "application/gzip",
+            _ => "application/octet-stream",
+        };
+
+    /// <summary>
     /// Builds the outgoing <see cref="HttpContent"/> for every <see cref="BodyType"/> the Body tab
     /// offers - previously only Json/RawText were handled here, so picking FormData/UrlEncoded/
     /// BinaryFile in the UI silently sent no body at all.
@@ -204,7 +340,33 @@ public sealed class HttpRequestExecutor : IRequestExecutor
                 var multipart = new MultipartFormDataContent();
                 foreach (var field in body.FormData.Where(f => f.Enabled && !string.IsNullOrWhiteSpace(f.Key)))
                 {
-                    multipart.Add(new StringContent(Resolve(field.Value, context)), field.Key);
+                    var resolved = Resolve(field.Value, context);
+
+                    if (field.Kind != FieldKind.File)
+                    {
+                        multipart.Add(new StringContent(resolved), field.Key);
+                        continue;
+                    }
+
+                    // A file part, which is the thing multipart exists for and which this could not do:
+                    // every field went out as StringContent, so picking FormData and choosing a file
+                    // sent its PATH as text.
+                    var path = ResolveWorkspacePath(resolved, context);
+
+                    if (!File.Exists(path))
+                    {
+                        // Names the FIELD as well as the path. A committed request can point at a file
+                        // a colleague does not have, and "could not find C:\...\avatar.png" on its own
+                        // leaves them hunting for which part of the body asked for it.
+                        multipart.Dispose();
+                        throw new FileNotFoundException(
+                            $"The form field \"{field.Key}\" points at \"{path}\", which does not exist.", path);
+                    }
+
+                    var part = new StreamContent(File.OpenRead(path));
+                    part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(GuessContentType(path));
+
+                    multipart.Add(part, field.Key, Path.GetFileName(path));
                 }
                 return multipart;
 

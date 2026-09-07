@@ -61,17 +61,34 @@ public sealed class LoopbackAuthorizationCodeListener : IAuthorizationCodeListen
         {
             OpenBrowser(request.AuthorizeUrl);
 
-            using var client = await listener.AcceptTcpClientAsync(cancellationToken);
-            using var stream = client.GetStream();
+            // Loops rather than serving exactly one connection. A browser opens more sockets than it
+            // sends requests on - Chrome speculatively pre-connects, and the callback page prompts a
+            // /favicon.ico of its own - and accepting one of those as THE redirect ends the sign-in
+            // before the redirect arrives, with "the redirect carried neither a code nor an error"
+            // for a redirect that was still in flight. Anything without a query string is answered
+            // and ignored; only a request that actually carries one is treated as the callback.
+            while (true)
+            {
+                using var client = await listener.AcceptTcpClientAsync(cancellationToken);
+                using var stream = client.GetStream();
 
-            var requestLine = await ReadRequestLineAsync(stream, cancellationToken);
-            var result = AuthorizationCodeFlow.ReadCallback(QueryOf(requestLine), request.State);
+                var query = QueryOf(await ReadRequestLineAsync(stream, cancellationToken));
 
-            // The browser is left showing this, so it has to say what happened - a blank tab after a
-            // sign-in is indistinguishable from one that failed.
-            await RespondAsync(stream, result, cancellationToken);
+                if (query.Length == 0)
+                {
+                    await RespondAsync(stream, "Waiting for the provider to redirect…", cancellationToken);
 
-            return result;
+                    continue;
+                }
+
+                var result = AuthorizationCodeFlow.ReadCallback(query, request.State);
+
+                // The browser is left showing this, so it has to say what happened - a blank tab after
+                // a sign-in is indistinguishable from one that failed.
+                await RespondAsync(stream, Describe(result), cancellationToken);
+
+                return result;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -92,15 +109,41 @@ public sealed class LoopbackAuthorizationCodeListener : IAuthorizationCodeListen
     /// <summary>
     /// Reads only the request line - <c>GET /callback?code=… HTTP/1.1</c>. The headers say nothing
     /// this needs, and reading to the end of them is more code and one more way to hang.
+    ///
+    /// <para>Reads until the line ends rather than taking whatever one <c>ReadAsync</c> returned. A
+    /// single read is not a line: TCP is a stream, and this particular line carries an authorization
+    /// code and a state, both provider-sized - Entra's run to hundreds of characters. A line split
+    /// across segments would be truncated mid-code and rejected as a state mismatch, which is the
+    /// error that means "somebody forged this redirect".</para>
     /// </summary>
     private static async Task<string> ReadRequestLineAsync(NetworkStream stream, CancellationToken cancellationToken)
     {
-        var buffer = new byte[8192];
-        var read = await stream.ReadAsync(buffer, cancellationToken);
-        var text = Encoding.ASCII.GetString(buffer, 0, read);
-        var end = text.IndexOf('\r');
+        var buffer = new byte[4096];
+        var text = new StringBuilder();
 
-        return end < 0 ? text : text[..end];
+        // Bounded, because this socket is reachable by anything on the machine: without a cap, a
+        // process that connects and streams bytes without a newline would grow this buffer until the
+        // app died. 64 KB is far beyond any real request line and far below anything that hurts.
+        while (text.Length < 64 * 1024)
+        {
+            var read = await stream.ReadAsync(buffer, cancellationToken);
+
+            if (read == 0)
+            {
+                break; // connection closed before a full line - a pre-connect, or a probe
+            }
+
+            text.Append(Encoding.ASCII.GetString(buffer, 0, read));
+
+            var end = text.ToString().IndexOf('\r');
+
+            if (end >= 0)
+            {
+                return text.ToString(0, end);
+            }
+        }
+
+        return text.ToString();
     }
 
     private static string QueryOf(string requestLine)
@@ -112,12 +155,13 @@ public sealed class LoopbackAuthorizationCodeListener : IAuthorizationCodeListen
         return question < 0 ? "" : target[(question + 1)..];
     }
 
-    private static async Task RespondAsync(NetworkStream stream, AuthorizationCallback result, CancellationToken cancellationToken)
-    {
-        var message = result.Ok
+    private static string Describe(AuthorizationCallback result) =>
+        result.Ok
             ? "Signed in. You can close this tab and go back to Fubar API Studio."
             : $"Sign-in failed: {result.Error}. {result.ErrorDescription}";
 
+    private static async Task RespondAsync(NetworkStream stream, string message, CancellationToken cancellationToken)
+    {
         var body = $"<!doctype html><meta charset=\"utf-8\"><title>Fubar API Studio</title>"
             + $"<body style=\"font-family:system-ui;padding:3rem\"><p>{WebUtility.HtmlEncode(message)}</p>";
 

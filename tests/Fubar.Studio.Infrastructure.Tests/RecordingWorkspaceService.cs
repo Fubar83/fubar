@@ -8,7 +8,9 @@ namespace Fubar.Studio.Infrastructure.Tests;
 /// and synthesizes paths, so import logic can be tested without touching real request.json files.
 /// Members not needed by the importers throw.</summary>
 internal sealed class RecordingWorkspaceService : IWorkspaceService
-{
+    {
+        /// <summary>No migration happens in a fake store, so nothing ever raises this.</summary>
+        public event Action<string, IReadOnlyList<string>>? RequestMigrated { add { } remove { } }
     public List<RequestModel> SavedRequests { get; } = [];
 
     public List<WorkspaceEnvironment> SavedEnvironments { get; } = [];

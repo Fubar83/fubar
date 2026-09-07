@@ -64,7 +64,7 @@ public class OAuthTests
         new(new VariableResolver(new NoSecrets(), session),
             session,
             registry ?? new StubExecutorRegistry(new StubExecutor()),
-            testService ?? new ResponseTestService(session, new NoEnvStore()));
+            testService ?? new ResponseTestService(session, new NoEnvStore(), new VariableWriter(new NoSecrets(), session)));
 
     [Fact]
     public async Task Provider_AcquiresAndStoresTokenInSessionVariables()

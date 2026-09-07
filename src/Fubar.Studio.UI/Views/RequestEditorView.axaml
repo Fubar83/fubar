@@ -21,7 +21,7 @@
     <Grid RowDefinitions="Auto,*">
 
         <!-- Address Bar -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" Margin="16,14,16,10" Height="40">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="16,14,16,10" Height="40">
             <Border Grid.Column="0"
                     BorderBrush="{DynamicResource BorderEditor}"
                     BorderThickness="1"
@@ -50,12 +50,21 @@
                              controls:VariableIntellisense.Context="{Binding VariableContext}" />
                 </Grid>
             </Border>
+            <!-- Send and Save carry no HotKey of their own. They used to, which is where Ctrl+Enter
+
+                 and Ctrl+S actually lived - so both worked on a request and neither existed on the
+
+                 environment or auth-profile editors, and Button.HotKey registers into the window's own
+
+                 KeyBindings, so a window-level binding beside it would have fired the command twice. One
+
+                 binding, in MainWindow, dispatching to whatever is open. -->
+
             <Panel Grid.Column="1" Margin="10,0,0,0">
                 <Button Classes="primary-btn"
                         Content="Send"
                         IsVisible="{Binding !IsSending}"
                         ToolTip.Tip="Send (Ctrl+Enter)"
-                        HotKey="Ctrl+Enter"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
                         Command="{Binding SendCommand}" />
@@ -67,35 +76,36 @@
                         VerticalContentAlignment="Center"
                         Command="{Binding CancelSendCommand}" />
             </Panel>
+            <!-- The unsaved marker. Dirty state was tracked and shown only as a dot on the tree row -
+                 the one place you are NOT looking while typing into the editor - so the Save button
+                 looked identical whether or not there was anything to save. A dot rather than a
+                 disabled state: greying Save when clean would take away the "write it out anyway"
+                 people press without thinking. -->
             <Button Grid.Column="2"
                     Classes="secondary-btn"
-                    Content="Save"
                     Margin="6,0,0,0"
                     ToolTip.Tip="Save Request (Ctrl+S)"
-                    HotKey="Ctrl+S"
                     HorizontalContentAlignment="Center"
                     VerticalContentAlignment="Center"
-                    Command="{Binding SaveCommand}" />
-            <Button Grid.Column="3"
-                    Classes="icon-btn"
-                    Content="⋯"
-                    FontSize="15"
-                    Margin="4,0,0,0"
-                    ToolTip.Tip="More actions"
-                    VerticalContentAlignment="Center">
-                <Button.Flyout>
-                    <MenuFlyout>
-                        <MenuItem Header="Copy as cURL"
-                                  ToolTip.Tip="Copy this request as a runnable curl command (variables resolved)"
-                                  Command="{Binding CopyAsCurlCommand}" />
-                    </MenuFlyout>
-                </Button.Flyout>
+                    Command="{Binding SaveCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <TextBlock Text="Save" VerticalAlignment="Center" />
+                    <Ellipse Width="6" Height="6"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding IsDirty}"
+                             Fill="{DynamicResource StatusDirty}"
+                             ToolTip.Tip="Unsaved changes" />
+                </StackPanel>
             </Button>
+            <!-- The overflow menu that used to sit here held exactly one item, "Copy as cURL" - a
+                 button and a flyout for one action, on the row where space is worth most. The action
+                 is in the command palette now (Ctrl+Shift+P), which is where its sibling "Import from
+                 curl" already lived. -->
         </Grid>
 
         <!-- Tabbed Request Builder: Params / Headers / Body / Auth / History (no Variables tab -
-             variables are environment-only, RequestEditorPane.md §1). Boxed tabs + seam merge +
-             content padding all come from the shared SeamlessTabControl; Background is the surface it
+             variables are environment-only, RequestEditorPane.md §1). Underline tabs +
+             content padding come from the shared SeamlessTabControl; Background is the surface it
              paints the merge in (the editor canvas). -->
         <fc:SeamlessTabControl Grid.Row="1"
                                      Margin="12,0,12,12"

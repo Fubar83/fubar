@@ -24,14 +24,38 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     {
         Headers = new KeyValueGridViewModel();
         Body = new RequestBodyViewModel(filePickerService, schemaValidator);
+        AuthorizeParameters = new KeyValueGridViewModel();
 
         Headers.Changed += RaiseChanged;
         Body.Changed += RaiseChanged;
         Body.PropertyChanged += (_, _) => RaiseChanged();
+        AuthorizeParameters.Changed += RaiseChanged;
         Captures.CollectionChanged += (_, _) => RaiseChanged();
     }
 
-    public static IReadOnlyList<AuthTemplate> TemplateOptions => AuthTemplateCatalog.All;
+    /// <summary>
+    /// Everything this editor can be set up as, in one list.
+    ///
+    /// <para>The providers used to live in a SECOND picker, inside the sign-in box that only appeared
+    /// once the authorization-code template had already been applied. So "sign in with Google" was
+    /// four interactions - pick a grant, apply it, pick a provider, apply that - and the first two
+    /// required knowing that Google's sign-in IS an authorization-code grant, which is exactly the
+    /// knowledge the presets exist to not require. One list, one Apply.</para>
+    ///
+    /// <para>Cached, not rebuilt per call: these are records holding lists, so two separately
+    /// constructed copies are not equal, and a ComboBox whose SelectedItem is not one of its own items
+    /// shows its placeholder instead.</para>
+    /// </summary>
+    public static IReadOnlyList<AuthTemplate> TemplateOptions { get; } =
+    [
+        .. SignInProviderCatalog.All.Select(p => SignInProviderTemplate.For(p)),
+
+        // The catalog's own authorization-code entry is deliberately left out: every sign-in entry
+        // above IS one, and offering a nameless fifth would ask the user to tell them apart. It stays
+        // in the catalog because a profile saved before this reopens on it - Seed falls back to
+        // matching on Grant, which lands on the first sign-in entry.
+        .. AuthTemplateCatalog.All.Where(t => t.Grant != OAuth2GrantType.AuthorizationCode),
+    ];
 
     public static IReadOnlyList<string> MethodOptions { get; } = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -131,6 +155,17 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
 
     public RequestBodyViewModel Body { get; }
 
+    /// <summary>
+    /// Extra query parameters for the AUTHORIZE URL - not for the token request, which has its own
+    /// headers and body above.
+    ///
+    /// <para>A grid rather than a hidden concern because the parameters that belong here are the ones
+    /// that decide whether a sign-in is usable at all: Google returns a refresh token only with
+    /// <c>access_type=offline</c>, Auth0 returns an opaque string instead of a JWT without
+    /// <c>audience</c>. Both fail long after the sign-in appeared to succeed.</para>
+    /// </summary>
+    public KeyValueGridViewModel AuthorizeParameters { get; }
+
     public ObservableCollection<CaptureRowViewModel> Captures { get; } = [];
 
     [ObservableProperty]
@@ -174,14 +209,59 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
 
     partial void OnExpiresInExpressionChanged(string value) => RaiseChanged();
 
+    /// <summary>
+    /// Fills the editor in from the chosen template, keeping what the user already supplied.
+    ///
+    /// <para>Also the provider path: a sign-in entry carries a <c>ProviderKey</c>, so choosing "Sign
+    /// in with Google" here does everything the separate provider picker and its second Apply button
+    /// used to do.</para>
+    /// </summary>
     [RelayCommand]
     private void ApplyTemplate()
     {
-        if (SelectedTemplate is { } template)
+        if (SelectedTemplate is not { } selected)
         {
-            Seed(template);
-            RaiseChanged();
+            return;
         }
+
+        // Rebuilt for the CURRENT tenant rather than used as listed: the cached options were built
+        // with each provider's default tenant, so applying the listed copy after typing a tenant id
+        // would quietly set Entra's URLs back to /common.
+        var provider = SignInProviderCatalog.ByKey(selected.ProviderKey);
+        var template = provider is null ? selected : SignInProviderTemplate.For(provider, Tenant);
+
+        Seed(template);
+
+        if (provider is not null)
+        {
+            AddScope(SignInProviderTemplate.ScopeValue(provider));
+
+            // Filled in but NOT fetched. Discover is a network call to someone else's service, and
+            // making a dropdown reach the internet is not a thing a dropdown should do.
+            Issuer = TemplateSeedMerge.Url(Issuer, provider.IssuerFor(Tenant) ?? "");
+        }
+
+        ApplyStatus = DescribeApply(provider);
+        RaiseChanged();
+    }
+
+    /// <summary>
+    /// What applying just did, and - the part that matters - what it did not touch.
+    ///
+    /// <para>The merge is invisible if nobody says it happened: someone who has been burned once by a
+    /// template wiping their client id will not press the button again to find out it now behaves.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    public partial string? ApplyStatus { get; private set; }
+
+    private string DescribeApply(SignInProvider? provider)
+    {
+        var what = provider is null
+            ? "Filled in this grant's request."
+            : $"Filled in {provider.DisplayName}'s endpoints, scopes and parameters.";
+
+        return $"{what} Anything you had already entered was kept.";
     }
 
     [RelayCommand]
@@ -240,8 +320,11 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
 
     partial void OnResponseStatusChanged(string value) => OnPropertyChanged(nameof(HasResponse));
 
-    partial void OnResponseFieldsChanged(IReadOnlyList<TokenResponseField> value) =>
+    partial void OnResponseFieldsChanged(IReadOnlyList<TokenResponseField> value)
+    {
         OnPropertyChanged(nameof(HasResponseFields));
+        RefreshCapturableFields();
+    }
 
     private void ShowResponse(TokenResponse? response)
     {
@@ -258,25 +341,17 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     /// alone rather than duplicated - clicking twice is something people do.
     /// </summary>
     [RelayCommand]
-    private void CaptureField(TokenResponseField? field)
+    private void CaptureField(CapturableField? field)
     {
         if (field is null || Captures.Any(c => string.Equals(c.Expression, field.Path, StringComparison.Ordinal)))
         {
             return;
         }
 
-        var leaf = field.Path[(field.Path.LastIndexOf('.') + 1)..];
-
-        // The access token gets the variable the Bearer header already reads, so the commonest case
-        // is wired up correctly by one click rather than by knowing that convention.
-        var variable = leaf is "access_token" or "id_token"
-            ? (string.IsNullOrWhiteSpace(AccessTokenVariable) ? AuthDefaults.AccessTokenVariable : AccessTokenVariable)
-            : leaf;
-
         var row = new CaptureRowViewModel(new CaptureRule
         {
             Enabled = true,
-            VariableName = variable,
+            VariableName = field.Variable,
             Source = ResponseField.JsonBody,
             Expression = field.Path,
             Scope = CaptureScope.Session,
@@ -284,8 +359,47 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
 
         row.PropertyChanged += (_, _) => RaiseChanged();
         Captures.Add(row);
+        RefreshCapturableFields();
         RaiseChanged();
     }
+
+    /// <summary>
+    /// The response's fields as the screen offers them: each with the variable it would be saved into
+    /// and whether that has already been done.
+    ///
+    /// <para>The button used to say "Capture", which is this codebase's word rather than anyone
+    /// else's - it does not say what happens, where the value goes, or what to do with it afterwards.
+    /// It says "Save as {{name}}" now, naming the exact variable, so the connection to the
+    /// <c>Authorization: Bearer {{…}}</c> line at the top of the screen is on the button itself. A
+    /// field already captured says so instead of offering a button that silently does nothing on the
+    /// second click.</para>
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<CapturableField> CapturableFields { get; private set; } = [];
+
+    private void RefreshCapturableFields() =>
+        CapturableFields =
+        [
+            .. ResponseFields.Select(field =>
+            {
+                var leaf = field.Path[(field.Path.LastIndexOf('.') + 1)..];
+
+                // The access token gets the variable the Bearer header already reads, so the commonest
+                // case is wired up correctly by one click rather than by knowing that convention.
+                var variable = leaf is "access_token" or "id_token"
+                    ? (string.IsNullOrWhiteSpace(AccessTokenVariable) ? AuthDefaults.AccessTokenVariable : AccessTokenVariable)
+                    : leaf;
+
+                var captured = Captures.FirstOrDefault(c =>
+                    string.Equals(c.Expression, field.Path, StringComparison.Ordinal));
+
+                return new CapturableField(
+                    field.Path,
+                    field.Preview,
+                    captured?.VariableName ?? variable,
+                    captured is not null);
+            }),
+        ];
 
     [RelayCommand]
     private void VerifyRequest() => RequestPreview = PreviewHandler?.Invoke(ToAuthConfig());
@@ -302,22 +416,117 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     /// Runs the browser half of the authorization-code grant and returns what came back. Set by the
     /// host, which owns the browser and the socket.
     /// </summary>
-    public Func<string, string, string?, Task<SignInResult>>? SignInHandler { get; set; }
+    public Func<SignInRequest, Task<SignInResult>>? SignInHandler { get; set; }
+
+    // ---- Which provider ---------------------------------------------------------------------------
+    //
+    // Derived from the selected template rather than picked separately. There used to be a second
+    // ComboBox and a second Apply button here, inside a box that only appeared once the
+    // authorization-code template had already been applied - so choosing Google meant four
+    // interactions, the first two of which required knowing that Google's sign-in IS an
+    // authorization-code grant. One list answers both questions now.
+
+    /// <summary>The provider the selected template was built from, or null for the plain grants.</summary>
+    public SignInProvider? SelectedProvider => SignInProviderCatalog.ByKey(SelectedTemplate?.ProviderKey);
+
+    /// <summary>The tenant, directory or domain, for the providers that need one.</summary>
+    [ObservableProperty]
+    public partial string Tenant { get; set; } = "";
+
+    public bool NeedsTenant => SelectedProvider?.NeedsTenant == true;
+
+    public string TenantLabel => SelectedProvider?.TenantLabel ?? "";
+
+    public string TenantHelp => SelectedProvider?.TenantHelp ?? "";
+
+    /// <summary>What to do in the provider's own console before any of this can work.</summary>
+    public string SetupSummary => SelectedProvider?.SetupSummary ?? "";
+
+    /// <summary>Anything true of this provider the user would otherwise learn the hard way.</summary>
+    public string? ProviderCaveat => SelectedProvider?.Caveat;
+
+    public bool HasProviderCaveat => !string.IsNullOrWhiteSpace(ProviderCaveat);
+
+    public string? ConsoleUrl => SelectedProvider?.ConsoleUrl;
+
+    public bool HasConsoleUrl => !string.IsNullOrWhiteSpace(ConsoleUrl);
+
+    private void RefreshProvider()
+    {
+        // The tenant default comes with the provider, so choosing Microsoft does not leave an empty box
+        // that silently builds a URL containing a literal {tenant}.
+        if (SelectedProvider?.TenantDefault is { } tenant && string.IsNullOrWhiteSpace(Tenant))
+        {
+            Tenant = tenant;
+        }
+
+        OnPropertyChanged(nameof(SelectedProvider));
+        OnPropertyChanged(nameof(NeedsTenant));
+        OnPropertyChanged(nameof(TenantLabel));
+        OnPropertyChanged(nameof(TenantHelp));
+        OnPropertyChanged(nameof(SetupSummary));
+        OnPropertyChanged(nameof(ProviderCaveat));
+        OnPropertyChanged(nameof(HasProviderCaveat));
+        OnPropertyChanged(nameof(ConsoleUrl));
+        OnPropertyChanged(nameof(HasConsoleUrl));
+    }
+
 
     /// <summary>The provider's authorize endpoint. Filled by Discover when the provider publishes one.</summary>
     [ObservableProperty]
     public partial string AuthorizeUrl { get; set; } = "";
 
     /// <summary>
-    /// The redirect this app will listen on, shown BEFORE the flow can work.
+    /// The redirect this app will listen on, shown BEFORE the flow runs rather than after it fails.
     ///
     /// It has to be registered with the provider exactly as written, and a sign-in that fails because
     /// it was not is the single most opaque failure in this grant - the browser shows the provider's
-    /// own error page and the app never hears anything at all. So the value is on screen to copy
-    /// rather than discovered from a failure.
+    /// own error page and the app never hears anything at all.
+    ///
+    /// <para>Derived from <see cref="RedirectPort"/> rather than reported by the listener, which is
+    /// the only way it can be shown up front: an ephemeral port is not chosen until the socket binds,
+    /// so with one the best that can be said is which part is not yet known.</para>
+    /// </summary>
+    public string RedirectUri => AuthorizationCodeFlow.RedirectUriFor(RedirectPort);
+
+    /// <summary>
+    /// The loopback port to catch the redirect on. Zero asks the OS for a free one.
+    ///
+    /// <para>Pinnable, and that is the point. It used to be ephemeral with no alternative, so the
+    /// redirect URI carried a different port every attempt - while the editor told the user to
+    /// register it with their provider, which was impossible for any provider that matches it
+    /// exactly. Google and Entra ignore the port on loopback; GitHub, Okta, Auth0 and Keycloak do
+    /// not.</para>
     /// </summary>
     [ObservableProperty]
-    public partial string RedirectUri { get; private set; } = "";
+    public partial int RedirectPort { get; set; }
+
+    /// <summary>Bound to the tick box; unticking asks the OS for a port again.</summary>
+    public bool IsRedirectPortPinned
+    {
+        get => RedirectPort > 0;
+        set
+        {
+            if (value == IsRedirectPortPinned)
+            {
+                return;
+            }
+
+            // A number in the range providers are used to seeing in their own docs, and above the
+            // privileged range so binding it never needs elevation.
+            RedirectPort = value ? DefaultPinnedRedirectPort : AuthorizationCodeFlow.EphemeralPort;
+        }
+    }
+
+    /// <summary>What pinning starts from. Arbitrary, and deliberately memorable.</summary>
+    public const int DefaultPinnedRedirectPort = 8765;
+
+    partial void OnRedirectPortChanged(int value)
+    {
+        OnPropertyChanged(nameof(RedirectUri));
+        OnPropertyChanged(nameof(IsRedirectPortPinned));
+        RaiseChanged();
+    }
 
     /// <summary>True when the chosen template signs a person in, so the browser step is shown.</summary>
     public bool IsAuthorizationCode => SelectedTemplate?.Grant == OAuth2GrantType.AuthorizationCode;
@@ -354,11 +563,33 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         var scopes = Body.UrlEncoded.Rows
             .FirstOrDefault(r => string.Equals(r.Key, "scope", StringComparison.OrdinalIgnoreCase))?.Value;
 
-        var result = await SignInHandler(AuthorizeUrl, ClientIdInBody(), scopes);
+        var result = await SignInHandler(new SignInRequest(
+            AuthorizeUrl,
+            ClientIdInBody(),
+            scopes,
+            AuthorizeParameters.ToModel(),
+            RedirectPort));
 
-        RedirectUri = result.RedirectUri ?? RedirectUri;
+        // The URI the listener actually bound is worth saying when the port was ephemeral, because
+        // then it is the only place that number appears - and it is what a provider rejecting the
+        // redirect was rejecting.
+        ActualRedirectUri = result.RedirectUri;
         SignInStatus = result.Message;
     }
+
+    /// <summary>The redirect the last attempt really listened on. Null until one has run.</summary>
+    [ObservableProperty]
+    public partial string? ActualRedirectUri { get; private set; }
+
+    /// <summary>
+    /// True when the last attempt's redirect differs from the one on screen - which, with an ephemeral
+    /// port, it always will. Shown so nobody registers a URI that was never going to come back.
+    /// </summary>
+    public bool ShowsActualRedirectUri =>
+        ActualRedirectUri is { Length: > 0 } actual
+        && !string.Equals(actual, RedirectUri, StringComparison.Ordinal);
+
+    partial void OnActualRedirectUriChanged(string? value) => OnPropertyChanged(nameof(ShowsActualRedirectUri));
 
     /// <summary>
     /// The client id as the token request carries it, so the browser step and the exchange cannot
@@ -369,7 +600,11 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         Body.UrlEncoded.Rows.FirstOrDefault(r => string.Equals(r.Key, "client_id", StringComparison.OrdinalIgnoreCase))?.Value
         ?? "";
 
-    partial void OnSelectedTemplateChanged(AuthTemplate? value) => OnPropertyChanged(nameof(IsAuthorizationCode));
+    partial void OnSelectedTemplateChanged(AuthTemplate? value)
+    {
+        OnPropertyChanged(nameof(IsAuthorizationCode));
+        RefreshProvider();
+    }
 
     /// <summary>The issuer to look up. Usually pasted straight from the provider's own page.</summary>
     [ObservableProperty]
@@ -457,6 +692,17 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
     /// request if present, otherwise the legacy fixed-form config (upgraded), otherwise the default template.</summary>
     public void LoadFrom(AuthConfig auth)
     {
+        LoadTokenRequest(auth);
+
+        // AFTER the branches above, never before: two of them go through Seed, which sets the
+        // authorize URL and parameters from a template - so loading the saved sign-in first meant a
+        // config with no token request had its authorize URL wiped by the default template's empty
+        // one. The saved values are the authority here; a seed is only a starting point.
+        LoadSignIn(auth);
+    }
+
+    private void LoadTokenRequest(AuthConfig auth)
+    {
         if (auth.TokenRequest is { } tokenRequest)
         {
             Method = string.IsNullOrWhiteSpace(tokenRequest.Method) ? "POST" : tokenRequest.Method;
@@ -467,6 +713,17 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
             AccessTokenVariable = auth.AccessTokenVariable ?? "";
             ExpiryVariable = auth.ExpiryVariable ?? "";
             ExpiresInExpression = auth.ExpiresInExpression ?? "";
+
+            // A saved token request that reads {{oauth2_code}} IS an authorization-code sign-in,
+            // whatever template it came from. Without this the whole browser step is hidden on
+            // reopening, because the template picker starts on nothing and IsAuthorizationCode is
+            // false - so a working profile looked like it had lost its sign-in.
+            if (SelectedTemplate is null && ReadsAuthorizationCode())
+            {
+                SelectedTemplate = AuthTemplateCatalog.All
+                    .FirstOrDefault(t => t.Grant == OAuth2GrantType.AuthorizationCode);
+            }
+
             return;
         }
 
@@ -503,7 +760,40 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         auth.AccessTokenVariable = string.IsNullOrEmpty(AccessTokenVariable) ? null : AccessTokenVariable;
         auth.ExpiryVariable = string.IsNullOrEmpty(ExpiryVariable) ? null : ExpiryVariable;
         auth.ExpiresInExpression = string.IsNullOrEmpty(ExpiresInExpression) ? null : ExpiresInExpression;
+
+        // The browser half. None of this was saved before, so a profile reopened with an empty
+        // authorize URL and no provider - every session started by rediscovering the provider before
+        // the sign-in button could do anything, and the pinned port (which the provider had been told
+        // about) came back as ephemeral.
+        auth.AuthorizeUrl = string.IsNullOrWhiteSpace(AuthorizeUrl) ? null : AuthorizeUrl;
+        auth.AuthorizeParameters = AuthorizeParameters.ToModel().ToList();
+        auth.RedirectPort = RedirectPort > 0 ? RedirectPort : null;
+        auth.SignInProviderKey = SelectedProvider?.Key;
+        auth.SignInTenant = string.IsNullOrWhiteSpace(Tenant) ? null : Tenant;
     }
+
+    private void LoadSignIn(AuthConfig auth)
+    {
+        AuthorizeUrl = auth.AuthorizeUrl ?? "";
+        LoadAuthorizeParameters(auth.AuthorizeParameters);
+        RedirectPort = auth.RedirectPort ?? AuthorizationCodeFlow.EphemeralPort;
+        Tenant = auth.SignInTenant ?? "";
+
+        // Selects the template the provider corresponds to, since the provider is no longer picked
+        // separately. An unknown key - a profile written by a newer version, or one whose provider was
+        // removed - leaves whatever the token request already resolved to, rather than refusing to
+        // load: everything the sign-in actually needs was saved as plain URLs and fields, so it still
+        // works, and only the label is missing.
+        if (SignInProviderCatalog.ByKey(auth.SignInProviderKey) is { } provider
+            && TemplateOptions.FirstOrDefault(t => t.ProviderKey == provider.Key) is { } template)
+        {
+            SelectedTemplate = template;
+        }
+    }
+
+    private bool ReadsAuthorizationCode() =>
+        Body.UrlEncoded.Rows.Any(r =>
+            (r.Value ?? "").Contains(SignInService.CodeVariable, StringComparison.Ordinal));
 
     /// <summary>A standalone OAuth2 <see cref="AuthConfig"/> for Test/Verify (Type + this editor's state).</summary>
     public AuthConfig ToAuthConfig()
@@ -513,17 +803,74 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         return config;
     }
 
-    private void Seed(AuthTemplate template)
+    /// <summary>
+    /// Fills the editor in from a template WITHOUT throwing away work already done.
+    ///
+    /// <para>It used to replace everything, so the natural order of doing this - Discover your
+    /// endpoints, fill in your client id, then change your mind about the grant - lost all of it, and
+    /// pressing Apply a second time after correcting one field lost the correction. What survives is
+    /// decided by <see cref="TemplateSeedMerge"/>, in Core, where the rule can be tested without a
+    /// UI; the short version is that a template seeds structure and never overwrites an answer only
+    /// the user has.</para>
+    ///
+    /// <para><paramref name="replace"/> is for LOADING a saved profile, where there is no user work to
+    /// protect and merging would blend two unrelated configurations.</para>
+    /// </summary>
+    private void Seed(AuthTemplate template, bool replace = false)
     {
-        SelectedTemplate = template;
+        // The picker's selection must be one of ITS OWN options or the ComboBox shows its placeholder
+        // instead - which is what happened after choosing a provider: a provider template is built on
+        // the fly, and one built here is not reference- or value-equal to the cached list's copy.
+        SelectedTemplate = TemplateOptions.FirstOrDefault(t => t.Key == template.Key)
+            ?? TemplateOptions.FirstOrDefault(t => t.Grant == template.Grant)
+            ?? template;
+
         Method = string.IsNullOrWhiteSpace(template.SeedRequest.Method) ? "POST" : template.SeedRequest.Method;
-        Url = template.SeedRequest.Url;
-        LoadHeaders(template.SeedRequest.Headers);
-        LoadBody(template.SeedRequest.Body);
-        LoadCaptures(template.SeedCaptures);
-        AccessTokenVariable = template.AccessTokenVariable;
-        ExpiryVariable = template.ExpiryVariable;
-        ExpiresInExpression = template.ExpiresInExpression ?? "";
+
+        Url = replace
+            ? template.SeedRequest.Url
+            : TemplateSeedMerge.Url(Url, template.SeedRequest.Url);
+
+        // A provider seed brings a real authorize endpoint; the generic ones bring an empty string,
+        // which must not wipe an endpoint Discover found.
+        AuthorizeUrl = replace
+            ? template.AuthorizeUrl
+            : TemplateSeedMerge.Url(AuthorizeUrl, template.AuthorizeUrl);
+
+        LoadHeaders(replace
+            ? template.SeedRequest.Headers
+            : TemplateSeedMerge.Fields(Headers.ToModel(), template.SeedRequest.Headers));
+
+        LoadBody(template.SeedRequest.Body, replace);
+
+        LoadCaptures(replace
+            ? template.SeedCaptures
+            : TemplateSeedMerge.Captures([.. Captures.Select(c => c.ToModel())], template.SeedCaptures));
+
+        LoadAuthorizeParameters(replace
+            ? template.AuthorizeParameters
+            : TemplateSeedMerge.Fields(AuthorizeParameters.ToModel(), template.AuthorizeParameters));
+
+        AccessTokenVariable = replace
+            ? template.AccessTokenVariable
+            : TemplateSeedMerge.Name(AccessTokenVariable, template.AccessTokenVariable);
+
+        ExpiryVariable = replace
+            ? template.ExpiryVariable
+            : TemplateSeedMerge.Name(ExpiryVariable, template.ExpiryVariable);
+
+        ExpiresInExpression = replace
+            ? template.ExpiresInExpression ?? ""
+            : TemplateSeedMerge.Name(ExpiresInExpression, template.ExpiresInExpression);
+    }
+
+    private void LoadAuthorizeParameters(IEnumerable<KeyValueItem> parameters)
+    {
+        AuthorizeParameters.Rows.Clear();
+        foreach (var parameter in parameters)
+        {
+            AuthorizeParameters.AddRowQuietly(KeyValueRowViewModel.FromModel(parameter));
+        }
     }
 
     private void LoadHeaders(IEnumerable<KeyValueItem> headers)
@@ -535,21 +882,29 @@ public partial class TokenRequestEditorViewModel : ViewModelBase
         }
     }
 
-    private void LoadBody(RequestBody body)
+    private void LoadBody(RequestBody body, bool replace = true)
     {
-        Body.Type = body.Type;
-        Body.Raw = body.Raw ?? "";
-        Body.BinaryFilePath = body.BinaryFilePath;
-        Body.UrlEncoded.Rows.Clear();
-        foreach (var field in body.UrlEncoded)
+        // A raw body is one blob with no keys to merge on, so it is only ever replaced - and only when
+        // the template actually brings one, or switching to a form-encoded template would silently
+        // erase a hand-written JSON login body.
+        if (replace || !string.IsNullOrWhiteSpace(body.Raw))
         {
-            Body.UrlEncoded.AddRowQuietly(KeyValueRowViewModel.FromModel(field));
+            Body.Raw = body.Raw ?? "";
         }
 
-        Body.FormData.Rows.Clear();
-        foreach (var field in body.FormData)
+        Body.Type = body.Type;
+        Body.BinaryFilePath = body.BinaryFilePath;
+
+        Fill(Body.UrlEncoded, replace ? body.UrlEncoded : TemplateSeedMerge.Fields(Body.UrlEncoded.ToModel(), body.UrlEncoded));
+        Fill(Body.FormData, replace ? body.FormData : TemplateSeedMerge.Fields(Body.FormData.ToModel(), body.FormData));
+
+        static void Fill(KeyValueGridViewModel grid, IEnumerable<KeyValueItem> fields)
         {
-            Body.FormData.AddRowQuietly(KeyValueRowViewModel.FromModel(field));
+            grid.Rows.Clear();
+            foreach (var field in fields)
+            {
+                grid.AddRowQuietly(KeyValueRowViewModel.FromModel(field));
+            }
         }
     }
 

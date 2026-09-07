@@ -19,8 +19,28 @@
 
     <!-- The Status &amp; Log strip no longer has a control-bar button (the control bar is reserved for
          workspace-level actions and the environment selector), so Ctrl+` is the way to toggle it. -->
+    <!-- The whole application had four gestures - Ctrl+Enter, Ctrl+S, Ctrl+` and F7/F8 inside the diff
+         dialog - and no menu bar to discover any of them from. These are the ones a keyboard-first
+         tool is expected to have; they are documented in docs/api-studio.md, because an
+         undiscoverable shortcut is the same as no shortcut. -->
     <Window.KeyBindings>
+        <!-- Ctrl+Enter and Ctrl+S lived on the Send and Save BUTTONS as Button.HotKey, so they worked
+             on a request and existed on neither the environment nor the auth-profile editor. Here they
+             dispatch to whatever is open. Button.HotKey registers into this same collection, so the
+             buttons carry none now - two bindings for one gesture would fire the command twice, and
+             sending a request twice is not a harmless duplicate. -->
+        <KeyBinding Gesture="Ctrl+Enter" Command="{Binding SendActiveCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveActiveCommand}" />
+        <KeyBinding Gesture="Ctrl+O" Command="{Binding WorkspaceExplorer.OpenWorkspaceDirectoryCommand}" />
+        <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseActiveWorkspaceCommand}" />
         <KeyBinding Gesture="Ctrl+OemTilde" Command="{Binding ToggleLogCommand}" />
+        <KeyBinding Gesture="Ctrl+N" Command="{Binding WorkspaceExplorer.NewRequestCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding WorkspaceExplorer.NewFolderCommand}" />
+        <KeyBinding Gesture="Ctrl+P" Command="{Binding FocusFilterCommand}" />
+        <KeyBinding Gesture="Ctrl+F" Command="{Binding FindInResponseCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+P" Command="{Binding OpenPaletteCommand}" />
+        <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}" />
+        <KeyBinding Gesture="Ctrl+R" Command="{Binding RunActiveCommand}" />
     </Window.KeyBindings>
 
     <!-- No Design.DataContext: MainViewModel now requires its child view models via
@@ -38,17 +58,26 @@
              so the window can still be moved/maximized from empty space in this row like a normal
              title bar. Window.Title is deliberately blank (see below) - the OS would otherwise draw
              it over/behind the first tab, since content and system decorations share this same row. -->
+        <!-- No app-name text. It was 130px of permanent chrome naming the application you are already
+             inside - which the window, the taskbar and the icon all say - and it pushed the workspace
+             tabs off the left edge. Chrome, VS Code and Zed leave it out for the same reason: the row
+             is worth more as tabs. -->
         <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*" Background="{DynamicResource BgHeader}">
 
-            <TextBlock Grid.Column="0"
-                       Text="Fubar API Studio"
-                       FontWeight="Bold"
-                       FontSize="13"
-                       VerticalAlignment="Center"
-                       Margin="12,0,10,0"
-                       Foreground="{DynamicResource TextPrimary}" />
+            <!-- The app icon, where the OS would have drawn one. ExtendClientAreaToDecorationsHint
+                 means the system paints no icon in this row, so without this the window has no mark of
+                 its own anywhere - and the taskbar entry, the alt-tab card and this row would disagree
+                 about what the application looks like. Chrome and VS Code both put it exactly here.
+                 The PNG rather than the .ico: an Image renders one frame of an .ico unpredictably,
+                 while the 256px PNG scales down cleanly to whatever this row is. -->
+            <Border Grid.Column="0"
+                    Width="17" Height="17"
+                    Margin="11,0,3,0"
+                    VerticalAlignment="Center"
+                    IsHitTestVisible="False"
+                    Background="{DynamicResource AppMark}" />
 
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom">
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Bottom" Margin="4,0,0,0">
                 <!-- Reusable Chrome-style tab strip (Fubar.Controls). It owns all the drag/reorder/ghost/
                      tear-off/move-between-windows mechanics; the app supplies only the data (Roots), the
                      two-way selection (ActiveRoot), the close command, the tab-label template, and the
@@ -124,8 +153,11 @@
                                           ToolTip.Tip="Import an OpenAPI / Swagger spec (JSON/YAML file or URL)"
                                           Command="{Binding WorkspaceExplorer.ImportOpenApiCommand}" />
                                 <MenuItem Header="Postman collection…"
-                                          ToolTip.Tip="Import a Postman Collection v2.1 JSON export"
+                                          ToolTip.Tip="Import a Postman Collection v2.1 export — previewed before anything is written"
                                           Command="{Binding WorkspaceExplorer.ImportPostmanCommand}" />
+                                <MenuItem Header="Postman environment…"
+                                          ToolTip.Tip="Import a Postman environment or globals export"
+                                          Command="{Binding WorkspaceExplorer.ImportPostmanEnvironmentCommand}" />
                                 <MenuItem Header="From curl…"
                                           ToolTip.Tip="Paste a curl command to import as a request"
                                           Command="{Binding WorkspaceExplorer.ImportCurlCommand}" />
@@ -137,10 +169,9 @@
                             Orientation="Horizontal"
                             Spacing="6"
                             IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
-                    <TextBlock Text="Env"
-                               VerticalAlignment="Center"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextSecondary}" />
+                    <!-- No "Env" label. A dropdown listing this workspace's environment names, with
+                         "No environment" as its placeholder and Active Environment as its tooltip,
+                         does not need a word beside it saying what it is. -->
                     <ComboBox MinWidth="180"
                               FontSize="12"
                               VerticalAlignment="Center"
@@ -160,6 +191,31 @@
                                   VerticalAlignment="Center"
                                   IsChecked="{Binding EnvironmentManager.SecretsRevealed}"
                                   ToolTip.Tip="Reveal secret variable values in tooltips" />
+
+                    <!-- The strip's permanent affordance. Ctrl+` used to be the ONLY way to open it,
+                         which meant every warning and every import FAILURE reported into a panel the
+                         user had no reason to know existed. -->
+                    <ToggleButton FontSize="11"
+                                  Padding="8,3"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding IsLogVisible}"
+                                  ToolTip.Tip="Status &amp; Log (Ctrl+`)">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="Log" VerticalAlignment="Center" />
+                            <Border Background="{DynamicResource LogWarningFg}"
+                                    CornerRadius="7"
+                                    Padding="5,0"
+                                    MinWidth="16"
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding StatusLog.AttentionCount}">
+                                <TextBlock Text="{Binding StatusLog.AttentionCount}"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource BgHeader}" />
+                            </Border>
+                        </StackPanel>
+                    </ToggleButton>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -171,7 +227,11 @@
 
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{DynamicResource BorderSubtle}" />
 
-            <Grid Grid.Column="2" RowDefinitions="*,4,*">
+            <!-- The response pane's row and its splitter collapse to zero height until a response
+                 exists - see MainWindow.axaml.cs. IsVisible alone is not enough: a Grid keeps a hidden
+                 child's row at full size, which CLAUDE.md records costing Fubar Diff a 190px blank
+                 band. -->
+            <Grid Grid.Column="2" x:Name="CanvasSplit" RowDefinitions="*,4,*">
 
                 <Panel Grid.Row="0">
                     <!-- ContentControl (not a direct <views:RequestEditorView DataContext="..."/>)

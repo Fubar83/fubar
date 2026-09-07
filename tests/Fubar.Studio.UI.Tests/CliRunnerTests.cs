@@ -335,6 +335,8 @@ public class CliRunnerTests
     /// </summary>
     private sealed class FakeRequests : IRequestStore
     {
+        /// <summary>No migration happens in a fake store, so nothing ever raises this.</summary>
+        public event Action<string, IReadOnlyList<string>>? RequestMigrated { add { } remove { } }
         public IReadOnlyList<WorkspaceTreeNode> BuildCollectionsTree(string rootPath)
         {
             var orders = Path.GetFullPath(Path.Combine(rootPath, "collections", "Orders"));

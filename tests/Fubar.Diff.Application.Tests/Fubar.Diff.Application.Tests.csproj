@@ -21,6 +21,7 @@
          rather than a fake that agrees with whatever the code happens to do. Test projects may reach
          across layers; the production assemblies still may not, which LayeringTests enforces. -->
     <ProjectReference Include="..\..\src\Fubar.Diff.Infrastructure\Fubar.Diff.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Fubar.Diff.Infrastructure.Code\Fubar.Diff.Infrastructure.Code.csproj" />
   </ItemGroup>
 
 </Project>

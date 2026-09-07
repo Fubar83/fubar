@@ -1,3 +1,4 @@
+using Fubar.Controls;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -83,29 +84,29 @@ public partial class MergeViewModel : ViewModelBase
     {
         _options = new ComparisonOptions
         {
-            IgnoreWhitespace = settings.IgnoreWhitespace,
-            IgnoreCase = settings.IgnoreCase,
-            NormalizeStructure = settings.NormalizeStructure,
-            NormalizeUnicode = settings.NormalizeUnicode,
-            Mode = settings.Mode,
-            IgnoredLinePatterns = settings.IgnoredLinePatterns,
+            IgnoreWhitespace = settings.Comparison.IgnoreWhitespace,
+            IgnoreCase = settings.Comparison.IgnoreCase,
+            NormalizeStructure = settings.Appearance.NormalizeStructure,
+            NormalizeUnicode = settings.Comparison.NormalizeUnicode,
+            Mode = settings.Comparison.Mode,
+            IgnoredLinePatterns = settings.Comparison.IgnoredLinePatterns,
             Code = new CodeComparisonOptions
             {
-                IgnoreComments = settings.IgnoreComments,
-                IgnoreBlankLines = settings.IgnoreBlankLines,
+                IgnoreComments = settings.Comparison.IgnoreComments,
+                IgnoreBlankLines = settings.Comparison.IgnoreBlankLines,
             },
             Json = new JsonComparisonOptions
             {
-                ReportPropertyOrder = settings.ReportPropertyOrder,
-                MatchArraysByPosition = settings.MatchArraysByPosition,
-                IgnoreNullVsMissing = settings.IgnoreNullVsMissing,
-                ArrayKeyOverrides = settings.ArrayKeyOverrides,
-                IgnoredPaths = settings.IgnoredPaths,
+                ReportPropertyOrder = settings.Json.ReportPropertyOrder,
+                MatchArraysByPosition = settings.Json.MatchArraysByPosition,
+                IgnoreNullVsMissing = settings.Json.IgnoreNullVsMissing,
+                ArrayKeyOverrides = settings.Json.ArrayKeyOverrides,
+                IgnoredPaths = settings.Json.IgnoredPaths,
             },
         };
 
-        Pane.ShowInvisibles = settings.ShowInvisibles;
-        Pane.SyntaxHighlighting = settings.SyntaxHighlighting;
+        Pane.ShowInvisibles = settings.Appearance.ShowInvisibles;
+        Pane.SyntaxHighlighting = settings.Appearance.SyntaxHighlighting;
     }
 
     // ---- File selection -------------------------------------------------------------------------

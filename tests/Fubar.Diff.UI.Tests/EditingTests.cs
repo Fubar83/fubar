@@ -271,7 +271,6 @@ public class EditingTests
 
         Assert.False(tab.IsEditing);
         Assert.False(tab.Pane.IsEditable);
-        Assert.False(AppSettings.Default.Editing);
     }
 
     [AvaloniaFact]
@@ -308,13 +307,21 @@ public class EditingTests
     }
 
     [AvaloniaFact]
-    public void The_setting_is_persisted_and_restored()
+    public async Task It_is_not_persisted_across_sessions()
     {
+        // It used to be. A tool whose job is READING two files would then reopen days later with both
+        // panes editable over whatever source was last open, with nothing on screen tying that to the
+        // session that switched it on - one accidental toggle was permanent. Per-session now.
         var (tab, _) = Build(["a"], ["b"]);
+        await tab.CompareAsync();
 
-        tab.ApplyDefaults(AppSettings.Default with { Editing = true });
+        tab.IsEditing = true;
 
-        Assert.True(tab.IsEditing);
-        Assert.True(tab.CaptureOptions(AppSettings.Default).Editing);
+        var saved = tab.CaptureOptions(AppSettings.Default);
+
+        var (reopened, _) = Build(["a"], ["b"]);
+        reopened.ApplyDefaults(saved);
+
+        Assert.False(reopened.IsEditing);
     }
 }

@@ -174,4 +174,99 @@ public class AuthorizationCodeFlowTests
         Assert.True(AuthorizationCodeFlow.ReadCallback("code=a&state=s", "s").Ok);
         Assert.True(AuthorizationCodeFlow.ReadCallback("?code=a&state=s", "s").Ok);
     }
+
+    // ---- provider-specific authorize parameters ---------------------------------------------------
+
+    [Fact]
+    public void Extra_parameters_reach_the_authorize_url()
+    {
+        // Where the provider folklore lands. Google issues a refresh token only with
+        // access_type=offline; Auth0 returns an opaque string instead of a JWT without audience.
+        var request = AuthorizationCodeFlow.Build(
+            "https://accounts.google.com/o/oauth2/v2/auth", "id", "openid", 7890,
+            extraParameters: [new("access_type", "offline"), new("prompt", "consent")]);
+
+        var query = HttpUtility.ParseQueryString(new Uri(request.AuthorizeUrl).Query);
+
+        Assert.Equal("offline", query["access_type"]);
+        Assert.Equal("consent", query["prompt"]);
+    }
+
+    [Fact]
+    public void An_extra_parameter_is_encoded_rather_than_pasted_in()
+    {
+        // Added through the same collection as everything else, so a value containing a space, an
+        // ampersand or a colon cannot split the URL into parameters nobody asked for.
+        var request = AuthorizationCodeFlow.Build(
+            "https://login.example.com/authorize", "id", null, 7890,
+            extraParameters: [new("audience", "https://api.example.com/v1 admin&x")]);
+
+        var query = HttpUtility.ParseQueryString(new Uri(request.AuthorizeUrl).Query);
+
+        Assert.Equal("https://api.example.com/v1 admin&x", query["audience"]);
+        Assert.Null(query["x"]);
+    }
+
+    [Fact]
+    public void An_extra_parameter_may_override_a_protocol_one()
+    {
+        // Deliberate. Guessing which of somebody else's parameters are sacred is how an allowlist ends
+        // up blocking exactly the provider it was meant to support, and a user who needs a different
+        // response_mode has no other way to say so.
+        var request = AuthorizationCodeFlow.Build(
+            "https://login.example.com/authorize", "id", null, 7890,
+            extraParameters: [new("scope", "replaced")]);
+
+        Assert.Equal("replaced", HttpUtility.ParseQueryString(new Uri(request.AuthorizeUrl).Query)["scope"]);
+    }
+
+    [Fact]
+    public void A_nameless_extra_parameter_is_dropped_rather_than_sent()
+    {
+        // An empty row in the grid is someone part-way through typing, not a parameter.
+        var request = AuthorizationCodeFlow.Build(
+            "https://login.example.com/authorize", "id", null, 7890,
+            extraParameters: [new("", "orphan"), new("   ", "orphan")]);
+
+        Assert.DoesNotContain("orphan", request.AuthorizeUrl, StringComparison.Ordinal);
+    }
+
+    // ---- the redirect URI --------------------------------------------------------------------------
+
+    [Fact]
+    public void The_redirect_uri_uses_the_port_it_was_given()
+    {
+        // The whole point of pinning: this is the string the user registers with their provider, and
+        // most providers match it exactly.
+        Assert.Equal(
+            "http://127.0.0.1:8765/callback",
+            AuthorizationCodeFlow.Build("https://login.example.com/authorize", "id", null, 8765).RedirectUri);
+    }
+
+    [Fact]
+    public void The_redirect_uri_can_be_shown_before_a_sign_in_runs()
+    {
+        // It has to be registered BEFORE the first attempt. Deriving it from a failure is the worst
+        // way to learn it - the browser shows the provider's error page and this app hears nothing.
+        Assert.Equal("http://127.0.0.1:8765/callback", AuthorizationCodeFlow.RedirectUriFor(8765));
+    }
+
+    [Fact]
+    public void An_ephemeral_port_says_it_is_not_known_yet_rather_than_showing_a_number()
+    {
+        // Showing 0, or last attempt's number, would invite registering a URI that can never come back.
+        Assert.DoesNotContain(":0", AuthorizationCodeFlow.RedirectUriFor(0), StringComparison.Ordinal);
+        Assert.Contains("free port", AuthorizationCodeFlow.RedirectUriFor(0), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_redirect_host_is_the_ip_literal_not_localhost()
+    {
+        // RFC 8252 section 8.3: localhost depends on a name resolution this app does not control, and
+        // on a machine where it resolves to ::1 first the browser reaches a listener that is not there.
+        Assert.StartsWith(
+            "http://127.0.0.1:",
+            AuthorizationCodeFlow.Build("https://login.example.com/authorize", "id", null, 9001).RedirectUri,
+            StringComparison.Ordinal);
+    }
 }

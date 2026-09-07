@@ -5,6 +5,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The published schemas, embedded rather than copied. ONE copy: the validate command has to work
+         on a build agent with no network, and a second copy under this project would be a second thing
+         to keep in step with the first. Link keeps the repository's schemas/v1/ the only source. -->
+    <EmbeddedResource Include="..\..\schemas\v1\*.schema.json" Link="schemas\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="KeySharp" />
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="YamlDotNet" />

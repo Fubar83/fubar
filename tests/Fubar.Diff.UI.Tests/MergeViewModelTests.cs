@@ -1,3 +1,4 @@
+using Fubar.Controls;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Application.Merge;
 using Fubar.Diff.Core.Comparison;
@@ -394,7 +395,14 @@ public class MergeViewModelTests
     {
         var (merge, _) = Build();
 
-        merge.ApplyDefaults(AppSettings.Default with { ShowInvisibles = true, SyntaxHighlighting = false });
+        merge.ApplyDefaults(AppSettings.Default with
+        {
+            Appearance = AppSettings.Default.Appearance with
+            {
+                ShowInvisibles = true,
+                SyntaxHighlighting = false,
+            },
+        });
 
         Assert.True(merge.Pane.ShowInvisibles);
         Assert.False(merge.Pane.SyntaxHighlighting);

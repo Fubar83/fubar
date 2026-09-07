@@ -1,0 +1,44 @@
+name: CodeQL
+
+# Static analysis for C#, on a schedule as well as on changes: most of what this finds is introduced
+# by a dependency or a newly published rule rather than by the commit in front of you, so a run that
+# only fires on push would never see it.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Tuesday morning - a finding lands at the start of a working week rather than over a weekend.
+    - cron: '0 6 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # to file the results against the repository
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          # security-and-quality over the default: this codebase's own tests already enforce the
+          # architecture, so the quality rules are the half that is not already covered.
+          queries: security-and-quality
+
+      # An explicit build rather than autobuild: the solution is .slnx, which autobuild has no
+      # reason to recognise, and a silent fallback to analysing nothing is the failure mode here.
+      - name: Build
+        run: dotnet build Fubar.slnx --configuration Release
+
+      - uses: github/codeql-action/analyze@v3

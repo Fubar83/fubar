@@ -107,8 +107,8 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
 
         var settings = _settingsService.Load();
-        settings.OpenWorkspacePaths = Roots.Select(r => r.FullPath).ToList();
-        settings.ActiveWorkspacePath = ActiveRoot?.FullPath;
+        settings.Session.OpenWorkspacePaths = Roots.Select(r => r.FullPath).ToList();
+        settings.Session.ActiveWorkspacePath = ActiveRoot?.FullPath;
         _ = _settingsService.SaveAsync(settings);
     }
 
@@ -120,7 +120,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     public async Task RestoreLastSessionAsync()
     {
         var settings = await _settingsService.LoadAsync();
-        if (settings.OpenWorkspacePaths.Count == 0)
+        if (settings.Session.OpenWorkspacePaths.Count == 0)
         {
             return;
         }
@@ -128,7 +128,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         _suppressPersist = true;
         try
         {
-            foreach (var path in settings.OpenWorkspacePaths)
+            foreach (var path in settings.Session.OpenWorkspacePaths)
             {
                 if (!_workspaceStore.IsWorkspaceRoot(path))
                 {
@@ -139,8 +139,8 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
                 Roots.Add(new WorkspaceRootViewModel(workspace, _requestStore));
             }
 
-            ActiveRoot = (settings.ActiveWorkspacePath is not null
-                ? Roots.FirstOrDefault(r => string.Equals(r.FullPath, settings.ActiveWorkspacePath, StringComparison.OrdinalIgnoreCase))
+            ActiveRoot = (settings.Session.ActiveWorkspacePath is not null
+                ? Roots.FirstOrDefault(r => string.Equals(r.FullPath, settings.Session.ActiveWorkspacePath, StringComparison.OrdinalIgnoreCase))
                 : null) ?? Roots.LastOrDefault();
         }
         finally
@@ -203,6 +203,39 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial WorkspaceNodeViewModel? SelectedNode { get; set; }
 
+    /// <summary>
+    /// Narrows the tree to nodes matching by name, URL or method.
+    ///
+    /// <para>There was no way to find anything: an OpenAPI import routinely produces a hundred requests
+    /// in nested folders, so the app's flagship import created the one tree it could not navigate.</para>
+    /// </summary>
+    [ObservableProperty]
+    public partial string? Filter { get; set; }
+
+    partial void OnFilterChanged(string? value)
+    {
+        ApplyFilter();
+        OnPropertyChanged(nameof(IsFiltering));
+        OnPropertyChanged(nameof(FilterMatchedNothing));
+    }
+
+    /// <summary>Re-applies the current filter to every open workspace. Called on a filter change and
+    /// after a refresh, since a rescan brings in nodes that have never been filtered.</summary>
+    public void ApplyFilter()
+    {
+        foreach (var root in Roots)
+        {
+            root.ApplyFilter(Filter);
+        }
+    }
+
+    /// <summary>True when a filter is narrowing the tree - drives the "no matches" message, which is
+    /// what stops an empty tree reading as a workspace that failed to load.</summary>
+    public bool IsFiltering => !string.IsNullOrWhiteSpace(Filter);
+
+    /// <summary>True when a filter is in force and nothing survived it.</summary>
+    public bool FilterMatchedNothing => IsFiltering && Roots.All(r => !r.Children.Any(c => c.IsVisible));
+
     /// <summary>Raised when the user closes a workspace tab - MainViewModel clears the main canvas
     /// if it was showing something from that workspace.</summary>
     public event Action<Workspace>? WorkspaceClosed;
@@ -211,14 +244,10 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     /// button, not a tear-off) - the WindowManager closes the window unless it's the only one left.</summary>
     public event Action? WorkspacesEmptied;
 
-    [RelayCommand]
-    private void SelectWorkspace(WorkspaceRootViewModel? root)
-    {
-        if (root is not null)
-        {
-            ActiveRoot = root;
-        }
-    }
+    // SelectWorkspaceCommand used to live here, setting ActiveRoot. Deleted: the title bar's TabStrip
+    // binds SelectedItem to ActiveRoot two-way, so selecting a tab already sets it - the command was
+    // a second route to the same state that nothing ever called. Found by WiringTests, which is what
+    // that test is for.
 
     [RelayCommand]
     private void CloseWorkspace(WorkspaceRootViewModel? root)
@@ -368,12 +397,21 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
 
         // The dialog does the picking/URL entry + parse + options; it returns null if cancelled.
-        var choice = await _importDialog.ShowAsync(root.FullPath);
-        if (choice is null)
+        if (await _importDialog.ShowAsync(root.FullPath) is { } choice)
         {
-            return;
+            await ApplyImportAsync(choice, root, "OpenAPI");
         }
+    }
 
+    /// <summary>
+    /// Writes the items the user ticked in the import dialog, whichever format they came from.
+    ///
+    /// <para>Shared because everything past parsing is the same work - which is the point of the
+    /// planner/apply split: the Postman import gets the preview, the per-item choice and the "your
+    /// manual edits survive" guarantee that only the OpenAPI one had.</para>
+    /// </summary>
+    private async Task ApplyImportAsync(ImportDialogResult choice, WorkspaceRootViewModel root, string format)
+    {
         try
         {
             var result = await _openApiImport.ApplyDiffAsync(
@@ -383,7 +421,9 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
                 $"{result.VariableCount} variables, {result.AuthProfileCount} auth profiles.");
             foreach (var warning in result.Warnings)
             {
-                _statusLog.Log($"  ⚠ {warning}");
+                // Warnings, not Info: an import that silently dropped a script or a body is exactly
+                // what the user needs to see, and this is where Postman's untranslated lines arrive.
+                _statusLog.LogWarning(warning);
             }
 
             RefreshRootFor(root.FullPath);
@@ -396,7 +436,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"OpenAPI import failed: {ex.Message}");
+            _statusLog.LogError($"{format} import failed: {ex.Message}");
         }
     }
 
@@ -428,12 +468,21 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"curl import failed: {ex.Message}");
+            _statusLog.LogError($"curl import failed: {ex.Message}");
         }
     }
 
-    /// <summary>Imports a Postman Collection v2.1 JSON file: its folder/request tree plus an environment
-    /// built from the collection variables.</summary>
+    /// <summary>
+    /// Imports a Postman collection through the same preview the OpenAPI import has always had, or an
+    /// environment export directly.
+    ///
+    /// <para>A collection used to be written straight into the workspace, with the outcome reported
+    /// into a status log that was collapsed by default - so re-importing silently overwrote whatever
+    /// had been edited since the last time, and the only notice was somewhere nobody was looking.</para>
+    ///
+    /// <para>An environment export has no requests, so there is nothing to preview and it still goes
+    /// through the direct path.</para>
+    /// </summary>
     [RelayCommand]
     private async Task ImportPostmanAsync()
     {
@@ -443,7 +492,31 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var file = await _filePicker.PickOpenFileAsync("Import Postman Collection (v2.1 JSON)");
+        // The dialog picks the file, parses it, and shows the diff; null means cancelled, which means
+        // cancelled - offering a different file picker next would be answering a question nobody asked.
+        if (await _importDialog.ShowPostmanAsync(root.FullPath) is { } choice)
+        {
+            await ApplyImportAsync(choice, root, "Postman");
+        }
+    }
+
+    /// <summary>
+    /// Imports a Postman ENVIRONMENT or globals export.
+    ///
+    /// <para>Its own action rather than a branch inside the collection import: an environment produces
+    /// no requests, so the add/update/remove preview would list nothing and read as a failed parse.
+    /// Two file types, two menu items.</para>
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportPostmanEnvironmentAsync()
+    {
+        if (ActiveRoot is not { } root)
+        {
+            _statusLog.Log("Open a workspace before importing.");
+            return;
+        }
+
+        var file = await _filePicker.PickOpenFileAsync("Import a Postman environment export (JSON)");
         if (file is null)
         {
             return;
@@ -452,7 +525,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         try
         {
             var result = await _postmanImport.ImportAsync(file, root.FullPath);
-            _statusLog.Log($"Imported Postman collection \"{result.CollectionName}\": " +
+            _statusLog.Log($"Imported Postman \"{result.CollectionName}\": " +
                 $"{result.RequestCount} requests, {result.FolderCount} folders, {result.VariableCount} variables.");
             foreach (var warning in result.Warnings)
             {
@@ -467,7 +540,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Postman import failed: {ex.Message}");
+            _statusLog.LogError($"Postman import failed: {ex.Message}");
         }
     }
 
@@ -479,7 +552,10 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        node.EditName = node.Name;
+        // Seeded with what the row SHOWS, not the file name. Renaming should start from the text you
+        // were looking at; WorkspaceService.RenamePath puts the original extension back when the new
+        // name has none, so typing "Login" over "Login" still lands on Login.json.
+        node.EditName = node.DisplayName;
         node.IsEditing = true;
     }
 
@@ -494,7 +570,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
         node.IsEditing = false;
         var newName = node.EditName.Trim();
-        if (string.IsNullOrEmpty(newName) || newName == node.Name)
+        if (string.IsNullOrEmpty(newName) || newName == node.DisplayName)
         {
             return;
         }
@@ -507,7 +583,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Rename failed: {ex.Message}");
+            _statusLog.LogError($"Rename failed: {ex.Message}");
         }
     }
 
@@ -537,7 +613,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Delete failed: {ex.Message}");
+            _statusLog.LogError($"Delete failed: {ex.Message}");
         }
     }
 
@@ -557,7 +633,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Duplicate failed: {ex.Message}");
+            _statusLog.LogError($"Duplicate failed: {ex.Message}");
         }
     }
 

@@ -20,10 +20,91 @@ public sealed class PostmanImporter : IPostmanImportService
         _workspaceService = workspaceService;
     }
 
+    public string SourceDescription => "Postman collection";
+
+    /// <summary>A Postman export is a file you downloaded, not a URL you subscribe to.</summary>
+    public bool AcceptsUrl => false;
+
+    /// <summary>
+    /// Reads a collection into the same <see cref="ImportPlan"/> an OpenAPI spec produces, writing
+    /// nothing.
+    ///
+    /// <para>This is what lets a Postman import show the add / update / unchanged / remove preview the
+    /// OpenAPI one always had. It wrote straight into the workspace before, reporting into a status
+    /// log that was collapsed by default - so re-importing a collection silently overwrote whatever
+    /// had been edited since the last time.</para>
+    ///
+    /// <para>An ENVIRONMENT export is not planned: it produces no requests, so there is nothing to
+    /// preview. <see cref="ImportAsync"/> still handles those directly.</para>
+    /// </summary>
+    public async Task<ImportPlan> ParseAsync(string source, CancellationToken cancellationToken = default)
+    {
+        var json = await File.ReadAllTextAsync(source, cancellationToken);
+        if (JsonNode.Parse(json) is not JsonObject root)
+        {
+            throw new InvalidDataException("Not valid JSON.");
+        }
+
+        if (root["item"] is not JsonArray items)
+        {
+            throw new InvalidDataException(
+                "Not a Postman collection (expected a top-level \"item\" array; v2.1 export). "
+                + "An environment export has no requests to preview - import it directly.");
+        }
+
+        var collectionName = Str(root["info"]?["name"]) ?? Path.GetFileNameWithoutExtension(source);
+        var warnings = new List<string>();
+        var planned = new List<PlannedRequest>();
+
+        // Postman nests folders arbitrarily; a plan carries one folder name per request. Nested paths
+        // are joined with "/" so the structure survives rather than being flattened.
+        void Walk(JsonArray nodes, string folder)
+        {
+            foreach (var node in nodes.OfType<JsonObject>())
+            {
+                if (node["item"] is JsonArray children)
+                {
+                    var name = Str(node["name"]) ?? "Folder";
+                    Walk(children, folder.Length == 0 ? name : $"{folder}/{name}");
+                }
+                else if (node["request"] is not null)
+                {
+                    var model = BuildRequest(node, warnings);
+                    ApplyScripts(node, model, warnings);
+                    planned.Add(new PlannedRequest(folder, model));
+                }
+            }
+        }
+
+        Walk(items, "");
+
+        var variables = ReadCollectionVariables(root["variable"] as JsonArray);
+        var environments = variables.Count > 0
+            ? new List<WorkspaceEnvironment> { new() { Name = $"{collectionName} (imported)", Variables = variables } }
+            : [];
+
+        return new ImportPlan(collectionName, planned, environments, [], warnings);
+    }
+
     public async Task<PostmanImportResult> ImportAsync(string filePath, string workspaceRoot, CancellationToken cancellationToken = default)
     {
         var json = await File.ReadAllTextAsync(filePath, cancellationToken);
-        if (JsonNode.Parse(json) is not JsonObject root || root["item"] is not JsonArray items)
+        if (JsonNode.Parse(json) is not JsonObject root)
+        {
+            throw new InvalidDataException("Not valid JSON.");
+        }
+
+        // An ENVIRONMENT export, which is a separate file type teams have and this could not read at
+        // all - so the variables a collection referenced arrived with nowhere to resolve from.
+        // Recognised by its own marker rather than by the absence of "item", so a malformed collection
+        // still gets the collection error rather than being silently treated as an environment.
+        if (Str(root["_postman_variable_scope"]) is "environment" or "globals"
+            || (root["values"] is JsonArray && root["item"] is null))
+        {
+            return await ImportEnvironmentAsync(root, filePath, workspaceRoot, cancellationToken);
+        }
+
+        if (root["item"] is not JsonArray items)
         {
             throw new InvalidDataException("Not a Postman collection (expected a top-level \"item\" array; v2.1 export).");
         }
@@ -48,6 +129,7 @@ public sealed class PostmanImporter : IPostmanImportService
                 else if (node["request"] is not null)
                 {
                     var model = BuildRequest(node, warnings);
+                    ApplyScripts(node, model, warnings);
                     var path = _workspaceService.CreateRequest(parentDir, model.Name);
                     await _workspaceService.SaveRequestAsync(path, model, cancellationToken);
                     requestCount++;
@@ -65,6 +147,118 @@ public sealed class PostmanImporter : IPostmanImportService
         }
 
         return new PostmanImportResult(collectionName, requestCount, folderCount, variables.Count, warnings);
+    }
+
+    /// <summary>
+    /// Imports a Postman ENVIRONMENT export - a separate file type from a collection, and one this
+    /// could not read at all, so the variables an imported collection referenced had nowhere to
+    /// resolve from.
+    ///
+    /// <para>Postman's <c>secret</c> type becomes this app's <see cref="VariableKind.Secret"/>, and its
+    /// value is deliberately NOT carried across: a Secret variable's value lives in the OS keyring, and
+    /// writing it into <c>environments/*.json</c> on the way in would be the leak the rest of this
+    /// codebase is arranged to prevent - performed by the import itself. The user is told to re-enter
+    /// them, which is the honest cost of not having them on disk.</para>
+    /// </summary>
+    private async Task<PostmanImportResult> ImportEnvironmentAsync(
+        JsonObject root, string filePath, string workspaceRoot, CancellationToken cancellationToken)
+    {
+        var name = Str(root["name"]) ?? Path.GetFileNameWithoutExtension(filePath);
+        var warnings = new List<string>();
+        var variables = new List<AppVariable>();
+        var secrets = 0;
+
+        foreach (var value in (root["values"] as JsonArray)?.OfType<JsonObject>() ?? [])
+        {
+            if (Str(value["key"]) is not { Length: > 0 } key)
+            {
+                continue;
+            }
+
+            // Postman's "enabled: false" is a variable the user switched off rather than deleted;
+            // importing it as an ordinary one would silently turn it back on.
+            if (value["enabled"] is JsonValue enabled && enabled.TryGetValue<bool>(out var on) && !on)
+            {
+                warnings.Add($"\"{key}\" was disabled in the export and was not imported.");
+                continue;
+            }
+
+            var isSecret = string.Equals(Str(value["type"]), "secret", StringComparison.OrdinalIgnoreCase);
+            if (isSecret)
+            {
+                secrets++;
+            }
+
+            variables.Add(new AppVariable
+            {
+                Key = key,
+                Kind = isSecret ? VariableKind.Secret : VariableKind.Normal,
+                Value = isSecret ? null : Str(value["value"]),
+            });
+        }
+
+        if (secrets > 0)
+        {
+            warnings.Add(
+                $"{secrets} secret variable(s) were imported without their values - a secret lives in the OS "
+                + "keyring, never in the committed environment file. Re-enter them in the environment editor.");
+        }
+
+        var environment = new WorkspaceEnvironment { Name = name, Variables = variables };
+        await _workspaceService.SaveEnvironmentAsync(workspaceRoot, environment, cancellationToken);
+
+        return new PostmanImportResult(name, RequestCount: 0, FolderCount: 0, variables.Count, warnings);
+    }
+
+    /// <summary>
+    /// Translates the item's <c>test</c> script into assertions and captures, and says what it could
+    /// not translate.
+    ///
+    /// <para>The <c>event</c> array was never read at all, so every script a team had written was
+    /// dropped in silence - and the assertions people wrote are the thing they most want to keep when
+    /// leaving Postman. What cannot be translated is now named, per request and line by line, rather
+    /// than disappearing.</para>
+    /// </summary>
+    private static void ApplyScripts(JsonObject item, RequestModel model, List<string> warnings)
+    {
+        foreach (var listener in (item["event"] as JsonArray)?.OfType<JsonObject>() ?? [])
+        {
+            var kind = Str(listener["listen"]);
+            var lines = (listener["script"]?["exec"] as JsonArray)?.Select(Str).OfType<string>().ToList() ?? [];
+
+            if (lines.Count == 0)
+            {
+                continue;
+            }
+
+            // A pre-request script runs BEFORE the send and can do anything - compute a signature, set
+            // a header. There is nothing declarative here that corresponds, so it is reported whole
+            // rather than half-translated into something that would run at the wrong time.
+            if (!string.Equals(kind, "test", StringComparison.OrdinalIgnoreCase))
+            {
+                warnings.Add(
+                    $"\"{model.Name}\": its {kind ?? "pre-request"} script was not imported "
+                    + $"({lines.Count} line(s)) - this app has no scripting.");
+                continue;
+            }
+
+            var translation = PostmanScriptTranslation.Translate(lines);
+
+            model.Assertions.AddRange(translation.Assertions);
+            model.Captures.AddRange(translation.Captures);
+
+            if (translation.AnythingTranslated)
+            {
+                warnings.Add(
+                    $"\"{model.Name}\": translated {translation.Assertions.Count} assertion(s) and "
+                    + $"{translation.Captures.Count} capture(s) from its test script.");
+            }
+
+            foreach (var line in translation.Untranslated)
+            {
+                warnings.Add($"\"{model.Name}\": could not translate  {line}");
+            }
+        }
     }
 
     private static RequestModel BuildRequest(JsonObject item, List<string> warnings)

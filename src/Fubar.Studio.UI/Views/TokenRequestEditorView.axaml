@@ -51,14 +51,22 @@
 
         <!-- Template picker -->
         <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="Template" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+            <TextBlock Text="Set up as" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
             <ComboBox ItemsSource="{Binding TemplateOptions}"
                       SelectedItem="{Binding SelectedTemplate}"
-                      MinWidth="240"
-                      PlaceholderText="Choose a template" />
+                      MinWidth="330"
+                      PlaceholderText="Choose what you are connecting to" />
             <Button Classes="secondary-btn" Content="Apply" Command="{Binding ApplyTemplateCommand}"
-                    ToolTip.Tip="Seed the request below from this template (overwrites the current fields)" />
+                    ToolTip.Tip="Fill in this provider's endpoints, scopes and fields. Anything you have already entered is kept." />
         </StackPanel>
+
+        <!-- Said out loud, because the merge is invisible otherwise. Applying used to replace
+             everything - URL, headers, body, captures - so anyone burned once by it losing their
+             client id will not press the button again to discover that it now keeps their work. -->
+        <TextBlock Text="{Binding ApplyStatus}"
+                   IsVisible="{Binding ApplyStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                   FontSize="11" TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextSecondary}" />
 
         <!-- Discovery: paste the issuer, get the token endpoint.
 
@@ -111,14 +119,90 @@
         <Border IsVisible="{Binding IsAuthorizationCode}"
                 Background="{DynamicResource BgHeader}" BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="1" CornerRadius="6" Padding="10">
-            <StackPanel Spacing="6">
+            <StackPanel Spacing="8">
                 <TextBlock Text="Step 1 — sign in" FontSize="11" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimary}" />
 
+                <!-- No provider picker here any more. It was a second ComboBox with a second Apply
+                     button, inside a box that only appeared once the authorization-code template had
+                     been applied - so choosing Google took four interactions, the first two of which
+                     required knowing that Google's sign-in IS an authorization-code grant. The
+                     template list at the top of this screen answers both questions at once; what
+                     stays here is the part that is genuinely per-provider input. -->
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding NeedsTenant}">
+                    <TextBlock Text="{Binding TenantLabel}" VerticalAlignment="Center" FontSize="11"
+                               MinWidth="130"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <TextBox Text="{Binding Tenant}" MinWidth="260" FontSize="11"
+                             controls:VariableTooltip.Context="{Binding VariableContext}" />
+                </StackPanel>
+
+                <TextBlock Text="{Binding TenantHelp}"
+                           IsVisible="{Binding NeedsTenant}"
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <!-- What to do in the provider's OWN console. None of this app's screens can do it,
+                     and a sign-in cannot work until it is done, so saying it here is the difference
+                     between a working setup and a support question. -->
+                <TextBlock Text="{Binding SetupSummary}"
+                           IsVisible="{Binding SetupSummary, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <Button Classes="secondary-btn" Content="Open the provider's console"
+                        HorizontalAlignment="Left" FontSize="11" Padding="8,2" MinHeight="22"
+                        IsVisible="{Binding HasConsoleUrl}"
+                        Click="OpenConsole_OnClick" />
+
+                <fc:Banner IsVisible="{Binding HasProviderCaveat}" Message="{Binding ProviderCaveat}" />
+
                 <TextBox Text="{Binding AuthorizeUrl}"
-                         PlaceholderText="Authorize URL (Discover fills this in)"
+                         PlaceholderText="Authorize URL (a provider or Discover fills this in)"
                          FontSize="11"
                          controls:VariableTooltip.Context="{Binding VariableContext}" />
+
+                <!-- The redirect must be registered with the provider EXACTLY as written, and until
+                     the port could be pinned that was impossible to act on: it changed every attempt
+                     while this label told the user to register it. Now it is stable by choice, and
+                     shown BEFORE the first attempt rather than learned from a failure - the browser
+                     shows the provider's error page and this app hears nothing at all. -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Register this redirect URI with your provider:"
+                               FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                    <SelectableTextBlock Text="{Binding RedirectUri}"
+                                         FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
+                                         Foreground="{DynamicResource TextPrimary}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <CheckBox Content="Always use port" IsChecked="{Binding IsRedirectPortPinned}"
+                                  FontSize="11" VerticalAlignment="Center"
+                                  ToolTip.Tip="Most providers match the redirect URI exactly, so a port that changes every attempt can never be registered. Google and Microsoft ignore it." />
+                        <NumericUpDown Value="{Binding RedirectPort}"
+                                       IsEnabled="{Binding IsRedirectPortPinned}"
+                                       Minimum="1024" Maximum="65535" Increment="1"
+                                       FormatString="0" MinWidth="130" FontSize="11" />
+                    </StackPanel>
+
+                    <!-- With an ephemeral port this is the only place the number ever appears, and it
+                         is what a provider rejecting the redirect was rejecting. -->
+                    <SelectableTextBlock IsVisible="{Binding ShowsActualRedirectUri}"
+                                         Text="{Binding ActualRedirectUri, StringFormat='Last attempt listened on {0}'}"
+                                         FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
+                                         Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+
+                <Expander Header="Extra authorize parameters">
+                    <StackPanel Spacing="6" Margin="0,6,0,0">
+                        <TextBlock Text="Added to the authorize URL, not to the token request. Google needs access_type=offline before it will issue a refresh token; Auth0 needs audience or it returns an opaque token instead of a JWT."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondary}" />
+                        <fc:KeyValueGrid DataContext="{Binding AuthorizeParameters}"
+                                         ItemsSource="{Binding Rows}"
+                                         AddCommand="{Binding AddRowCommand}"
+                                         RemoveCommand="{Binding RemoveRowCommand}" />
+                    </StackPanel>
+                </Expander>
 
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button Classes="secondary-btn" Content="Sign in with browser"
@@ -128,19 +212,6 @@
                                IsVisible="{Binding SignInStatus, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}"
                                VerticalAlignment="Center" FontSize="11" TextWrapping="Wrap"
                                Foreground="{DynamicResource TextSecondary}" />
-                </StackPanel>
-
-                <!-- The redirect must be registered with the provider EXACTLY as written. A sign-in
-                     that fails because it was not is the most opaque failure in this grant - the
-                     browser shows the provider's error page and this app never hears anything - so it
-                     is on screen to copy rather than discovered from a failure. -->
-                <StackPanel Spacing="2"
-                            IsVisible="{Binding RedirectUri, Converter={x:Static avc:StringConverters.IsNotNullOrEmpty}}">
-                    <TextBlock Text="Register this redirect URI with your provider:"
-                               FontSize="11" Foreground="{DynamicResource TextSecondary}" />
-                    <SelectableTextBlock Text="{Binding RedirectUri}"
-                                         FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
-                                         Foreground="{DynamicResource TextPrimary}" />
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -261,14 +332,14 @@
                                Foreground="{DynamicResource TextSecondary}" />
                 </StackPanel>
 
-                <TextBlock Text="Click Capture to write a field into a session variable — the path comes from the response, so it cannot be a guess."
+                <TextBlock Text="Each row is a value the provider actually returned. Saving one into a session variable is what makes it usable — the variable in the Bearer line at the top of this screen is the one requests send."
                            FontSize="11" TextWrapping="Wrap"
                            IsVisible="{Binding HasResponseFields}"
                            Foreground="{DynamicResource TextSecondary}" />
 
-                <ItemsControl ItemsSource="{Binding ResponseFields}" IsVisible="{Binding HasResponseFields}">
+                <ItemsControl ItemsSource="{Binding CapturableFields}" IsVisible="{Binding HasResponseFields}">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="auth:TokenResponseField">
+                        <DataTemplate x:DataType="vm:CapturableField">
                             <Grid ColumnDefinitions="2*,3*,Auto" Margin="0,2">
                                 <TextBlock Grid.Column="0" Text="{Binding Path}"
                                            FontFamily="Cascadia Code,Consolas,monospace" FontSize="11"
@@ -279,10 +350,24 @@
                                            FontSize="11" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource TextSecondary}" />
-                                <Button Grid.Column="2" Classes="secondary-btn" Content="Capture"
+
+                                <!-- The button names the variable the value lands in. It used to say
+                                     "Capture", which is this codebase's word rather than anyone
+                                     else's and says nothing about where the value goes. -->
+                                <Button Grid.Column="2" Classes="secondary-btn"
+                                        Content="{Binding ActionLabel}"
+                                        IsVisible="{Binding !IsCaptured}"
                                         Padding="8,2" FontSize="11" MinHeight="22"
+                                        ToolTip.Tip="Write this value into a session variable every time the token request succeeds"
                                         Command="{Binding $parent[UserControl].((vm:TokenRequestEditorViewModel)DataContext).CaptureFieldCommand}"
                                         CommandParameter="{Binding}" />
+
+                                <!-- Already saved: says so, rather than offering a button that
+                                     silently does nothing on the second click. -->
+                                <TextBlock Grid.Column="2" Text="{Binding CapturedLabel}"
+                                           IsVisible="{Binding IsCaptured}"
+                                           FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondary}" />
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

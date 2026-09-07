@@ -21,7 +21,8 @@ namespace Fubar.Studio.UI.ViewModels;
 /// </summary>
 public partial class ImportOpenApiViewModel : ViewModelBase
 {
-    private readonly IOpenApiImportService _import;
+    private readonly IImportPlanner _planner;
+    private readonly IImportApplyService _apply;
     private readonly IFilePickerService _filePicker;
     private readonly IRequestStore _requests;
     private readonly IRequestSerializer _serializer;
@@ -29,14 +30,16 @@ public partial class ImportOpenApiViewModel : ViewModelBase
     private readonly string _workspaceRoot;
 
     public ImportOpenApiViewModel(
-        IOpenApiImportService import,
+        IImportPlanner planner,
+        IImportApplyService apply,
         IFilePickerService filePicker,
         IRequestStore requests,
         IRequestSerializer serializer,
         IDiffPreviewService diffPreview,
         string workspaceRoot)
     {
-        _import = import;
+        _planner = planner;
+        _apply = apply;
         _filePicker = filePicker;
         _requests = requests;
         _serializer = serializer;
@@ -57,13 +60,13 @@ public partial class ImportOpenApiViewModel : ViewModelBase
     public partial bool CreateAuthProfiles { get; set; } = true;
 
     [ObservableProperty]
-    public partial OpenApiImportDiff? Diff { get; set; }
+    public partial ImportDiff? Diff { get; set; }
 
     public ObservableCollection<ImportItemViewModel> RequestItems { get; } = [];
     public ObservableCollection<ImportItemViewModel> VariableItems { get; } = [];
     public ObservableCollection<string> Warnings { get; } = [];
 
-    private OpenApiImportPlan? _plan;
+    private ImportPlan? _plan;
 
     public bool HasDiff => Diff is not null;
     public bool HasWarnings => Warnings.Count > 0;
@@ -78,7 +81,7 @@ public partial class ImportOpenApiViewModel : ViewModelBase
     [RelayCommand]
     private async Task BrowseAsync()
     {
-        var path = await _filePicker.PickOpenFileAsync("Choose an OpenAPI / Swagger spec (JSON or YAML)");
+        var path = await _filePicker.PickOpenFileAsync($"Choose a {_planner.SourceDescription} file");
         if (path is not null)
         {
             Source = path;
@@ -98,8 +101,8 @@ public partial class ImportOpenApiViewModel : ViewModelBase
         StatusMessage = "Reading, parsing and comparing...";
         try
         {
-            _plan = await _import.ParseAsync(Source.Trim());
-            Diff = await _import.DiffAsync(_plan, _workspaceRoot);
+            _plan = await _planner.ParseAsync(Source.Trim());
+            Diff = await _apply.DiffAsync(_plan, _workspaceRoot);
             PopulateFromDiff(Diff);
             StatusMessage = null;
         }
@@ -119,7 +122,7 @@ public partial class ImportOpenApiViewModel : ViewModelBase
         }
     }
 
-    private void PopulateFromDiff(OpenApiImportDiff diff)
+    private void PopulateFromDiff(ImportDiff diff)
     {
         RequestItems.Clear();
         foreach (var request in diff.Requests.OrderBy(r => r.Change).ThenBy(r => r.DisplayName))
@@ -234,7 +237,7 @@ public partial class ImportOpenApiViewModel : ViewModelBase
 
         var selectedRequests = RequestItems.Where(i => i.IsSelected).Select(i => (RequestDiff)i.Model).ToList();
         var selectedVariables = VariableItems.Where(i => i.IsSelected).Select(i => (VariableDiff)i.Model).ToList();
-        var options = new OpenApiImportOptions { CreateAuthProfiles = CreateAuthProfiles };
+        var options = new ImportOptions { CreateAuthProfiles = CreateAuthProfiles };
 
         CloseRequested?.Invoke(new ImportDialogResult(_plan, selectedRequests, selectedVariables, options));
     }

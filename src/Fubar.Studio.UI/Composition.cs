@@ -2,6 +2,8 @@ using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Infrastructure;
 using Fubar.Controls;
 using Fubar.Studio.Application.Requests;
+using Fubar.Studio.Core.Diagnostics;
+using Fubar.Studio.Infrastructure.Diagnostics;
 using Fubar.Studio.Application.Running;
 using Fubar.Studio.Infrastructure;
 using Fubar.Studio.UI.Services;
@@ -34,11 +36,23 @@ internal static class Composition
                 services.AddSingleton<IClipboardService, ClipboardService>();
                 services.AddSingleton<IImportDialogService, ImportDialogService>();
                 services.AddSingleton<IRunDialogService, RunDialogService>();
+                // One object for the request editor's dependencies: it took 24 constructor parameters,
+                // which made adding one a five-place edit.
+                services.AddSingleton<RequestEditorServices>();
+                // Moved out of Fubar.Diff.UI: API Studio could discard an unsaved request edit
+                // without asking, while Diff has had the prompt from the start.
+                services.AddSingleton<IConfirmationService, ConfirmationService>();
 
-                // The diff engine, reused for the OpenAPI import preview and response comparisons.
-                // AddFubarDiffInfrastructure binds its Core ports (diff engine, JSON parser, text
-                // normalizer) exactly as it does inside Fubar Diff.
-                services.AddFubarDiffInfrastructure();
+                // The diff engine, reused for the OpenAPI import preview and response comparisons -
+                // the TEXT AND JSON half only.
+                //
+                // This used to be AddFubarDiffInfrastructure(), which binds every adapter Fubar Diff
+                // has: the folder scanner, the file copier, the change watcher, the settings stores,
+                // and the Roslyn C# parser. None of them mean anything to an API client, and the last
+                // put Microsoft.CodeAnalysis.CSharp (7.1 MB) and Microsoft.CodeAnalysis (3.1 MB) in
+                // this application's output - roughly twelve times the size of its own assembly.
+                // Fubar.Studio.Architecture.Tests now fails if the reference comes back.
+                services.AddFubarDiffTextAndJson();
                 services.AddSingleton<SignInService>();
                 services.AddSingleton<JsonSemanticPass>();
 
@@ -53,6 +67,9 @@ internal static class Composition
                 services.AddSingleton<IResponseBaselineService, ResponseBaselineService>();
 
                 // Shared across every window (one theme, one log, all stateless services).
+                // The log sink is what makes "send us your log" answerable; the strip alone forgot
+                // everything on exit.
+                services.AddSingleton<ILogSink, RollingFileLog>();
                 services.AddSingleton<StatusLogViewModel>();
                 services.AddSingleton<ThemeManagerViewModel>();
 

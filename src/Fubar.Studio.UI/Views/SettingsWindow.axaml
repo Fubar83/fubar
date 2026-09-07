@@ -1,0 +1,116 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+        xmlns:fc="using:Fubar.Controls"
+        x:Class="Fubar.Studio.UI.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Width="620" Height="620"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgEditorCanvas}"
+        Title="Settings">
+
+    <!-- Every row carries a plain sentence saying what turning it on does (fc:SettingRow's
+         Description), the same shape Fubar Diff's settings window uses - an explanation that lives
+         only in a tooltip is an explanation nobody reads. -->
+    <Grid RowDefinitions="*,Auto">
+
+        <ScrollViewer Grid.Row="0" Padding="20,16">
+            <StackPanel Spacing="18">
+
+                <StackPanel Spacing="2">
+                    <TextBlock Text="APPEARANCE" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                    <fc:SettingRow Header="Theme" Description="Dark, light, or follow your system.">
+                        <ComboBox MinWidth="140"
+                                  ItemsSource="{x:Static vm:SettingsViewModel.ThemeOptions}"
+                                  SelectedItem="{Binding Theme}" />
+                    </fc:SettingRow>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Text="SENDING" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                    <fc:SettingRow Header="Timeout"
+                                   Description="Seconds before a request gives up. A request that sets its own timeout still wins.">
+                        <NumericUpDown Minimum="1" Maximum="3600" Increment="10" MinWidth="120"
+                                       FormatString="0"
+                                       Value="{Binding DefaultTimeoutSeconds}" />
+                    </fc:SettingRow>
+                    <fc:SettingRow Header="Largest response to load"
+                                   Description="Megabytes. Anything bigger keeps its status, headers and timing, and reports that the body was not loaded.">
+                        <NumericUpDown Minimum="1" Maximum="2048" Increment="16" MinWidth="120"
+                                       FormatString="0"
+                                       Value="{Binding MaxResponseMegabytes}" />
+                    </fc:SettingRow>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Text="HISTORY" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                    <TextBlock Text="Past executions are kept under .fubar/ in the workspace, which is never committed. Response bodies are what make them comparable — and a login response body is a token, so this is worth deciding rather than inheriting."
+                               FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <fc:SettingRow Header="Record history"
+                                   Description="Off keeps nothing and writes nothing.">
+                        <ToggleSwitch IsChecked="{Binding HistoryEnabled}" />
+                    </fc:SettingRow>
+                    <fc:SettingRow Header="Executions per request"
+                                   Description="The oldest are dropped once this many are kept.">
+                        <NumericUpDown Minimum="1" Maximum="10000" Increment="50" MinWidth="120"
+                                       FormatString="0"
+                                       IsEnabled="{Binding HistoryEnabled}"
+                                       Value="{Binding MaxHistoryEntries}" />
+                    </fc:SettingRow>
+                    <fc:SettingRow Header="Largest response body to keep"
+                                   Description="Kilobytes. Zero keeps the status and timing of every execution but no payloads at all.">
+                        <NumericUpDown Minimum="0" Maximum="65536" Increment="64" MinWidth="120"
+                                       FormatString="0"
+                                       IsEnabled="{Binding HistoryEnabled}"
+                                       Value="{Binding MaxHistoryBodyKilobytes}" />
+                    </fc:SettingRow>
+                    <fc:Banner IsVisible="{Binding HasPolicyNote}" Message="{Binding PolicyNote}" />
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Text="COMPARING RESPONSES" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,4" />
+                    <TextBlock Text="Your defaults. A folder or a single request can override any one of these and keep inheriting the rest — and the rules about particular fields (which paths to ignore, which field identifies a list's items) belong on the request or folder they describe, not here."
+                               FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <fc:SettingRow Header="Ignore whitespace"
+                                   Description="Leading and trailing spaces stop counting as a difference.">
+                        <ToggleSwitch IsChecked="{Binding IgnoreWhitespace}" />
+                    </fc:SettingRow>
+                    <fc:SettingRow Header="Ignore case">
+                        <ToggleSwitch IsChecked="{Binding IgnoreCase}" />
+                    </fc:SettingRow>
+                    <fc:SettingRow Header="Reformat for display"
+                                   Description="Pretty-print JSON and XML in the text view. Never changes what was found, and never touches a file.">
+                        <ToggleSwitch IsChecked="{Binding NormalizeStructure}" />
+                    </fc:SettingRow>
+                    <fc:SettingRow Header="Count reordered keys as a difference"
+                                   Description="Off by default: two JSON objects with the same fields in a different order are the same object.">
+                        <ToggleSwitch IsChecked="{Binding ReportPropertyOrder}" />
+                    </fc:SettingRow>
+                    <fc:SettingRow Header="Match list items by position"
+                                   Description="Off by default, which lets items be matched by an identifying field instead — so a reordered list is not reported as every item having changed.">
+                        <ToggleSwitch IsChecked="{Binding MatchArraysByPosition}" />
+                    </fc:SettingRow>
+                    <fc:SettingRow Header="Treat null and missing as the same">
+                        <ToggleSwitch IsChecked="{Binding IgnoreNullVsMissing}" />
+                    </fc:SettingRow>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="1" Padding="16,12" BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource BorderSubtle}">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Classes="toolbar-btn" Content="Cancel" Click="Cancel_OnClick" IsCancel="True" />
+                <Button Classes="primary-btn" Content="Save" Command="{Binding SaveCommand}" />
+            </StackPanel>
+        </Border>
+
+    </Grid>
+</Window>

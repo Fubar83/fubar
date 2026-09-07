@@ -14,8 +14,14 @@
             <ControlTemplate>
                 <DockPanel>
 
-                    <!-- Header -->
+                    <!-- Header, hidden while the grid is empty.
+
+                         KEY / VALUE / DESCRIPTION over nothing at all is three labels and a rule
+                         explaining a table that is not there - and several of these sit empty at once
+                         on the request editor's own tabs. It appears with the first row, which is the
+                         moment it starts meaning something. -->
                     <Border DockPanel.Dock="Top"
+                            IsVisible="{Binding ItemsSource, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static fc:CountToBoolConverter.Instance}}"
                             BorderBrush="{DynamicResource BorderSubtle}"
                             BorderThickness="0,0,0,1"
                             Padding="6,0,6,8">
@@ -47,10 +53,22 @@
                                      Ancestor references go through $parent[ItemsControl].Tag (the grid). -->
                                 <DataTemplate x:CompileBindings="False">
                                     <Border BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="6,6">
-                                        <Grid ColumnDefinitions="28,2*,2*,2*,28">
+                                        <!-- A switched-off row is FADED, not merely unticked.
+                                             The tick box was the only signal that a header or
+                                             parameter was not being sent, and an empty box is not a
+                                             signal - it is a control, and a reader scanning a list
+                                             of headers has no reason to read it as state. Every tool
+                                             people arrive from greys the row instead.
+
+                                             Opacity, not IsEnabled: a switched-off row must still be
+                                             editable, because fixing a value before turning it back
+                                             on is the whole reason to switch one off. -->
+                                        <Grid ColumnDefinitions="28,2*,2*,2*,28"
+                                              Opacity="{Binding !Enabled, Converter={x:Static fc:InheritedOpacityConverter.Instance}}">
                                             <CheckBox Grid.Column="0"
                                                       IsChecked="{Binding Enabled}"
                                                       IsVisible="{Binding $parent[ItemsControl].Tag.ShowEnabled}"
+                                                      ToolTip.Tip="Send this row"
                                                       VerticalAlignment="Center" />
 
                                             <!-- Key cell: a KeyCellTemplate when the host supplies one; else an

@@ -1,0 +1,875 @@
+# Fubar Diff — invariants that are easy to break
+
+Behaviour that looks like a detail, is not, and has usually already been broken once. Read the block
+before changing the thing it names.
+
+Split out of `CLAUDE.md` when API Studio stopped depending on the diff engine's full adapter set (see
+`docs/decisions.md` and the `Fubar.Diff.Infrastructure.Code` split): roughly 85% of that file was
+this, and none of it is something an API Studio contributor has to hold in their head.
+
+**Comparison keys are not display text** (Diff). The normalizer produces a key per line for matching;
+`FileComparisonService` projects every row back onto the real document lines before rendering.
+Skip it and "ignore case" shows the user a lower-cased copy of their own file. The same rule extends
+to character spans, which is why they are computed *after* projection.
+
+
+**Filler-line discipline** (Diff). Editor line `i` is always `DiffResult.Lines[i]`, on both sides.
+Never read the editors back to save — go through `MergedDocument`, or the filler blanks get written
+into the user's file. Both sides having equal line counts is also what makes scroll sync a plain
+offset copy rather than a line-mapping scheme. **This invariant is deliberately NOT preserved by
+`AlignedText.BuildCompact`** — the stacked Diff pane shows each side as its own compact block with no
+filler at all, since a stacked layout has no row-count-parity requirement to protect. Only the
+side-by-side main panes (`AlignedText.Build`) need fillers; do not "fix" `BuildCompact` to add them.
+
+
+**YAML goes through the JSON pipeline, and the `Json*` names stayed** (Diff). `YamlAstParser` produces
+`JsonAstNode`s, so the differ, ignore rules, array identity keys, the change tree, the spans, the
+reports and `--check` all work on YAML without knowing it exists. The names describe the SHAPE - a
+document of objects, arrays and scalars - which is exactly what YAML's data model is; renaming the
+family (`JsonAstNode`, `JsonChange`, `JsonSemanticPass`, `JsonSemanticDiffer`, …) was judged more risk
+than value, so read `Json*` as "structured" where it matters. The asymmetry to respect is in
+`StructuredFormatDetector`: **JSON is detected by trying to parse, YAML only by file extension**,
+because nearly all text is valid YAML and sniffing it would make every log comparison a comparison of
+two one-scalar documents. The format is tracked per side, so a `.json` can be compared against a
+`.yaml`. YAML scalar typing is the 1.2 core schema only - never 1.1's `yes`/`no` booleans, which is
+the Norway problem - and a quoted number stays a string, because `port: 8080` differing from
+`port: "8080"` is the change most likely to break something.
+
+
+**Structural C# comparison ADDS an answer and changes nothing about the diff** (Diff). This is the one
+rule that separates it from the JSON semantic pass, and the two look similar enough that "making them
+consistent" is a live risk. `JsonSemanticPass` is allowed to decide which text rows COUNT as
+differences, because two JSON documents in a different property order genuinely are the same document.
+`CodeStructurePass` is not, because two C# files in a different member order are NOT the same file -
+the bytes differ, a review is about those bytes, and quietly reporting them as equal would be the tool
+lying about what it was shown. So it marks no rows, filters nothing and changes no count; it produces
+`FileComparison.CodeChanges` and `CodeSummary` BESIDE the result. Everything else follows from that:
+it is on by default (worst case is an empty panel), it runs on the ORIGINAL text rather than the
+canonicalized copy (a structural answer about a document the user cannot see would name members at
+lines that are not there), and `--functional` is a separate flag from `--check` rather than a change
+to what `--check` means. Roslyn lives in Infrastructure behind `ICodeStructureParser`, held to the
+same confinement rule as DiffPlex and for a stronger reason: the differ, the summary, the panel and
+the CLI all work on a language-neutral `CodeNode`, which is what makes a second language one adapter.
+Three implementation rules were each found by a failing test, not by design. A node's own TOKENS
+exclude everything belonging to a child node, or every ancestor of every edit reports as changed and
+the tree says "the file changed, the class changed, the method changed" where only the last is
+information. A node's own TEXT additionally drops whitespace at its very start and end, or inserting a
+method marks its neighbour as reformatted because the blank line above it moved - while whitespace
+BETWEEN its own tokens is kept, which is where re-indentation actually lives. And the own-token walk
+must not descend into excluded children (`OwnTokens`, not a filter over `DescendantTokens()`): the
+filtering version enumerates the whole file once per level of nesting and measured 1.3 s on a 2 MB
+file against a few ms.
+
+
+**Semantic JSON is a refinement, not a second pipeline** (Diff). The text differ decides how lines
+line up; `JsonSemanticPass` decides which of them matter. One `DiffResult` shape means every renderer,
+the diff map, navigation and merge work in both modes. The trap here: `SemanticChanges` (from
+`JsonSemanticDiffer.Compare`) is unaffected by alignment quality - it parses and diffs the AST
+directly - but `Result.Modified`/`Inserted`/`Deleted` (the ROW-level counts) come from
+`SemanticLineFilter` acting on the raw text alignment, so those can look strange when the two sides
+are formatted very differently (a minified file against a pretty one). That is accepted, not a bug to
+chase: Text mode never reformats a file to fix its own alignment (see below), and the Json view is
+what handles that pairing properly.
+
+
+**Text mode never reformats a file - not even JSON, not even automatically** (Diff). It used to
+pretty-print both sides before alignment whenever semantic comparison applied, specifically so a
+minified-vs-pretty pair still lined up; that was removed because it silently rewrote the user's
+content to compensate for Text mode's own limitation. The Json view exists for exactly that pairing
+and needs no reformatting to handle it (see below), so Text mode is free to just show what it was
+given. The one surviving way to reformat for display is the pre-existing, explicit "Reformat" toggle
+(`ComparisonOptions.NormalizeStructure`, labeled "Normalize XML" until it was made visible for JSON
+too - see below) - opt-in, and `TextLineNormalizer`'s diff-aware pretty-printer (`PrettyPrintJson`,
+keeping all-scalar containers on one line so an array of small objects like `{"id": 1}` does not
+explode into boilerplate braces a line differ then mismatches) still backs it. Because canonicalised
+output IS what gets displayed (`FileComparisonServiceTests.Canonicalisation_output_IS_displayed`), a
+Take Left/Take Right + Save after turning this on saves the reformatted text - which is the point: the
+user opted in, so it is fine for it to stick if they then choose to save. Do not reintroduce an
+unconditional "canonicalize before alignment" step - that is precisely what was removed, and why.
+
+
+**Ignore rules are applied where differences are DECIDED, not where they are drawn** (Diff).
+`JsonSemanticDiffer.Compare` marks changes through `JsonIgnoreRules` before returning, so the tree, the
+text view's line filter, the diff map and navigation all agree. Filtering in a view instead would make
+that view disagree with the others about what changed.
+
+
+**Fubar Diff has no click-to-ignore affordance - `DiffPaneViewModel.IgnorePathCommand` is left null on
+purpose** (Diff). It exists for API Studio, where a comparison belongs to a request that can remember
+the rule; Fubar Diff's own way to set `IgnoredPaths` is the manual list in `SettingsWindow` instead.
+Before that window existed, `IgnoredPaths`, `IgnoreNullVsMissing` and `ArrayKeyOverrides` were fully
+built in Core (`JsonComparisonOptions`, `ArrayKeyResolver`) and even had persistence fields waiting in
+`AppSettings`, but `ComparisonViewModel.CurrentOptions()`/`ApplyDefaults`/`CaptureOptions` never
+actually read or wrote any of them - the feature was completely inert from the UI's side despite every
+other piece of it working. Check that a Core option is *read somewhere in `ComparisonViewModel`* before
+assuming a UI gap here means "not built yet" - it may mean "built, but never wired to a control."
+
+
+**The Json view has no alignment at all, on purpose** (Diff). `RawJsonPane` shows each side's raw,
+unaligned text and highlights the current change's own `JsonAstNode.Span` directly - no fillers, no
+line-for-line correspondence between the two sides. This is what makes it immune to the class of
+problem noted above: there is no shared line numbering for a formatting or property-order difference
+to break. Do not "simplify" it by routing this view through `AlignedText` - that would reintroduce
+exactly the dependency it exists to avoid. There is no standalone Tree mode any
+more - `Text` and `Json` are the only two `DiffViewMode` values, and `DiffPaneViewModel.Show` picks
+between them itself (Json whenever semantic comparison ran) rather than leaving whatever was
+previously selected.
+
+
+**The Json view has its own detail pane, built from spans rather than rows** (Diff). `DiffDetailPane`
+(Text mode) excerpts a hunk's aligned ROWS via `AlignedText.BuildCompact`, which only makes sense where
+rows are aligned in the first place. `JsonDetailPane` is the Json-mode counterpart: it excerpts a
+change's own lines directly from `LeftRawText`/`RightRawText` via `JsonSpanExcerpt.Build`, and reuses
+`RawJsonPane` (not `DiffEditorPane`) for the same reason the main Json panes do - no cross-side line
+correspondence to preserve. Both panes are toggled by the same "Diff pane" checkbox
+(`DiffPaneViewModel.IsDetailVisible`); `JsonView.axaml.cs` collapses its row heights identically to
+`DiffView.axaml.cs` (duplicated on purpose - the two views are otherwise independent, and the collapse
+logic is small enough that sharing it is not worth a base class). One consequence of the highlight
+being line-range-only (see above): for a minified, single-line file, the excerpt on that side is the
+*entire* line, since there is no column-level highlighting to narrow it further - not a bug, just what
+"the change's own lines" means when the whole document is one line.
+
+
+**Two semantic change lists exist for a reason - do not collapse them** (Diff). `FileComparison`
+carries `SemanticChanges` (spans into `Left`/`Right`, used by Text mode's line filter, ignore rules and
+the tree) and `OriginalSemanticChanges` (spans into `OriginalLeftText`/`OriginalRightText` - each
+side's text exactly as given - used by the Json view's highlighting). Now that Text mode no longer
+reformats JSON automatically, the two are usually IDENTICAL text; they can still diverge when the
+user explicitly turns on "Reformat" for a JSON file, and the pairing has to stay correct for that
+case too. They are guaranteed to agree on path, kind and count regardless - canonicalizing never
+reorders or renames anything - which is what lets `DiffPaneViewModel` pair the tree (built from the
+first list) with navigation (walking the second) by matching `JsonPath` strings rather than the
+`JsonChange` objects, whose spans can legitimately differ between the two. `RecompareAsync`/`Recompare`
+thread the original text through explicitly from the previous result rather than recomputing it from
+`Left`/`Right` - that would silently substitute the canonicalized text the moment NormalizeStructure
+was toggled after the first render.
+
+
+**A three-way merge REUSES the two-way aligner rather than aligning three documents** (Diff).
+`ThreeWayMerger` is handed two ordinary `IDiffEngine` alignments - ancestor against each edit - and
+reads only their `Unchanged` rows. Wherever both agree a line survived, all three documents are
+synchronised; everything between two such points is one region to classify. This is not just less code
+than a three-way alignment: it is what makes a merge agree with the two-way diff of the same files,
+because every comparison option, every code rule and the slider are already baked into the keys and
+rows before the merge looks at them. Two consequences that read as bugs and are not. (1) A `Modified`
+row is NOT a match - the aligner paired two lines that differ, and taking that as "survived" would
+merge one side's edit away silently. (2) Two edits with no surviving line between them are ONE region,
+so adjacent changes from both sides become a single conflict rather than two decisions whose answers
+would have to agree with each other; git resolves it the same way.
+
+
+**Three-way rows produce the same `AlignedDocument` the two-way view uses, and that is the whole
+budget** (Diff). `ThreeWayAlignedText.Build` emits exactly what `AlignedText.Build` does, so
+`DiffEditorPane`, `CharSpanColorizer`, `SourceLineNumberMargin` and `ChangeLineBackgroundRenderer`
+needed no knowledge of merging at all - a third pane cost one view and one view model. The filler
+discipline extends with it: row `i` is `ThreeWayResult.Lines[i]` in ALL THREE editors, which is what
+keeps scroll sync a plain offset copy and makes a region one horizontal band. The tint mapping is
+deliberate and worth not "fixing": the ancestor column is tinted as removed, a side that MOVED is
+tinted as added, and a side that did not move is left untinted even inside a region. Tinting all three
+columns everywhere would hand the single question a merge asks - who moved? - straight back to the
+reader. Character spans are computed against the ANCESTOR for both edits, never left-against-right: a
+merge IS two independent sets of changes to one starting point, and in a conflict "what did each of
+them do" is the question, where a left-vs-right span would show the disagreement while hiding that both
+may have rewritten the line. The ancestor column carries no spans of its own - it is already tinted
+whole as the text being replaced, and a third set of highlights would ask the reader to cross-reference
+three things to answer one question.
+
+
+**`IsConflict` is a flag on `AlignedLine`, not a fifth `ChangeKind`** (Diff). Same reasoning as
+`IsIgnored`, which it sits beside: a conflicting row is an ordinary `Inserted`/`Deleted` row to every
+renderer, hunk-grouper and navigator, and a fifth kind would land in every exhaustive switch over the
+four that exist. `ChangeLineBackgroundRenderer` checks both flags BEFORE the by-kind lookup, for
+opposite reasons - an ignored row would otherwise get no tint (its Kind is `Unchanged`), and a
+conflicting row would otherwise get the SAME tint as the changes that need no decision, which is the
+one thing a merge view must not do.
+
+
+**A hand-edited merge result is saved as TEXT, and the decisions become vestigial the moment it is
+touched** (Diff). The three-way window's Result pane is editable because the answer to a real conflict
+is regularly neither side. From the first keystroke the decisions and the document disagree, and the
+document is the one that is right - so `MergeViewModel` switches from `SaveThreeWayAsync` (build from
+`ThreeWayMergeState`) to `SaveThreeWayTextAsync` (write these lines), which takes only the PATH and the
+FILE FORMAT from the destination. Three rules hold it together and none is optional. The pane
+distinguishes its own writes from the user's (`DiffEditorPane._applying`), or `RefreshOutput`'s rewrite
+after every decision would be read back as a hand edit and the flag would never clear. A resolve after
+a hand edit ASKS, with *Keep my edits* first so it is both the primary button and what a dismissed
+dialog (-1) returns - the same "a prompt that cannot be shown is a NO" rule as everywhere else - and
+with no `IConfirmationService` at all the resolve buttons decline rather than rebuilding. And the three
+INPUT columns stay read-only on purpose: editing one needs a full re-merge, which renumbers the regions
+every decision is keyed by. The Result pane is downstream of the decisions rather than upstream of
+them, which is the whole reason it could be made editable and they could not.
+
+
+**An unresolved conflict saves the ANCESTOR, and the UI must say so** (Diff).
+`ThreeWayMergedDocument` has a defined answer for a region nobody decided, and `MergeService` does not
+refuse to write one - stopping half way through a long merge to save what you have is legitimate, and
+a service that threw would make it impossible. That makes it the UI's job: `MergeViewModel` shows a
+banner before (`HasUnresolvedConflicts`) and names the count in the status line after. Do not "fix"
+this by throwing in the service, and do not drop the warnings - the fallback is only acceptable while
+it cannot be a surprise.
+
+
+**Linked (one-folder) comparison reuses `FolderComparison` with BOTH roots the same** (Diff). That is
+not a shortcut - it is what makes the entire folder window, its filtering and its "open this pair" work
+unchanged for snapshot review. The two halves of a linked pair differ by FILE NAME, not by root, which
+is precisely what `FolderEntry.LeftRelativePath`/`RightRelativePath` already carry (they were added for
+case-insensitive pairing and turned out to be exactly the right shape for this). Do not give linked
+mode its own result type. Two behaviours differ from the two-tree walk on purpose: a file no rule
+matches is OMITTED rather than reported as one-sided - with one folder there is no "other side", and an
+ordinary source file beside some snapshots is not a difference - and a folder containing no pairs at all
+is dropped rather than shown empty.
+
+
+**A folder comparison's leniency stops at file CONTENT** (Diff). Every listing in
+`FileSystemFolderScanner` swallows its exceptions and returns empty, because a tree of any size holds
+something the current user cannot open and refusing to compare two checkouts over one locked folder is
+a worse answer than comparing the rest. `ContentsEqual` does the opposite: an unreadable file is
+reported as a DIFFERENCE, never as a match, because "these are identical" about a file that could not
+be opened is the one answer a comparison must never give. Do not make these consistent with each other
+- they are deliberately opposite.
+
+
+**Each side of a folder comparison keeps its OWN relative path** (Diff). Names pair case-insensitively
+by default, so `README.md` on one side is the same entry as `readme.md` on the other - and building
+both absolute paths from one spelling works on a case-insensitive filesystem and fails to open the file
+on a case-sensitive one. `FolderEntry.LeftRelativePath`/`RightRelativePath` exist for that, and are
+what the UI must use when opening a pair; `RelativePath` is for display and identity only.
+
+
+**Auto-refresh must never discard a merge decision** (Diff). Decisions are keyed by hunk INDEX and a
+fresh comparison renumbers the hunks, so reloading over unsaved ones would either drop them or apply
+them to different changes - silently, and not noticed until the save. `ComparisonViewModel` therefore
+refuses to auto-reload while `HasUnsavedMerge`, raising `FilesChangedOnDisk` for a banner with a manual
+Reload instead. Two implementation details are load-bearing rather than incidental: the watcher watches
+the containing DIRECTORY, not the file, because editors save by writing a temporary file and renaming
+it over the target and a file-bound watcher goes deaf at exactly that moment; and our own writes are
+recognised by TIMESTAMP rather than by a flag held across the save, because the watcher only speaks
+after a quiet period, by which time a flag cleared in a `finally` is long gone and our own save arrives
+looking external.
+
+
+**A user-supplied regex is hostile input, and `LinePatternMask` treats it that way** (Diff). Two
+failure modes, both handled and neither optional. A MALFORMED pattern is dropped rather than thrown -
+these come from a settings file a user can hand-edit, and refusing to compare anything because one rule
+has a stray bracket is not an acceptable answer (`Create` reports which were rejected so the UI can
+say). A PATHOLOGICAL one - `(a+)+$` and friends - cannot be allowed to hang the window, so patterns
+compile on `RegexOptions.NonBacktracking`, which is linear in the input; only a pattern needing
+lookaround or backreferences falls back to the ordinary engine, and that one carries a match timeout.
+Masking replaces the match with a marker character rather than with nothing, deliberately: blanking to empty
+would make `ab` and `a` compare equal under the rule `b`, hiding a difference nobody asked to hide.
+And it is applied BEFORE the normalizer, so a rule written against what the user can see matches what
+they see rather than a trimmed, case-folded copy.
+
+
+**The unified view is the ONE place "editor line i is `DiffResult.Lines[i]`" does not hold, and it pays
+for that itself** (Diff). A modified row becomes two lines there and a filler becomes none, so the
+mapping stops being the identity. Rather than weaken the invariant everywhere - which would cost the
+side-by-side view its offset-copy scroll sync and make every renderer's row arithmetic conditional -
+`UnifiedText` builds its own document and carries the translation back explicitly: `UnifiedDocument.Hunks`
+in ITS row indices (same hunks, same order, different numbers) and `SourceRows` mapping each of its rows
+to the comparison's. Anything addressing the unified view must go through those; `DiffPaneViewModel`
+keeps `UnifiedScrollToRow` and `UnifiedFolds` separate from their side-by-side counterparts for exactly
+this reason, and computing either from the other's coordinates is wrong the moment a row splits.
+
+
+**Json is not a VIEW mode** (Diff). `DiffViewMode` has two members - side by side and unified - and both
+are layouts of a TEXT comparison. Whether the Json view shows is decided by whether the semantic pass
+ran, which the Auto/Text/Json Compare selector controls. Having it in both places meant two controls
+answering the same question, and picking Text in one and Json in the other was a contradiction the app
+resolved behind the user's back (`OnIsSemanticChanged` used to quietly reset `ViewMode`). Do not add it
+back: to see JSON as two columns of text, compare it as text. A consequence worth keeping: `Show` no
+longer resets `ViewMode`, so a preference for unified survives the next comparison.
+
+
+**A change's span is the whole `"name": value` pair when the pair APPEARED or WENT AWAY** (Diff).
+`JsonChange.LeftSpan`/`RightSpan` union the name span with the value's for `Inserted`, `Deleted` and
+`IsReorder`, and return the value alone for an ordinary `Modified`. The parser has always recorded
+`JsonAstProperty.NameSpan` and the change has always carried it, but the view highlighted
+`Left?.Span` - the value - so an added field showed a coloured value beside an untouched-looking key.
+Do not extend the union to `Modified`: the key is still there and still spelled the same, and
+colouring it claims an edit nobody made.
+
+
+**Reformatting for display re-derives the change spans, and the two travel together** (Diff). A
+`JsonChange` carries offsets into ONE specific string, so `FormatJsonForDisplay` returns the text and
+the changes as a single `JsonDisplay` - reformatting a side without re-deriving them leaves every
+highlight pointing at the line a value used to be on, which reads as the comparison having broken.
+That is also why it lives on the service rather than in the view model: re-deriving needs the parser.
+`JsonFormatter` works from the AST and writes every scalar back as its own `RawText`, so `1.0` stays
+`1.0` and `1e3` stays `1e3` - a formatter that re-derived values would edit the file's numbers while
+claiming to have changed only whitespace.
+
+
+**An array can be compared three ways, and "unordered" is the only one that works without a field**
+(Diff). `ArrayMatchMode` is Position, Unordered or Key, and `JsonSemanticDiffer.ModeFor` is the single
+place the precedence lives - public precisely so the context menu's check mark and the comparison cannot
+drift into different answers. **Every instruction about ONE array beats every setting about all of them**, and that ordering was got
+WRONG first: the global `MatchArraysByPosition` sat above the per-path lists, so with that switch on,
+choosing "Ignore order" on a single array did nothing at all - the menu recorded the choice, the check
+mark moved, and the comparison ignored it. Reported from a real file, and it contradicted the rule
+`ArrayKeyResolver` already stated for keys: an explicit override wins "including when everything else is
+set to positional". Order now: a named `ArrayKeyOverrides` entry, an explicit `PositionalArrays` path,
+an explicit `UnorderedArrays` path - then, and only then, the global `MatchArraysByPosition`, an
+auto-detected key, the global `IgnoreArrayOrder`, and position. Two rankings among the rest are
+deliberate. An explicit positional path beats an explicit unordered one because
+that pair is a contradiction only the user can have written, and positional is its conservative half -
+reporting a reorder nobody minds is a smaller failure than hiding one that matters. And the GLOBAL
+unordered switch sits BELOW automatic key detection, because where a key exists it already ignores order
+and additionally says which field of which element changed, which whole-value matching cannot.
+
+Unordered matching exists because identity keys only answer "which element is this?" for objects
+carrying an id. An array of STRINGS - tags, roles, feature flags, enabled locales - has no field to key
+on, so it always fell through to positional and `["A","B"]` against `["B","A"]` reported two
+modifications for a document nobody had edited. `JsonValueSignature` matches elements on their whole
+value instead, which needs no field and works for scalars, objects and nested arrays alike. Three rules
+inside it are load-bearing. It is a MULTISET, not a set: `["A","A","B"]` against `["A","B"]` has
+genuinely lost an element, and set semantics would call them equal - the one answer a comparison must
+never give. Property order inside an element does not change its signature (JSON objects are unordered
+by definition) but NESTED ARRAY order does, because opting one array out of ordering says nothing about
+the arrays inside it and a nested one that should also be unordered gets its own rule. And what is left
+over after the exact matches is compared PAIRWISE rather than reported as a pile of deletions and
+insertions - that is what keeps a field-level diff for an element that changed in one field, and what
+lets ignore rules reach inside it at all. Matching purely by value would report a whole element as
+replaced because a timestamp inside it moved, and the rule covering that timestamp would never speak.
+
+
+**Every option that EQUALISES a line marks the row it equalised** (Diff). `ProjectOntoDocuments` is the
+one place both raw lines are in hand at once - the engine matched on comparison KEYS - so an `Unchanged`
+row whose two texts differ can only have been made equal by ignore-whitespace, ignore-case,
+ignore-comments, a line-pattern mask or Unicode normalisation. It is marked `IsIgnored` there, which
+costs one ordinal compare per unchanged row and gets it the same faint band an ignored JSON path already
+had, for free, in every renderer. One implementation covers every such option precisely because it
+compares the TEXTS rather than knowing which rule ran; adding another normalisation rule needs no change
+here. Do not mark fillers (no counterpart to differ from) or rows that are already reported changes
+(drawn as the change they are), and never overwrite an `IsIgnored` the semantic pass already set - only
+ADD. The tint itself was raised from 0.07 to 0.14, with a separate 0.30 `IgnoredSpanBackground` for the
+Json view's character spans: the same opacity over a few characters reads as far less than over a
+full-width row, which is the same reason `SpanBackground` sits well above `LineBackground`. A mark
+nobody notices is the same as no mark.
+
+
+**An ignored REORDER leaves a trace; reporting nothing is the wrong kind of silence** (Diff). When
+unordered matching pairs two elements that merely moved, it emits a `JsonChange` flagged `IsReorder`
+AND `IsIgnored` rather than emitting nothing. The user asked for order to be ignored, not for the fact
+of a reorder to be erased - and given silence they cannot tell "these agree here" from "these disagree
+here and I asked you not to mention it", which is worth a glance before trusting the diff. `IsIgnored`
+buys the whole behaviour off the existing machinery: out of the counts, out of the hunks, out of
+next/previous, and drawn at the same faint 7% wash `DiffLineColors.IgnoredBackground` already gives an
+ignored path, in both Text mode (`ChangeLineBackgroundRenderer`) and the Json view
+(`JsonChangeSpanColorizer`). Only elements whose index actually CHANGED are marked - marking every
+element of a reordered list would turn a hint into a wash over the whole array. Tests assert on what is
+REPORTED (non-ignored) for this reason; a bare `Assert.Empty(changes)` on a reordered list is now wrong.
+
+
+**Array matching is per-array, and only fields that WOULD work are offered** (Diff).
+`JsonComparisonOptions.PositionalArrays` is the per-path counterpart of the global
+`MatchArraysByPosition`, because one document can hold a list of users where order means nothing
+beside a list of steps where order is the whole content. `ArrayKeyScanner` finds every array and the
+fields that could identify its elements, applying the same bar `ArrayKeyResolver` does - present on
+every element of BOTH sides, scalar, distinct - so a field on the menu always matches; one that
+silently failed would produce a diff that looks like data loss. An explicit override beats positional,
+including the global switch, because naming a key for one array is the more specific instruction. Keys
+may be dotted paths (`meta.id`), resolved by `ArrayKeyResolver.ValueFor`, which is also what
+`JsonSemanticDiffer.KeyOf` goes through.
+
+
+**A prompt that cannot be shown is a NO, never a yes** (Diff). `IConfirmationService.ChooseAsync`
+returns -1 for "none of these", and every caller treats it as the safe answer: closing a tab is
+refused, a disk conflict keeps the user's changes. `ConfirmationService` returns -1 when there is no
+window to be modal to, and `ComparisonViewModel` refuses to close when no confirmation service was
+injected at all. Do not "simplify" any of these to a default of the first choice - the choices are
+things like *discard* and *overwrite*, and treating a dismissed dialog as agreement to one of them is
+the exact bug the prompt exists to prevent. `UnsavedPromptTests` and `ShellCloseTests` pin the
+refusals specifically.
+
+
+**Unsaved state is tracked PER SIDE** (Diff). Both panes are editable, so a session can leave two
+files to write and saving one of them is not "saved". `HasUnsavedLeft`/`HasUnsavedRight` are the
+truth; `HasUnsavedEdits` and the legacy `HasUnsavedMerge` are derived. Two consequences worth keeping:
+Ctrl+S writes only the sides that changed (rewriting an untouched file moves its timestamp, which is
+enough to make a build think it is stale), and **Save As does NOT clear the dirty flag** - it writes a
+copy somewhere else and leaves the compared file exactly as unsaved as it was.
+
+
+**A file changing on disk under unsaved edits is a CONFLICT, and only the user can settle it** (Diff).
+`OnFilesChangedOnDisk` has three paths and they are deliberately different: clean plus auto-refresh
+reloads silently (a diff kept open beside an editor should stay current), clean with auto-refresh off
+raises the banner (it used to do nothing at all, leaving the user reading a stale comparison with no
+sign of it), and dirty prompts - keep mine / save mine over it / reload and discard. The banner is
+raised as well as the prompt, so dismissing the dialog does not leave the situation unmarked, and
+`_promptingConflict` stops a second dialog stacking on the first: editors save by writing a temporary
+file and renaming it, which can produce several events in a row.
+
+
+**An editable pane keeps the filler invariant rather than weakening it** (Diff). The roadmap said this
+needed a bidirectional editor↔source offset map. It does not, and the reason is worth knowing before
+anyone "fixes" it: the document stays the file-with-fillers, each filler carries a `TextAnchor`, and
+`AlignedEdit.ToFileLines` takes it back apart with one rule - *a line belongs to the file unless it is
+empty AND still a filler*. Every renderer, the diff map, the folds and the offset-copy scroll sync are
+untouched. Do not reach for "just remove the fillers from the editable document" - that is the same
+invariant-weakening the unified view had to pay for itself.
+
+
+**Re-aligning after an edit is a PATCH, not a new document** (Diff). `FillerPatch` computes the blank
+lines to move; replacing the text would throw away the caret, selection and undo history the user is
+mid-sentence in. Four things around it are load-bearing and each was got wrong first. The caret is
+restored by FILE position, never by raw offset - the text moves around the offset and the caret
+silently lands on a different line. The continued undo group must be the OUTERMOST thing:
+`document.BeginUpdate()` starts an undo group of its own, which un-continues ours and makes Ctrl+Z
+take two presses for one change. Loading a document calls `UndoStack.ClearAll()`, because otherwise one
+Ctrl+Z in a fresh comparison walks back past the load and empties the pane. And `FillerPatch` REFUSES
+when the two alignments differ by more than fillers, which is a different comparison arriving - the
+caller replaces the document instead.
+
+
+**Anchors survive the user's undo but not the app's re-anchoring** (Diff). An anchor made before an
+edit is put back by undoing that edit, because an undo is just another text change - so anchors need
+no help there. What breaks them is re-anchoring mid-history, which re-aligning after every edit does:
+undo past a re-alignment and the anchors describe a layout the document no longer has, a filler row
+reads as a blank line the user typed, and the file quietly grows one. `DiffEditorPane` therefore
+remembers the layouts it has shown, keyed by exact text, and answers from those when the document is
+one of them. Bounded on purpose - the alternative is holding every revision of a large file for the
+life of the tab.
+
+
+**Taking a side is an EDIT, and `MergeState` is vestigial in the two-way path** (Diff). `Take left`
+rewrites the target document through `DiffEditorPane.ReplaceRows` and lets the ordinary
+edit → re-diff cycle follow, so it is visible immediately, lands on the editor's undo stack, and
+cannot be renumbered by the next comparison - which is what the old pending-decision model was
+vulnerable to (`RemapTo` existed purely to cope with it). `MergeState` is now always empty in
+`ComparisonViewModel`, which is exactly what makes `MergedDocument.Build` round-trip the base side and
+therefore save what the pane holds. The THREE-WAY merge still uses the old model and must keep it: it
+resolves regions across three documents and has a defined answer for regions nobody decided.
+`HunkEditTests` asserts the new path agrees with `MergedDocument` for the same choices.
+
+
+**Folder copying copies and NEVER deletes, and the confirmation is not optional** (Diff). This is the
+only thing in the app that writes a file the user did not name, so every decision about it is
+deliberate. `FileCopyPlanner` (Core, no disk) makes every choice about WHICH file, because that is
+where all the mistakes would be: the destination uses the spelling the destination side already has
+(names pair case-insensitively, so writing the source's spelling would leave `README.md` beside
+`readme.md` on a case-sensitive filesystem instead of replacing it), a direction with no source is not
+offered, and identical files plan nothing. `IFileCopier` holds no policy at all and refuses only one
+thing - copying a file over itself, which is reachable in one-folder mode and which `File.Copy`
+answers on some platforms by truncating the file. `FolderViewModel` offers copying only when it has
+BOTH a copier and an `IConfirmationService`, so a host that wires up one without the other gets no
+copy buttons rather than silent overwrites. Deletion and "make this side match" are still not built,
+on purpose: that is where a mistake becomes lost work. One ordering detail is load-bearing - the
+re-walk happens BEFORE the status and error are set, because `CompareAsync` clears both for its own
+run and reporting first means the failure message is wiped by the refresh that follows.
+
+
+**A binary comparison is shown as an ordinary `DiffResult` of HEX rows, and that is why it cost so
+little - but it is also the trap** (Diff). `HexDiff.Build` turns a `BinaryComparison` into the same
+shape everything else consumes, so the side-by-side editors, scroll sync, tints, the diff map, F7/F8
+and the collapse folds all work on bytes without knowing they are bytes. The cost is that the MERGE
+also thinks it can work on them: a binary `FileComparison` carries EMPTY `TextDocument`s (the bytes
+live on `Binary`), so a save would build a document of no lines and write it over the user's PNG.
+Three things stop that and all three are deliberate - `ComparisonViewModel.SaveToAsync` returns early
+when `IsBinaryComparison`, `ShowsMergeControls` hides the take-left/take-right group even though
+`Pane.HasCurrentHunk` is perfectly true, and `HasPatch` is false because it reads
+`_comparison.Result` (empty) rather than what the pane is showing. `BinaryComparisonTabTests` pins the
+save guard specifically. Do not "simplify" any of them by trusting the ones above it.
+
+
+**A binary result must never be re-run through the text path** (Diff). `Recompare`/`RecompareAsync`
+branch on `IsBinary` and only swap the options. Falling through would SUCCEED - the empty text
+documents compare equal - producing an empty diff and dropping `FileComparison.Binary`, so the tab
+would quietly turn from a picture into "the files are identical" the moment anyone ticked "ignore
+whitespace". Pinned by `BinaryFallbackTests`.
+
+
+**"Is this binary" has exactly one answer, and it lives in Core** (Diff). `BinaryContent.LooksBinary`
+is used by `TextFileReader` to refuse a file and by the comparison to decide it should take over
+instead; two implementations that could disagree would give a file refused by one path and diffed as
+text by the other. The hand-off is by `TextFileReadException.IsBinary`, a FLAG rather than a caller
+matching on `Reason` - that string is written to be shown to a person and will be reworded, and
+binary comparison silently switching itself off over a copy edit is not a break anything would catch.
+Image formats are detected from the CONTENT signature, unlike languages, which are detected from the
+extension: a renamed `.png` that is really a JPEG is ordinary, and being wrong here is immediately
+visible because the picture either appears or it does not.
+
+
+**The current difference is one thing, and four surfaces have to agree about it** (Diff). The map, the
+change tree, the panes and Prev/Next all address the same "which difference am I on", and every one of
+them can now both READ and SET it. `DiffPaneViewModel` is where they meet: `CurrentHunk` and
+`CurrentSemanticChangeIndex` are the state, `SelectDifferenceAtRow` is the setter a pane click goes
+through, and `OnCurrentSemanticChangeIndexChanged` / `OnCurrentTreeNodeChanged` are the two directions
+of the tree sync - already guarded against re-entering each other, which is why setting one does not
+loop. Three rules were each added because the surface looked broken without them.
+
+*A selection nobody can see is not a selection.* The tree's two-way sync always worked and always looked
+broken on a deep document, because nothing opened the rows above the selected one. `IsExpanded` is now
+owned by `JsonChangeNodeViewModel` (bound TwoWay so expanding by hand stays the row's own state) and
+`Reveal()` walks `Parent` upwards opening ancestors. It only ever OPENS - closing anything would fight a
+reader who had just arranged the tree - and it does not open the selected row itself, which would bury it
+under its own contents. Nothing is expanded on load, which is exactly what the tree did before. Scrolling
+the row into view is the VIEW's half (`JsonTreeView`), posted at `DispatcherPriority.Loaded` because the
+containers for rows that were just revealed do not exist until the next layout pass; asking earlier finds
+no container and scrolls nowhere, silently.
+
+*A difference off the right edge of a long line is invisible.* `EditorScroll.RevealColumns` scrolls each
+pane sideways by the MINIMUM needed to show its own changed characters, never centring: horizontal
+position carries meaning - indentation is how code shows structure - and a pane yanked sideways on every
+step loses that for every difference that never needed it. Each side is given its OWN spans, because on a
+modified row the two sides' changed characters are rarely at the same offsets. A whole inserted or
+deleted line carries no spans and scrolls home instead, which is where such a change starts.
+
+Both surfaces have to call it: `DiffView.ScrollTo` for the aligned panes, and `RawJsonPane.ApplyHighlight`
+for the Json panes and the close-up. It was wired into the first only, and the close-up is where the
+omission actually hurt - an unaligned Json document is regularly MINIFIED, so the excerpt is one enormous
+line and centring on it left the reader looking at its start with the highlight two hundred characters
+off the right edge. Post the call rather than making it inline: the visual line for a row just scrolled
+to does not exist until the next layout pass, and asking for a column position before then finds nothing
+and scrolls nowhere, silently. That silence is why this went unnoticed until it met a minified file.
+
+*A mark that can be seen must be hittable.* The map draws bands 5px tall and never narrower than 5px, and
+`DiffMapModel.SnapToNearestChange` sends a click within 12px to the nearest hunk's START. Both exist
+because one pixel is a hundred rows on a long file: a one-line change was a hairline, and missing it by a
+pixel scrolled a hundred lines from what was aimed at. Snapping falls back to the plain position when
+nothing is near, so dragging still scrubs. The current difference is shown by RECOLOURING its own marks
+in the accent colour, and by drawing nothing else. Three tries got here and the order matters: two bars
+down the outer edges framed the row, which reads as "somewhere in this range" when the question is
+"which one"; a full-width wash and then a solid bar across the strip both answered that and drowned the
+map doing it. The marks were already the right shape and weight - only their colour was missing. Do not
+re-add an overlay here.
+
+
+**The location map draws one mark per DIFFERENCE, sized by how much of it changed, and what it draws is
+decided in Core** (Diff). `DiffMapModel.Build` turns rows and hunks into bands; `DiffMap` only paints
+them. Two obvious designs are both wrong and this has been each of them, in this order. One rectangle per
+hunk with a minimum height so it cannot vanish fails in exactly the case a map exists for: on a
+60,000-line file drawn 600px tall one pixel is a hundred rows, every hunk clamps to the same minimum, and
+forty changes in a rewritten region look identical to one stray edit beside it. Emitting a band per PIXEL
+ROW instead fixes that and introduces a new lie at the other end of the scale - on a file that fits on
+screen, one twelve-line difference becomes twelve separate marks with gaps between them, so the map
+answers "how many differences are there?" with a number far too big.
+
+So rows are grouped by the HUNK they belong to: one mark per difference, at that difference's own height,
+floored to 5px so a single-line change is still visible and hittable. The changed rows behind a mark are
+still counted and reported as `MapBand.Density`, measured against the rows the mark COVERS - so a
+twelve-row difference drawn twelve pixels tall is full, and the same difference squashed into one pixel of
+a huge file is a sliver. Density is drawn as WIDTH from each side inwards rather than as opacity, because
+a faint mark on a dark strip is easy to miss entirely while a short one is unmistakably present; the 0.15
+floor is what keeps a single-line change visible, and losing those would make the map worse than none,
+since an empty strip reads as "nothing here".
+
+Group by hunk, NOT by adjacency. Two differences separated by one unchanged line are two differences, and
+must stay two marks even when the gap between them rounds away to nothing - which it does on any long
+file. Runs of ignored rows form no hunk, so they are grouped by adjacency instead, that being the closest
+thing available for something the differ decided was not a difference.
+
+`MapBand.HunkIndex` is what the control matches against its own `CurrentHunk` to recolour the current
+difference. That used to be a comparison of the mark's pixel row against the current hunk's pixel bounds,
+needing a fudge at each end and still recolouring a neighbour whenever two differences rounded onto
+adjacent pixels; a mark that IS a whole difference can simply say which one. A change and a run of ignored
+rows are separate marks that routinely land on the same pixel, so `DiffMap` paints all the ignored ones
+first and the changes over them - the ignored colour means "a rule is hiding something here", and letting
+it tint a real edit says the opposite of what is true. That is a painting decision and lives in the
+control; the model stays in document order.
+
+Marks are per (SIDE, difference) - a deletion paints only the left half, an insertion only the right, a
+modification both - and the two sides group separately, so one replacement marks each side over its own
+rows rather than merging into "modified" across both. That per-side split costs nothing precisely because
+the panes are row-aligned, which is also why this needs none of WinMerge's connecting lines between its
+columns: those exist to tie together two columns at independent scales, and ours are the same scale by
+construction. The one place a connecting line carries information here is a MOVE, whose two ends sit at
+different rows by definition - hence `MapMoveLink`, capped and skipped for short travels so the links
+stay information rather than hatching. The map also marks IGNORED rows, which form no hunk and so drew
+nothing at all before, leaving the reader unable to tell "identical" from "a rule is hiding this"; and it
+counts hunks wholly above and below the viewport, which is the question people scroll a diff they have
+already read in order to answer. `DiffMapModel.Build` degrades to hunk-shaped bands when handed no rows,
+because a blank strip reads as "no changes" - the one wrong answer a diff tool must never give.
+
+
+**An array nobody has named is compared by POSITION, and the menu says so** (Diff).
+`JsonSemanticDiffer.ModeFor` is the single precedence authority and its floor is Position. Automatic key
+detection used to sit in that chain, above the global unordered switch, so an array whose elements
+carried an `id`, `name` or `key` was matched by it without anyone asking. Good guess, bad rule: the mode
+then depended on what the DATA happened to contain, so two arrays in one file were compared differently
+with nothing on screen saying so, adding a `name` field to some records silently changed how they were
+diffed, and the global "ignore order" switch did nothing to any of them. `ArrayKeyResolver.Resolve` still
+detects, and the menu still offers it first labelled *(suggested)* - it just has to be chosen. Two
+Application tests that pinned the old default now pin the new one plus the opt-in restoring it; that
+pair is the honest record of what the change costs.
+
+The menu's marks come from `ArrayKeyChoices.Current`, which is `ModeFor`'s own answer - the check mark and
+the comparison cannot drift apart because they ask the same function. `ArrayKeyOption.IsCurrent` was
+computed correctly and **bound to nothing**, which no view-model test could catch; `ArrayMenuBindingTests`
+now asks the rendered `MenuItem` for its `IsChecked` and `ToggleType`, the same way it already asks for the
+`Command` that was once missing. `CurrentKey` is stated separately from `Suggested` even though the two
+agree today (Resolve returns an override ahead of detection, so the suggestion IS the override once one
+exists) - saying which key is in force is what lets the menu stop labelling someone's own override
+"(suggested)".
+
+
+**A MOVE is the one difference whose two halves are not on the same rows** (Diff), and three things
+follow from it. `DiffPaneViewModel.CurrentRangeFor(side)` answers per SIDE, so each pane outlines its own
+end - handing both panes the same range highlighted the block in one and unrelated context in the other.
+`RebuildDetail` sources each half of the close-up from its own end, so the pane shows the block where it
+was beside where it is, from whichever end was clicked. And `DiffView` holds the panes level at the two
+ENDS rather than at the same row while a move is selected (`_syncLeftRow`/`_syncRightRow`), which is the
+one deliberate exception to the lockstep scroll sync: with the ends fifteen rows apart, lockstep can show
+at most one of them. The offset is derived from `GetVisualTopByDocumentLine` every time rather than
+cached as pixels, because folding and wrapping both change what a row is worth and a cached figure drifts
+the moment a region collapses above either end. It is cleared for every other difference, so the
+exception lasts exactly as long as the move is what is being read.
+
+The two ends remain two DIFFERENCES - the counts, the map and next/previous are untouched. A block that
+moved really did leave one place and arrive at another, and merging them would be a different claim.
+
+The close-up keeps FILLER rows (`AlignedText.Build`, not `BuildCompact`), reversing the earlier call that
+a stacked close-up has no alignment to preserve. It does: a hunk of three deletions and two insertions
+gave a three-row block above a two-row one with nothing saying which rows corresponded.
+
+
+**An ignored difference is shown by its CHARACTERS, and can be navigated to** (Diff). Two changes with
+one principle: a difference the tool was told to ignore is still a difference, and the reader is
+entitled to see exactly what it is. `WithInlineSpans` now runs for ignored rows as well as modified ones,
+so the renderers can mark the two spaces that differ instead of banding the row; `CharSpanColorizer`
+paints those in the neutral ignored colour, never in the red and green of a reported change. The guard
+in `ChangeLineBackgroundRenderer` reads `AlignedLine.IsLocalised`, which is the ROW's answer rather than
+this side's - trailing whitespace exists on one side only, so the other has no span of its own and would
+otherwise go on banding its whole row about the difference its counterpart is pointing at precisely.
+Rows with nothing localisable keep the band.
+
+`DifferenceStops` lists hunks and runs of ignored rows together, which is what Shift+Alt+Up/Down walks;
+ordinary Prev/Next still steps past the ignored ones, because that is what having rules is for. Position
+is taken as a ROW, not as an index into that list, so nothing has to be kept in step with the four other
+things that can move the selection. An ignored run is not a hunk, so `CurrentIgnoredRow`/`End` carry it
+instead of `CurrentHunk` - which must stay -1, since the merge commands act on the current hunk - and
+`DiffView.ApplyCurrentHunk` and `RebuildDetail` both read either source. A run of adjacent ignored rows is
+ONE stop, the same grouping rule the location map draws by.
+
+
+**NEITHER axis can be scrolled through the TextEditor** (Diff). `EditorScroll.ScrollHorizontallyTo` and
+`ScrollVerticallyTo` both write `IScrollable.Offset` on the TEXT VIEW, and every scroll in the app must go
+through them. AvaloniaEdit's TextView is an `ILogicalScrollable` that scrolls itself, so the ScrollViewer
+in the editor's template never moves and `TextEditor.ScrollToHorizontalOffset` / `ScrollToVerticalOffset`
+are both silently no-ops. The horizontal half of that was found first and written up here - with the
+explicit claim that vertical was the exception, because AvaloniaEdit routed it internally. That sentence
+was wrong, and it cost the panes their vertical sync completely: the handler fired on every scroll,
+computed the right offset, called `ScrollToVerticalOffset`, and nothing moved. Measured before believed
+this time - right pane at offset 0, extent 471.8, viewport 415.0, so the requested 56.8 was exactly its
+maximum and therefore reachable; after the call it still read 0.0.
+
+Two things it also broke that nobody connected to it: `CenterOnLine` was never centring (its
+`ScrollToLine` was doing the moving and the centring step was discarded), and `ScrollSyncTests` drove the
+panes through the editor, so the tests meant to exercise sync were exercising nothing. **If a pane will
+not scroll, check what the call actually did before looking for a missing subscription** - this presents
+as a dead event handler.
+
+
+**Scroll sync copies BOTH axes, and horizontal was a reversal** (Diff). `DiffView.SyncScroll` and
+`ThreeWayView.SyncScroll` copy vertical AND horizontal offsets. Horizontal was deliberately left
+independent for a long time, on the argument that dragging one pane sideways because the other has a
+long line is disorienting - which is true only of a pane nobody is reading. The rows are ALIGNED, so
+row `i` is the same change on both sides, and scrolling right to reach the end of a long line pushed
+its counterpart off screen at exactly the moment it was the thing being compared. Two columns that
+have to be dragged sideways separately to read one difference is the worse of the two problems, and
+the three-way window makes it worse again by having three of them. Two things this rests on and one it
+must not break. It is safe because the side-by-side panes never wrap (see below), so a horizontal
+offset means the same thing in both; and the write clamps to the target's own extent, so a short line
+simply stops at its end rather than the pair jamming. **The two axes are written through different
+objects and that is not tidiness debt**: vertical goes through `TextEditor.ScrollToVerticalOffset`,
+horizontal through `EditorScroll.ScrollHorizontallyTo`, because `TextEditor.ScrollToHorizontalOffset`
+looks like the obvious counterpart and silently does nothing - AvaloniaEdit's `TextView` is an
+`ILogicalScrollable` that scrolls itself, so the ScrollViewer in the editor's template never moves
+(its `Offset.X` reads 0.0 on a pane visibly scrolled to 809.8) and writing to it changes nothing
+visible. Found with temporary logging, not by reading docs, and the first guess - that the target's
+extent was too narrow - was wrong: it measured 1270 against a 450 viewport, so the offset was always
+reachable. The thing it can break is the
+re-entry guard: syncing a second axis doubles the ways pane A can move pane B which moves A back
+forever, and `_syncingScroll` is ONE bool covering both axes for that reason. A ping-pong there hangs
+the UI thread rather than producing a wrong value, so nothing else would catch it - `ScrollSyncTests`
+exists mainly to prove the guard still holds.
+
+
+**Word wrap belongs to the unified view and CANNOT be given to the side-by-side one** (Diff). The two
+columns are aligned by having the same number of visual lines, which is what makes scroll sync a plain
+offset copy; a line long enough to wrap on one side and not the other pulls them apart by a line for
+every wrap above the viewport, silently and with nothing to throw. `DiffEditorPane.WordWrap` exists as
+a property but is bound only from `UnifiedView`, and the toolbar Wrap toggle is hidden outside that
+view rather than disabled, per the hide-don't-disable rule. `WordWrapTests` pins that the side-by-side panes
+stay unwrapped whatever the setting says. Do not "finish the feature" by binding it in `DiffView`.
+
+
+**`EditorScroll.CenterOnLine` must ask the editor where a line IS, not multiply by line height** (Diff).
+It used to compute `(line - 1) * DefaultLineHeight`, which is only right when every document line is
+exactly one visual line tall - and neither view it serves is in that state: collapsing is on by default
+(a fold above the target removes its rows from the visual height) and the unified view can wrap. It
+now uses `TextView.GetVisualTopByDocumentLine`. The failure is silent - the pane scrolls somewhere
+plausible and simply does not centre the difference - so it will not announce itself if reintroduced.
+The `ScrollToLine` call before it is separate and still required; see the gotcha below.
+
+
+**Collapsing is a VIEW state, and folding must never remove a row** (Diff). `CollapsedRegions` returns
+ROW ranges and `DiffEditorPane` turns them into AvaloniaEdit folds, so the document still contains
+every line and editor line `i` is still `DiffResult.Lines[i]`. Filtering rows out of the document
+instead would look equivalent and would break the diff map, navigation, the gutter and the merge at
+once. Both panes are handed the SAME list, which is what keeps them aligned - identical folds over
+documents that already have identical row counts means identical visual lines, so scroll sync stays an
+offset copy. Two smaller rules: an ignored row is not collapsible (its faint band is the only evidence
+an ignore rule is doing anything, and folding it hides exactly what the user added the rule to check),
+and folds are applied AFTER the document text, because a fold is a pair of offsets and the previous
+comparison's offsets mean nothing in this one.
+
+
+**"Take both" is the one merge resolution decided per REGION, not per row** (Diff). Every other choice
+picks a side, which is a per-row question; both has to emit one side's whole block and then the
+other's, so `ThreeWayMergedDocument.Build` skips the row walk past that region. Resolving it row-wise
+would interleave the two blocks - `void L() { void R() { l(); r(); ...` - which is never what anyone
+means by keeping both.
+
+
+**Sliding a change group is a PRESENTATION pass, and its safety comes from one rule** (Diff).
+`ChangeGroupSlider` moves a run of added or removed lines to the placement that reads best, and it is
+allowed to because the diff is genuinely AMBIGUOUS there: when a group is bounded by lines identical to
+the ones just inside it, several placements describe the same two documents and every one is equally
+minimal, so the aligner had no grounds to prefer one. It only ever moves a group across a line
+IDENTICAL (under the comparison keys) to the one leaving it, which is what makes both documents, the
+counts and the hunk count provably unchanged - only the pairing of equal lines moves. Two things follow.
+It runs BEFORE projection, so it compares keys rather than display text (with "ignore case" on, two
+lines the user can see differ were matched as equal, and the slider has to agree with the diff that
+already made that call) - but it SCORES on the display lines, because indentation is the whole signal
+and trimming it is exactly what a key may have done. And an ignored row is deliberately not slideable
+context: it is drawn faintly precisely so the reader can see where it is.
+
+
+**A move mark is PER SIDE, and that is not a detail** (Diff). `DiffLine` carries `LeftMoveId` and
+`RightMoveId`, not one `MoveId`, because the obvious case is only half of what people do. A block that
+travels far enough to have no counterpart gives a deleted run and an inserted run, and matching whole
+ROWS finds it. Two methods of similar shape SWAPPING gives neither: the aligner pairs `void Helper()`
+against `void Run()` and calls the row modified, which is what it is to a line differ - so that row's
+left text moved down and its right text moved up, two different blocks on one row, and a single flag
+could only describe one of them. Everything downstream asks per side (`DiffLine.IsMovedOn(side)`,
+`AlignedLine.IsMoved`), including `UnifiedText`, which is the one place both halves become separate
+lines. `MoveDetector` was first written whole-row and the swap case - the one users hit most - was
+silently invisible; the end-to-end test that caught it is `MoveComparisonTests`.
+
+
+**Move detection only ADDS a mark - kinds, counts, hunks and the patch are untouched** (Diff). Same
+reasoning as `IsIgnored` and `IsConflict`, and the reverse of the trap: a moved row is genuinely
+deleted or modified on disk, so promoting it to a `ChangeKind` or deducting it from the counts would
+make the patch, the merge and F7/F8 disagree with what is actually in the files. `DiffResult.Moved`
+counts BLOCKS alongside the row counts rather than instead of them. Three rules in `MoveDetector` are
+load-bearing and were each found by a failing realistic test, not by design: runs break on a change of
+KIND as well as on unchanged context (an ordinary edit sitting against a moved block otherwise fuses
+into one run that matches nothing); blank lines at a run's ENDS are trimmed before matching (a method
+takes its neighbouring blank line with it, and ends up with it below in the file it left and above in
+the one it arrived in - interior blanks are kept, they are part of the block's shape); and a pairing is
+made only when the text occurs EXACTLY ONCE on each side, so a run of `}` is never matched with an
+unrelated one. That last rule is the whole reason the feature is usable: a mark that tells the reader
+"you can skip this" is worse than nothing when it is wrong. `FileComparisonService` also skips inline
+spans on a moved row - the aligner's pairing was positional, the two lines are not counterparts, and
+highlighting the letters between them invites reading a change nobody made.
+
+
+**Do not reach for a cleverer alignment algorithm before measuring** (Diff). Patience diffing was built
+here, behind `IDiffEngine`, decorating `DiffPlexDiffEngine` - and then removed, because on measurement
+it produced an answer identical to DiffPlex's on every realistic C#/TS/JSON case tried (a method
+inserted between two others, a nested block added, a switch case added, an appended arrow function, a
+JSON object appended), and on the one case where it differed - a moved method - it was not better,
+merely differently shredded. DiffPlex is not a naive LCS and does not have the brace-matching failure
+patience is famous for fixing. The thing that DID fix the moved-method case is the slider above, which
+is a post-pass over ANY aligner's output. If a diff reads badly, check whether the alignment is wrong
+or merely badly PLACED before replacing the engine - they need different fixes, and only one of them
+was actually the problem here.
+
+
+**Comment stripping produces a KEY, and keys are not display text** (Diff). The same rule as the
+normalizer, and the one most likely to be broken by a "helpful" change: with "ignore comments" on,
+`CodeLines.ComparisonLines` is the document with its comments removed, and `FileComparisonService`
+projects the real lines back over every row before anyone sees them. The stripping also takes the
+whitespace immediately BEFORE a comment - without that, `foo(); // note` reduces to `foo(); ` and still
+fails to match the same line written without the comment, which is the entire point of the option.
+
+
+**Scanning a line for comments needs the whole document** (Diff). `SourceScanner.Scan` threads state
+across lines because a line cannot be classified on its own: the middle of a `/* … */`, of a C#
+verbatim string or of a JS template literal reads as ordinary code in isolation. `ScanLine`'s
+single-line overload exists ONLY for the inline differ, which is handed two already-matched lines with
+no document around them and where being wrong costs a slightly worse highlight rather than a wrong
+answer. Anything deciding what a line MEANS must use `Scan`.
+
+
+**Highlighting is keyed by file EXTENSION, comparison by `SourceLanguage`, and they know different
+amounts** (Diff). The scanner claims a language only where it has real rules (C#, JS, TS); TextMate
+colours anything it ships a grammar for. A Python file gets nothing from the code rules and is still
+far easier to read coloured, so `DiffEditorPane.SyntaxExtension` takes an extension rather than a
+language. Tying them together would mean either colouring nothing outside the short list or claiming to
+compare languages we cannot scan. `DiffEditorPane` installs TextMate on FIRST USE, not in its
+constructor, and swallows grammar failures - highlighting is a reading aid layered over the thing the
+user actually opened the app for, so it must degrade to plain text rather than take the pane down. That
+silence is why `Fubar.Diff.Controls.Tests` asserts the grammars resolve at all: a missing one would
+look exactly like a `.log` file, forever.
+
+
+**An ignored row is `Unchanged` + `IsIgnored`, never its own `ChangeKind`** (Diff). That is what keeps
+it out of `IsChange`, and therefore out of hunks, counts, the diff map and F7/F8 — while still letting
+a renderer draw a faint band. Promoting it to a `ChangeKind` would silently put every ignored row back
+into the hunk list and make navigation stop on the fields the user asked not to see.
+`IgnoredRowNavigationTests` pins this.
+
+
+**A format-only difference is a REAL difference, and the lines cannot show it** (Diff). The reader
+consumes the BOM as a preamble and splits on every terminator, so a UTF-8-with-BOM file and its
+BOM-less twin - or CRLF vs LF, or UTF-16 vs UTF-8 - produce byte-identical `Lines` and an empty
+`DiffResult`. `TextFormat` captured all of this from the start but nothing ever COMPARED two of them,
+so the tool said "the files are identical" about files that were not, which is the worst possible
+answer right after someone's version control told them otherwise. `TextFormatComparer` (Core) decides
+it, `FileComparison.FormatDifference` carries it, and the UI reports it in both the status line and a
+banner - the banner matters because when it is the ONLY difference there is nothing else on screen to
+notice. Do not fold this into `DiffResult.AreIdentical`: that is about content, and conflating the two
+would make every hunk-counting consumer wrong.
+
+
+**The comparison pipeline is fast; measure before "optimising" it** (Diff). A 60,000-line source
+comparison takes about 90 ms end to end, of which ~65 ms is DiffPlex's own aligner and ~15 ms is
+everything this codebase adds (scanner, code rules, slider, projection). The JSON path costs ~2 ms on
+a file that is not JSON, which is where the obvious-looking waste is - four whole-document
+`string.Join`s and two parse attempts - and it is not worth removing. `PipelineScaleTests` guards the
+thing that WOULD matter: the budgets there are absurdly generous on purpose, because they exist to
+catch an accidentally quadratic scan (60 ms becomes minutes) rather than a 20% regression, and a
+timing assertion tight enough to catch the latter fails on a loaded CI agent instead.
+
+
+
+
+**`AppSettings` is grouped, and the flat names survive as READ-ONLY shims** (Diff). It was thirty-one
+properties at one level - a theme, a JSON indent width, a folder exclude list and the comparison mode
+all as peers - so adding one meant touching the record, `ApplyDefaults`, `CaptureOptions` and the
+settings window, and forgetting any of those left a setting that looked complete and did nothing.
+That is the failure recorded two entries above, and grouping is what stops the next one being added
+in the wrong place. Every old spelling still deserializes (`LegacyTheme`, `LegacyFolderExclude`, …):
+each setter folds the old property into its group and each getter returns null, so
+`JsonSettingsStore`'s `DefaultIgnoreCondition = WhenWritingNull` keeps them out of anything written
+from now on. **Do not drop that ignore condition** - without it a file carries both spellings of
+every preference and has no answer for which one wins; `The_old_flat_names_are_not_written_back`
+pins it. And in `ShellViewModel.Persist`, the theme is folded into the CAPTURED settings, never back
+into the pre-capture `_settings`: the tab writes the rest of the Appearance group, and reaching past
+it throws all of that away on every save.
+
+**Whether the panes are editable is NOT persisted, and used to be** (Diff). A tool whose job is
+reading two files would reopen days later with both panes editable over whatever source was last
+open, with nothing on screen tying that to the session that switched it on - one accidental toggle
+was permanent. `ComparisonViewModel.IsEditing` is per-session now; `editing` in an old settings file
+is read by nothing. Do not restore it to `CaptureOptions` "for consistency" with the other toggles:
+it is the one whose cost is somebody's source file rather than a preference.
+
+
+**The settings window is a category list plus a search, and rows filter THEMSELVES** (Diff). It was one
+long scroll of six groups, which is fine to read once and hopeless to come back to: finding "ignore
+blank lines" again meant scrolling past everything else reading headings. `SettingRow.Filter` is an
+inherited attached property set ONCE at the top of the window, so every row below matches itself
+against what is typed - against its Description as well as its Header, because nobody searches for
+"NormalizeUnicode", they search for "encoding" or "accented", which is what the sentence under the
+header says. A per-row binding would work until somebody adds the twenty-fifth row and forgets, leaving
+one setting that can never be found by searching for it.
+
+`SettingsWindow.axaml.cs` only decides which containers to show. Two traps it now guards: the XAML's
+`SelectedIndex="0"` raises SelectionChanged from INSIDE `InitializeComponent`, before the constructor
+has filled in the section array - which crashed the process on first open until `_sections` was made
+nullable and every use guarded. And a section counts as a search hit only when it still holds a visible
+`SettingRow`; counting any content would make a section whose rows all filtered out look like a match
+while containing nothing you can change.

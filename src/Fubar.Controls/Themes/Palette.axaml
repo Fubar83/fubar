@@ -43,6 +43,11 @@
             <SolidColorBrush x:Key="BgHover" Color="#EAECEF" />
             <SolidColorBrush x:Key="BgSelected" Color="#DCE3F0" />
             <SolidColorBrush x:Key="BorderSubtle" Color="#E1E4E8" />
+
+            <!-- Tree indent rails. A shade darker than BorderSubtle so the line still reads where it
+                 crosses a SELECTED row - against BgSelected, a BorderSubtle rail disappears entirely,
+                 and a guide that vanishes on the row you are looking at is the one place it is needed. -->
+            <SolidColorBrush x:Key="TreeGuide" Color="#CDD2D9" />
             <SolidColorBrush x:Key="TextPrimary" Color="#1F2328" />
             <SolidColorBrush x:Key="TextSecondary" Color="#656D76" />
 
@@ -60,6 +65,10 @@
             <SolidColorBrush x:Key="BgEditorCanvas" Color="#FFFFFF" />
             <SolidColorBrush x:Key="BorderEditor" Color="#E1E4E8" />
             <SolidColorBrush x:Key="BtnSendBg" Color="#2563EB" />
+            <!-- The one colour that means "this is the selected/active thing" - a tab indicator, a
+                 focus ring. Its own key rather than reusing BtnSendBg: the Send button is free to stop
+                 being accent-coloured without every selection marker in both apps changing with it. -->
+            <SolidColorBrush x:Key="AccentBrush" Color="#2563EB" />
             <SolidColorBrush x:Key="VariableValidBrush" Color="#2563EB" />
             <SolidColorBrush x:Key="VariableUndefinedBrush" Color="#D97706" />
             <SolidColorBrush x:Key="BgInheritedRow" Color="#F1F5F9" />
@@ -87,6 +96,11 @@
             <SolidColorBrush x:Key="StatusServerErrorFg" Color="#B91C1C" />
             <SolidColorBrush x:Key="StatusConnFailedBg" Color="#E4E4E7" />
             <SolidColorBrush x:Key="StatusConnFailedFg" Color="#52525B" />
+
+            <!-- Log severity. Separate from the Status* family above, which is about HTTP status
+                 codes: an amber log line means "read this", not "4xx". -->
+            <SolidColorBrush x:Key="LogWarningFg" Color="#B45309" />
+            <SolidColorBrush x:Key="LogErrorFg" Color="#B91C1C" />
 
             <!-- Legacy aliases -->
             <SolidColorBrush x:Key="PostmanBlueBrush" Color="#2E7CF6" />
@@ -131,6 +145,7 @@
             <SolidColorBrush x:Key="BgHover" Color="#282830" />
             <SolidColorBrush x:Key="BgSelected" Color="#2D323E" />
             <SolidColorBrush x:Key="BorderSubtle" Color="#2B2B32" />
+            <SolidColorBrush x:Key="TreeGuide" Color="#43434F" />
             <SolidColorBrush x:Key="TextPrimary" Color="#ECECEF" />
             <SolidColorBrush x:Key="TextSecondary" Color="#94949E" />
 
@@ -148,6 +163,7 @@
             <SolidColorBrush x:Key="BgEditorCanvas" Color="#1A1A1D" />
             <SolidColorBrush x:Key="BorderEditor" Color="#2B2B32" />
             <SolidColorBrush x:Key="BtnSendBg" Color="#3B82F6" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#3B82F6" />
             <SolidColorBrush x:Key="VariableValidBrush" Color="#3B82F6" />
             <SolidColorBrush x:Key="VariableUndefinedBrush" Color="#F59E0B" />
             <SolidColorBrush x:Key="BgInheritedRow" Color="#1E1E22" />
@@ -175,6 +191,10 @@
             <SolidColorBrush x:Key="StatusServerErrorFg" Color="#F87171" />
             <SolidColorBrush x:Key="StatusConnFailedBg" Color="#3F3F46" />
             <SolidColorBrush x:Key="StatusConnFailedFg" Color="#A1A1AA" />
+
+            <!-- Log severity - see the Light block for why these are not the Status* brushes. -->
+            <SolidColorBrush x:Key="LogWarningFg" Color="#FBBF24" />
+            <SolidColorBrush x:Key="LogErrorFg" Color="#F87171" />
 
             <!-- Legacy aliases -->
             <SolidColorBrush x:Key="PostmanBlueBrush" Color="#3B82F6" />

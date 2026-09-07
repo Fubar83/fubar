@@ -8,13 +8,16 @@ namespace Fubar.Controls;
 /// area. Drop it in anywhere the app needs a navigation / data tree (a workspace explorer, a JSON tree,
 /// an outline) - the host supplies only <c>ItemsSource</c> + a <c>TreeDataTemplate</c> for the row.
 ///
-/// The appearance lives in <c>Themes/TreeView.axaml</c>, scoped under <c>fc|TreeView</c> so ordinary
-/// <see cref="Avalonia.Controls.TreeView"/>s elsewhere keep the framework default. This subclass keeps
-/// the Fluent tree/branch template (chevron, expand/collapse, indentation) and only restyles the row -
-/// hence <see cref="StyleKeyOverride"/> points at the base type so that template is still resolved.
+/// The appearance lives in <c>Themes/TreeView.axaml</c>. This subclass keeps the Fluent tree/branch
+/// template (chevron, expand/collapse, indentation) and only restyles the row - hence
+/// <see cref="StyleKeyOverride"/> points at the base type so that template is still resolved.
 ///
-/// For per-row level indent that doesn't depend on the template, apply
-/// <see cref="TreeLevelIndentConverter"/> to the DataTemplate root's Margin.
+/// <para>That override has a consequence that cost real time to find: Avalonia matches type SELECTORS
+/// against the style key too, so <c>fc|TreeView</c> matches no instance of this class. The theme selects
+/// on the base <c>TreeView</c> type instead, which means it dresses every TreeView in the app.</para>
+///
+/// <para>Row indentation and its guide rails come from <see cref="TreeIndentGuides"/> inside the row
+/// template, so a host supplies only the row's content - never a level-based margin of its own.</para>
 /// </summary>
 public class TreeView : Avalonia.Controls.TreeView
 {

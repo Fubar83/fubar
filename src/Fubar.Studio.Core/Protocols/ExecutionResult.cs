@@ -32,5 +32,20 @@ public sealed class ExecutionResult
 
     public string? ErrorMessage { get; init; }
 
+    /// <summary>
+    /// The encoding the body was decoded with, e.g. <c>utf-8</c> - reported so mojibake has an
+    /// explanation rather than being a mystery. Null for a result that carries no body.
+    /// </summary>
+    public string? BodyEncodingName { get; init; }
+
+    /// <summary>
+    /// True when the response was larger than the executor's cap and was NOT read.
+    ///
+    /// <para>Distinct from an empty body on purpose: the status, headers and timing are all real and
+    /// worth showing, and an assertion against a body that was never loaded must fail loudly rather
+    /// than quietly pass against an empty string.</para>
+    /// </summary>
+    public bool BodyTooLarge { get; init; }
+
     public bool IsSuccess => ErrorMessage is null;
 }

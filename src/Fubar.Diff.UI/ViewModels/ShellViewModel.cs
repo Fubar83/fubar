@@ -47,7 +47,7 @@ public partial class ShellViewModel : ViewModelBase
         ThemeManager = themeManager;
 
         _settings = settingsStore.Load();
-        ThemeManager.Restore(_settings.Theme);
+        ThemeManager.Restore(_settings.Appearance.Theme);
 
         // Entries whose files have since been deleted or moved are dropped: offering to reopen a file
         // that is not there produces an error the user did not ask for.
@@ -311,9 +311,13 @@ public partial class ShellViewModel : ViewModelBase
     {
         try
         {
-            _settings = (SelectedTab?.CaptureOptions(_settings) ?? _settings) with
+            // The tab's capture comes FIRST and the theme is folded into ITS Appearance, not the old
+            // one: the tab writes the rest of that group (invisibles, wrap, collapse, highlighting),
+            // and reaching back to _settings.Appearance here would throw all of it away every save.
+            var captured = SelectedTab?.CaptureOptions(_settings) ?? _settings;
+            _settings = captured with
             {
-                Theme = ThemeManager.CurrentTheme.ToString(),
+                Appearance = captured.Appearance with { Theme = ThemeManager.CurrentTheme.ToString() },
                 Recent = Recent,
             };
         }

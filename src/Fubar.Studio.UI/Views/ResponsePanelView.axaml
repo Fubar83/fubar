@@ -16,7 +16,7 @@
 
     <!-- Response Pane (ResponsePane.md): its own top-level shell region, bound to
          MainViewModel.ActiveRequest.Response and split from the Request Editor by MainWindow's
-         GridSplitter. The Pretty/Tree/Raw/Headers/Preview switcher uses the same boxed
+         GridSplitter. The Pretty/Tree/Raw/Headers/Preview switcher uses the same underline
          fc:SeamlessTabControl as the Request editor (Fubar.Controls/Themes/SeamlessTab.axaml). -->
     <Grid RowDefinitions="Auto,*,Auto">
 
@@ -84,7 +84,7 @@
             </Grid>
         </Border>
 
-        <!-- 2. View switcher + content: boxed tabs, one per response view. SelectedIndex is bound
+        <!-- 2. View switcher + content: underline tabs, one per response view. SelectedIndex is bound
              two-way so the shared tab component drives the view. Preview's tab only appears for
              image content (HasPreview); the Headers tab title carries the header count. -->
         <fc:SeamlessTabControl Grid.Row="1"
@@ -205,8 +205,16 @@
 
         </fc:SeamlessTabControl>
 
-        <!-- 3. Action Footer & Content Metadata -->
+        <!-- 3. Action Footer & Content Metadata.
+
+             Hidden until a response exists, rather than shown with five greyed-out buttons. This is
+             the codebase's own rule - "a control that cannot do anything right now should be HIDDEN,
+             not disabled" (CLAUDE.md) - applied where it had been missed: on first run the pane's
+             whole bottom strip was Copy Body / Save File / Pin / Compare, none of which could do
+             anything, over a content-type line with no content to type. The row it cost is a row of
+             response, which is what this pane exists to show. -->
         <Border Grid.Row="2"
+                IsVisible="{Binding HasResponse}"
                 Background="{DynamicResource BgResponseHeader}"
                 Padding="8,4"
                 BorderThickness="0,1,0,0"
@@ -229,19 +237,18 @@
                             Classes="secondary-btn"
                             IsVisible="{Binding IsJsonResponse}"
                             Command="{Binding FormatResponseJsonCommand}" />
-                    <Button Content="📋 Copy Body" Classes="secondary-btn" IsEnabled="{Binding HasResponse}" Command="{Binding CopyResponseBodyCommand}" />
-                    <Button Content="💾 Save File" Classes="secondary-btn" IsEnabled="{Binding HasResponse}" Command="{Binding SaveResponseToFileCommand}" />
+                    <Button Content="Copy" Classes="secondary-btn" ToolTip.Tip="Copy the response body" Command="{Binding CopyResponseBodyCommand}" />
+                    <Button Content="Save" Classes="secondary-btn" ToolTip.Tip="Save the response body to a file" Command="{Binding SaveResponseToFileCommand}" />
 
                     <fc:Divider Orientation="Vertical" Margin="4,0" />
 
                     <!-- Pin sets this response aside; Compare diffs the next one against it. The pin is
                          app-wide, so the two sends can be different environments or different requests. -->
-                    <Button Content="📌 Pin"
+                    <Button Content="Pin"
                             Classes="secondary-btn"
                             ToolTip.Tip="Set this response aside to compare a later one against"
-                            IsEnabled="{Binding HasResponse}"
                             Command="{Binding PinAsBaselineCommand}" />
-                    <Button Content="⇄ Compare"
+                    <Button Content="Compare"
                             Classes="secondary-btn"
                             ToolTip.Tip="{Binding BaselineTooltip}"
                             IsEnabled="{Binding CanCompareWithBaseline}"

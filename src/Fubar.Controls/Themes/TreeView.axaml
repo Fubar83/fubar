@@ -2,28 +2,201 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:fc="using:Fubar.Controls">
 
-    <!-- Explorer-tree look for fc:TreeView (see TreeView.cs). Taller rows + padding for a bigger click
-         target; full-width hover/selected fills via palette tokens (so theme switches repaint instantly);
-         the chevron's HIT AREA is enlarged (padding) without growing the glyph. Everything is scoped under
-         "fc|TreeView ..." so ordinary TreeViews elsewhere keep the framework default. The descendant
-         combinator (space) reaches TreeViewItems at every nesting level. Colours are Palette.axaml tokens. -->
+    <!-- Explorer-tree look: taller rows for a bigger click target, hover/selected fills from palette
+         tokens (so a theme switch repaints instantly), and an enlarged chevron hit area without a bigger
+         glyph.
 
-    <Style Selector="fc|TreeView TreeViewItem">
-        <Setter Property="Padding" Value="4,4" />
-        <Setter Property="MinHeight" Value="30" />
-        <Setter Property="CornerRadius" Value="4" />
+         Selected on the BASE TreeView type, not on fc|TreeView, and that is not a slip. Avalonia matches
+         a type selector against a control's STYLE KEY, and fc:TreeView deliberately overrides its style
+         key to Avalonia.Controls.TreeView so it keeps the Fluent template (see TreeView.cs) - which
+         means "fc|TreeView" matches nothing that can ever exist. Every style in this file used to be
+         written that way and not one of them applied: the tree rendered in stock Fluent, 32px rows with
+         a full-bleed accent-blue selected row, while the palette said otherwise and everyone read the
+         palette. A selector that matches nothing reports nothing, so nothing said so.
+
+         The cost of the base-type selector is that this now styles EVERY TreeView in an app that
+         installs the design system, not just fc:TreeView. That is the design system's job, both apps'
+         trees are fc:TreeView anyway, and the alternative - dropping StyleKeyOverride and re-declaring
+         the whole Fluent TreeView theme - buys nothing either app wants.
+
+         TreeRowThemeTests pins the rendered result, since markup this indirect cannot be reviewed by
+         reading it. -->
+
+    <Styles.Resources>
+
+        <!-- The expander: a boxed + / - on the connector, the way a tree drawn in line characters has
+             always done it. Fluent's stock ToggleButton would put a filled, bordered BUTTON in the
+             middle of every folder row instead.
+
+             The two states share one glyph rather than switching between two geometries: the bar is
+             always drawn and the stem is hidden when expanded, so a plus is a minus with a stem and
+             the two cannot drift apart. (fc:Section rotates a chevron for the same reason.)
+
+             The button keeps its width on a leaf and hides only the box, so a request's label lines up
+             with the folder labels around it. Hiding the button itself collapsed its column - which is
+             why leaf rows in Fubar Diff's JSON tree used to sit a notch left of their expandable
+             siblings. -->
+        <ControlTheme x:Key="TreeExpanderToggleTheme" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="16" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}">
+                        <Border x:Name="PART_Box"
+                                Width="11"
+                                Height="11"
+                                CornerRadius="2"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource TreeGuide}"
+                                Background="{DynamicResource BgSidebar}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <Panel>
+                                <Rectangle Width="5"
+                                           Height="1"
+                                           Fill="{DynamicResource TextSecondary}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                                <Rectangle Width="1"
+                                           Height="5"
+                                           Classes="expander-stem"
+                                           Fill="{DynamicResource TextSecondary}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Panel>
+                        </Border>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+
+            <!-- Checked is expanded, so the stem goes and the plus becomes a minus. -->
+            <Style Selector="^:checked /template/ Rectangle.expander-stem">
+                <Setter Property="IsVisible" Value="False" />
+            </Style>
+
+            <Style Selector="^:pointerover /template/ Border#PART_Box">
+                <Setter Property="BorderBrush" Value="{DynamicResource TextSecondary}" />
+            </Style>
+
+            <!-- A leaf has nothing to fold. The box goes; the width stays. -->
+            <Style Selector="^:not(.branch) /template/ Border#PART_Box">
+                <Setter Property="IsVisible" Value="False" />
+            </Style>
+        </ControlTheme>
+
+        <!-- The row look is a keyed ControlTheme handed to the tree as its ItemContainerTheme rather
+             than a "TreeView TreeViewItem ..." descendant style, for a second reason worth writing down:
+             a descendant combinator ALSO stops matching once a selector reaches into a template, so
+
+                 TreeView TreeViewItem:selected /template/ Border#PART_LayoutRoot
+
+             matches nothing, while the same selector without the leading "TreeView " matches fine. A
+             ControlTheme sidesteps the question - and puts these setters at the same precedence as the
+             Fluent ones they replace, instead of relying on an outside style to outrank them.
+
+             Buttons.axaml and Tabs.axaml reach for ItemContainerTheme for the same reason. -->
+        <ControlTheme x:Key="FubarTreeViewItemTheme"
+                      TargetType="TreeViewItem"
+                      BasedOn="{StaticResource {x:Type TreeViewItem}}">
+
+            <!-- No VERTICAL padding: the row's breathing room is MinHeight, so consecutive rows touch
+                 and fc:TreeIndentGuides - which draws its hairlines per row - joins up into one
+                 continuous rail down the tree instead of a dashed one. -->
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="CornerRadius" Value="4" />
+
+
+            <!-- Nested items are containers generated by their PARENT item, not by the TreeView, so the
+                 theme has to hand itself down or it would only ever style the top level. -->
+            <Setter Property="ItemContainerTheme" Value="{DynamicResource FubarTreeViewItemTheme}" />
+
+            <!-- Our own row template, replacing Fluent's, for ONE reason: the indent.
+
+                 Fluent indents a row with a Level-sized margin written as an attribute inside its own
+                 template, which makes it a local value - and a local value beats every style, so there
+                 is no styling one's way out of it. A row therefore ended up indented twice, once by
+                 Fluent and once by whatever the app did to draw its own structure, and a nested request
+                 sat ~30px in from its siblings for no reason anyone could point at.
+
+                 So the indent is the rail and the rail is the indent: fc:TreeIndentGuides reserves
+                 Level * Step and draws the hairlines through the space it reserved. One number, one
+                 place, and the lines land exactly on the levels rather than near them.
+
+                 Part NAMES are kept (PART_LayoutRoot, PART_HeaderPresenter, PART_ExpandCollapseChevron,
+                 PART_ItemsPresenter) so the state styles above, and any host style reaching for the
+                 chevron, keep working against Fluent's vocabulary. -->
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <StackPanel>
+                        <Border x:Name="PART_LayoutRoot"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                MinHeight="{TemplateBinding MinHeight}"
+                                Padding="{TemplateBinding Padding}">
+                            <!-- The expander's column is a FIXED width, not Auto. Auto measures the
+                                 button, and the button shrinks to nothing on a leaf where its box is
+                                 hidden - which put every request 16px left of the folders beside it. -->
+                            <Grid ColumnDefinitions="Auto,16,*">
+                                <fc:TreeIndentGuides Grid.Column="0"
+                                                     Depth="{TemplateBinding Level}"
+                                                     VerticalAlignment="Stretch" />
+
+                                <!-- Always present, box drawn only on a branch (see the theme): a
+                                     button that vanishes on leaves takes its column with it and
+                                     unaligns every file from the folders around it. -->
+                                <ToggleButton Grid.Column="1"
+                                              x:Name="PART_ExpandCollapseChevron"
+                                              Theme="{StaticResource TreeExpanderToggleTheme}"
+                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                              Classes.branch="{Binding ItemCount, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static fc:CountToBoolConverter.Instance}}" />
+
+                                <ContentPresenter Grid.Column="2"
+                                                  x:Name="PART_HeaderPresenter"
+                                                  Content="{TemplateBinding Header}"
+                                                  ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                                  VerticalAlignment="Stretch"
+                                                  HorizontalAlignment="Stretch" />
+                            </Grid>
+                        </Border>
+
+                        <ItemsPresenter x:Name="PART_ItemsPresenter"
+                                        IsVisible="{TemplateBinding IsExpanded}" />
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter>
+
+            <Style Selector="^:pointerover /template/ Border#PART_LayoutRoot">
+                <Setter Property="Background" Value="{DynamicResource BgHover}" />
+            </Style>
+
+            <!-- No :focus qualifier: the selected row keeps its fill when the tree loses focus, because
+                 clicking into the request editor should not cost you track of which request you are in. -->
+            <Style Selector="^:selected /template/ Border#PART_LayoutRoot">
+                <Setter Property="Background" Value="{DynamicResource BgSelected}" />
+            </Style>
+
+            <Style Selector="^:selected:pointerover /template/ Border#PART_LayoutRoot">
+                <Setter Property="Background" Value="{DynamicResource BgSelected}" />
+            </Style>
+
+        </ControlTheme>
+
+    </Styles.Resources>
+
+    <Style Selector="TreeView">
+        <Setter Property="ItemContainerTheme" Value="{StaticResource FubarTreeViewItemTheme}" />
     </Style>
 
-    <Style Selector="fc|TreeView TreeViewItem:pointerover">
-        <Setter Property="Background" Value="{DynamicResource BgHover}" />
-    </Style>
-
-    <Style Selector="fc|TreeView TreeViewItem:selected">
-        <Setter Property="Background" Value="{DynamicResource BgSelected}" />
-    </Style>
-
-    <Style Selector="fc|TreeView TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
-        <Setter Property="Padding" Value="8" />
+    <!-- The rail's default colour. NOT scoped as "fc|TreeView fc|TreeIndentGuides": the rail lives
+         inside a row's DataTemplate, and a descendant selector reaches into one of those no better than
+         it reaches into a control template. Unscoped costs nothing - the control exists for this one
+         job - and a host that wants another colour still just sets LineBrush. -->
+    <Style Selector="fc|TreeIndentGuides">
+        <Setter Property="LineBrush" Value="{DynamicResource TreeGuide}" />
     </Style>
 
 </Styles>

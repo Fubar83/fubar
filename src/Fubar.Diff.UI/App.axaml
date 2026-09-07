@@ -21,6 +21,11 @@
                      ThemeDictionaries respond to ThemeManagerViewModel's RequestedThemeVariant switch. -->
                 <ResourceInclude Source="avares://Fubar.Controls/Themes/Palette.axaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- The app mark in the title bar. One image for both themes - the glyph is drawn on
+                 transparency, so there is no plaque to keep off a dark title bar. See
+                 Fubar.Studio.UI/App.axaml for why it is a brush and why the path is relative. -->
+            <ImageBrush x:Key="AppMark" Stretch="Uniform" Source="/Assets/fubar-256.png" />
         </ResourceDictionary>
     </Application.Resources>
 

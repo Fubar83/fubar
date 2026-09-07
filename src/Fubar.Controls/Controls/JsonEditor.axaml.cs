@@ -31,6 +31,7 @@ public partial class JsonEditor : UserControl
 
     private readonly TextMate.Installation _textMateInstallation;
     private readonly FoldingManager _foldingManager;
+    private readonly SearchPanel _searchPanel;
     private bool _suppressTextCallback;
     private JsonNode? _schemaRoot;
     private CompletionWindow? _completionWindow;
@@ -48,7 +49,10 @@ public partial class JsonEditor : UserControl
         // foldable node showed two expand/collapse buttons. Install alone is enough.
         _foldingManager = FoldingManager.Install(Editor.TextArea);
 
-        SearchPanel.Install(Editor);
+        // AvaloniaEdit's own find bar - Ctrl+F, with next/previous and a match count - but only while
+        // the editor itself has focus. OpenFind() is what lets a host reach it from a window-level
+        // gesture, which is how someone reading a response actually asks for it.
+        _searchPanel = SearchPanel.Install(Editor);
 
         Editor.TextChanged += (_, _) =>
         {
@@ -154,5 +158,18 @@ public partial class JsonEditor : UserControl
                 _schemaRoot = null;
             }
         }
+    }
+
+    /// <summary>
+    /// Opens the find bar and puts the caret in it, from a host that owns the keyboard gesture.
+    ///
+    /// <para>AvaloniaEdit binds Ctrl+F on the editor itself, so it only fires when the editor already
+    /// has focus - which it does not when someone has just read a response and wants to search it.
+    /// A window-level accelerator calls this instead.</para>
+    /// </summary>
+    public void OpenFind()
+    {
+        _searchPanel.Open();
+        Editor.Focus();
     }
 }

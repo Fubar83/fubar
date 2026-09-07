@@ -62,6 +62,14 @@ public partial class KeyValueGridViewModel : ViewModelBase
     /// </summary>
     public void AddRowQuietly(KeyValueRowViewModel row) => AddRowInternal(row);
 
+    /// <summary>Adds a pre-filled row and raises <see cref="Changed"/> - the user asked for it, so it
+    /// is an edit. Used by the Body tab's "Attach file..." action.</summary>
+    public void AddRow(KeyValueRowViewModel row)
+    {
+        AddRowInternal(row);
+        Changed?.Invoke();
+    }
+
     /// <summary>Removes a row without raising <see cref="Changed"/> - see <see cref="AddRowQuietly"/>.</summary>
     public void RemoveRowQuietly(KeyValueRowViewModel row) => Rows.Remove(row);
 

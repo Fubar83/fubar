@@ -35,6 +35,10 @@ public sealed class JsonSettingsStore : ISettingsStore
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        // What keeps AppSettings' legacy shims read-only. Each one folds an old flat property into its
+        // group on load and returns null on write; without this the file would carry both spellings of
+        // every preference and have no answer for which one wins.
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         // Written to be hand-editable: an enum as "Auto" is far more useful in a config file than 0,
         // and a stale name from a future version is handled by the catch below.
         Converters = { new JsonStringEnumConverter() },

@@ -16,7 +16,7 @@ namespace Fubar.Studio.UI.ViewModels;
 /// Profile), a profile itself is always one concrete scheme - Bearer/API Key/Basic/OAuth 2.0. OAuth 2.0
 /// is edited through the shared request-builder-style <see cref="OAuth2"/> child.
 /// </summary>
-public partial class AuthProfileEditorViewModel : ViewModelBase
+public partial class AuthProfileEditorViewModel : ViewModelBase, ISaveableEditor
 {
     private readonly Workspace _workspace;
     private readonly IAuthProfileStore _workspaceService;
@@ -70,8 +70,8 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
             PreviewHandler = config =>
                 _authProvider.PreviewTokenRequest(config, _workspace, _environmentManager.ActiveEnvironment),
             DiscoveryHandler = issuer => discovery.DiscoverAsync(issuer),
-            SignInHandler = (authorizeUrl, clientId, scopes) =>
-                signIn.SignInAsync(authorizeUrl, clientId, scopes, _workspace, _environmentManager.ActiveEnvironment),
+            SignInHandler = request =>
+                signIn.SignInAsync(request, _workspace, _environmentManager.ActiveEnvironment),
             VariableContext = new VariableTooltipContext(
                 variableResolver, workspace, environmentManager.ActiveEnvironment, SecretsRevealed: false),
         };
@@ -158,6 +158,13 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
     /// <summary>Raised after a successful Save - the Left Pane's Auth Profiles section refreshes from it.</summary>
     public event Action? Saved;
 
+    /// <summary>
+    /// Ctrl+S, via the shell. Routed through the generated command rather than calling SaveAsync
+    /// directly so the command's own re-entrancy guard still applies - holding the key down must not
+    /// start a second write over the first.
+    /// </summary>
+    Task ISaveableEditor.SaveAsync() => SaveCommand.ExecuteAsync(null);
+
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -188,7 +195,7 @@ public partial class AuthProfileEditorViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Failed to save auth profile \"{Name}\": {ex.Message}");
+            _statusLog.LogError($"Failed to save auth profile \"{Name}\": {ex.Message}");
         }
     }
 }

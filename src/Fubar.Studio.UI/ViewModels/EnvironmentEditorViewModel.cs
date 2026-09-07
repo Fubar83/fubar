@@ -15,12 +15,13 @@ namespace Fubar.Studio.UI.ViewModels;
 /// in-memory <see cref="ISessionVariableStore"/>. Secret/Session values are never written to disk (see
 /// <see cref="AppVariable"/>'s doc comment); this editor reads/writes the real value transparently.
 /// </summary>
-public partial class EnvironmentEditorViewModel : ViewModelBase
+public partial class EnvironmentEditorViewModel : ViewModelBase, ISaveableEditor
 {
     private readonly Workspace _workspace;
     private readonly IEnvironmentStore _workspaceService;
     private readonly ISecretStoreService _secretStore;
     private readonly ISessionVariableStore _sessionStore;
+    private readonly IVariableWriter _variableWriter;
     private readonly StatusLogViewModel _statusLog;
     private readonly string _environmentId;
 
@@ -34,12 +35,14 @@ public partial class EnvironmentEditorViewModel : ViewModelBase
         IEnvironmentStore workspaceService,
         ISecretStoreService secretStore,
         ISessionVariableStore sessionStore,
+        IVariableWriter variableWriter,
         StatusLogViewModel statusLog)
     {
         _workspace = workspace;
         _workspaceService = workspaceService;
         _secretStore = secretStore;
         _sessionStore = sessionStore;
+        _variableWriter = variableWriter;
         _statusLog = statusLog;
         _environmentId = environment.Id;
 
@@ -97,33 +100,38 @@ public partial class EnvironmentEditorViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Ctrl+S, via the shell. Routed through the generated command rather than calling SaveAsync
+    /// directly so the command's own re-entrancy guard still applies - holding the key down must not
+    /// start a second write over the first.
+    /// </summary>
+    Task ISaveableEditor.SaveAsync() => SaveCommand.ExecuteAsync(null);
+
     [RelayCommand]
     private async Task SaveAsync()
     {
-        var variables = new List<AppVariable>();
+        // Built empty and filled through IVariableWriter, so this editor and the CAPTURE path share one
+        // implementation of "where may this value live" rather than two that happen to agree. The
+        // editor is the only place a variable's Kind can CHANGE, so it declares each row's kind first
+        // and lets the writer place the value.
+        var model = new WorkspaceEnvironment { Id = _environmentId, Name = Name, Variables = [] };
         var stillSecret = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var row in Rows.Where(r => !string.IsNullOrWhiteSpace(r.Key)))
         {
-            switch (row.Kind)
-            {
-                case VariableKind.Secret:
-                    _secretStore.SetSecret(_workspace.WorkspaceId, row.Key, row.Value);
-                    stillSecret.Add(row.Key);
-                    break;
-                case VariableKind.Session:
-                    // Session values live only in the in-memory store - never persisted; scoped to this environment.
-                    _sessionStore.Set(SessionScope.For(_workspace, _environmentId), row.Key, row.Value);
-                    break;
-            }
-
-            variables.Add(new AppVariable
+            model.Variables.Add(new AppVariable
             {
                 Key = row.Key,
-                // Only Normal values are persisted; Secret/Session are null on disk.
-                Value = row.Kind == VariableKind.Normal ? row.Value : null,
                 Kind = row.Kind,
                 Description = string.IsNullOrEmpty(row.Description) ? null : row.Description,
             });
+
+            _variableWriter.Write(_workspace, model, row.Key, row.Value, row.Kind);
+
+            if (row.Kind == VariableKind.Secret)
+            {
+                stillSecret.Add(row.Key);
+            }
         }
 
         // Drop keyring entries for variables that used to be Secret but no longer are (same key), so a
@@ -132,8 +140,6 @@ public partial class EnvironmentEditorViewModel : ViewModelBase
         {
             _secretStore.DeleteSecret(_workspace.WorkspaceId, orphan);
         }
-
-        var model = new WorkspaceEnvironment { Id = _environmentId, Name = Name, Variables = variables };
 
         try
         {
@@ -145,7 +151,7 @@ public partial class EnvironmentEditorViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _statusLog.Log($"Failed to save environment \"{Name}\": {ex.Message}");
+            _statusLog.LogError($"Failed to save environment \"{Name}\": {ex.Message}");
         }
     }
 }

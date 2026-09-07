@@ -14,4 +14,10 @@ public sealed class WorkspaceEnvironment
     public required string Name { get; set; }
 
     public List<AppVariable> Variables { get; set; } = [];
+
+    /// <summary>
+    /// How connections for this environment are made - client certificate, extra CAs, proxy. Null (the
+    /// common case) means the machine defaults, which is what the app has always done.
+    /// </summary>
+    public TransportSettings? Transport { get; set; }
 }

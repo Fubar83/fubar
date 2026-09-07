@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fubar83.github.io/fubar/schemas/v1/request.schema.json",
+  "title": "Fubar API Studio request",
+  "description": "One request.json under a workspace's collections/ tree.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "id": { "type": "string", "description": "Stable id. Keys this request's execution history." },
+    "name": { "type": "string" },
+    "kind": { "enum": ["http"], "default": "http" },
+    "method": { "type": "string", "default": "GET" },
+    "url": { "type": "string" },
+    "queryParams": { "type": "array", "items": { "$ref": "#/$defs/keyValue" } },
+    "headers": { "type": "array", "items": { "$ref": "#/$defs/keyValue" } },
+    "body": { "$ref": "#/$defs/body" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "authProfileId": { "type": ["string", "null"] },
+    "timeoutSeconds": { "type": ["integer", "null"], "minimum": 1 },
+    "captures": { "type": "array", "items": { "$ref": "#/$defs/capture" } },
+    "assertions": { "type": "array", "items": { "$ref": "#/$defs/assertion" } },
+    "suppressedInheritedHeaderKeys": { "type": "array", "items": { "type": "string" } },
+    "comparison": { "$ref": "#/$defs/comparison" },
+    "settings": { "type": ["object", "null"], "description": "Protocol-owned data bag." },
+
+    "localVariables": {
+      "deprecated": true,
+      "type": "array",
+      "description": "Retired. Dropped by the one-time migration on open; variables resolve from the environment, the session store and the workspace manifest.",
+      "items": { "$ref": "#/$defs/keyValue" }
+    },
+    "responseDiffIgnorePaths": {
+      "deprecated": true,
+      "type": "array",
+      "description": "Superseded by comparison.ignoredPaths. Folded in by the one-time migration on open.",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "keyValue": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "value": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "enabled": { "type": "boolean", "default": true },
+        "kind": {
+          "enum": ["text", "file"],
+          "default": "text",
+          "description": "file is only meaningful in a formData body: the value is a path, sent as a file part."
+        }
+      }
+    },
+    "body": {
+      "type": "object",
+      "properties": {
+        "type": { "enum": ["none", "json", "formData", "urlEncoded", "rawText", "binaryFile"] },
+        "raw": { "type": ["string", "null"] },
+        "formData": { "type": "array", "items": { "$ref": "#/$defs/keyValue" } },
+        "urlEncoded": { "type": "array", "items": { "$ref": "#/$defs/keyValue" } },
+        "binaryFilePath": { "type": ["string", "null"] }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "description": "Credentials belong in {{variables}}, not here: this file is committed.",
+      "properties": {
+        "type": { "enum": ["inherit", "none", "bearer", "apiKey", "basic", "oauth2", "profile"] },
+        "token": { "type": ["string", "null"] },
+        "apiKeyName": { "type": ["string", "null"] },
+        "apiKeyValue": { "type": ["string", "null"] },
+        "apiKeyLocation": { "enum": ["header", "query"] },
+        "username": { "type": ["string", "null"] },
+        "password": { "type": ["string", "null"] },
+        "accessTokenVariable": { "type": ["string", "null"] },
+        "expiryVariable": { "type": ["string", "null"] },
+        "expiresInExpression": { "type": ["string", "null"] },
+        "tokenRequest": { "type": ["object", "null"] },
+        "tokenCaptures": { "type": "array", "items": { "$ref": "#/$defs/capture" } },
+        "authorizeUrl": {
+          "type": ["string", "null"],
+          "description": "Where the browser is sent for an authorization code. Only the authorization-code grant has one."
+        },
+        "authorizeParameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/keyValue" },
+          "description": "Extra query parameters for authorizeUrl - Google's access_type=offline, Auth0's audience."
+        },
+        "redirectPort": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Loopback port to catch the redirect on. Absent or 0 asks the OS for a free one, which most providers cannot have registered against them."
+        },
+        "signInProviderKey": {
+          "type": ["string", "null"],
+          "description": "Which built-in provider preset this was set up with. A label only; an unknown value is ignored."
+        },
+        "signInTenant": {
+          "type": ["string", "null"],
+          "description": "The tenant, directory or domain the provider's URLs were built for."
+        }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "variableName": { "type": "string" },
+        "source": { "enum": ["jsonBody", "header", "statusCode", "responseTimeMs"] },
+        "expression": { "type": "string" },
+        "scope": {
+          "enum": ["session", "environment"],
+          "description": "environment persists the value to environments/*.json, which is committed. Use session for anything credential-shaped."
+        }
+      }
+    },
+    "assertion": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "source": { "enum": ["jsonBody", "header", "statusCode", "responseTimeMs"] },
+        "target": { "type": "string" },
+        "operator": { "enum": ["equals", "notEquals", "contains", "lessThan", "greaterThan", "exists", "notExists"] },
+        "expected": { "type": "string" }
+      }
+    },
+    "comparison": {
+      "type": ["object", "null"],
+      "description": "Every member is nullable: null means inherit from the folder or the global default.",
+      "properties": {
+        "ignoreWhitespace": { "type": ["boolean", "null"] },
+        "ignoreCase": { "type": ["boolean", "null"] },
+        "normalizeStructure": { "type": ["boolean", "null"] },
+        "reportPropertyOrder": { "type": ["boolean", "null"] },
+        "matchArraysByPosition": { "type": ["boolean", "null"] },
+        "ignoreNullVsMissing": { "type": ["boolean", "null"] },
+        "ignoredPaths": { "type": ["array", "null"], "items": { "type": "string" } },
+        "arrayKeyOverrides": { "type": ["object", "null"], "additionalProperties": { "type": "string" } }
+      }
+    }
+  }
+}
