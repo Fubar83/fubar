@@ -196,6 +196,12 @@ All notable changes to this project are documented here. The format is based on
   at and `WorkspaceService.RenamePath` puts the extension back, so typing `Login` still lands on
   `Login.json`.
 
+- **Folders fold again**, from a `+` / `−` box on the connector, open to begin with. A filter unfolds
+  every folder holding a match, or it would find a request and leave it out of sight; clearing the
+  filter leaves what it opened open, because re-folding would undo the folding you did by hand and
+  nothing afterwards can tell the two apart. Folded state lives on the node, not the row container, so
+  it survives the refresh that runs on every file-system change.
+
 - **The tree has indent rails, and one indent step.** Nesting was carried by a left margin alone, which
   says nothing about which folder a request belongs to; a hairline now runs down each level.
   `WorkspaceNodeViewModel.Depth` is gone with the margin it fed — the row's own `TreeViewItem.Level` is

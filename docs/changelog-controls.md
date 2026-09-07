@@ -10,6 +10,20 @@ tags by MinVer.
 
 ### Added
 
+- `TreeItemState.ExpandedPath` — binds a tree row's folded state to a property on the item behind it,
+  two-way. Binding `TreeViewItem.IsExpanded` from a style setter looks like it works and then quietly
+  stops: the expander writes the user's fold as a **local** value, which outranks a style setter
+  permanently, so the first fold by hand severs the connection. This establishes the binding on the row
+  itself, at the same local priority the expander writes at, so the two share one slot and the later
+  write wins in either direction. A path (rather than a value) keeps it opt-in — a tree whose items have
+  no such property simply does not set it.
+
+- The tree expander is a boxed `+` / `−` on the connector, the way a tree drawn in line characters has
+  always done it. One glyph for both states — the bar is always drawn and the stem is hidden when
+  expanded — so a plus is a minus with a stem and the two cannot drift apart. The button keeps its
+  column on a leaf and hides only the box, which is what stops a file's label sitting a notch left of
+  the folders beside it.
+
 - `TreeIndentGuides` — the connector rails that make a tree read as a tree, in the shape everyone
   already knows: a tee (`├`) into every row, an elbow (`└`) into the last one, and an ancestor's rail
   carried down past its descendants only while that ancestor still has siblings below it. It lives in

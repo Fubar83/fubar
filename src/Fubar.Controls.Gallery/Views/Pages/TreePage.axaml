@@ -15,7 +15,7 @@
                 <fc:SectionHeader Title="SECTION + TREE" />
             </fc:Card.Header>
             <StackPanel Spacing="10">
-                <TextBlock Text="fc:Section is one component for a group header (Title + an Action slot such as a &quot;+&quot;) over any children - here three sections in a sidebar, each with different content: two flat ListRow lists and, last, an fc:TreeView. The first two set IsCollapsible, so their headers fold; the last does not, and shows no chevron rather than one that does nothing. Hover/select a row to see the shared explorer-tree row look; expand the folders via the chevrons."
+                <TextBlock Text="fc:Section is one component for a group header (Title + an Action slot such as a &quot;+&quot;) over any children - here three sections in a sidebar, each with different content: two flat ListRow lists and, last, an fc:TreeView. The first two set IsCollapsible, so their headers fold; the last does not, and shows no chevron rather than one that does nothing. Hover/select a row to see the shared explorer-tree row look; fold the folders with the +/- boxes on the connectors."
                            TextWrapping="Wrap"
                            Foreground="{DynamicResource TextSecondary}"
                            FontSize="12" />

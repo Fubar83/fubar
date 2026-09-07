@@ -143,4 +143,50 @@ public class TreeFilterTests
         static int Count(Fubar.Studio.Core.Models.WorkspaceTreeNode node) =>
             (node.IsDirectory ? 0 : 1) + node.Children.Sum(Count);
     }
+
+    /// <summary>
+    /// A filter that finds a request inside a folded folder and leaves it folded has shown the user
+    /// nothing. This rule existed once before and did nothing at all, because the IsExpanded it wrote to
+    /// was bound to no container - so it is asserted on the way the row actually reads it.
+    /// </summary>
+    [Fact]
+    public void A_folded_folder_opens_when_the_filter_finds_something_inside_it()
+    {
+        var root = Tree();
+        var orders = Folder(root, "Orders");
+        orders.IsExpanded = false;
+
+        root.ApplyFilter("create");
+
+        Assert.True(orders.IsExpanded);
+        Assert.True(Folder(orders, "create.json").IsVisible);
+    }
+
+    [Fact]
+    public void A_folder_with_no_match_inside_is_left_folded()
+    {
+        var root = Tree();
+        var users = Folder(root, "Users");
+        users.IsExpanded = false;
+
+        root.ApplyFilter("create");
+
+        Assert.False(users.IsExpanded);
+        Assert.False(users.IsVisible);
+    }
+
+    /// <summary>Clearing the filter leaves open what it opened: re-folding would undo the folding a
+    /// person did by hand, and nothing afterwards can tell the two apart.</summary>
+    [Fact]
+    public void Clearing_the_filter_leaves_what_it_opened_open()
+    {
+        var root = Tree();
+        var orders = Folder(root, "Orders");
+        orders.IsExpanded = false;
+        root.ApplyFilter("create");
+
+        root.ApplyFilter(null);
+
+        Assert.True(orders.IsExpanded);
+    }
 }

@@ -22,21 +22,16 @@
         <Style Selector="TreeViewItem" x:DataType="vm:WorkspaceNodeViewModel">
             <Setter Property="IsVisible" Value="{Binding IsVisible}" />
 
-            <!-- Always open. A workspace is a few dozen requests in a handful of folders, and folding
-                 them away hides the only thing this pane is for behind a click - while costing a
-                 chevron on every folder row and a piece of state that has to be remembered, restored
-                 and reasoned about whenever the filter runs. Nothing is gained: the filter is how you
-                 narrow a long tree, not collapsing. -->
-            <Setter Property="IsExpanded" Value="True" />
-        </Style>
+            <!-- Folding lives on the NODE, not on the container. Containers are rebuilt whenever
+                 SyncChildren reconciles against a file-system change, and a fold remembered by the
+                 container would spring open every time someone saved a request. Two-way, so the +/-
+                 box writes back to the node it came from. Open to begin with (see IsExpanded).
 
-        <!-- No chevron, since there is nothing to toggle. Width zeroed as well as hidden: hiding it
-             alone leaves its column occupying the indent, so every row would still be inset by a
-             control that is not there. -->
-        <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
-            <Setter Property="IsVisible" Value="False" />
-            <Setter Property="Width" Value="0" />
-            <Setter Property="Padding" Value="0" />
+                 Through fc:TreeItemState rather than straight onto TreeViewItem.IsExpanded: the
+                 expander writes a fold as a LOCAL value, which outranks a style setter permanently, so
+                 binding IsExpanded here would work until the first fold by hand and be ignored after
+                 that - filter matches included. -->
+            <Setter Property="fc:TreeItemState.ExpandedPath" Value="IsExpanded" />
         </Style>
     </UserControl.Styles>
 

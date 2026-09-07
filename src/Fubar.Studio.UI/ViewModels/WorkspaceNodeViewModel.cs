@@ -107,15 +107,29 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     public partial bool IsVisible { get; set; } = true;
 
     /// <summary>
+    /// Whether this folder is unfolded. Two-way bound to the row's container, so folding survives the
+    /// refresh that <see cref="SyncChildren"/> runs on every file-system change - the container may be
+    /// rebuilt, this node is not.
+    ///
+    /// <para>Open to begin with: a workspace is a few dozen requests, and opening one to a wall of
+    /// folded folders hides the only thing the pane is for.</para>
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; } = true;
+
+    /// <summary>
     /// Applies <paramref name="filter"/> to this node and its descendants, returning whether anything
     /// here survived.
     ///
-    /// <para>A folder matches when ANY descendant does. It used to force itself open as well, against
-    /// "a filtered tree that stays collapsed shows the user nothing" - which was never actually a risk
-    /// here, because that <c>IsExpanded</c> was bound to no container and the force-expand did nothing
-    /// at all. The tree is always open now, so there is nothing left to force. A folder that matches by
-    /// its own name keeps all its children, because "show me the Orders folder" means the folder, not
-    /// an empty one.</para>
+    /// <para>A folder matches when ANY descendant does, and unfolds itself so the match is on screen -
+    /// a filter that finds a request inside a folded folder and leaves it folded has shown you nothing.
+    /// This is live again now that folding is: it was written once before, against an
+    /// <see cref="IsExpanded"/> that was bound to no container, and did nothing at all. A folder that
+    /// matches by its own name keeps all its children, because "show me the Orders folder" means the
+    /// folder, not an empty one.</para>
+    ///
+    /// <para>Clearing the filter leaves everything it opened open. Re-folding would undo the folding
+    /// the person did by hand, and there is no way to tell the two apart afterwards.</para>
     /// </summary>
     public bool ApplyFilter(string? filter)
     {
@@ -142,6 +156,11 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
         }
 
         IsVisible = selfMatches || anyChildMatches;
+
+        if (anyChildMatches)
+        {
+            IsExpanded = true;
+        }
 
         return IsVisible;
     }

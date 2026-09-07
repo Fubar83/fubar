@@ -24,35 +24,66 @@
 
     <Styles.Resources>
 
-        <!-- The expander. A bare rotating chevron: Fluent's stock ToggleButton would put a filled,
-             bordered box in the middle of every folder row. -->
-        <ControlTheme x:Key="TreeChevronToggleTheme" TargetType="ToggleButton">
+        <!-- The expander: a boxed + / - on the connector, the way a tree drawn in line characters has
+             always done it. Fluent's stock ToggleButton would put a filled, bordered BUTTON in the
+             middle of every folder row instead.
+
+             The two states share one glyph rather than switching between two geometries: the bar is
+             always drawn and the stem is hidden when expanded, so a plus is a minus with a stem and
+             the two cannot drift apart. (fc:Section rotates a chevron for the same reason.)
+
+             The button keeps its width on a leaf and hides only the box, so a request's label lines up
+             with the folder labels around it. Hiding the button itself collapsed its column - which is
+             why leaf rows in Fubar Diff's JSON tree used to sit a notch left of their expandable
+             siblings. -->
+        <ControlTheme x:Key="TreeExpanderToggleTheme" TargetType="ToggleButton">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
             <Setter Property="Width" Value="16" />
-            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
             <Setter Property="Template">
                 <ControlTemplate>
                     <Border Background="{TemplateBinding Background}">
-                        <PathIcon Data="{DynamicResource IconChevron}"
-                                  Width="8"
-                                  Height="8"
-                                  Classes="tree-chevron"
-                                  Foreground="{DynamicResource TextSecondary}"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" />
+                        <Border x:Name="PART_Box"
+                                Width="11"
+                                Height="11"
+                                CornerRadius="2"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource TreeGuide}"
+                                Background="{DynamicResource BgSidebar}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <Panel>
+                                <Rectangle Width="5"
+                                           Height="1"
+                                           Fill="{DynamicResource TextSecondary}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                                <Rectangle Width="1"
+                                           Height="5"
+                                           Classes="expander-stem"
+                                           Fill="{DynamicResource TextSecondary}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Panel>
+                        </Border>
                     </Border>
                 </ControlTemplate>
             </Setter>
 
-            <!-- Rotated rather than swapped for a second geometry, so the two states cannot drift
-                 apart - the same trick fc:Section uses. -->
-            <Style Selector="^ /template/ PathIcon.tree-chevron">
-                <Setter Property="RenderTransform" Value="rotate(0deg)" />
+            <!-- Checked is expanded, so the stem goes and the plus becomes a minus. -->
+            <Style Selector="^:checked /template/ Rectangle.expander-stem">
+                <Setter Property="IsVisible" Value="False" />
             </Style>
 
-            <Style Selector="^:checked /template/ PathIcon.tree-chevron">
-                <Setter Property="RenderTransform" Value="rotate(90deg)" />
+            <Style Selector="^:pointerover /template/ Border#PART_Box">
+                <Setter Property="BorderBrush" Value="{DynamicResource TextSecondary}" />
+            </Style>
+
+            <!-- A leaf has nothing to fold. The box goes; the width stays. -->
+            <Style Selector="^:not(.branch) /template/ Border#PART_Box">
+                <Setter Property="IsVisible" Value="False" />
             </Style>
         </ControlTheme>
 
@@ -106,18 +137,22 @@
                                 CornerRadius="{TemplateBinding CornerRadius}"
                                 MinHeight="{TemplateBinding MinHeight}"
                                 Padding="{TemplateBinding Padding}">
-                            <Grid ColumnDefinitions="Auto,Auto,*">
+                            <!-- The expander's column is a FIXED width, not Auto. Auto measures the
+                                 button, and the button shrinks to nothing on a leaf where its box is
+                                 hidden - which put every request 16px left of the folders beside it. -->
+                            <Grid ColumnDefinitions="Auto,16,*">
                                 <fc:TreeIndentGuides Grid.Column="0"
                                                      Depth="{TemplateBinding Level}"
                                                      VerticalAlignment="Stretch" />
 
-                                <!-- Hidden rather than absent on a leaf, so a file's label still lines
-                                     up with the folder labels around it. -->
+                                <!-- Always present, box drawn only on a branch (see the theme): a
+                                     button that vanishes on leaves takes its column with it and
+                                     unaligns every file from the folders around it. -->
                                 <ToggleButton Grid.Column="1"
                                               x:Name="PART_ExpandCollapseChevron"
-                                              Theme="{StaticResource TreeChevronToggleTheme}"
+                                              Theme="{StaticResource TreeExpanderToggleTheme}"
                                               IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
-                                              IsVisible="{Binding ItemCount, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static fc:CountToBoolConverter.Instance}}" />
+                                              Classes.branch="{Binding ItemCount, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static fc:CountToBoolConverter.Instance}}" />
 
                                 <ContentPresenter Grid.Column="2"
                                                   x:Name="PART_HeaderPresenter"

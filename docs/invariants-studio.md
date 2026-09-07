@@ -304,15 +304,18 @@ click. `CapturableField` exists for this; `CaptureFromResponseTests` covers the 
 half that had no tests - `TokenResponseFields` (reading the payload) always did.
 
 
-**The request tree is always expanded, and there is no chevron** (Studio). A workspace is a few dozen
-requests in a handful of folders; folding them away hid the only thing the pane is for behind a click,
-while costing a chevron on every folder row and a piece of state to remember, restore and reason about
-whenever the filter ran. The filter is how you narrow a long tree, not collapsing.
-`WorkspaceNodeViewModel.IsExpanded` is gone with it - and it turned out to have been bound to no
-`TreeViewItem` at all, so `ApplyFilter`'s careful force-expand-and-restore had never once reached the
-screen. Three tests asserting that behaviour went too. The chevron is hidden AND width-zeroed in
-`WorkspaceExplorerView`'s styles rather than in the shared `fc:TreeView` theme, because Fubar Diff's
-change tree still needs one.
+**Folding lives on the node, not on the container** (Studio). The request tree folds again, from a `+`/`-`
+box on each folder, and `TreeViewItem.IsExpanded` is two-way bound to
+`WorkspaceNodeViewModel.IsExpanded` rather than left on the container. `SyncChildren` reconciles the
+tree against the file system on every change, and a fold remembered by the container would spring open
+each time someone saved a request. Folders start open: a workspace is a few dozen requests, and opening
+one to a wall of folded folders hides the only thing the pane is for.
+
+A filter unfolds every folder with a matching descendant, or it would find a request and leave it out of
+sight. That rule was written once before, against an `IsExpanded` bound to no `TreeViewItem` at all, so
+it had never once reached the screen; it is live now, and `TreeFilterTests` asserts it. Clearing the
+filter leaves what it opened open - re-folding would undo the folding a person did by hand, and nothing
+afterwards can tell the two apart.
 
 **Both title bars draw the app icon themselves** (both apps). `ExtendClientAreaToDecorationsHint` means
 the OS paints no icon in that row, so without an `Image` there the window carried no mark of its own
