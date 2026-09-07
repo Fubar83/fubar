@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Navigating to a difference inside a folded node left it folded**, once that node had been folded by
+  hand. The change tree bound `TreeViewItem.IsExpanded` from a style setter, and the expander writes a
+  fold as a *local* value — which outranks a style setter permanently, so the first fold by hand severed
+  the binding and every later instruction from the view model was ignored. That was the one case the
+  binding existed for. It now goes through `fc:TreeItemState.ExpandedPath`, which binds on the row
+  itself at the priority the expander writes at.
+
 ### Added
 
 - **A location map worth reading, where there was a strip of ticks.** The map between the panes now
