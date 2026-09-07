@@ -2,9 +2,11 @@
 
 All notable changes to `Fubar.Controls` are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Versions are derived from git
-tags by MinVer.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), but `Fubar.Controls`
+carries no version of its own: it is not published, and both apps consume it by project reference, so
+it ships inside whatever they release. Only the apps are tagged (`studio-v*`, `diff-v*`). This file is
+the record of how the design system changed and why - the reasoning that a diff of a `.axaml` cannot
+carry - not a release history.
 
 ## [Unreleased]
 
@@ -91,11 +93,13 @@ tags by MinVer.
   than everything beside it — which is why the Gallery carried `Height="30"` on the blue button and
   nothing else. A host should never set `Height` on one of these to patch a mismatch; fix it here.
 
-## [0.1.0] - 2026-08-24
+## Extracted into its own project - 2026-08-24
 
-First release as a standalone package. The library was extracted, with its history, from the
-[Fubar API Studio](https://github.com/Fubar83/fubar) repository, where it had been
-developed as an app-agnostic component library from the start.
+The library was split out, with its history, from the app it grew inside, where it had been written as
+an app-agnostic component library from the start. It was briefly its own repository and NuGet package;
+that was undone when the three repositories were consolidated, because a change spanning an app and a
+control cost two or three pull requests plus a publish and a version bump (see the README). The split
+that survived is the one that mattered - a library that knows nothing about either app.
 
 ### Added
 
