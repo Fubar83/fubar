@@ -33,3 +33,38 @@ public interface ICollectionRunService
         IProgress<RunProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>What to run, and against which two environments.</summary>
+/// <param name="Left">The reference side, shown on the left of every comparison. Null means "no
+/// environment", which is a legitimate thing to compare against.</param>
+public sealed record EnvironmentPairRun(
+    RunPlan Plan,
+    Workspace Workspace,
+    WorkspaceEnvironment? Left,
+    WorkspaceEnvironment? Right,
+    RunOptions Options);
+
+/// <summary>
+/// Runs one collection against two environments and pairs the answers, so "does staging still agree
+/// with production?" is a single action rather than two runs and a manual comparison.
+///
+/// <para><b>Interleaved per request - left, right, next request - and not one whole environment then
+/// the other.</b> Running A to the end before starting B would leave the first comparable pair until
+/// after the last request of A, so a twenty-request collection answers nothing for twenty requests.
+/// Interleaved, the first pair is complete after two sends, and rules can be written against it while
+/// the rest is still running - which is the whole workflow this exists for.</para>
+///
+/// <para>That is only safe because everything an environment accumulates is already keyed by it: session
+/// variables through <c>SessionScope</c> (<c>workspaceId::environmentId</c>), and the cookie jar and
+/// client certificates through the per-(workspace, environment) HTTP client. A token captured against
+/// staging cannot be sent to production, whatever order the requests go in. What interleaving must
+/// preserve is order WITHIN each environment, since captures chain - and it does: left runs in plan
+/// order, right runs in plan order.</para>
+/// </summary>
+public interface IEnvironmentPairRunService
+{
+    Task<EnvironmentPairReport> RunAsync(
+        EnvironmentPairRun run,
+        IProgress<StepPairProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+}

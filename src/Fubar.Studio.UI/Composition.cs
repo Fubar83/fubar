@@ -29,7 +29,11 @@ internal static class Composition
 
                 // Application-layer use-case services (orchestration over the Core ports above).
                 services.AddSingleton<IRequestExecutionService, RequestExecutionService>();
-                services.AddSingleton<ICollectionRunService, CollectionRunService>();
+                // One instance behind both contracts: the paired run reuses the single-environment
+                // path step for step, so a difference between them could only be a bug.
+                services.AddSingleton<CollectionRunService>();
+                services.AddSingleton<ICollectionRunService>(s => s.GetRequiredService<CollectionRunService>());
+                services.AddSingleton<IEnvironmentPairRunService>(s => s.GetRequiredService<CollectionRunService>());
 
                 services.AddSingleton<IFolderPickerService, FolderPickerService>();
                 services.AddSingleton<IFilePickerService, FilePickerService>();

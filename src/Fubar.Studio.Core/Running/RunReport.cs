@@ -32,6 +32,31 @@ public sealed record StepReport(
     IReadOnlyList<CaptureResult> Captures,
     string? Error)
 {
+    /// <summary>
+    /// The largest response this will carry for comparison, in characters (~4 MB of UTF-16).
+    ///
+    /// <para>A body over the cap is dropped and <see cref="BodyTooLargeToCompare"/> is set, rather than
+    /// truncated. Truncating would be worse than useless here: two responses cut at the same length
+    /// compare as identical past the cut, and two cut at different lengths differ at the cut - so a
+    /// truncated body produces a confident answer to a question it cannot see the whole of.</para>
+    /// </summary>
+    public const int MaxComparableBodyChars = 4 * 1024 * 1024;
+
+    /// <summary>
+    /// The response body, kept only when <see cref="RunOptions.CaptureResponseBodies"/> asked for it -
+    /// otherwise null, because an ordinary run has no use for thirty bodies held in memory for as long
+    /// as its report lives.
+    /// </summary>
+    public string? ResponseBody { get; init; }
+
+    /// <summary>The response's Content-Type, so a reader knows what it is looking at without sniffing
+    /// the body.</summary>
+    public string? ContentType { get; init; }
+
+    /// <summary>The response arrived but was too big to carry (see <see cref="MaxComparableBodyChars"/>).
+    /// Distinct from a null body with this false, which means nothing asked for the body at all.</summary>
+    public bool BodyTooLargeToCompare { get; init; }
+
     public int AssertionsPassed => Assertions.Count(a => a.Passed);
 
     public int AssertionsFailed => Assertions.Count(a => !a.Passed);

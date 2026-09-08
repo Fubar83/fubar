@@ -36,6 +36,13 @@ public sealed record RunOptions
     public bool RecordHistory { get; init; }
 
     /// <summary>
+    /// Keep each response body on its <see cref="StepReport"/>, so this run's results can be compared
+    /// with another run's. Off by default: a run of thirty requests would otherwise hold thirty bodies
+    /// in memory for as long as its report is alive, which an ordinary run has no use for.
+    /// </summary>
+    public bool CaptureResponseBodies { get; init; }
+
+    /// <summary>
     /// Requests whose names contain this text (case-insensitive) are the only ones run. Null or blank
     /// runs everything. Filtering happens when the plan is built, so the report's "N of M" counts refer
     /// to what was actually attempted rather than to what was in the folder.
