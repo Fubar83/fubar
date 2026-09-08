@@ -127,7 +127,7 @@ jobs:
       # why this is Azure Trusted Signing rather than a PFX in a secret.
       - name: Sign (Windows)
         if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
-        uses: azure/trusted-signing-action@v0
+        uses: azure/trusted-signing-action@v2
         with:
           azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
           azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
