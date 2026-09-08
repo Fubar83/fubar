@@ -31,7 +31,7 @@ internal static class ComparisonSettingsMapper
             ReportPropertyOrder = resolved.ReportPropertyOrder.Value,
             MatchArraysByPosition = resolved.MatchArraysByPosition.Value,
             IgnoreNullVsMissing = resolved.IgnoreNullVsMissing.Value,
-            IgnoredPaths = [.. resolved.IgnoredPaths.Value],
+            IgnoredPaths = [.. resolved.IgnoredPathValues],
             ArrayKeyOverrides = new Dictionary<string, string>(resolved.ArrayKeyOverrides.Value),
         },
     };

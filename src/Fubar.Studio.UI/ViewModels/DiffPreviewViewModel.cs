@@ -122,7 +122,6 @@ public partial class DiffPreviewViewModel : ViewModelBase
 
     public string IgnoreNullVsMissingSource => Describe(Resolved.IgnoreNullVsMissing.Scope, Resolved.IgnoreNullVsMissing.SourceName);
 
-    public string IgnoredPathsSource => Describe(Resolved.IgnoredPaths.Scope, Resolved.IgnoredPaths.SourceName);
 
     private static string Describe(ComparisonScope scope, string sourceName) => scope switch
     {
@@ -143,10 +142,23 @@ public partial class DiffPreviewViewModel : ViewModelBase
     /// <summary>True while this request overrides anything, so "Reset" can be offered only when it does.</summary>
     public bool HasOverrides => !_draft.IsEmpty;
 
+    /// <summary>The working copy this dialog is editing, before anything is saved - what a Save at
+    /// request level would write. Exposed so a caller can see what WOULD be written rather than
+    /// inferring it from the resolved list, which is the confusion this whole change was about.</summary>
+    public ComparisonSettings PendingOverrides => _draft;
+
     // ---- Ignore rules ---------------------------------------------------------------------------
 
-    /// <summary>Rules in force for this comparison, newest last. Bound as removable chips.</summary>
-    public ObservableCollection<string> IgnoredPaths { get; } = [];
+    /// <summary>
+    /// Rules in force for this comparison, newest last, each with the level it came from. Bound as
+    /// removable chips.
+    ///
+    /// <para>Reseeded wholesale from the resolve after every comparison, which it can be because the
+    /// working draft is one of the layers being resolved (see <see cref="RecompareAsync"/>) - so what
+    /// the user just added is already in the resolved answer rather than something the list has to
+    /// remember on its own.</para>
+    /// </summary>
+    public ObservableCollection<IgnoredPathViewModel> IgnoredPaths { get; } = [];
 
     /// <summary>True once anything differs from what was persisted, which is what enables Save.</summary>
     [ObservableProperty]
@@ -171,41 +183,52 @@ public partial class DiffPreviewViewModel : ViewModelBase
     /// rule is session-only until saved - ignoring is often exploratory, and silently rewriting
     /// request.json on a click inside a diff window is a side effect nobody asked for.
     /// </summary>
+    [RelayCommand]
     private async Task IgnorePathAsync(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path) || IgnoredPaths.Contains(path))
+        if (string.IsNullOrWhiteSpace(path) || IgnoredPaths.Any(p => p.Path == path))
         {
             return;
         }
 
-        IgnoredPaths.Add(path);
-        CaptureIgnoredPaths();
+        var draft = Draft();
+        draft.Remove.Remove(path);
+        draft.Add.Add(path);
+        SettingsDirty = true;
 
-        await RecompareAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private async Task RemoveIgnoreAsync(string? path)
-    {
-        if (path is null || !IgnoredPaths.Remove(path))
-        {
-            return;
-        }
-
-        CaptureIgnoredPaths();
         await RecompareAsync().ConfigureAwait(true);
     }
 
     /// <summary>
-    /// Promotes the visible rule list into a request-level override. Editing the list at all is an
-    /// override even when it ends up matching what was inherited - the alternative is a list that
-    /// silently changes underfoot when the folder's rules change.
+    /// Stops a rule applying here. What that writes depends on where the rule came from: a rule this
+    /// level added is simply dropped, while an INHERITED one becomes an explicit removal, because the
+    /// only other way to be rid of it would be editing the folder - and a click in one request's
+    /// window must not change what every other request under that folder does.
     /// </summary>
-    private void CaptureIgnoredPaths()
+    [RelayCommand]
+    private async Task RemoveIgnoreAsync(string? path)
     {
-        _draft.IgnoredPaths = [.. IgnoredPaths];
+        if (path is null || IgnoredPaths.FirstOrDefault(p => p.Path == path) is not { } entry)
+        {
+            return;
+        }
+
+        var draft = Draft();
+        if (entry.IsInherited)
+        {
+            draft.Remove.Add(path);
+        }
+        else
+        {
+            draft.Add.Remove(path);
+        }
+
         SettingsDirty = true;
+        await RecompareAsync().ConfigureAwait(true);
     }
+
+    private InheritedPaths Draft() => _draft.IgnoredPaths ??= new InheritedPaths();
+
 
     /// <summary>Persists the current overrides at the given level, via the host's callback.</summary>
     [RelayCommand]
@@ -278,7 +301,7 @@ public partial class DiffPreviewViewModel : ViewModelBase
         // Hides the "ignore" affordance in the tree for a comparison with nowhere to put a rule.
         Pane.IgnorePathCommand = settings is null
             ? null
-            : new RelayCommand<string>(path => _ = IgnorePathAsync(path));
+            : new RelayCommand<string>(path => _ = IgnorePathCommand.ExecuteAsync(path));
 
         OnPropertyChanged(nameof(ShowSettings));
         OnPropertyChanged(nameof(CanSaveSettings));
@@ -344,15 +367,16 @@ public partial class DiffPreviewViewModel : ViewModelBase
             MatchArraysByPosition = Resolved.MatchArraysByPosition.Value;
             IgnoreNullVsMissing = Resolved.IgnoreNullVsMissing.Value;
 
-            // Only reseeded when the user is not the one editing it, so removing a chip does not
-            // immediately reappear from the inherited list.
-            if (_draft.IgnoredPaths is null && !IgnoredPaths.SequenceEqual(Resolved.IgnoredPaths.Value))
+            // Reseeded unconditionally: the draft is one of the resolved layers, so this list IS the
+            // answer including whatever the user just did. It used to be skipped while the user was
+            // editing, back when the list was the source of truth rather than a view of the resolve.
+            IgnoredPaths.Clear();
+            foreach (var entry in Resolved.IgnoredPaths)
             {
-                IgnoredPaths.Clear();
-                foreach (var path in Resolved.IgnoredPaths.Value)
-                {
-                    IgnoredPaths.Add(path);
-                }
+                IgnoredPaths.Add(new IgnoredPathViewModel(
+                    entry.Path,
+                    Describe(entry.Scope, entry.SourceName),
+                    entry.Scope != ComparisonScope.Request));
             }
         }
         finally
@@ -368,7 +392,6 @@ public partial class DiffPreviewViewModel : ViewModelBase
         OnPropertyChanged(nameof(ReportPropertyOrderSource));
         OnPropertyChanged(nameof(MatchArraysByPositionSource));
         OnPropertyChanged(nameof(IgnoreNullVsMissingSource));
-        OnPropertyChanged(nameof(IgnoredPathsSource));
     }
 
     private static string Describe(FileComparison comparison)
@@ -400,4 +423,16 @@ public partial class DiffPreviewViewModel : ViewModelBase
             : $"{result.Hunks.Count} change(s) - {result.Inserted} added, {result.Deleted} removed, "
               + $"{result.Modified} changed";
     }
+}
+
+/// <summary>
+/// One ignore rule as a chip: the path, where it came from, and whether it was inherited - which is
+/// what decides whether removing it drops a local addition or writes an explicit removal.
+/// </summary>
+public sealed record IgnoredPathViewModel(string Path, string Source, bool IsInherited)
+{
+    /// <summary>What the ✕ will do, said before it is clicked.</summary>
+    public string RemoveTooltip => IsInherited
+        ? $"Stop ignoring {Path} here (it stays ignored where it was set - {Source})"
+        : $"Stop ignoring {Path}";
 }

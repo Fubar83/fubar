@@ -32,6 +32,15 @@ public readonly record struct Resolved<T>(T Value, ComparisonScope Scope, string
 /// </summary>
 public sealed record ComparisonSettingsLayer(ComparisonSettings? Settings, ComparisonScope Scope, string SourceName);
 
+/// <summary>
+/// One entry of an inherited list, with the level that ADDED it.
+///
+/// <para>Per entry rather than per list, which is the point of add/remove: a chip in the UI can say
+/// "inherited from folder: orders" and its ✕ can know whether removing it means deleting a local
+/// addition or writing a removal at this level.</para>
+/// </summary>
+public readonly record struct ResolvedPath(string Path, ComparisonScope Scope, string SourceName);
+
 /// <summary>Every comparison setting's effective value and origin, after folding the whole chain.</summary>
 public sealed record ResolvedComparisonSettings(
     Resolved<bool> IgnoreWhitespace,
@@ -40,8 +49,12 @@ public sealed record ResolvedComparisonSettings(
     Resolved<bool> ReportPropertyOrder,
     Resolved<bool> MatchArraysByPosition,
     Resolved<bool> IgnoreNullVsMissing,
-    Resolved<IReadOnlyList<string>> IgnoredPaths,
-    Resolved<IReadOnlyDictionary<string, string>> ArrayKeyOverrides);
+    IReadOnlyList<ResolvedPath> IgnoredPaths,
+    Resolved<IReadOnlyDictionary<string, string>> ArrayKeyOverrides)
+{
+    /// <summary>Just the paths, for the engine, which has no use for where each came from.</summary>
+    public IReadOnlyList<string> IgnoredPathValues => [.. IgnoredPaths.Select(p => p.Path)];
+}
 
 /// <summary>
 /// Folds global → folder(s) → request into one effective set of comparison options.
@@ -73,11 +86,48 @@ public static class ComparisonSettingsResolver
         PickValue(layers, s => s.ReportPropertyOrder, false),
         PickValue(layers, s => s.MatchArraysByPosition, false),
         PickValue(layers, s => s.IgnoreNullVsMissing, false),
-        PickReference<IReadOnlyList<string>>(layers, s => s.IgnoredPaths is { } p ? [.. p] : null, []),
+        FoldPaths(layers),
         PickReference<IReadOnlyDictionary<string, string>>(
             layers,
             s => s.ArrayKeyOverrides is { } o ? new Dictionary<string, string>(o) : null,
             new Dictionary<string, string>()));
+
+    /// <summary>
+    /// Folds an inherited list down the chain: each level's removals, then its additions, keeping the
+    /// level that added each surviving entry.
+    ///
+    /// <para>Unlike every scalar here this is not "closest wins" - a list is built up rather than
+    /// chosen, which is the whole difference between add/remove and the replacement this used to do.
+    /// A removal that matches nothing is silently fine (see <see cref="InheritedPaths.ApplyTo"/>).</para>
+    /// </summary>
+    private static IReadOnlyList<ResolvedPath> FoldPaths(IReadOnlyList<ComparisonSettingsLayer> layers)
+    {
+        var result = new List<ResolvedPath>();
+
+        foreach (var layer in layers)
+        {
+            if (layer.Settings?.IgnoredPaths is not { } contribution)
+            {
+                continue;
+            }
+
+            foreach (var path in contribution.Remove)
+            {
+                result.RemoveAll(entry => string.Equals(entry.Path, path, StringComparison.Ordinal));
+            }
+
+            foreach (var path in contribution.Add)
+            {
+                // A level re-adding what it already inherited is not an error and must not duplicate;
+                // the deepest level to add it is the one reported, since that is the one a reader would
+                // edit to get rid of it.
+                result.RemoveAll(entry => string.Equals(entry.Path, path, StringComparison.Ordinal));
+                result.Add(new ResolvedPath(path, layer.Scope, layer.SourceName));
+            }
+        }
+
+        return result;
+    }
 
     private static Resolved<T> PickValue<T>(
         IReadOnlyList<ComparisonSettingsLayer> layers,

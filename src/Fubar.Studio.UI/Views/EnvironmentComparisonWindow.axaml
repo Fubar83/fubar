@@ -306,17 +306,21 @@
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="x:String">
+                                    <DataTemplate x:DataType="vm:IgnoredPathViewModel">
                                         <Border Background="{DynamicResource BgSelected}"
                                                 CornerRadius="3" Padding="6,2" Margin="0,0,6,2">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <TextBlock Text="{Binding}"
+                                                <TextBlock Text="{Binding Path}"
                                                            FontFamily="Cascadia Mono,Consolas,monospace"
                                                            FontSize="11" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Source}"
+                                                           FontSize="10" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondary}"
+                                                           IsVisible="{Binding IsInherited}" />
                                                 <Button Classes="toolbar-btn" Content="✕" Padding="3,0"
-                                                        ToolTip.Tip="Stop ignoring this path"
+                                                        ToolTip.Tip="{Binding RemoveTooltip}"
                                                         Command="{Binding $parent[Window].((vm:EnvironmentComparisonViewModel)DataContext).Diff.RemoveIgnoreCommand}"
-                                                        CommandParameter="{Binding}" />
+                                                        CommandParameter="{Binding Path}" />
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>

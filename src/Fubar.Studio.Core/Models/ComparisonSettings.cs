@@ -38,13 +38,11 @@ public sealed class ComparisonSettings
     /// JSON paths whose differences are never reported - <c>$.meta.requestId</c>, <c>$..timestamp</c>,
     /// <c>$.items[*].updatedAt</c>. See <c>Fubar.Diff.Core.Json.JsonPathPattern</c> for the syntax.
     ///
-    /// REPLACES the inherited list rather than adding to it, exactly like every other setting here.
-    /// Union semantics were considered and rejected: with them, reading a request's rules would not
-    /// tell you what actually applies to it, and there would be no way to drop an inherited rule that
-    /// is wrong for one endpoint. An empty (non-null) list is therefore a meaningful override - it says
-    /// "ignore nothing here", not "inherit".
+    /// ADDS to and REMOVES from the inherited list rather than replacing it - see
+    /// <see cref="InheritedPaths"/>, which carries the reasoning and the compatibility rule for files
+    /// written in the old shape. Null still means "this level says nothing".
     /// </summary>
-    public List<string>? IgnoredPaths { get; set; }
+    public InheritedPaths? IgnoredPaths { get; set; }
 
     /// <summary>
     /// Identity keys for specific arrays, by JSON path (e.g. <c>$.users</c> → <c>id</c>), overriding
@@ -76,7 +74,7 @@ public sealed class ComparisonSettings
         ReportPropertyOrder = ReportPropertyOrder,
         MatchArraysByPosition = MatchArraysByPosition,
         IgnoreNullVsMissing = IgnoreNullVsMissing,
-        IgnoredPaths = IgnoredPaths is null ? null : [.. IgnoredPaths],
+        IgnoredPaths = IgnoredPaths?.Clone(),
         ArrayKeyOverrides = ArrayKeyOverrides is null ? null : new Dictionary<string, string>(ArrayKeyOverrides),
     };
 }
