@@ -34,6 +34,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IEditorViewModelFactory _editorFactory;
     private readonly IRunDialogService _runDialog;
+    private readonly IEnvironmentComparisonDialogService _comparisonDialog;
 
     /// <summary>Optional so a headless test can construct the shell without a windowing stack. Null
     /// means no prompt can be shown, which is treated as "do not discard" rather than as consent.</summary>
@@ -84,6 +85,7 @@ public partial class MainViewModel : ViewModelBase
         IProtocolRegistry protocolRegistry,
         IEditorViewModelFactory editorFactory,
         IRunDialogService runDialog,
+        IEnvironmentComparisonDialogService comparisonDialog,
         ITabDragHost tabDragHost,
         IConfirmationService? confirmation = null,
         IClipboardService? clipboard = null,
@@ -100,6 +102,7 @@ public partial class MainViewModel : ViewModelBase
         _protocolRegistry = protocolRegistry;
         _editorFactory = editorFactory;
         _runDialog = runDialog;
+        _comparisonDialog = comparisonDialog;
         _confirmation = confirmation;
         _clipboard = clipboard;
         _logSink = logSink;
@@ -112,6 +115,7 @@ public partial class MainViewModel : ViewModelBase
 
         WorkspaceExplorer.RequestFileActivated += path => _ = OpenRequestAsync(path);
         WorkspaceExplorer.RunRequested += OnRunRequested;
+        WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
         LeftPane.AuthProfilesSection.EditRequested += OpenAuthProfileEditor;
 
@@ -159,6 +163,43 @@ public partial class MainViewModel : ViewModelBase
         }
 
         _runDialog.Show(plan, root.Workspace, EnvironmentManager.ActiveEnvironment, node.Name);
+    }
+
+    /// <summary>
+    /// Opens the environment-comparison window for a selected folder or request.
+    ///
+    /// <para>Here rather than on the explorer for the same reason as <see cref="OnRunRequested"/>, and
+    /// more so: this one needs EVERY environment, not just the active one, because choosing the pair is
+    /// the question the window exists to ask.</para>
+    /// </summary>
+    private void OnCompareEnvironmentsRequested(WorkspaceNodeViewModel node)
+    {
+        var root = WorkspaceExplorer.Roots.FirstOrDefault(
+                       r => node.FullPath.StartsWith(r.FullPath, StringComparison.OrdinalIgnoreCase))
+                   ?? WorkspaceExplorer.ActiveRoot;
+
+        if (root is null)
+        {
+            return;
+        }
+
+        // Two environments are needed for there to be a comparison at all, and saying so beats a window
+        // whose Run button is disabled for a reason nobody can see.
+        if (EnvironmentManager.Environments.Count < 2)
+        {
+            StatusLog.Log("Comparing environments needs two of them - this workspace has "
+                          + $"{EnvironmentManager.Environments.Count}.");
+            return;
+        }
+
+        var plan = RunPlan.From(node.ToTreeNode());
+        if (plan.IsEmpty)
+        {
+            StatusLog.Log($"Nothing to compare in \"{node.Name}\" - it holds no requests.");
+            return;
+        }
+
+        _comparisonDialog.Show(plan, root.Workspace, [.. EnvironmentManager.Environments], node.Name);
     }
 
     [RelayCommand]

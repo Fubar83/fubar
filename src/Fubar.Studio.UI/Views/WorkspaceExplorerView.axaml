@@ -48,6 +48,9 @@
             <fc:TreeView.ContextFlyout>
                 <MenuFlyout>
                     <MenuItem Header="Run" Command="{Binding RunCommand}" />
+                    <MenuItem Header="Compare across environments…"
+                              Command="{Binding CompareEnvironmentsCommand}"
+                              ToolTip.Tip="Send every request to two environments and show where their answers differ" />
                     <Separator />
                     <MenuItem Header="New Request" Command="{Binding NewRequestCommand}" />
                     <MenuItem Header="New Folder" Command="{Binding NewFolderCommand}" />

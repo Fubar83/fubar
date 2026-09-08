@@ -1,0 +1,362 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+        xmlns:fc="using:Fubar.Controls"
+        xmlns:dv="using:Fubar.Diff.Controls.Views"
+        xmlns:dvm="using:Fubar.Diff.Controls.ViewModels"
+        xmlns:cmp="using:Fubar.Studio.Core.Comparison"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1180" d:DesignHeight="720"
+        x:Class="Fubar.Studio.UI.Views.EnvironmentComparisonWindow"
+        x:DataType="vm:EnvironmentComparisonViewModel"
+        Title="Compare environments"
+        Width="1200" Height="760"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgSidebar}">
+
+    <Window.Styles>
+        <!-- One class per verdict, bound from a bool per class - Avalonia's Classes is not bindable,
+             so the row exposes IsSame/IsDifferent/... rather than a string. -->
+        <Style Selector="Border.pill">
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="Background" Value="{DynamicResource StatusInfoBg}" />
+        </Style>
+        <Style Selector="Border.pill TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource StatusInfoFg}" />
+        </Style>
+
+        <Style Selector="Border.pill.same">
+            <Setter Property="Background" Value="{DynamicResource StatusSuccessBg}" />
+        </Style>
+        <Style Selector="Border.pill.same TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusSuccessFg}" />
+        </Style>
+
+        <Style Selector="Border.pill.differs">
+            <Setter Property="Background" Value="{DynamicResource StatusClientErrorBg}" />
+        </Style>
+        <Style Selector="Border.pill.differs TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusClientErrorFg}" />
+        </Style>
+
+        <!-- A status mismatch is drawn as the loudest thing on the row: it usually explains every body
+             difference underneath it, and it is the one nobody needs a diff to care about. -->
+        <Style Selector="Border.pill.status">
+            <Setter Property="Background" Value="{DynamicResource StatusServerErrorBg}" />
+        </Style>
+        <Style Selector="Border.pill.status TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusServerErrorFg}" />
+        </Style>
+
+        <Style Selector="Border.summary">
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Background" Value="{DynamicResource StatusInfoBg}" />
+        </Style>
+        <Style Selector="Border.summary.ok">
+            <Setter Property="Background" Value="{DynamicResource StatusSuccessBg}" />
+        </Style>
+        <Style Selector="Border.summary.bad">
+            <Setter Property="Background" Value="{DynamicResource StatusServerErrorBg}" />
+        </Style>
+
+        <Style Selector="Border.row:pointerover">
+            <Setter Property="Background" Value="{DynamicResource BgHover}" />
+        </Style>
+        <Style Selector="Border.row.selected">
+            <Setter Property="Background" Value="{DynamicResource BgSelected}" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="12">
+
+        <!-- What is being compared, and against which two environments. The pickers live in the window
+             rather than in a dialog before it: choosing the pair IS the question, and re-running against
+             a different pair is the second thing anyone does. -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+            <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock Text="{Binding Target}"
+                           FontSize="16" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimary}" />
+                <TextBlock Text="Every request is sent to both environments, one request at a time, so you can start narrowing the differences before the run has finished."
+                           Foreground="{DynamicResource TextSecondary}" FontSize="12"
+                           TextWrapping="Wrap" MaxWidth="760" HorizontalAlignment="Left" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <ComboBox ItemsSource="{Binding Environments}"
+                          SelectedItem="{Binding LeftEnvironment}"
+                          IsEnabled="{Binding !IsRunning}"
+                          MinWidth="150">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock Text="vs" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <ComboBox ItemsSource="{Binding Environments}"
+                          SelectedItem="{Binding RightEnvironment}"
+                          IsEnabled="{Binding !IsRunning}"
+                          MinWidth="150">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <Button Classes="primary-btn" Content="Run"
+                        Command="{Binding RunCommand}"
+                        IsVisible="{Binding !IsRunning}" />
+                <Button Classes="secondary-btn" Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsVisible="{Binding IsRunning}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Progress while running, verdict once finished. -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,10" ColumnSpacing="10">
+            <Border Grid.Column="0" Classes="summary"
+                    Classes.ok="{Binding IsVerdictOk}"
+                    Classes.bad="{Binding IsVerdictBad}">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <fc:Spinner IsVisible="{Binding IsRunning}" />
+                    <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimary}" />
+                    <TextBlock Text="{Binding Summary}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondary}"
+                               IsVisible="{Binding Summary, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnDefinitions="360,6,*">
+
+            <!-- The plan. Every row exists from the start, so the window can say how much is left
+                 before it has finished, and each row fills in as its two answers arrive. -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource BgResponsePanel}"
+                    BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1"
+                    CornerRadius="4">
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Rows}" Margin="2">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ComparisonRowViewModel">
+                                <Border Classes="row" CornerRadius="4" Padding="8,6" Margin="2,1"
+                                        Background="Transparent"
+                                        Classes.selected="{Binding IsSelected}"
+                                        PointerPressed="OnRowPressed">
+                                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="26,*,Auto" ColumnSpacing="8">
+
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Order}"
+                                                   Foreground="{DynamicResource TextSecondary}"
+                                                   FontSize="11" VerticalAlignment="Center" />
+
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Name}"
+                                                   Foreground="{DynamicResource TextPrimary}"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+
+                                        <Border Grid.Row="0" Grid.Column="2" Classes="pill"
+                                                Classes.same="{Binding IsSame}"
+                                                Classes.differs="{Binding IsDifferent}"
+                                                Classes.status="{Binding IsStatusMismatch}"
+                                                IsVisible="{Binding !IsPending}">
+                                            <TextBlock Text="{Binding Summary}" />
+                                        </Border>
+
+                                        <!-- Both sides' answers, side by side, so a row says WHY it
+                                             differs before anyone opens the diff. -->
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                                    Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                                            <TextBlock Text="{Binding LeftStatus}" FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondary}" />
+                                            <TextBlock Text="→" FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondary}"
+                                                       IsVisible="{Binding RightStatus, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                            <TextBlock Text="{Binding RightStatus}" FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondary}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Background="Transparent" />
+
+            <!-- The selected row's comparison: the same editable one the request editor shows, so a
+                 rule written here is written to the same file. -->
+            <Border Grid.Column="2"
+                    Background="{DynamicResource BgResponsePanel}"
+                    BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="1"
+                    CornerRadius="4"
+                    DataContext="{Binding Diff}">
+                <DockPanel>
+
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource BgHeader}"
+                            BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,0,1"
+                            Padding="10,6">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding Title}"
+                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextPrimary}" />
+                            <!-- The rule-writing controls, the same ones the request editor's compare
+                                 dialog carries. Without these the window can only report differences,
+                                 which for two live environments is a list of timestamps. -->
+                            <fc:Toolbar Grid.Column="1">
+                                <Button Classes="toolbar-btn" Content="◀ Prev"
+                                        ToolTip.Tip="Previous difference (F7 or Alt+Up)"
+                                        Command="{Binding Pane.PreviousChangeCommand}"
+                                        IsEnabled="{Binding Pane.HasChanges}" />
+                                <Button Classes="toolbar-btn" Content="Next ▶"
+                                        ToolTip.Tip="Next difference (F8 or Alt+Down)"
+                                        Command="{Binding Pane.NextChangeCommand}"
+                                        IsEnabled="{Binding Pane.HasChanges}" />
+
+                                <!-- Acts on the current difference, so one has to be selected -
+                                     Prev/Next or the diff map picks it. -->
+                                <Button Classes="toolbar-btn" Content="⊘ Ignore this field"
+                                        Margin="8,0,0,0"
+                                        ToolTip.Tip="{Binding Pane.IgnoreCurrentTooltip}"
+                                        IsVisible="{Binding Pane.CanIgnorePaths}"
+                                        IsEnabled="{Binding Pane.CanIgnoreCurrent}"
+                                        Command="{Binding Pane.IgnorePathCommand}"
+                                        CommandParameter="{Binding Pane.CurrentIgnorePath}" />
+
+                                <Button Classes="toolbar-btn" Content="Settings ▾" Margin="8,0,0,0"
+                                        ToolTip.Tip="Comparison options, and where each one comes from">
+                                    <Button.Flyout>
+                                        <Flyout Placement="BottomEdgeAlignedLeft">
+                                            <StackPanel Spacing="10" MinWidth="300" Margin="2">
+                                                <TextBlock Text="COMPARISON SETTINGS" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextSecondary}" />
+                                                <TextBlock TextWrapping="Wrap" FontSize="11"
+                                                           Foreground="{DynamicResource TextSecondary}"
+                                                           Text="Each setting is inherited from your global defaults, then any folder, then this request - and each can be overridden on its own." />
+
+                                                <CheckBox Content="Ignore leading/trailing whitespace" IsChecked="{Binding IgnoreWhitespace}"
+                                                          ToolTip.Tip="{Binding IgnoreWhitespaceSource, StringFormat='Ignore leading/trailing whitespace ({0})'}" />
+                                                <CheckBox Content="Ignore case" IsChecked="{Binding IgnoreCase}"
+                                                          ToolTip.Tip="{Binding IgnoreCaseSource, StringFormat='Ignore case ({0})'}" />
+                                                <CheckBox Content="Report key order" IsChecked="{Binding ReportPropertyOrder}"
+                                                          ToolTip.Tip="{Binding ReportPropertyOrderSource, StringFormat='JSON objects are unordered, so reordering is not a difference by default ({0})'}" />
+                                                <CheckBox Content="Compare arrays by position" IsChecked="{Binding MatchArraysByPosition}"
+                                                          ToolTip.Tip="{Binding MatchArraysByPositionSource, StringFormat='Match array elements by index instead of by an identity key ({0})'}" />
+                                                <CheckBox Content="Treat null and missing as the same" IsChecked="{Binding IgnoreNullVsMissing}"
+                                                          ToolTip.Tip="{Binding IgnoreNullVsMissingSource, StringFormat='An explicit null and an absent property compare equal ({0})'}" />
+
+                                                <Button Classes="secondary-btn" Content="Reset to inherited"
+                                                        ToolTip.Tip="Drop this request's overrides and go back to what it inherits"
+                                                        IsEnabled="{Binding HasOverrides}"
+                                                        Command="{Binding ResetOverridesCommand}" />
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+
+                                <fc:Divider Orientation="Vertical" Margin="8,0" />
+
+                                <CheckBox Content="Diff pane"
+                                          ToolTip.Tip="Show the current difference close up, below the panes"
+                                          IsChecked="{Binding Pane.IsDetailVisible}"
+                                          VerticalAlignment="Center" />
+                                <fc:SegmentedControl ItemsSource="{x:Static dvm:DiffPaneViewModel.ViewModeOptions}"
+                                                     SelectedItem="{Binding Pane.ViewMode}"
+                                                     IsVisible="{Binding Pane.IsSemantic}" />
+                                <fc:Spinner IsVisible="{Binding IsBusy}" />
+                            </fc:Toolbar>
+                        </Grid>
+                    </Border>
+
+                    <!-- The rules. This strip is the reason the window exists: two environments always
+                         disagree about timestamps and ids, and narrowing that away is what turns the
+                         list on the left into an answer. -->
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource BgHeader}"
+                            BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,0,1"
+                            Padding="10,6"
+                            IsVisible="{Binding ShowSettings}">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="Ignoring" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0" />
+
+                            <TextBlock Grid.Column="1"
+                                       Text="nothing yet — select a difference and press “Ignore this field”"
+                                       Foreground="{DynamicResource TextSecondary}"
+                                       FontStyle="Italic" VerticalAlignment="Center"
+                                       IsVisible="{Binding !IgnoredPaths.Count}" />
+
+                            <ItemsControl Grid.Column="1" ItemsSource="{Binding IgnoredPaths}"
+                                          IsVisible="{Binding !!IgnoredPaths.Count}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Background="{DynamicResource BgSelected}"
+                                                CornerRadius="3" Padding="6,2" Margin="0,0,6,2">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding}"
+                                                           FontFamily="Cascadia Mono,Consolas,monospace"
+                                                           FontSize="11" VerticalAlignment="Center" />
+                                                <Button Classes="toolbar-btn" Content="✕" Padding="3,0"
+                                                        ToolTip.Tip="Stop ignoring this path"
+                                                        Command="{Binding $parent[Window].((vm:EnvironmentComparisonViewModel)DataContext).Diff.RemoveIgnoreCommand}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <SplitButton Grid.Column="2" Content="Save to request"
+                                         ToolTip.Tip="Remember these settings on the request, so every run applies them"
+                                         IsVisible="{Binding CanSaveSettings}"
+                                         IsEnabled="{Binding SettingsDirty}"
+                                         Command="{Binding SaveSettingsCommand}"
+                                         CommandParameter="{x:Static cmp:ComparisonScope.Request}">
+                                <SplitButton.Flyout>
+                                    <MenuFlyout>
+                                        <MenuItem Header="Save to request"
+                                                  Command="{Binding SaveSettingsCommand}"
+                                                  CommandParameter="{x:Static cmp:ComparisonScope.Request}" />
+                                        <MenuItem Header="{Binding SaveToFolderLabel}"
+                                                  IsVisible="{Binding CanSaveToFolder}"
+                                                  Command="{Binding SaveSettingsCommand}"
+                                                  CommandParameter="{x:Static cmp:ComparisonScope.Folder}" />
+                                        <MenuItem Header="Save as global defaults"
+                                                  Command="{Binding SaveSettingsCommand}"
+                                                  CommandParameter="{x:Static cmp:ComparisonScope.Global}" />
+                                    </MenuFlyout>
+                                </SplitButton.Flyout>
+                            </SplitButton>
+                        </Grid>
+                    </Border>
+
+                    <Panel>
+                        <fc:EmptyState Title="Nothing selected yet"
+                                       Description="Run the collection, then pick a request to see how the two environments answered it."
+                                       IsVisible="{Binding Pane.LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
+
+                        <dv:DiffView DataContext="{Binding Pane}" IsVisible="{Binding IsSideBySideViewVisible}" />
+                        <dv:JsonView DataContext="{Binding Pane}" IsVisible="{Binding IsJsonViewVisible}" />
+                    </Panel>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

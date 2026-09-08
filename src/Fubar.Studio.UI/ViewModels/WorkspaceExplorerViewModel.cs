@@ -675,6 +675,21 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>Raised when the user asks to compare the selection across two environments. Wired by
+    /// <see cref="MainViewModel"/> for the same reason as <see cref="RunRequested"/>: it needs the
+    /// workspace's environments, which live beside this view model rather than in it.</summary>
+    public event Action<WorkspaceNodeViewModel>? CompareEnvironmentsRequested;
+
+    [RelayCommand]
+    private void CompareEnvironments()
+    {
+        var node = SelectedNode ?? ActiveRoot;
+        if (node is not null)
+        {
+            CompareEnvironmentsRequested?.Invoke(node);
+        }
+    }
+
     /// <summary>
     /// The directory a new file/folder should be created in, based on the current selection:
     /// inside the selected directory, alongside the selected file, or the active workspace's
