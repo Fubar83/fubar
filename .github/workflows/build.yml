@@ -199,7 +199,7 @@ jobs:
       # The artefact a security review asks for by name, and one step to produce. Attached to the
       # release rather than kept internally, because the point of an SBOM is that the person
       # evaluating the download can read it without asking anyone.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: src
 
