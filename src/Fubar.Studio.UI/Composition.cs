@@ -36,6 +36,7 @@ internal static class Composition
                 // The oracles. A run picks one; none of them judges for itself.
                 services.AddSingleton<NoOracle>(_ => NoOracle.Instance);
                 services.AddSingleton<SnapshotOracle>();
+                services.AddSingleton<ISnapshotRecordingService, SnapshotRecordingService>();
                 // One instance behind both contracts: the paired run reuses the single-environment
                 // path step for step, so a difference between them could only be a bug.
                 services.AddSingleton<CollectionRunService>();

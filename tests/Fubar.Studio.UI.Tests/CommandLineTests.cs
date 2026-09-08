@@ -180,4 +180,55 @@ public class CommandLineTests
         Assert.Contains("2  the run could not be attempted", CommandLine.Usage);
         Assert.Contains("A non-2xx status does NOT on its own fail the run", CommandLine.Usage);
     }
+
+    // ---- Oracles and snapshots -------------------------------------------------------------------
+
+    [Fact]
+    public void No_oracle_is_the_default_which_is_what_run_has_always_done()
+    {
+        Assert.Null(CommandLine.Parse(["--run"]).Oracle);
+    }
+
+    [Fact]
+    public void The_snapshot_oracle_is_selected_by_name()
+    {
+        Assert.Equal("snapshot", CommandLine.Parse(["--run", "--oracle", "snapshot"]).Oracle);
+    }
+
+    [Fact]
+    public void An_unknown_oracle_is_refused_by_name_rather_than_ignored()
+    {
+        var request = CommandLine.Parse(["--run", "--oracle", "guesswork"]);
+
+        Assert.Contains("guesswork", request.Error!, StringComparison.Ordinal);
+    }
+
+    /// <summary>Recording and comparing are opposite acts. Accepting both would have to pick one
+    /// silently, and either choice surprises somebody.</summary>
+    [Fact]
+    public void Recording_and_comparing_at_once_is_refused()
+    {
+        var request = CommandLine.Parse(["--run", "--oracle", "snapshot", "--update-snapshots"]);
+
+        Assert.NotNull(request.Error);
+    }
+
+    [Fact]
+    public void Recording_alone_is_fine_and_defaults_to_per_environment()
+    {
+        var request = CommandLine.Parse(["--run", "--update-snapshots"]);
+
+        Assert.Null(request.Error);
+        Assert.True(request.UpdateSnapshots);
+        Assert.False(request.SharedSnapshots);
+    }
+
+    /// <summary>A run that must exit with a status code cannot also be showing a window, so the flags
+    /// that mean "batch" have to be recognised before Avalonia is configured.</summary>
+    [Fact]
+    public void The_new_flags_choose_the_headless_path()
+    {
+        Assert.True(CommandLine.IsHeadless(["--oracle", "snapshot"]));
+        Assert.True(CommandLine.IsHeadless(["--update-snapshots"]));
+    }
 }

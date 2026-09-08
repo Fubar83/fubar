@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Fubar.Studio.Core.Comparison;
+using Fubar.Studio.Core.Snapshots;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Workspaces;
 using Fubar.Studio.Infrastructure.Json;
@@ -482,6 +483,7 @@ public sealed class WorkspaceService : IWorkspaceService
 
         var headers = new List<InheritedHeader>();
         var comparisonLayers = new List<ComparisonSettingsLayer>();
+        var snapshotLayers = new List<SnapshotPolicyLayer>();
         string? authProfileId = null;
         string? authSourceName = null;
 

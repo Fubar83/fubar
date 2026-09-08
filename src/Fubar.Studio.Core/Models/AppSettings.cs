@@ -103,6 +103,10 @@ public sealed class AppSettings
     /// </summary>
     public ComparisonSettings? Comparison { get; set; }
 
+    /// <summary>Snapshot rules that apply everywhere unless a folder or request says otherwise.
+    /// Redactions especially belong here: a token is a token in every workspace.</summary>
+    public Snapshots.SnapshotPolicy? Snapshot { get; set; }
+
     public SessionState Session { get; set; } = new();
 
     // --- reading a file written before the grouping -------------------------------------------------

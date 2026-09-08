@@ -63,6 +63,10 @@ public sealed class RequestModel
     /// </summary>
     public ComparisonSettings? Comparison { get; set; }
 
+    /// <summary>What to redact and normalise on the way into a snapshot, and which headers to keep.
+    /// Inherited exactly like <see cref="Comparison"/>; null means this level says nothing.</summary>
+    public Snapshots.SnapshotPolicy? Snapshot { get; set; }
+
     /// <summary>
     /// RETIRED: variables resolve from the active environment, the session store and the workspace
     /// manifest. Deserialised only so a pre-floor file still loads; <c>LegacyRequestMigration</c>

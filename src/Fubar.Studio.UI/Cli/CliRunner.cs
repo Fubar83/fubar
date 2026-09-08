@@ -2,6 +2,7 @@ using System.Reflection;
 using Fubar.Studio.Application.Running;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Running;
+using Fubar.Studio.Core.Snapshots;
 using Fubar.Studio.Core.Workspaces;
 using Fubar.Studio.Infrastructure.Variables;
 

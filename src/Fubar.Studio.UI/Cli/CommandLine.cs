@@ -44,6 +44,17 @@ public sealed record CliRequest
 
     public bool StopOnFailure { get; init; }
 
+    /// <summary>What judges each response: nothing, or the recorded snapshot. Absent means nothing,
+    /// which is what --run has always done.</summary>
+    public string? Oracle { get; init; }
+
+    /// <summary>Record snapshots instead of comparing against them. Never both: there is no snapshot
+    /// in that run to update.</summary>
+    public bool UpdateSnapshots { get; init; }
+
+    /// <summary>Record one snapshot for every environment rather than for the one being run.</summary>
+    public bool SharedSnapshots { get; init; }
+
     public int DelayMilliseconds { get; init; }
 
     /// <summary>Where to write a report, or null for none.</summary>
@@ -92,7 +103,8 @@ public static class CommandLine
     /// window, because turning an unrecognised argument into a silent batch job is the kind of surprise
     /// nobody can debug.
     /// </summary>
-    private static readonly string[] Headless = ["--run", "--validate", "--help", "-h", "--version"];
+    private static readonly string[] Headless =
+        ["--run", "--validate", "--help", "-h", "--version", "--oracle", "--update-snapshots"];
 
     public static bool IsHeadless(string[] args) =>
         args.Any(a => Headless.Contains(a, StringComparer.OrdinalIgnoreCase));
@@ -113,6 +125,29 @@ public static class CommandLine
 
                 case "--version":
                     return request with { ShowVersion = true };
+
+                case "--oracle":
+                    if (NextValue(args, ref i) is not { Length: > 0 } oracle)
+                    {
+                        return request with { Error = "--oracle needs a value: none or snapshot." };
+                    }
+
+                    if (!string.Equals(oracle, "none", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(oracle, "snapshot", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return request with { Error = $"Unknown oracle \"{oracle}\". Use none or snapshot." };
+                    }
+
+                    request = request with { Oracle = oracle.ToLowerInvariant() };
+                    break;
+
+                case "--update-snapshots":
+                    request = request with { UpdateSnapshots = true };
+                    break;
+
+                case "--shared-snapshots":
+                    request = request with { SharedSnapshots = true };
+                    break;
 
                 case "--run":
                     // A bare --run is legitimate and means the whole workspace, so a missing value is
@@ -252,6 +287,13 @@ public static class CommandLine
             }
         }
 
+        // Recording is not comparing. Accepting both would have to pick one silently, and either
+        // choice surprises somebody - so it is refused with the reason.
+        if (request.UpdateSnapshots && string.Equals(request.Oracle, "snapshot", StringComparison.OrdinalIgnoreCase))
+        {
+            return request with { Error = "--update-snapshots records snapshots; --oracle snapshot compares against them. Use one." };
+        }
+
         return request;
     }
 
@@ -304,6 +346,12 @@ public static class CommandLine
               --env-file <path>    Read KEY=VALUE lines from a file. Same idea, for more
                                    than a couple of them.
               --filter <text>      Only run requests whose name contains this text.
+              --oracle <what>      Compare each response against: none (default) or snapshot.
+                                   A missing snapshot is reported and fails the run - it is
+                                   never treated as a pass.
+              --update-snapshots   Record snapshots instead of comparing against them.
+              --shared-snapshots   With --update-snapshots, record one snapshot for every
+                                   environment rather than for the one being run.
               --stop-on-failure    Stop at the first failed or errored request.
               --delay <ms>         Wait this long between requests.
               --report <path>      Write a report.
