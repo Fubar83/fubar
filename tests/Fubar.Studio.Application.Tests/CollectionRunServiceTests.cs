@@ -32,7 +32,8 @@ public class CollectionRunServiceTests
         FakeExecution execution,
         FakeStore? store = null,
         FakeProfiles? profiles = null) =>
-        new(execution, store ?? new FakeStore(), new FakeInheritance(), profiles ?? new FakeProfiles());
+        new(execution, store ?? new FakeStore(), new FakeInheritance(), profiles ?? new FakeProfiles(),
+            new FakeComparer(), new FakeComparisonSettings());
 
     // ---- Order and completeness ----------------------------------------------------------------
 
@@ -210,7 +211,8 @@ public class CollectionRunServiceTests
         var environment = new WorkspaceEnvironment { Id = "dev", Name = "Dev" };
         var execution = new FakeExecution();
 
-        await new CollectionRunService(execution, new FakeStore(), new FakeInheritance(), new FakeProfiles())
+        await new CollectionRunService(execution, new FakeStore(), new FakeInheritance(), new FakeProfiles(),
+                new FakeComparer(), new FakeComparisonSettings())
             .RunAsync(new CollectionRun(Plan(3), Ws, environment, RunOptions.Default));
 
         Assert.All(execution.Runs, r =>

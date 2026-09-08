@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using Fubar.Studio.Application.Comparison;
 using Fubar.Studio.Application.Requests;
 using Fubar.Studio.Core.Auth;
+using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
 using Fubar.Studio.Core.Running;
@@ -16,17 +18,23 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
     private readonly IRequestStore _requests;
     private readonly IInheritanceResolver _inheritance;
     private readonly IAuthProfileStore _authProfiles;
+    private readonly IResponseComparer _comparer;
+    private readonly IRequestComparisonSettings _settings;
 
     public CollectionRunService(
         IRequestExecutionService execution,
         IRequestStore requests,
         IInheritanceResolver inheritance,
-        IAuthProfileStore authProfiles)
+        IAuthProfileStore authProfiles,
+        IResponseComparer comparer,
+        IRequestComparisonSettings settings)
     {
         _execution = execution;
         _requests = requests;
         _inheritance = inheritance;
         _authProfiles = authProfiles;
+        _comparer = comparer;
+        _settings = settings;
     }
 
     public async Task<RunReport> RunAsync(
@@ -93,6 +101,8 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
                 cancelled = true;
                 break;
             }
+
+            report = await JudgeAsync(report, run, cancellationToken).ConfigureAwait(false);
 
             reports.Add(report);
             progress?.Report(RunProgress.Finished(report, total));
@@ -213,6 +223,91 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
 
         return new EnvironmentPairReport(
             leftName, rightName, pairs, stopwatch.ElapsedMilliseconds, cancelled, stoppedEarly);
+    }
+
+    /// <summary>
+    /// Asks the oracle for the other side and compares, leaving the step's own status alone: whether it
+    /// SENT is one question and whether it MATCHES is another, and a step can pass every assertion while
+    /// differing from its snapshot (see <see cref="StepReport.Comparison"/>).
+    ///
+    /// <para>An oracle that wanted a comparison and could not get one is reported as
+    /// <see cref="ComparisonVerdict.Unavailable"/>, never as a pass, and never as an error against the
+    /// request - the request answered; it is the other side that is missing.</para>
+    /// </summary>
+    private async Task<StepReport> JudgeAsync(
+        StepReport report,
+        CollectionRun run,
+        CancellationToken cancellationToken)
+    {
+        if (run.Oracle is not { } oracle || oracle.Kind == OracleKind.None)
+        {
+            return report;
+        }
+
+        var context = new OracleContext(report.Step, run.Workspace, run.Environment, report);
+
+        OtherSide other;
+        try
+        {
+            other = await oracle.ObtainAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return report with
+            {
+                Comparison = ComparisonVerdict.Unavailable,
+                ComparisonUnavailableReason = ex.Message,
+            };
+        }
+
+        if (other.Unavailable)
+        {
+            return report with
+            {
+                Comparison = ComparisonVerdict.Unavailable,
+                ComparisonUnavailableReason = other.MissingReason,
+            };
+        }
+
+        if (!other.Available || report.ResponseBody is not { } body)
+        {
+            return report;
+        }
+
+        try
+        {
+            var settings = await _settings
+                .ResolveAsync(run.Workspace, report.Step.FilePath, cancellationToken)
+                .ConfigureAwait(false);
+
+            var outcome = await _comparer
+                .CompareAsync(other.Body!, body, settings, cancellationToken)
+                .ConfigureAwait(false);
+
+            return report with
+            {
+                Comparison = outcome.Same ? ComparisonVerdict.Same : ComparisonVerdict.Differs,
+                DifferenceCount = outcome.DifferenceCount,
+                ComparedAgainst = other.Source,
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return report with
+            {
+                Comparison = ComparisonVerdict.Unavailable,
+                ComparisonUnavailableReason = ex.Message,
+                ComparedAgainst = other.Source,
+            };
+        }
     }
 
     private async Task<StepReport> RunStepAsync(

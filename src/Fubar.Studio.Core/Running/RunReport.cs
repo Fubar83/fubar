@@ -18,6 +18,23 @@ public enum StepStatus
     Skipped,
 }
 
+/// <summary>What comparing a step's response concluded, when something was comparing.</summary>
+public enum ComparisonVerdict
+{
+    /// <summary>No oracle, or the step never answered. Not a judgement.</summary>
+    NotCompared,
+
+    /// <summary>Compared, and nothing survived this request's rules.</summary>
+    Same,
+
+    /// <summary>Compared, and something did.</summary>
+    Differs,
+
+    /// <summary>There was meant to be something to compare against and there was not - no snapshot
+    /// recorded, most often. Reported as its own outcome and never as a pass.</summary>
+    Unavailable,
+}
+
 /// <summary>What one request did during a run.</summary>
 /// <param name="StatusCode">Null when no response arrived.</param>
 /// <param name="Error">The transport/auth failure, or the reason a capture could not be applied.</param>
@@ -56,6 +73,28 @@ public sealed record StepReport(
     /// <summary>The response arrived but was too big to carry (see <see cref="MaxComparableBodyChars"/>).
     /// Distinct from a null body with this false, which means nothing asked for the body at all.</summary>
     public bool BodyTooLargeToCompare { get; init; }
+
+    /// <summary>
+    /// What comparing this response against the oracle's other side concluded.
+    ///
+    /// <para>A SECOND axis, deliberately, rather than more values on <see cref="StepStatus"/>. "The
+    /// request ran and its assertions passed" and "the answer matches what it should" are different
+    /// questions with different answers, and a step can legitimately pass every assertion while
+    /// differing from its snapshot. One enum would have to pick a winner and lose the other.</para>
+    /// </summary>
+    public ComparisonVerdict Comparison { get; init; } = ComparisonVerdict.NotCompared;
+
+    /// <summary>Differences the rules did not excuse. Zero unless <see cref="Comparison"/> is
+    /// <see cref="ComparisonVerdict.Differs"/>.</summary>
+    public int DifferenceCount { get; init; }
+
+    /// <summary>Which other side this was judged against - "snapshots/staging.json", "Production".
+    /// Reported on every step: a run that switched from the shared snapshot to a per-environment one
+    /// someone recorded last week is a run whose green means something different.</summary>
+    public string? ComparedAgainst { get; init; }
+
+    /// <summary>Why there was nothing to compare against. Never a reason to pass.</summary>
+    public string? ComparisonUnavailableReason { get; init; }
 
     public int AssertionsPassed => Assertions.Count(a => a.Passed);
 
@@ -124,7 +163,19 @@ public sealed record RunReport(
     /// it, or a folder whose requests have not been saved yet, both produce zero steps and would
     /// otherwise report success.</para>
     /// </summary>
-    public bool Ok => Total > 0 && Failed == 0 && Errored == 0 && !WasCancelled && Skipped == 0;
+    /// <para>The comparison clauses are the same refusal in the oracle's terms: a step that DIFFERS
+    /// from its snapshot has answered the question wrongly, and one whose snapshot is missing has not
+    /// answered it at all. Neither is a pass, and "nothing to compare, therefore fine" is exactly how a
+    /// suite stops testing without anyone noticing.</para>
+    public bool Ok =>
+        Total > 0 && Failed == 0 && Errored == 0 && !WasCancelled && Skipped == 0
+        && Differing == 0 && Uncomparable == 0;
+
+    /// <summary>Steps whose response did not match what it was compared against.</summary>
+    public int Differing => Steps.Count(s => s.Comparison == ComparisonVerdict.Differs);
+
+    /// <summary>Steps that were meant to be compared and had nothing to compare against.</summary>
+    public int Uncomparable => Steps.Count(s => s.Comparison == ComparisonVerdict.Unavailable);
 
     /// <summary>One line for a status bar or a CI log.</summary>
     public string Summary()
@@ -136,6 +187,8 @@ public sealed record RunReport(
 
         var parts = new List<string> { $"{Passed}/{Total} passed" };
         if (Failed > 0) parts.Add($"{Failed} failed");
+        if (Differing > 0) parts.Add($"{Differing} differ");
+        if (Uncomparable > 0) parts.Add($"{Uncomparable} not comparable");
         if (Errored > 0) parts.Add($"{Errored} errored");
         if (Skipped > 0) parts.Add($"{Skipped} skipped");
         if (AssertionsFailed > 0) parts.Add($"{AssertionsFailed} assertion{(AssertionsFailed == 1 ? "" : "s")} failed");

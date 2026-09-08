@@ -30,7 +30,8 @@ public class EnvironmentPairRunServiceTests
         new(plan, Ws, Staging, Prod, options ?? RunOptions.Default);
 
     private static CollectionRunService Sut(FakeExecution execution) =>
-        new(execution, new FakeStore(), new FakeInheritance(), new FakeProfiles());
+        new(execution, new FakeStore(), new FakeInheritance(), new FakeProfiles(),
+            new FakeComparer(), new FakeComparisonSettings());
 
     // ---- Interleaving ---------------------------------------------------------------------------
 
@@ -221,72 +222,4 @@ public class EnvironmentPairRunServiceTests
         Assert.Equal(["r1:start", "r1:left", "r1:pair"], seen);
     }
 
-    // ---- Fakes ----------------------------------------------------------------------------------
-
-    private sealed class FakeExecution : IRequestExecutionService
-    {
-        private readonly Dictionary<string, int> _statuses = [];
-        private readonly HashSet<string> _errors = [];
-        private string? _body;
-        private bool _bodyPerEnvironment;
-        private (string Key, CancellationTokenSource Source)? _cancelOn;
-
-        public List<string> Sent { get; } = [];
-
-        public List<WorkspaceEnvironment?> Environments { get; } = [];
-
-        public FakeExecution Body(string body) { _body = body; return this; }
-
-        public FakeExecution BodyPerEnvironment() { _bodyPerEnvironment = true; return this; }
-
-        public FakeExecution StatusFor(string environmentId, int status) { _statuses[environmentId] = status; return this; }
-
-        public FakeExecution ErrorOn(string environmentId) { _errors.Add(environmentId); return this; }
-
-        public FakeExecution CancelOn(string key, CancellationTokenSource source)
-        {
-            _cancelOn = (key, source);
-            return this;
-        }
-
-        public IReadOnlyList<string> SentTo(string environmentId) =>
-            [.. Sent.Where(s => s.EndsWith($"@{environmentId}", StringComparison.Ordinal))
-                    .Select(s => s[..s.IndexOf('@', StringComparison.Ordinal)])];
-
-        public Task<RequestRunResult> RunAsync(RequestRun run, CancellationToken cancellationToken = default)
-        {
-            var env = run.Environment?.Id ?? "none";
-            var key = $"{run.Request.Name}@{env}";
-            Sent.Add(key);
-            Environments.Add(run.Environment);
-
-            if (_cancelOn is { } cancel && cancel.Key == key)
-            {
-                cancel.Source.Cancel();
-                throw new OperationCanceledException();
-            }
-
-            if (_errors.Contains(env))
-            {
-                return Task.FromResult(new RequestRunResult(
-                    new ExecutionResult { ErrorMessage = "No such host" }, null, [], [], null, null));
-            }
-
-            var body = _bodyPerEnvironment ? $$"""{"env":"{{env}}"}""" : _body ?? "";
-
-            return Task.FromResult(new RequestRunResult(
-                new ExecutionResult
-                {
-                    StatusCode = _statuses.TryGetValue(env, out var status) ? status : 200,
-                    ReasonPhrase = "OK",
-                    Body = body,
-                    ContentType = "application/json",
-                },
-                null,
-                [new AssertionResult(true, "status is 200", "200")],
-                [],
-                null,
-                null));
-        }
-    }
 }

@@ -5,11 +5,14 @@ namespace Fubar.Studio.Application.Running;
 
 /// <summary>What to run, and against what.</summary>
 /// <param name="Plan">The ordered steps, already flattened and filtered by <see cref="RunPlan"/>.</param>
+/// <param name="Oracle">What judges each response. Null is <see cref="NoOracle"/> - assertions only,
+/// which is what a plain collection run has always done.</param>
 public sealed record CollectionRun(
     RunPlan Plan,
     Workspace Workspace,
     WorkspaceEnvironment? Environment,
-    RunOptions Options);
+    RunOptions Options,
+    IOracle? Oracle = null);
 
 /// <summary>
 /// Sends a collection of requests in order, running each one's captures and assertions, and reports what

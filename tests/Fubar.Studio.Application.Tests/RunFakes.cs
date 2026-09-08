@@ -1,3 +1,7 @@
+using Fubar.Studio.Application.Comparison;
+using Fubar.Studio.Application.Requests;
+using Fubar.Studio.Core.Protocols;
+using Fubar.Studio.Core.Testing;
 using Fubar.Studio.Core.Auth;
 using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Models;
@@ -62,4 +66,110 @@ internal sealed class FakeProfiles : IAuthProfileStore
     }
 
     public Task SaveAuthProfilesAsync(string rootPath, IReadOnlyList<AuthProfile> profiles, CancellationToken ct = default) => throw new NotSupportedException();
+}
+
+/// <summary>
+/// A comparer that answers from a table of prepared verdicts rather than running an engine. The
+/// runner's job is to ASK and to record what it hears; whether the engine is right is
+/// ResponseComparerTests' business.
+/// </summary>
+internal sealed class FakeComparer : IResponseComparer
+{
+    private readonly Func<string, string, ComparisonOutcome> _answer;
+
+    public FakeComparer(Func<string, string, ComparisonOutcome>? answer = null) =>
+        _answer = answer ?? ((l, r) => string.Equals(l, r, StringComparison.Ordinal)
+            ? ComparisonOutcome.Identical
+            : new ComparisonOutcome(1, true, []));
+
+    public List<(string Left, string Right)> Compared { get; } = [];
+
+    public Task<ComparisonOutcome> CompareAsync(
+        string left, string right, ResolvedComparisonSettings settings, CancellationToken ct = default)
+    {
+        Compared.Add((left, right));
+        return Task.FromResult(_answer(left, right));
+    }
+}
+
+/// <summary>No rules at any level, which is what most runner tests want to say.</summary>
+internal sealed class FakeComparisonSettings : IRequestComparisonSettings
+{
+    public Task<ResolvedComparisonSettings> ResolveAsync(
+        Workspace workspace, string requestPath, CancellationToken ct = default) =>
+        Task.FromResult(ComparisonSettingsResolver.Resolve([]));
+}
+
+/// <summary>
+/// The execution seam every runner test fakes at: a run and a single send go through the same
+/// pipeline, so the runner's own job is only the walking, the judging and the reporting.
+///
+/// <para>Records what it was sent as "name@environment", which is what makes the interleaving
+/// assertions readable.</para>
+/// </summary>
+internal sealed class FakeExecution : IRequestExecutionService
+{
+    private readonly Dictionary<string, int> _statuses = [];
+    private readonly HashSet<string> _errors = [];
+    private string? _body;
+    private bool _bodyPerEnvironment;
+    private (string Key, CancellationTokenSource Source)? _cancelOn;
+
+    public List<string> Sent { get; } = [];
+
+    public List<WorkspaceEnvironment?> Environments { get; } = [];
+
+    public FakeExecution Body(string body) { _body = body; return this; }
+
+    public FakeExecution BodyPerEnvironment() { _bodyPerEnvironment = true; return this; }
+
+    public FakeExecution StatusFor(string environmentId, int status) { _statuses[environmentId] = status; return this; }
+
+    public FakeExecution ErrorOn(string environmentId) { _errors.Add(environmentId); return this; }
+
+    public FakeExecution CancelOn(string key, CancellationTokenSource source)
+    {
+        _cancelOn = (key, source);
+        return this;
+    }
+
+    public IReadOnlyList<string> SentTo(string environmentId) =>
+        [.. Sent.Where(s => s.EndsWith($"@{environmentId}", StringComparison.Ordinal))
+                .Select(s => s[..s.IndexOf('@', StringComparison.Ordinal)])];
+
+    public Task<RequestRunResult> RunAsync(RequestRun run, CancellationToken cancellationToken = default)
+    {
+        var env = run.Environment?.Id ?? "none";
+        var key = $"{run.Request.Name}@{env}";
+        Sent.Add(key);
+        Environments.Add(run.Environment);
+
+        if (_cancelOn is { } cancel && cancel.Key == key)
+        {
+            cancel.Source.Cancel();
+            throw new OperationCanceledException();
+        }
+
+        if (_errors.Contains(env))
+        {
+            return Task.FromResult(new RequestRunResult(
+                new ExecutionResult { ErrorMessage = "No such host" }, null, [], [], null, null));
+        }
+
+        var body = _bodyPerEnvironment ? $$"""{"env":"{{env}}"}""" : _body ?? "";
+
+        return Task.FromResult(new RequestRunResult(
+            new ExecutionResult
+            {
+                StatusCode = _statuses.TryGetValue(env, out var status) ? status : 200,
+                ReasonPhrase = "OK",
+                Body = body,
+                ContentType = "application/json",
+            },
+            null,
+            [new AssertionResult(true, "status is 200", "200")],
+            [],
+            null,
+            null));
+    }
 }

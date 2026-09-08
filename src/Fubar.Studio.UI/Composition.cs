@@ -1,6 +1,7 @@
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Infrastructure;
 using Fubar.Controls;
+using Fubar.Studio.Application.Comparison;
 using Fubar.Studio.Application.Requests;
 using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Diagnostics;
@@ -30,6 +31,11 @@ internal static class Composition
 
                 // Application-layer use-case services (orchestration over the Core ports above).
                 services.AddSingleton<IRequestExecutionService, RequestExecutionService>();
+                services.AddSingleton<IRequestComparisonSettings, RequestComparisonSettings>();
+                
+                // The oracles. A run picks one; none of them judges for itself.
+                services.AddSingleton<NoOracle>(_ => NoOracle.Instance);
+                services.AddSingleton<SnapshotOracle>();
                 // One instance behind both contracts: the paired run reuses the single-environment
                 // path step for step, so a difference between them could only be a bug.
                 services.AddSingleton<CollectionRunService>();
