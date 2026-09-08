@@ -108,10 +108,10 @@ Rules:
   "auth": { "type": "inherit" },
   "suppressedInheritedHeaderKeys": ["X-Debug"],
   "defaultCase": "default",
-  "comparison": { "ignoredPaths": ["$.meta.requestId"] },
+  "comparison": { "ignoredPaths": { "add": ["$.meta.requestId"] } },
   "snapshot": {
-    "normalize": [{ "path": "$.generatedAt", "as": "<timestamp>" }],
-    "redact": [{ "path": "$..token", "as": "<redacted>" }]
+    "normalize": { "add": [{ "path": "$.generatedAt", "as": "<timestamp>" }] },
+    "redact":    { "add": [{ "path": "$..token", "as": "<redacted>" }] }
   },
   "tolerances": [{ "path": "$.total", "numeric": 0.01 }]
 }
@@ -178,7 +178,7 @@ A case overrides only what it needs. `null`/absent means inherit, exactly as tod
   "environments": ["staging"],
   "options": { "stopOnFailure": false, "delayMs": 0, "parallel": false },
   "overlay": {
-    "comparison": { "ignoredPaths": ["$.version"] },
+    "comparison": { "ignoredPaths": { "add": ["$.version"] } },
     "tolerances": [{ "path": "$..elapsedMs", "numeric": 500 }]
   }
 }
@@ -199,7 +199,7 @@ Unchanged in shape from today, plus the new sections:
   "headers": [{ "key": "X-Tenant", "value": "{{tenant}}", "enabled": true }],
   "authProfileId": "39474e…",
   "comparison": { "matchArraysByPosition": false },
-  "snapshot": { "redact": [{ "path": "$..authorization", "as": "<redacted>" }] },
+  "snapshot": { "redact": { "add": [{ "path": "$..authorization", "as": "<redacted>" }] } },
   "tolerances": []
 }
 ```
@@ -235,35 +235,33 @@ effective = Overlay(Resolve(containment chain), batch.overlay)
 Provenance for anything the overlay set reads `Batch: smoke`. Nothing else changes: a batch cannot
 introduce a setting the chain does not know about.
 
-### 4.3 Lists: the decision to make
+### 4.3 Lists: add and remove — **decided**
 
-`ComparisonSettings.IgnoredPaths` **replaces** the inherited list today, deliberately: reading one
-level then tells you what applies there, and an inherited rule that is wrong for one endpoint can be
-dropped. An empty non-null list means "ignore nothing here", not "inherit".
+Every list setting (`ignoredPaths`, `snapshot.normalize`, `snapshot.redact`) contributes **additions
+and removals** at each level, replacing today's wholesale replacement:
 
-The cost is that adding one rule requires restating the inherited ones, and the UI does that silently
-— `IgnorePathAsync` promotes the *resolved* list to the request level, so adding one path to a request
-that inherits three copies all four onto it and ends inheritance for that setting. Nothing says so.
+```json
+"ignoredPaths": { "add": ["$.orders[*].etag"], "remove": ["$.meta.requestId"] }
+```
 
-Two ways out. **Pick one before building anything else in §12.**
+Resolution folds the chain in order: start empty, apply each level's `remove` then its `add`. Removing
+something never added is not an error — a level is allowed to say "not here" about a rule an ancestor
+might grow later, and failing the run over it would make the rule file order-dependent.
 
-| | Replace (today) | Add / remove |
-| --- | --- | --- |
-| Shape | `"ignoredPaths": ["a","b"]` | `"ignoredPaths": { "add": ["b"], "remove": ["a"] }` |
-| Read one level | tells you what applies | tells you what this level changes |
-| Add a rule | must restate inherited | one entry |
-| Drop an inherited rule | write the shorter list | one entry |
-| Provenance | per list | per entry |
-| Migration | none | mechanical: `[…]` ⇒ `{ "add": […] }` is **not** equivalent — a replace-list also removes |
+Every resolved entry carries the level that added it, so `Resolved<T>` moves from per-list to
+per-entry provenance and a chip can read *inherited from folder: orders*.
 
-**Recommendation: add/remove**, with the resolved view (which already exists, with `Scope` and
-`SourceName`) as the answer to "what applies here". The original objection — that you cannot read one
-level and know what applies — is already true of every other setting in this hierarchy; a nullable
-`ignoreWhitespace` tells you nothing about the effective value either. What replace buys is not
-readability but a single-file answer, and the UI's provenance display is a better one.
+What this gives up: reading one file no longer tells you what applies there, only what that level
+changes. That was the reasoning behind wholesale replacement and it is a real loss — mitigated by the
+resolved view, which already exists with `Scope` and `SourceName`, and which is a better answer to
+"what applies here" than one file could ever be. Every other setting in this hierarchy already works
+this way: a nullable `ignoreWhitespace` tells you nothing about the effective value either.
 
-If replace is kept instead, the UI must stop auto-promoting: adding a rule to a level that inherits
-some must say that it is taking a copy, and offer to write it to the folder instead.
+**Reading the old shape.** A bare array (`"ignoredPaths": ["a","b"]`) is read as
+`{ "add": ["a","b"] }` — which is *not* equivalent, since the old form also removed everything
+inherited. That difference only bites a workspace that relied on a shorter child list to drop an
+inherited rule, and per §10.4 no existing workspace is converted, so it can only appear in a
+hand-edited file. It is read, warned about in the status log, and rewritten on next save.
 
 ### 4.4 What inherits
 
@@ -645,8 +643,9 @@ This is the change that makes every oracle work identically in the UI and in CI.
 
 Each step is useful on its own and leaves the app shippable.
 
-1. **List semantics (§4.3).** Decide, then implement in `ComparisonSettingsResolver` with per-entry
-   provenance. Fixes the silent-copy behaviour in the shipped comparison window. No format change.
+1. **List semantics (§4.3).** Add/remove in `ComparisonSettingsResolver`, with per-entry provenance,
+   and the old bare-array shape read as `add`. Ends the silent copying the shipped comparison window
+   does. No format change; applies to existing workspaces as well as new ones.
 2. **`IResponseComparer` port + adapter (§10.2).** No behaviour change; the existing comparison window
    moves onto it. Architecture test updated.
 3. **The oracle seam.** `IOracle` with `none` and `environment:X` — both already exist as behaviour,
@@ -654,21 +653,36 @@ Each step is useful on its own and leaves the app shippable.
 4. **Snapshots.** `ISnapshotStore`, the stable writer, redaction, normalisation, tolerances, the
    `snapshot` oracle, `--update-snapshots`. Still one request per file: a snapshot can key off the
    request's path until step 5 renames it.
-5. **Endpoints and cases.** The format change, with a migration that turns each `request.json` into an
-   endpoint directory with one `default` case. Everything it feeds already works.
+5. **Endpoints and cases.** The format change, in NEW workspaces only (§10.4), behind a `format` field
+   in `fubar.json`. Everything it feeds already works. The opt-in converter ships with it, not after -
+   without it the split is permanent.
 6. **Batches**, then the CLI selector grammar that reaches all of it.
 
-Steps 1–4 need no format change, which is what makes this incremental rather than a rewrite.
+Steps 1-4 need no format change and land in every workspace, old or new. That is what makes this
+incremental rather than a rewrite, and it means the two halves of §10.4 differ only from step 5 on.
 
-### 10.4 Migration
+### 10.4 Migration — **new workspaces only**
 
-`request.json` → `endpoint.json` + `cases/default.json`, splitting on the boundary between "the
-operation" (method, url, headers, auth) and "the invocation" (params, body, assertions, captures).
-Run once per workspace on open, announced in the status log the way the format-floor migration already
-is, and only after a `.fubar/backup/` copy.
+**Decided.** Endpoints, cases, snapshots and batches exist only in workspaces whose `fubar.json`
+declares the new format. An existing workspace keeps today's request files and today's runner, and is
+never converted on open.
 
-Backwards compatibility: a workspace containing `request.json` files is read as endpoints-with-one-case
-without being rewritten, until the user accepts the migration. The runner sees only the migrated model.
+This is the lowest-risk option and it has one cost, which is worth stating plainly rather than
+discovering: **the product is in two halves, and nothing closes the split by itself.** Old workspaces
+get no snapshots, no cases and no batches, and every feature after this point either has to be built
+twice or has to be unavailable in half the workspaces. Two consequences to hold the line on:
+
+- **`format` in `fubar.json` decides**, not file-sniffing. One field, read once at open, so no code
+  anywhere has to guess which half it is in from what it finds on disk.
+- **An explicit conversion exists** — *Convert to endpoints…* on the workspace, doing exactly what an
+  automatic migration would have done (`request.json` → `endpoint.json` + `cases/default.json`,
+  splitting on the boundary between the operation and the invocation) after a `.fubar/backup/` copy
+  and a preview. The split then closes by choice rather than never. Without this the decision is not
+  "low risk", it is permanent.
+
+The old runner keeps working unchanged. It is not extended: a feature that lands in the new model does
+not get back-ported, or there are two implementations of everything and this decision has bought
+nothing.
 
 ### 10.5 What to test
 
@@ -694,9 +708,11 @@ without being rewritten, until the user accepts the migration. The runner sees o
 
 ## 12 · Open questions
 
-1. **§4.3 list semantics.** Blocks step 1. Recommendation: add/remove.
-2. **Snapshot per environment, or one shared?** Specified as per-environment. A shared snapshot with
+Settled: list semantics (§4.3, add/remove), the word "case" (§1), migration (§10.4, new workspaces
+only), and tolerances in the first snapshot release (§6.3).
+
+1. **Snapshot per environment, or one shared?** Specified as per-environment. A shared snapshot with
    per-environment tolerances is defensible for teams whose environments hold the same data.
-3. **Case-level auth.** Excluded above (auth stops at endpoint). A case that needs a different user is
+2. **Case-level auth.** Excluded above (auth stops at endpoint). A case that needs a different user is
    a real scenario; the alternative is an environment per user.
-4. **Do batches nest?** Specified no. A batch of batches is a scheduler, and that is a different tool.
+3. **Do batches nest?** Specified no. A batch of batches is a scheduler, and that is a different tool.
