@@ -29,7 +29,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: csharp
           # security-and-quality over the default: this codebase's own tests already enforce the
@@ -41,4 +41,4 @@ jobs:
       - name: Build
         run: dotnet build Fubar.slnx --configuration Release
 
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
