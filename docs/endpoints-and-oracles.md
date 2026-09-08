@@ -67,14 +67,14 @@ collections/
         default.json
         not-found.json
       snapshots/
-        staging/default.json
-        production/default.json
+        staging.json
+        production.json
 batches/
   smoke.json
   nightly-drift.json
 ```
 
-Snapshots sit **beside the endpoint**, not in a parallel tree: reviewing a change to an endpoint
+Snapshots are one file per environment (`snapshots/staging.json`), beside the endpoint, not in a parallel tree: reviewing a change to an endpoint
 should put the recorded answers in the same diff, and a reviewer should not have to find them.
 
 ---
@@ -107,19 +107,22 @@ redaction), and the array-identity keys. Per **setting**, not per level — the 
 anything about *that* setting wins and everything else keeps inheriting, which is what
 `ComparisonSettingsResolver` already does and the reason its members are nullable.
 
-### Lists need add and remove, not replacement
-
-This is the one part of today's model that must change, and it is already visible in the shipped
-environment-comparison window.
+### Lists: replacement, and what it costs
 
 `ComparisonSettingsResolver.PickReference` is last-one-wins **wholesale**: a request's `ignoredPaths`
-*replaces* the folder's list. Removal therefore already works — but it is the only thing that works,
-and it has a consequence. `IgnorePathAsync` adds to the *resolved* list and saves the whole thing, so
-adding one path to a request that inherits three from its folder copies all four onto the request.
-Inheritance for that setting is then dead: edit the folder afterwards and that request ignores you.
-Nothing in the UI says so.
+*replaces* the folder's list. That is deliberate, and `ComparisonSettings` records why — union
+semantics were considered and rejected so that reading one level tells you what applies there, and so
+an inherited rule that is wrong for one endpoint can be dropped. An empty non-null list means "ignore
+nothing here", not "inherit".
 
-Each level should contribute **additions and removals**:
+The cost is real and is already visible in the shipped environment-comparison window. Adding one rule
+means restating the inherited ones, and the UI does it silently: `IgnorePathAsync` adds to the
+*resolved* list and saves the whole thing, so adding one path to a request that inherits three copies
+all four onto the request. Inheritance for that setting is then dead — edit the folder afterwards and
+that request ignores you. Nothing says so.
+
+So this is a trade to settle, not a bug to fix. [spec-endpoints.md §4.3](spec-endpoints.md) lays both
+options out; the recommendation there is that each level contributes **additions and removals**:
 
 ```json
 "ignoredPaths": { "add": ["$.orders[*].etag"], "remove": ["$.requestId"] }
@@ -249,9 +252,9 @@ timestamp, or CI loses the ability to say "this one started failing".
 The model change touches the file format, the tree, the runner, import and the comparison chain at
 once. It should not be one commit, and it should not start with the format.
 
-1. **Add/remove list semantics** in `ComparisonSettingsResolver`, with per-entry provenance. Contained,
-   fixes the live inheritance defect in §4, and every later level inherits the right behaviour instead
-   of being retrofitted onto wholesale replacement.
+1. **Settle the list semantics** in §4, then implement them in `ComparisonSettingsResolver` with
+   per-entry provenance. Contained, ends the silent copying the shipped window does, and every later
+   level then inherits the decided behaviour instead of being retrofitted onto it.
 2. **The oracle seam.** Reshape the runner so "what judges the response" is a parameter. The
    environment oracle already exists; `none` is today's behaviour. No format change yet.
 3. **Snapshots** against the seam from step 2: record, normalise, redact, compare, accept.
