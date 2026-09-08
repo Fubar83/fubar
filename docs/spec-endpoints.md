@@ -15,7 +15,7 @@ Status: **not implemented.** Written to be built from.
 | **Folder** | a node in the endpoint tree; carries inherited settings | a group in the UI only | 0..n, nested |
 | **Endpoint** | one operation: method + URL template + its own overrides | something you can send | 0..n per folder |
 | **Case** | one concrete invocation of an endpoint: params, body, overrides | a recorded response | 0..n per endpoint |
-| **Snapshot** | a recorded response for (case, environment) | an input | 0..1 per case per environment |
+| **Snapshot** | a recorded response for a case, scoped to one environment or shared by all | an input | 0..1 shared + 0..1 per environment, per case |
 | **Environment** | a named set of variables + transport + credentials | a deployment | 0..n per workspace |
 | **Batch** | a named, ordered selection of cases + oracle + overlay | a folder | 0..n per workspace |
 | **Oracle** | what judges a response | a comparison implementation | 1 per run |
@@ -77,8 +77,8 @@ workspace/
           default.json
           not-found.json
         snapshots/
-          staging.json             one file per environment
-          production.json
+          _shared.json             used by every environment that has no file of its own
+          staging.json             this environment only, and it wins for it
   batches/
     smoke.json
     nightly-drift.json
@@ -141,7 +141,10 @@ values, and conflating them makes it impossible to say which a missing value cam
 
 A case overrides only what it needs. `null`/absent means inherit, exactly as today.
 
-### 3.4 `snapshots/<environment>.json`
+### 3.4 `snapshots/<environment>.json` and `snapshots/_shared.json`
+
+A snapshot is scoped when it is recorded: to the environment it came from, or shared by all of them.
+Both may exist for the same case, and the per-environment one wins for its environment (§5).
 
 ```json
 {
@@ -156,6 +159,11 @@ A case overrides only what it needs. `null`/absent means inherit, exactly as tod
 }
 ```
 
+- `environment` is the scope, and is **null in `_shared.json`**. The file says what it is, so nothing
+  has to infer scope from a file name it might have been given by a merge.
+- The `_` prefix marks a reserved name, as `_folder.json` already does in this format. **No environment
+  may be named starting with `_`**, which is what stops an environment called `shared` colliding with
+  the shared file. Workspace validation refuses one.
 - `body` is stored **parsed** when the response is JSON, so the file is a readable diff rather than an
   escaped string. Non-JSON bodies are stored as text under `bodyText`, or as a `sha256` plus a
   sidecar file when binary.
@@ -281,7 +289,7 @@ hand-edited file. It is read, warned about in the status log, and rewritten on n
 
 ```
 none              no comparison; assertions decide the verdict
-snapshot          compare the response against snapshots/<environment>.json
+snapshot          compare against snapshots/<environment>.json, else snapshots/_shared.json
 environment:X     send twice (this environment and X), compare the two responses
 run:<id>          compare against a stored run under .fubar/runs/<id>
 ```
@@ -292,6 +300,13 @@ run:<id>          compare against a stored run under .fubar/runs/<id>
 | `snapshot` | 1× | disk | `NoSnapshot` — reported, not a pass |
 | `environment:X` | 2× | the second send | the failing side is `Errored` |
 | `run:<id>` | 1× | disk | `Errored` |
+
+**Which snapshot** the `snapshot` oracle uses, in order: `snapshots/<environment>.json`, then
+`snapshots/_shared.json`, then `NoSnapshot`. Specific beats general, as everywhere else in this
+format. Because that choice is invisible in the result otherwise, **every step reports which snapshot
+it compared against** — the row, the CLI report and the JUnit output all name it. A run that quietly
+switched from the shared snapshot to a per-environment one someone recorded last week is a run whose
+green means something different from yesterday's.
 
 Rules that hold for all of them:
 
@@ -321,6 +336,35 @@ for captures.
 placeholder at record time (`"generatedAt": "<timestamp>"`), so the stored file is stable and every
 future diff means something. Ignoring leaves the real value in the file and hides the difference at
 compare time, which makes the snapshot churn on every re-record.
+
+**Scope is chosen when saving**, not configured in advance:
+
+| | Per environment (`staging.json`) | Shared (`_shared.json`) |
+| --- | --- | --- |
+| Used by | that environment only | every environment with no file of its own |
+| Right when | environments hold different data | environments hold the same data, or the differing parts are normalised away |
+| Failure mode | redundant files, more diff noise | a data difference reads as a regression |
+
+**Default: per environment.** Its failure mode is waste; shared's is a false alarm, and a regression
+tool that cries wolf stops being run. Shared is offered beside it with one line saying what it means,
+not buried.
+
+Two moments where the tool should say something rather than let the choice rot:
+
+- Recording for environment B when A's snapshot exists and the new body is **identical** to it: offer
+  to save one shared snapshot instead. This is the moment the answer is knowable for free, and it is
+  how a workspace ends up with shared snapshots without anyone having to plan for them.
+- Recording per-environment for a case that already has a shared snapshot: say that this environment
+  will stop using the shared one. That is the whole effect of the click and it is otherwise invisible.
+
+**Changing scope later.** *Share this snapshot* promotes a per-environment file to `_shared.json`,
+refusing when other per-environment snapshots exist that differ from it — promoting would silently
+change what they compare against. *Split by environment* writes the current environment's file from
+the shared one and leaves `_shared.json` for everyone else, which is the least surprising demotion:
+nothing else changes behaviour.
+
+A shared snapshot whose environments differ in a handful of fields is exactly what tolerances are for
+(§6.3) — `$.environment matches ^(staging|production)$` keeps one file and keeps checking the field.
 
 ### 6.2 Stable serialisation
 
@@ -518,6 +562,20 @@ Runs the cases, shows what will be written — redacted and normalised, exactly 
 — and asks. The preview is not decoration: it is the only chance to notice a token the redaction
 rules missed before it is committed.
 
+The same dialog carries the scope (§6.1), on the write button rather than as a separate step:
+
+```
+Save snapshot ▾     ( • Staging only        writes snapshots/staging.json
+                      ○ All environments    writes snapshots/_shared.json )
+```
+
+Recording over an existing snapshot keeps its scope without asking; the dropdown is how you change it,
+and changing it says what will happen to the other environments. When the body is identical to another
+environment's snapshot, the dialog leads with *All environments* instead and says why.
+
+A row being recorded shows which file it will write, because a folder-wide record can be writing both
+kinds at once.
+
 **Reviewing a failure.** A regression run's row opens the same comparison pane the environment window
 uses, left = snapshot, right = the response. The difference between the two features is one label.
 
@@ -532,6 +590,11 @@ uses, left = snapshot, right = the response. The difference between the two feat
   degrading into ignores.
 
 Accepting is never automatic and never bulk across endpoints without a confirmation naming the count.
+
+**Accepting into a shared snapshot changes every environment**, so the pane says which file it is
+about to write and how many environments use it, and offers *Split by environment* (§6.1) beside
+accept — because "this is right for staging but not for production" is precisely the discovery that
+accepting a shared snapshot is about to bury.
 
 ### 9.6 Running
 
@@ -595,7 +658,8 @@ Each of these is silent failure if it is not shown:
 | --- | --- | --- |
 | No snapshot yet | tree badge, run verdict | `○` / `NoSnapshot` — never a pass |
 | Stale snapshot | tree badge, run verdict | `⚑` recorded before this endpoint changed |
-| Rule copied down | rules tab | *"this level now overrides the folder's list"* (only if §4.3 keeps replace) |
+| Which snapshot was used | run verdict, CLI, JUnit | `staging.json` or `_shared.json`, per step (§5) |
+| Shared snapshot in play | tree badge, accept dialog | that accepting changes every environment using it |
 | Inherited value overridden | any field | source label changes from folder name to *this endpoint* |
 | Missing variable | send, and before a run | which variable, which environment |
 | Batch step missing | batch editor, run | which endpoint or case, reported as `Errored` |
@@ -650,7 +714,8 @@ Each step is useful on its own and leaves the app shippable.
    moves onto it. Architecture test updated.
 3. **The oracle seam.** `IOracle` with `none` and `environment:X` — both already exist as behaviour,
    now behind one interface. The run pipeline stops knowing which one it has.
-4. **Snapshots.** `ISnapshotStore`, the stable writer, redaction, normalisation, tolerances, the
+4. **Snapshots.** `ISnapshotStore` (both scopes, and the resolution order in §5), the stable writer,
+   redaction, normalisation, tolerances, the
    `snapshot` oracle, `--update-snapshots`. Still one request per file: a snapshot can key off the
    request's path until step 5 renames it.
 5. **Endpoints and cases.** The format change, in NEW workspaces only (§10.4), behind a `format` field
@@ -692,6 +757,8 @@ nothing.
 - Snapshot writer: byte-stable output for the same input, sorted keys, round-trip numbers.
 - Redaction: a token in a response never reaches the written file. This is a security test, not a
   formatting one.
+- Snapshot scope: per-environment beats shared for its environment; shared serves the rest; the step
+  reports which file it used; an environment named `_anything` is refused.
 - Tolerances: each kind, and the evaluation order in §6.3.
 - Exit codes for each verdict.
 
@@ -709,10 +776,9 @@ nothing.
 ## 12 · Open questions
 
 Settled: list semantics (§4.3, add/remove), the word "case" (§1), migration (§10.4, new workspaces
-only), and tolerances in the first snapshot release (§6.3).
+only), tolerances in the first snapshot release (§6.3), and snapshot scope (§6.1, either, chosen when
+saving, per-environment by default).
 
-1. **Snapshot per environment, or one shared?** Specified as per-environment. A shared snapshot with
-   per-environment tolerances is defensible for teams whose environments hold the same data.
-2. **Case-level auth.** Excluded above (auth stops at endpoint). A case that needs a different user is
+1. **Case-level auth.** Excluded above (auth stops at endpoint). A case that needs a different user is
    a real scenario; the alternative is an environment per user.
-3. **Do batches nest?** Specified no. A batch of batches is a scheduler, and that is a different tool.
+2. **Do batches nest?** Specified no. A batch of batches is a scheduler, and that is a different tool.
