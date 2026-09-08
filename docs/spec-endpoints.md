@@ -1,7 +1,7 @@
 # Spec: endpoints, cases, snapshots, batches
 
 The design and reasoning are in [endpoints-and-oracles.md](endpoints-and-oracles.md). This is the
-specification: what it does, how the pieces fit, what is on disk, and how to build it.
+specification: what it does, how the pieces fit, what is on disk, how it is used, and how to build it.
 
 Status: **not implemented.** Written to be built from.
 
@@ -245,7 +245,7 @@ The cost is that adding one rule requires restating the inherited ones, and the 
 — `IgnorePathAsync` promotes the *resolved* list to the request level, so adding one path to a request
 that inherits three copies all four onto it and ends inheritance for that setting. Nothing says so.
 
-Two ways out. **Pick one before building anything else in §11.**
+Two ways out. **Pick one before building anything else in §12.**
 
 | | Replace (today) | Add / remove |
 | --- | --- | --- |
@@ -423,18 +423,199 @@ The existing `--run` stays as an alias for `run` with `--oracle none` for one re
 
 ---
 
-## 9 · Implementation
+## 9 · UI workflows
 
-### 9.1 Layers
+What a person actually does. Every screen below resolves the same hierarchy the runner does (§4) and
+shows where each value came from — a settings tree nobody can see the provenance of is a settings tree
+nobody trusts.
+
+### 9.1 The tree
+
+```
+REQUESTS                              ⌄  +
+  ├─ auth
+  │   └─ ⊟ POST  Login              ●
+  └─ orders
+      ├─ ⊞ GET   Get order       2 ⚑
+      └─   POST  Create order      ○
+```
+
+- **Folders and endpoints only.** Cases are not rows by default: an endpoint with 0 or 1 case is a
+  leaf, and the common endpoint has exactly one. An endpoint with 2+ cases gets a `+`/`−` box and
+  shows its cases as children. Simple stays simple; the tree does not grow a level to say "there is
+  nothing more here".
+- **Badges**, right-aligned, in this order: method, case count when >1, auth override, snapshot state,
+  unsaved dot.
+- **Snapshot state** is one glyph with three meanings: `●` recorded and current, `○` no snapshot,
+  `⚑` stale — recorded before the endpoint or case was last edited. Stale matters: a green regression
+  run against a snapshot recorded from a since-changed request is a lie, and this is the only place a
+  person can notice it before running.
+- Right-click acts on the row under the pointer, as it already does. New entries: **Add case**,
+  **Record snapshot**, **Run**, **Compare across environments**, **Add to batch…**.
+
+### 9.2 The endpoint editor
+
+The critical split. Half of these fields belong to the operation and half to the invocation, and a
+person who sets a header on a case thinking it applies to the endpoint has silently broken the other
+cases. The editor says which level it is editing, everywhere.
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│ GET ▾  {{baseUrl}}/orders/{orderId}                    [Send] [Save]  │
+│ Case:  ( default ▾ )  + Add case                                      │
+├───────────────────────────────────────────────────────────────────────┤
+│ ENDPOINT  Headers · Auth · Rules      CASE  Params · Body · Assertions │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+- One tab strip, two labelled groups, a divider between them. Not two strips: the user is editing one
+  thing and the level is an attribute of the tab, not a mode to be in.
+- The case selector sits under the URL because changing it changes what Send sends, and that has to be
+  visible from where the Send button is.
+- Every inherited value shows its source inline (`Accept: application/json — folder: orders`) and is
+  editable in place; editing one writes an override at the endpoint or case level and the source label
+  changes to say so. This is the existing Headers "Source" column, extended to auth and rules.
+- **Send sends the selected case.** An endpoint with no cases sends its implicit default (§1).
+
+Single canvas is kept. Cases are an inner selector rather than more open editors, which strengthens
+the decision in `decisions.md §A` rather than reopening it: switching case is not switching document.
+
+### 9.3 Folder and workspace settings
+
+`_folder.json` has no editor today; it is written by the diff window's "save to folder" and otherwise
+edited by hand. That does not survive folders carrying auth, headers, variables, rules, snapshot
+policy and tolerances.
+
+Selecting a **folder** in the tree opens a folder editor on the same canvas, with the same tab
+vocabulary: `Headers · Auth · Variables · Rules`. Selecting the **workspace** row opens the same
+editor for `fubar.json`. Both show what they inherit and what they override, exactly as an endpoint
+does — one editor shape for every level of the chain, so learning it once is enough.
+
+### 9.4 Setting up rules
+
+Three entry points, in order of how often they are used:
+
+1. **From a difference.** In any comparison — snapshot, environment, drift — the current difference
+   offers *Ignore this field*, *Add tolerance…*, *Redact in snapshots*, *Match this array by…*. This
+   is where rules are actually written, because it is the moment you can see what the rule is for.
+   Already built for ignore; the other three are the same affordance.
+2. **The Rules tab** on an endpoint, folder or workspace: every rule that applies here, each with its
+   source, grouped `Comparison · Snapshot policy · Tolerances`. Rules inherited from above are shown
+   greyed with their origin; local ones are editable.
+3. **The batch editor** (§9.7) for occasion-only rules.
+
+**Choosing the level is the whole skill**, so the save control never guesses. A rule written from a
+difference offers *this endpoint* (default), *folder: orders*, or *workspace* — the same SplitButton
+the comparison window already has, with the folder named rather than called "folder".
+
+**Removing an inherited rule** must be one gesture with a visible consequence. The chip carries its
+origin; the `✕` on an inherited chip says *"stop ignoring `$.requestId` here"* and writes a removal at
+the current level (§4.3). It never edits the folder — a click in an endpoint's window must not change
+what forty other endpoints do.
+
+### 9.5 Snapshots
+
+**Recording.** *Record snapshot* on an endpoint, folder, or selection, for the active environment.
+Runs the cases, shows what will be written — redacted and normalised, exactly as it will land on disk
+— and asks. The preview is not decoration: it is the only chance to notice a token the redaction
+rules missed before it is committed.
+
+**Reviewing a failure.** A regression run's row opens the same comparison pane the environment window
+uses, left = snapshot, right = the response. The difference between the two features is one label.
+
+**Accepting.** From that pane:
+
+- *Accept all* — rewrite the snapshot for this case.
+- *Accept this field* — write one value into the snapshot and leave the other differences standing.
+  This is what makes a 40-difference wall workable: accept the three that are intended, and what
+  remains is the regression.
+- *Add tolerance instead* — offered beside accept whenever the difference is numeric, a timestamp, or
+  a string matching a well-known id shape. Nudging here rather than in docs is what keeps a suite from
+  degrading into ignores.
+
+Accepting is never automatic and never bulk across endpoints without a confirmation naming the count.
+
+### 9.6 Running
+
+One dialog, reached from the tree, the editor, or a batch. It already exists as the Run window and the
+environment-comparison window; they become one with an oracle picker:
+
+```
+Run  orders/get-order                       ( Staging ▾ )
+Compare against:  ( ● Nothing  ○ Snapshot  ○ Environment ( Production ▾ )  ○ Previous run ▾ )
+[ ] Stop at first failure    [ ] Record snapshots instead of comparing
+```
+
+- Picking *Environment* reveals the second environment picker; picking *Snapshot* reveals nothing
+  extra, because the environment is already chosen above.
+- The results list and the diff pane are the ones already shipped. The verdict column's vocabulary
+  comes from §7, so the same words appear in the window, the CLI and the JUnit report.
+- Running one case from the editor uses the same dialog with the selection pre-filled — there is no
+  second, simpler run path to drift.
+
+### 9.7 Batches
+
+**Created from a run, not from an empty form.** After a run, *Save as batch…* takes the steps that
+just ran, the oracle and the environments, and writes `batches/<name>.json`. That is the honest
+creation path: nobody knows what belongs in a smoke test until they have run something.
+
+The batch editor then allows reordering, adding and removing steps, changing the oracle, and editing
+the overlay rules — with the overlay marked as *applies to this batch only*, so it cannot be mistaken
+for a permanent rule.
+
+*Add to batch…* on a tree row appends to an existing batch.
+
+### 9.8 Import
+
+OpenAPI import produces **endpoints**, and each `example` in the document becomes a **case**. Where
+today it produces one request per operation and drops the examples, the model finally has somewhere to
+put them. The existing import preview (which already shows what will be written before it is written)
+gains a case count per endpoint.
+
+Postman import maps a request to an endpoint with one case, and a folder to a folder.
+
+### 9.9 The first five minutes
+
+The path that has to work without documentation, because it is the one that decides adoption:
+
+1. Import an OpenAPI document, or open a folder of existing requests (migrated per §10.4).
+2. Pick an environment. Send one endpoint. It works or the error says which variable is missing.
+3. *Record snapshots* on a folder. The preview shows what will be committed.
+4. Change something in the service. Run the folder with *Compare against: Snapshot*.
+5. The list shows two rows differing. Open one, accept the intended change, add a tolerance to the
+   timestamp.
+6. *Save as batch…* → `smoke`. Copy the CLI line the dialog offers into CI.
+
+Step 6 matters as much as the rest: the run dialog shows the exact `fubar run` command equivalent to
+what is on screen, so moving from the UI to CI is copying a line rather than reading a manual.
+
+### 9.10 States that must be visible
+
+Each of these is silent failure if it is not shown:
+
+| State | Where | Says |
+| --- | --- | --- |
+| No snapshot yet | tree badge, run verdict | `○` / `NoSnapshot` — never a pass |
+| Stale snapshot | tree badge, run verdict | `⚑` recorded before this endpoint changed |
+| Rule copied down | rules tab | *"this level now overrides the folder's list"* (only if §4.3 keeps replace) |
+| Inherited value overridden | any field | source label changes from folder name to *this endpoint* |
+| Missing variable | send, and before a run | which variable, which environment |
+| Batch step missing | batch editor, run | which endpoint or case, reported as `Errored` |
+
+---
+
+## 10 · Implementation
+
+### 10.1 Layers
 
 | Layer | Adds |
 | --- | --- |
 | `Studio.Core` | `Endpoint`, `Case`, `Snapshot`, `Batch`, `Tolerance`, `SnapshotPolicy`; `OracleKind`; extended `ComparisonScope`; resolution policy; ports: `IEndpointStore`, `ISnapshotStore`, `IBatchStore`, `IResponseComparer` |
 | `Studio.Application` | `IOracle` + four implementations; `RunPlan` over `(endpoint, case)`; the run pipeline; snapshot record/accept orchestration |
-| `Studio.Infrastructure` | file-system adapters for the three stores; `DiffResponseComparer` (§9.2); stable JSON writer |
-| `Studio.UI` | endpoint/case tree, case editor, snapshot viewer + accept, batch editor, run windows; CLI selector parsing |
+| `Studio.Infrastructure` | file-system adapters for the three stores; `DiffResponseComparer` (§10.2); stable JSON writer |
+| `Studio.UI` | the workflows in §9: endpoint/case tree, endpoint editor with its level split, folder and workspace editors, snapshot record and accept, batch editor, one run dialog with an oracle picker; CLI selector parsing |
 
-### 9.2 The one architectural move
+### 10.2 The one architectural move
 
 The comparison engine is reachable only from `Studio.UI` today (`Studio.UI` references
 `Fubar.Diff.Application`). Oracles live in `Studio.Application`, so they cannot reach it, and the CLI
@@ -460,13 +641,13 @@ banning Roslyn**, which is the reference the existing test exists to stop.
 
 This is the change that makes every oracle work identically in the UI and in CI.
 
-### 9.3 Build order
+### 10.3 Build order
 
 Each step is useful on its own and leaves the app shippable.
 
 1. **List semantics (§4.3).** Decide, then implement in `ComparisonSettingsResolver` with per-entry
    provenance. Fixes the silent-copy behaviour in the shipped comparison window. No format change.
-2. **`IResponseComparer` port + adapter (§9.2).** No behaviour change; the existing comparison window
+2. **`IResponseComparer` port + adapter (§10.2).** No behaviour change; the existing comparison window
    moves onto it. Architecture test updated.
 3. **The oracle seam.** `IOracle` with `none` and `environment:X` — both already exist as behaviour,
    now behind one interface. The run pipeline stops knowing which one it has.
@@ -479,7 +660,7 @@ Each step is useful on its own and leaves the app shippable.
 
 Steps 1–4 need no format change, which is what makes this incremental rather than a rewrite.
 
-### 9.4 Migration
+### 10.4 Migration
 
 `request.json` → `endpoint.json` + `cases/default.json`, splitting on the boundary between "the
 operation" (method, url, headers, auth) and "the invocation" (params, body, assertions, captures).
@@ -489,7 +670,7 @@ is, and only after a `.fubar/backup/` copy.
 Backwards compatibility: a workspace containing `request.json` files is read as endpoints-with-one-case
 without being rewritten, until the user accepts the migration. The runner sees only the migrated model.
 
-### 9.5 What to test
+### 10.5 What to test
 
 - Resolution: every level, per setting, including a batch overlay, and both list semantics.
 - Selector expansion: folder order, endpoint-to-cases, batch order, missing endpoint reported.
@@ -502,7 +683,7 @@ without being rewritten, until the user accepts the migration. The runner sees o
 
 ---
 
-## 10 · Deliberately not in scope
+## 11 · Deliberately not in scope
 
 - Load testing. A batch runs each step once.
 - Mocking or recording a server. Snapshots are for comparison, not playback.
@@ -511,7 +692,7 @@ without being rewritten, until the user accepts the migration. The runner sees o
 
 ---
 
-## 11 · Open questions
+## 12 · Open questions
 
 1. **§4.3 list semantics.** Blocks step 1. Recommendation: add/remove.
 2. **Snapshot per environment, or one shared?** Specified as per-environment. A shared snapshot with
