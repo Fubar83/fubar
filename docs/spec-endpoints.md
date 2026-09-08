@@ -3,7 +3,7 @@
 The design and reasoning are in [endpoints-and-oracles.md](endpoints-and-oracles.md). This is the
 specification: what it does, how the pieces fit, what is on disk, how it is used, and how to build it.
 
-Status: **not implemented.** Written to be built from.
+Status: **steps 1-2 built** (§10.3); the rest written to be built from.
 
 ---
 
@@ -690,16 +690,27 @@ Introduce a port and an adapter:
 public interface IResponseComparer
 {
     Task<ComparisonOutcome> CompareAsync(
-        string left, string right, EffectiveComparisonSettings settings, CancellationToken ct);
+        string left, string right, ResolvedComparisonSettings settings, CancellationToken ct);
 }
 
-public sealed record ComparisonOutcome(int DifferenceCount, IReadOnlyList<FieldDifference> Differences);
+public sealed record ComparisonOutcome(
+    int DifferenceCount, bool IsSemantic, IReadOnlyList<ResponseDifference> Differences);
 ```
 
-`DiffResponseComparer` in `Studio.Infrastructure` implements it over `IFileComparisonService`, which
-moves the `AddFubarDiffTextAndJson()` reference from `Studio.UI` to `Studio.Infrastructure` — where
-adapters belong. `Fubar.Studio.Architecture.Tests` must be updated to allow that edge **and keep
-banning Roslyn**, which is the reference the existing test exists to stop.
+**Built, with one deviation from what this section first said.** The adapter, `DiffResponseComparer`,
+lives in `Studio.UI/Services` rather than `Studio.Infrastructure`.
+
+It needs `ComparisonSettingsMapper`, and so does the request editor's pane, which renders through
+`IFileComparisonService` directly. Moving the mapper to Infrastructure would either duplicate it — and
+let the pane and the verdict drift apart on exactly the settings they exist to share — or make a view
+model reference Infrastructure, which CLAUDE.md forbids. Neither is worth it, because nothing is
+actually gained: `Fubar.Studio.UI` is the executable, so `--run` reaches the adapter through the same
+composition root a window does.
+
+The part that mattered is the **port**, and that is in Core as specified. The runner, every oracle and
+the CLI depend on the interface and stay free of the engine. `AddFubarDiffTextAndJson()` stays in
+`Composition.cs` and the architecture test is unchanged — still banning Roslyn, which is what it exists
+for.
 
 This is the change that makes every oracle work identically in the UI and in CI.
 
@@ -707,11 +718,12 @@ This is the change that makes every oracle work identically in the UI and in CI.
 
 Each step is useful on its own and leaves the app shippable.
 
-1. **List semantics (§4.3).** Add/remove in `ComparisonSettingsResolver`, with per-entry provenance,
+1. ~~**List semantics (§4.3).**~~ **Done.** Add/remove in `ComparisonSettingsResolver`, with per-entry provenance,
    and the old bare-array shape read as `add`. Ends the silent copying the shipped comparison window
    does. No format change; applies to existing workspaces as well as new ones.
-2. **`IResponseComparer` port + adapter (§10.2).** No behaviour change; the existing comparison window
-   moves onto it. Architecture test updated.
+2. ~~**`IResponseComparer` port + adapter (§10.2).**~~ **Done.** The comparison window judges through it,
+   so the row and the pane share one definition of what counts. Adapter in the UI project, not
+   Infrastructure - see §10.2.
 3. **The oracle seam.** `IOracle` with `none` and `environment:X` — both already exist as behaviour,
    now behind one interface. The run pipeline stops knowing which one it has.
 4. **Snapshots.** `ISnapshotStore` (both scopes, and the resolution order in §5), the stable writer,

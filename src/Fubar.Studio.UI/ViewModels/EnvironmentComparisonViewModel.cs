@@ -29,7 +29,11 @@ namespace Fubar.Studio.UI.ViewModels;
 public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
 {
     private readonly IEnvironmentPairRunService _pairRun;
+
+    /// <summary>For the PANE only - rendering needs the engine's own result. Judging goes through
+    /// <see cref="_comparer"/>, so the row and the pane cannot disagree about what counts.</summary>
     private readonly IFileComparisonService _comparison;
+    private readonly IResponseComparer _comparer;
     private readonly RequestEditorServices _services;
     private readonly Workspace _workspace;
     private readonly RunPlan _plan;
@@ -43,6 +47,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
     public EnvironmentComparisonViewModel(
         IEnvironmentPairRunService pairRun,
         IFileComparisonService comparison,
+        IResponseComparer comparer,
         RequestEditorServices services,
         RunPlan plan,
         Workspace workspace,
@@ -51,6 +56,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
     {
         _pairRun = pairRun;
         _comparison = comparison;
+        _comparer = comparer;
         _services = services;
         _plan = plan;
         _workspace = workspace;
@@ -301,17 +307,13 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
             var resolved = ComparisonSettingsResolver.Resolve(
                 [.. context.InheritedLayers, .. Layer(context.RequestOverrides)]);
 
-            var comparison = await _comparison.CompareTextAsync(
-                left, right, ComparisonSettingsMapper.ToOptions(resolved), row.Name, row.Name);
+            // Through the port, not the engine. Counting differences here is how the row came to say
+            // "8" beside a pane saying "6": semantic changes versus hunks, and ignored ones counted.
+            // Those rules live in one place now (DiffResponseComparer), which is also the place a run
+            // in CI will use - so a verdict in this list and a verdict in a report cannot disagree.
+            var outcome = await _comparer.CompareAsync(left, right, resolved, _cancellation?.Token ?? default);
 
-            // The SAME count the pane shows when this row is opened, which means two things. Semantic
-            // changes rather than hunks, because one contiguous run of changed lines can hold three
-            // unrelated fields. And only the ones NOT ignored: the engine marks an ignored change
-            // rather than dropping it, so counting them all would report differences the rules were
-            // written to remove - a row reading "8" beside a pane reading "6".
-            row.ApplyComparison(comparison.IsSemantic
-                ? comparison.SemanticChanges.Count(c => !c.IsIgnored)
-                : comparison.Result.Hunks.Count);
+            row.ApplyComparison(outcome.DifferenceCount);
         }
         catch (Exception ex)
         {

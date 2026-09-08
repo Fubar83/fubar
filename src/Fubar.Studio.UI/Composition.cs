@@ -2,6 +2,7 @@ using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Infrastructure;
 using Fubar.Controls;
 using Fubar.Studio.Application.Requests;
+using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Diagnostics;
 using Fubar.Studio.Infrastructure.Diagnostics;
 using Fubar.Studio.Application.Running;
@@ -68,6 +69,9 @@ internal static class Composition
                 // show. It belongs to Fubar Diff's structure panel; see docs/diff.md.
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();
                 services.AddSingleton<IDiffPreviewService, DiffPreviewService>();
+                // The one place a response is judged - see DiffResponseComparer on why the adapter
+                // sits here rather than in Infrastructure.
+                services.AddSingleton<IResponseComparer, DiffResponseComparer>();
                 // Singleton on purpose: a response pinned on one request must survive opening another.
                 services.AddSingleton<IResponseBaselineService, ResponseBaselineService>();
 

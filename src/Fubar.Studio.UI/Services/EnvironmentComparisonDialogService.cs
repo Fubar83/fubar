@@ -3,6 +3,7 @@ using System.Linq;
 using Avalonia.Controls.ApplicationLifetimes;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Studio.Application.Running;
+using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Running;
 using Fubar.Studio.UI.ViewModels;
@@ -31,15 +32,18 @@ public sealed class EnvironmentComparisonDialogService : IEnvironmentComparisonD
 {
     private readonly IEnvironmentPairRunService _pairRun;
     private readonly IFileComparisonService _comparison;
+    private readonly IResponseComparer _comparer;
     private readonly RequestEditorServices _services;
 
     public EnvironmentComparisonDialogService(
         IEnvironmentPairRunService pairRun,
         IFileComparisonService comparison,
+        IResponseComparer comparer,
         RequestEditorServices services)
     {
         _pairRun = pairRun;
         _comparison = comparison;
+        _comparer = comparer;
         _services = services;
     }
 
@@ -63,7 +67,7 @@ public sealed class EnvironmentComparisonDialogService : IEnvironmentComparisonD
 
         var window = new EnvironmentComparisonWindow(
             new EnvironmentComparisonViewModel(
-                _pairRun, _comparison, _services, plan, workspace, environments, target));
+                _pairRun, _comparison, _comparer, _services, plan, workspace, environments, target));
 
         window.Show(owner);
     }
