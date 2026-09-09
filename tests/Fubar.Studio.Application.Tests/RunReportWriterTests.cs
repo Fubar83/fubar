@@ -24,6 +24,23 @@ public class RunReportWriterTests
     private static StepReport Errored(int n) =>
         new(Step(n), StepStatus.Errored, null, null, 0, 0, [], [], "No such host is known.");
 
+    /// <summary>A step whose assertions all passed and whose ANSWER did not match. The interesting
+    /// case throughout: the two axes disagree.</summary>
+    private static StepReport Differing(int n, int differences = 1, string against = "Production") =>
+        Passed(n) with
+        {
+            Comparison = ComparisonVerdict.Differs,
+            DifferenceCount = differences,
+            ComparedAgainst = against,
+        };
+
+    private static StepReport Uncomparable(int n) =>
+        Passed(n) with
+        {
+            Comparison = ComparisonVerdict.Unavailable,
+            ComparisonUnavailableReason = "No snapshot recorded for Staging.",
+        };
+
     private static RunReport Report(params StepReport[] steps) => new(steps, 1234, false, false);
 
     // ---- JUnit ---------------------------------------------------------------------------------
@@ -117,6 +134,121 @@ public class RunReportWriterTests
         Assert.Empty(doc.Descendants("failure"));
         Assert.Empty(doc.Descendants("error"));
         Assert.Contains("503", doc.Descendants("system-out").Single().Value);
+    }
+
+    // ---- The comparison axis ---------------------------------------------------------------------
+
+    [Fact]
+    public void A_response_that_DIFFERS_is_a_failed_test_even_though_its_assertions_passed()
+    {
+        // This is what the file got wrong: it mapped StepStatus only, so a run that found real drift
+        // between two environments exited 1 while the report beside it showed every test green. The
+        // build page is the thing anyone actually looks at.
+        var doc = XDocument.Parse(JUnitRunReport.Write(Report(Differing(1))));
+
+        Assert.Equal("1", doc.Descendants("testsuite").Single().Attribute("failures")!.Value);
+        Assert.Equal("1 difference from Production", doc.Descendants("failure").Single().Attribute("message")!.Value);
+    }
+
+    [Fact]
+    public void A_missing_other_side_fails_and_says_what_is_missing()
+    {
+        // A missing snapshot is never a pass (RunReport.Ok), and "failed" on its own would send someone
+        // looking at the request rather than at the snapshot nobody recorded.
+        var failure = XDocument.Parse(JUnitRunReport.Write(Report(Uncomparable(1))))
+            .Descendants("failure").Single();
+
+        Assert.Contains("No snapshot recorded", failure.Attribute("message")!.Value);
+    }
+
+    [Fact]
+    public void The_failure_count_matches_the_failures_actually_written()
+    {
+        // The attribute and the elements come from one predicate; a report whose header disagrees with
+        // its own body is read by different CI systems as different results.
+        var doc = XDocument.Parse(JUnitRunReport.Write(
+            Report(Passed(1), Failed(2), Differing(3), Uncomparable(4), Errored(5))));
+
+        Assert.Equal(
+            doc.Descendants("failure").Count().ToString(),
+            doc.Descendants("testsuite").Single().Attribute("failures")!.Value);
+    }
+
+    [Fact]
+    public void An_assertion_failure_AND_a_difference_are_both_named()
+    {
+        var step = Failed(1) with
+        {
+            Comparison = ComparisonVerdict.Differs,
+            DifferenceCount = 3,
+            ComparedAgainst = "snapshots/all/Staging.json",
+        };
+
+        var message = XDocument.Parse(JUnitRunReport.Write(Report(step)))
+            .Descendants("failure").Single().Attribute("message")!.Value;
+
+        Assert.Equal("1 assertion failed; 3 differences from snapshots/all/Staging.json", message);
+    }
+
+    [Fact]
+    public void A_match_a_tolerance_forgave_says_so_without_failing()
+    {
+        // Green and green-because-a-rule-allowed-it are different facts.
+        var step = Passed(1) with
+        {
+            Comparison = ComparisonVerdict.Same,
+            ComparedAgainst = "Production",
+            ToleratedCount = 2,
+        };
+
+        var doc = XDocument.Parse(JUnitRunReport.Write(Report(step)));
+
+        Assert.Empty(doc.Descendants("failure"));
+        Assert.Contains("2 differences within tolerance", doc.Descendants("system-out").Single().Value);
+    }
+
+    [Fact]
+    public void Cleanup_is_described_and_never_fails_the_build()
+    {
+        // Teardown carries no verdict - it is not what was being tested - but a leak nobody hears about
+        // is the thing teardown exists to prevent, so it is still named.
+        var teardown = new StepReport(
+            Step(2) with { IsTeardown = true }, StepStatus.Failed, 500, "Server Error", 4, 0,
+            [new AssertionResult(false, "status is 204", "500")], [], null);
+
+        var doc = XDocument.Parse(JUnitRunReport.Write(Report(Passed(1), teardown)));
+
+        Assert.Empty(doc.Descendants("failure"));
+        Assert.Equal("0", doc.Descendants("testsuite").Single().Attribute("failures")!.Value);
+        Assert.Contains("Cleanup did not complete", doc.Descendants("system-out").Single().Value);
+    }
+
+    [Fact]
+    public void The_json_report_carries_the_comparison_beside_the_status()
+    {
+        using var doc = JsonDocument.Parse(JsonRunReport.Write(Report(Differing(1, 2))));
+
+        Assert.Equal(1, doc.RootElement.GetProperty("differing").GetInt32());
+
+        var step = doc.RootElement.GetProperty("steps")[0];
+        Assert.Equal("passed", step.GetProperty("status").GetString());        // the assertions did pass
+        Assert.Equal("differs", step.GetProperty("comparison").GetString());   // the answer did not match
+        Assert.Equal(2, step.GetProperty("differences").GetInt32());
+        Assert.Equal("Production", step.GetProperty("comparedAgainst").GetString());
+    }
+
+    [Fact]
+    public void The_json_report_marks_cleanup_so_a_reader_can_leave_it_out()
+    {
+        var teardown = new StepReport(
+            Step(2) with { IsTeardown = true }, StepStatus.Passed, 404, "Not Found", 1, 0, [], [], null);
+
+        using var doc = JsonDocument.Parse(JsonRunReport.Write(Report(Passed(1), teardown)));
+        var steps = doc.RootElement.GetProperty("steps");
+
+        Assert.False(steps[0].GetProperty("teardown").GetBoolean());
+        Assert.True(steps[1].GetProperty("teardown").GetBoolean());
+        Assert.Equal(1, doc.RootElement.GetProperty("total").GetInt32());
     }
 
     [Fact]
