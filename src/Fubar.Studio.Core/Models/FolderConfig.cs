@@ -27,4 +27,8 @@ public sealed class FolderConfig
     /// <summary>What to redact and normalise on the way into a snapshot, and which headers to keep.
     /// Inherited exactly like <see cref="Comparison"/>; null means this level says nothing.</summary>
     public Snapshots.SnapshotPolicy? Snapshot { get; set; }
+
+    /// <summary>Fields allowed to move, and by how much. Resolved per path, closest level winning -
+    /// see <c>ToleranceResolver</c>. Null means this level states none.</summary>
+    public List<Comparison.Tolerance>? Tolerances { get; set; }
 }

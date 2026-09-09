@@ -95,9 +95,18 @@ internal sealed class FakeComparer : IResponseComparer
 /// <summary>No rules at any level, which is what most runner tests want to say.</summary>
 internal sealed class FakeComparisonSettings : IRequestComparisonSettings
 {
-    public Task<ResolvedComparisonSettings> ResolveAsync(
+    /// <summary>Tolerances every request gets, for the tests that are about forgiving a difference.</summary>
+    public List<ResolvedTolerance> Tolerances { get; } = [];
+
+    public FakeComparisonSettings Tolerating(Tolerance tolerance)
+    {
+        Tolerances.Add(new ResolvedTolerance(tolerance, ComparisonScope.Request, "Request"));
+        return this;
+    }
+
+    public Task<ResolvedRequestRules> ResolveRulesAsync(
         Workspace workspace, string requestPath, CancellationToken ct = default) =>
-        Task.FromResult(ComparisonSettingsResolver.Resolve([]));
+        Task.FromResult(new ResolvedRequestRules(ComparisonSettingsResolver.Resolve([]), Tolerances));
 }
 
 /// <summary>

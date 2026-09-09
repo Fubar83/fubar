@@ -15,11 +15,29 @@ namespace Fubar.Studio.Application.Comparison;
 /// </remarks>
 public interface IRequestComparisonSettings
 {
-    Task<ResolvedComparisonSettings> ResolveAsync(
+    /// <summary>Everything the chain says about judging this request: what counts as a difference,
+    /// and which differences are allowed.</summary>
+    Task<ResolvedRequestRules> ResolveRulesAsync(
         Workspace workspace,
         string requestPath,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Just the comparison options, for the panes that render them and have no verdict to
+    /// reach.</summary>
+    async Task<ResolvedComparisonSettings> ResolveAsync(
+        Workspace workspace,
+        string requestPath,
+        CancellationToken cancellationToken = default) =>
+        (await ResolveRulesAsync(workspace, requestPath, cancellationToken).ConfigureAwait(false)).Comparison;
 }
+
+/// <summary>
+/// The two halves of a verdict, resolved together because they come from the same walk down the same
+/// chain - and because a caller that got one without the other would compare with half the rules.
+/// </summary>
+public sealed record ResolvedRequestRules(
+    ResolvedComparisonSettings Comparison,
+    IReadOnlyList<ResolvedTolerance> Tolerances);
 
 /// <inheritdoc cref="IRequestComparisonSettings"/>
 public sealed class RequestComparisonSettings : IRequestComparisonSettings
@@ -38,7 +56,7 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
         _requests = requests;
     }
 
-    public async Task<ResolvedComparisonSettings> ResolveAsync(
+    public async Task<ResolvedRequestRules> ResolveRulesAsync(
         Workspace workspace,
         string requestPath,
         CancellationToken cancellationToken = default)
@@ -46,6 +64,7 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
         ArgumentNullException.ThrowIfNull(workspace);
 
         var layers = new List<ComparisonSettingsLayer>();
+        var tolerances = new List<ToleranceLayer>();
 
         // Read fresh rather than cached: this runs once per comparison, not per keystroke, and another
         // window may have changed the global defaults since the run started.
@@ -55,11 +74,17 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
             layers.Add(new ComparisonSettingsLayer(global, ComparisonScope.Global, "Global"));
         }
 
+        if (app.Tolerances is { Count: > 0 } globalTolerances)
+        {
+            tolerances.Add(new ToleranceLayer(globalTolerances, ComparisonScope.Global, "Global"));
+        }
+
         var chain = await _inheritance
             .GetInheritanceChainAsync(workspace.RootPath, requestPath, cancellationToken)
             .ConfigureAwait(false);
 
         layers.AddRange(chain.ComparisonLayers);
+        tolerances.AddRange(chain.ToleranceLayers ?? []);
 
         var request = await _requests.LoadRequestAsync(requestPath, cancellationToken).ConfigureAwait(false);
         if (request.Comparison is { } own)
@@ -67,6 +92,13 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
             layers.Add(new ComparisonSettingsLayer(own, ComparisonScope.Request, "Request"));
         }
 
-        return ComparisonSettingsResolver.Resolve(layers);
+        if (request.Tolerances is { Count: > 0 } ownTolerances)
+        {
+            tolerances.Add(new ToleranceLayer(ownTolerances, ComparisonScope.Request, "Request"));
+        }
+
+        return new ResolvedRequestRules(
+            ComparisonSettingsResolver.Resolve(layers),
+            ToleranceResolver.Resolve(tolerances));
     }
 }

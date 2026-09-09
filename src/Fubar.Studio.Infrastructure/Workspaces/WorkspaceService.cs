@@ -484,6 +484,7 @@ public sealed class WorkspaceService : IWorkspaceService
         var headers = new List<InheritedHeader>();
         var comparisonLayers = new List<ComparisonSettingsLayer>();
         var snapshotLayers = new List<SnapshotPolicyLayer>();
+        var toleranceLayers = new List<ToleranceLayer>();
         string? authProfileId = null;
         string? authSourceName = null;
 
@@ -513,8 +514,25 @@ public sealed class WorkspaceService : IWorkspaceService
                     ComparisonScope.Folder,
                     $"Folder: {sourceName}"));
             }
+
+            if (config.Snapshot is not null)
+            {
+                snapshotLayers.Add(new SnapshotPolicyLayer(
+                    config.Snapshot,
+                    ComparisonScope.Folder,
+                    $"Folder: {sourceName}"));
+            }
+
+            if (config.Tolerances is { Count: > 0 })
+            {
+                toleranceLayers.Add(new ToleranceLayer(
+                    config.Tolerances,
+                    ComparisonScope.Folder,
+                    $"Folder: {sourceName}"));
+            }
         }
 
-        return new InheritanceChain(headers, authProfileId, authSourceName, comparisonLayers);
+        return new InheritanceChain(
+            headers, authProfileId, authSourceName, comparisonLayers, snapshotLayers, toleranceLayers);
     }
 }

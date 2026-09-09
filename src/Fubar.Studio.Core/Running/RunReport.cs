@@ -96,6 +96,15 @@ public sealed record StepReport(
     /// <summary>Why there was nothing to compare against. Never a reason to pass.</summary>
     public string? ComparisonUnavailableReason { get; init; }
 
+    /// <summary>Differences a tolerance forgave. Reported rather than folded into the green: a step
+    /// that matched and a step that was within tolerance in six fields are different facts, and the
+    /// second is the one worth looking at when a tolerance turns out to be too generous.</summary>
+    public int ToleratedCount { get; init; }
+
+    /// <summary>Rules that could not be applied - a tolerance stating no allowance, or one that met a
+    /// text comparison with no fields to name. A rule that silently does nothing reads as a check.</summary>
+    public IReadOnlyList<string> ComparisonWarnings { get; init; } = [];
+
     public int AssertionsPassed => Assertions.Count(a => a.Passed);
 
     public int AssertionsFailed => Assertions.Count(a => !a.Passed);
@@ -177,6 +186,10 @@ public sealed record RunReport(
     /// <summary>Steps that were meant to be compared and had nothing to compare against.</summary>
     public int Uncomparable => Steps.Count(s => s.Comparison == ComparisonVerdict.Unavailable);
 
+    /// <summary>Steps that matched only because a tolerance forgave something. Said out loud, so a
+    /// rule that turned out to be too generous is visible in the green rather than only in the file.</summary>
+    public int Tolerated => Steps.Count(s => s.ToleratedCount > 0);
+
     /// <summary>One line for a status bar or a CI log.</summary>
     public string Summary()
     {
@@ -189,6 +202,7 @@ public sealed record RunReport(
         if (Failed > 0) parts.Add($"{Failed} failed");
         if (Differing > 0) parts.Add($"{Differing} differ");
         if (Uncomparable > 0) parts.Add($"{Uncomparable} not comparable");
+        if (Tolerated > 0) parts.Add($"{Tolerated} within tolerance");
         if (Errored > 0) parts.Add($"{Errored} errored");
         if (Skipped > 0) parts.Add($"{Skipped} skipped");
         if (AssertionsFailed > 0) parts.Add($"{AssertionsFailed} assertion{(AssertionsFailed == 1 ? "" : "s")} failed");

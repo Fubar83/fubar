@@ -280,18 +280,24 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
 
         try
         {
-            var settings = await _settings
-                .ResolveAsync(run.Workspace, report.Step.FilePath, cancellationToken)
+            var rules = await _settings
+                .ResolveRulesAsync(run.Workspace, report.Step.FilePath, cancellationToken)
                 .ConfigureAwait(false);
 
             var outcome = await _comparer
-                .CompareAsync(other.Body!, body, settings, cancellationToken)
+                .CompareAsync(other.Body!, body, rules.Comparison, cancellationToken)
                 .ConfigureAwait(false);
+
+            // Tolerances run on what the comparer FOUND, so the engine stays free of them and one
+            // definition of "a difference" still feeds the row, the pane and the report.
+            var tolerated = ToleranceEvaluator.Apply(outcome, rules.Tolerances, other.Body, body);
 
             return report with
             {
-                Comparison = outcome.Same ? ComparisonVerdict.Same : ComparisonVerdict.Differs,
-                DifferenceCount = outcome.DifferenceCount,
+                Comparison = tolerated.Outcome.Same ? ComparisonVerdict.Same : ComparisonVerdict.Differs,
+                DifferenceCount = tolerated.Outcome.DifferenceCount,
+                ToleratedCount = tolerated.Tolerated,
+                ComparisonWarnings = tolerated.Warnings,
                 ComparedAgainst = other.Source,
             };
         }

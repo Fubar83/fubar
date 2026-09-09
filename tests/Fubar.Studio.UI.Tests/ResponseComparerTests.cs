@@ -35,7 +35,7 @@ public class ResponseComparerTests
     [Fact]
     public async Task Identical_responses_are_the_same()
     {
-        var outcome = await Comparer().CompareAsync("""{"a":1}""", """{"a":1}""", Settings());
+        var outcome = await Comparer().CompareAsync("""{"a":1}""", """{"a":1}""", Settings(), TestContext.Current.CancellationToken);
 
         Assert.True(outcome.Same);
         Assert.Equal(0, outcome.DifferenceCount);
@@ -47,7 +47,7 @@ public class ResponseComparerTests
     public async Task Key_order_alone_is_not_a_difference()
     {
         var outcome = await Comparer().CompareAsync(
-            """{"a":1,"b":2}""", """{"b":2,"a":1}""", Settings());
+            """{"a":1,"b":2}""", """{"b":2,"a":1}""", Settings(), TestContext.Current.CancellationToken);
 
         Assert.True(outcome.Same);
     }
@@ -56,7 +56,7 @@ public class ResponseComparerTests
     public async Task A_changed_value_is_one_difference_and_names_its_path()
     {
         var outcome = await Comparer().CompareAsync(
-            """{"a":1,"b":2}""", """{"a":1,"b":3}""", Settings());
+            """{"a":1,"b":2}""", """{"a":1,"b":3}""", Settings(), TestContext.Current.CancellationToken);
 
         Assert.Equal(1, outcome.DifferenceCount);
         Assert.True(outcome.IsSemantic);
@@ -77,15 +77,15 @@ public class ResponseComparerTests
         var left = """{"generatedAt":"2026-01-01","total":10}""";
         var right = """{"generatedAt":"2026-06-30","total":10}""";
 
-        Assert.Equal(1, (await Comparer().CompareAsync(left, right, Settings())).DifferenceCount);
-        Assert.True((await Comparer().CompareAsync(left, right, Settings("$.generatedAt"))).Same);
+        Assert.Equal(1, (await Comparer().CompareAsync(left, right, Settings(), TestContext.Current.CancellationToken)).DifferenceCount);
+        Assert.True((await Comparer().CompareAsync(left, right, Settings("$.generatedAt"), TestContext.Current.CancellationToken)).Same);
     }
 
     [Fact]
     public async Task An_added_and_a_removed_property_are_reported_as_such()
     {
         var outcome = await Comparer().CompareAsync(
-            """{"a":1,"gone":2}""", """{"a":1,"fresh":3}""", Settings());
+            """{"a":1,"gone":2}""", """{"a":1,"fresh":3}""", Settings(), TestContext.Current.CancellationToken);
 
         Assert.Contains(outcome.Differences, d => d.Kind == ResponseDifferenceKind.Added && d.Path == "$.fresh");
         Assert.Contains(outcome.Differences, d => d.Kind == ResponseDifferenceKind.Removed && d.Path == "$.gone");
@@ -96,7 +96,7 @@ public class ResponseComparerTests
     [Fact]
     public async Task Text_that_is_not_json_is_compared_as_text()
     {
-        var outcome = await Comparer().CompareAsync("hello\nworld", "hello\nthere", Settings());
+        var outcome = await Comparer().CompareAsync("hello\nworld", "hello\nthere", Settings(), TestContext.Current.CancellationToken);
 
         Assert.False(outcome.IsSemantic);
         Assert.Equal(1, outcome.DifferenceCount);

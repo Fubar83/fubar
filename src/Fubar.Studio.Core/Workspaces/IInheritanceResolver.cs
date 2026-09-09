@@ -26,7 +26,8 @@ public sealed record InheritanceChain(
     string? AuthProfileId,
     string? AuthSourceName,
     IReadOnlyList<ComparisonSettingsLayer> ComparisonLayers,
-    IReadOnlyList<Snapshots.SnapshotPolicyLayer>? SnapshotLayers = null);
+    IReadOnlyList<Snapshots.SnapshotPolicyLayer>? SnapshotLayers = null,
+    IReadOnlyList<ToleranceLayer>? ToleranceLayers = null);
 
 /// <summary>One inherited header plus which folder (or auth profile) it came from, for the Headers tab's
 /// "Source" column (RequestEditorPane.md §5).</summary>

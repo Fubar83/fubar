@@ -67,10 +67,29 @@ public sealed class DiffResponseComparer : IResponseComparer
         return new ComparisonOutcome(counted.Count, true, [.. counted.Select(Describe)]);
     }
 
+    /// <summary>
+    /// A node as the text a rule can be written against.
+    /// </summary>
+    /// <remarks>
+    /// <c>JsonAstNode</c> has no <c>ToString</c> override, so calling it gave every difference the
+    /// string "Fubar.Diff.Core.Json.JsonAstScalar" - which nothing noticed while the count was all
+    /// anyone read, and which made every tolerance a no-op the moment one was written.
+    /// <c>ComparisonText</c> is the unescaped value for a string and the raw literal otherwise, which
+    /// is what a tolerance's number, timestamp or regex has to see.
+    /// </remarks>
+    private static string? Text(JsonAstNode? node) => node switch
+    {
+        null => null,
+        JsonAstScalar scalar => scalar.ComparisonText,
+        JsonAstArray array => $"[{array.Items.Count} items]",
+        JsonAstObject obj => $"{{{obj.Properties.Count} properties}}",
+        _ => null,
+    };
+
     private static ResponseDifference Describe(JsonChange change) => new(
         change.Path.ToString(),
-        change.Left?.ToString(),
-        change.Right?.ToString(),
+        Text(change.Left),
+        Text(change.Right),
         change.Kind switch
         {
             ChangeKind.Inserted => ResponseDifferenceKind.Added,
