@@ -95,7 +95,7 @@ public sealed class SnapshotRecordingService : ISnapshotRecordingService
                 // then compare against.
                 if (step.Status is not StepStatus.Skipped)
                 {
-                    warnings.Add($"{step.Step.Name}: nothing recorded ({Reason(step)})");
+                    warnings.Add($"{step.Step.QualifiedName}: nothing recorded ({Reason(step)})");
                 }
 
                 continue;
@@ -115,14 +115,14 @@ public sealed class SnapshotRecordingService : ISnapshotRecordingService
 
             foreach (var path in result.UnsupportedPaths)
             {
-                warnings.Add($"{step.Step.Name}: rule \"{path}\" could not be applied");
+                warnings.Add($"{step.Step.QualifiedName}: rule \"{path}\" could not be applied");
             }
 
             await _store
                 .SaveAsync(recording.Workspace.RootPath, step.Step.SubjectPath, result.Snapshot, cancellationToken)
                 .ConfigureAwait(false);
 
-            written.Add(step.Step.Name);
+            written.Add(step.Step.QualifiedName);
         }
 
         return new SnapshotRecordingReport(report, written, warnings);

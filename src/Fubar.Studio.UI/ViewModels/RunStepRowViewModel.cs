@@ -17,7 +17,7 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
     {
         Step = step;
         Order = step.Order;
-        Name = step.Name;
+        Name = step.QualifiedName;
     }
 
     public RunStep Step { get; }

@@ -29,13 +29,13 @@
             <TextBox Text="{Binding Description}"
                      PlaceholderText="What this case is for - a case named &quot;not-found&quot; still owes the reader why" />
 
-            <Border Background="{DynamicResource BgSubtle}"
+            <Border Background="{DynamicResource BgHeader}"
                     CornerRadius="4"
                     Padding="10,7">
                 <StackPanel Spacing="2">
                     <TextBlock Text="{Binding EndpointName}" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding EndpointSummary}"
-                               FontFamily="{DynamicResource MonoFontFamily}"
+                               FontFamily="Cascadia Code,Consolas,monospace"
                                FontSize="12"
                                TextWrapping="Wrap"
                                Foreground="{DynamicResource TextSecondary}" />
@@ -72,7 +72,7 @@
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding Key}"
                                                        VerticalAlignment="Center"
-                                                       FontFamily="{DynamicResource MonoFontFamily}" />
+                                                       FontFamily="Cascadia Code,Consolas,monospace" />
                                             <TextBox Grid.Column="1"
                                                      Text="{Binding Value}"
                                                      PlaceholderText="Value"

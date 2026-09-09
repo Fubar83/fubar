@@ -84,7 +84,13 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
             Name = endpointCase.Name,
             Assertions = endpointCase.Assertions,
             Captures = endpointCase.Captures,
-        });
+        })
+        {
+            // A case has no timeout of its own - it inherits the endpoint's. Showing the control
+            // would promise an override the format does not have, and the value typed into it would
+            // vanish on save.
+            ShowTimeout = false,
+        };
 
         QueryParams.Changed += MarkDirty;
         Headers.Changed += MarkDirty;

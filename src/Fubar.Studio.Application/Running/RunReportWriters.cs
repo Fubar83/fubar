@@ -39,7 +39,7 @@ public static class JsonRunReport
                 steps = report.Steps.Select(s => new
                 {
                     order = s.Step.Order,
-                    name = s.Step.Name,
+                    name = s.Step.QualifiedName,
                     path = s.Step.FilePath,
                     status = s.Status.ToString().ToLowerInvariant(),
                     statusCode = s.StatusCode,
@@ -106,7 +106,7 @@ public static class JUnitRunReport
         foreach (var step in report.Steps)
         {
             writer.WriteStartElement("testcase");
-            writer.WriteAttributeString("name", step.Step.Name);
+            writer.WriteAttributeString("name", step.Step.QualifiedName);
             // The folder becomes the classname, so a CI page groups requests the way the collection does.
             writer.WriteAttributeString("classname", ClassNameFor(step));
             writer.WriteAttributeString("time", Seconds(step.ElapsedMilliseconds));

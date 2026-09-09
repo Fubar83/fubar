@@ -236,7 +236,7 @@ public static class CliRunner
                 // Said out loud, because it is the one thing that does not move the exit code and is
                 // still usually worth a look.
                 output.WriteLine(
-                    $"  note: {unexpected.Step.Name} responded {unexpected.StatusCode} with no assertion to judge it.");
+                    $"  note: {unexpected.Step.QualifiedName} responded {unexpected.StatusCode} with no assertion to judge it.");
             }
         }
 
@@ -264,7 +264,7 @@ public static class CliRunner
             ? step.Error ?? "no response"
             : $"{step.StatusCode} · {step.ElapsedMilliseconds:N0} ms";
 
-        var line = $"{mark,-5} {step.Step.Order,3}. {step.Step.Name}  ({detail})";
+        var line = $"{mark,-5} {step.Step.Order,3}. {step.Step.QualifiedName}  ({detail})";
 
         return step.AssertionsFailed == 0
             ? line
