@@ -12,7 +12,11 @@ public sealed partial class BatchRowViewModel : ViewModelBase
     public BatchRowViewModel(BatchSummary summary, Batch batch)
     {
         FilePath = summary.FilePath;
-        Name = batch.Name;
+
+        // The FILE's name, not the document's. A selector says @smoke and IBatchStore.FindBatchAsync
+        // resolves that against the directory listing, so showing the name INSIDE the file would put a
+        // Run button next to a name nothing can be found by the moment the two disagree.
+        Name = summary.Name;
         Model = batch;
 
         var steps = $"{batch.Steps.Count} step{(batch.Steps.Count == 1 ? "" : "s")}";
@@ -76,6 +80,17 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
     /// because a run needs the active environment, which lives beside this view model.</summary>
     public event Action<BatchRowViewModel>? RunRequested;
 
+    /// <summary>
+    /// Raised when a batch is chosen for editing, with its file and a freshly read copy of it -
+    /// <c>MainViewModel</c> opens a <see cref="BatchEditorViewModel"/> for it in the main canvas.
+    /// </summary>
+    /// <remarks>
+    /// Re-read rather than the row's own <c>Model</c>, which was loaded when the workspace last
+    /// changed: an editor opened on a stale copy would save it back over whatever has happened to the
+    /// file since.
+    /// </remarks>
+    public event Action<string, Batch>? EditRequested;
+
     /// <summary>Called whenever the active workspace changes (or closes).</summary>
     public async Task SetWorkspaceAsync(Workspace? workspace)
     {
@@ -119,6 +134,27 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task EditAsync(BatchRowViewModel? row)
+    {
+        if (row is not null)
+        {
+            await OpenAsync(row.FilePath, row.Name);
+        }
+    }
+
+    private async Task OpenAsync(string filePath, string name)
+    {
+        try
+        {
+            EditRequested?.Invoke(filePath, await _batches.LoadBatchAsync(filePath));
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not open the batch \"{name}\": {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
     private async Task NewBatchAsync()
     {
         if (_workspace is not { } workspace)
@@ -131,5 +167,9 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
         _statusLog.Log($"Created batch: {path}");
 
         await ReloadAsync();
+
+        // Opened straight away. A new batch is empty - a row saying "0 steps" with no way in but a
+        // text editor is what made batches a JSON-editing job in the first place.
+        await OpenAsync(path, System.IO.Path.GetFileNameWithoutExtension(path));
     }
 }

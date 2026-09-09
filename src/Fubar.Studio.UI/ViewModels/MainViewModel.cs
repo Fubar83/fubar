@@ -127,6 +127,7 @@ public partial class MainViewModel : ViewModelBase
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
         LeftPane.AuthProfilesSection.EditRequested += OpenAuthProfileEditor;
         LeftPane.BatchesSection.RunRequested += row => _ = OnRunBatchRequestedAsync(row);
+        LeftPane.BatchesSection.EditRequested += OpenBatchEditor;
 
         // A failure reported into a collapsed panel is not reported. The strip opens itself the first
         // time something actually goes wrong; the badge on the shell covers everything after that.
@@ -658,6 +659,23 @@ public partial class MainViewModel : ViewModelBase
         }
 
         return true;
+    }
+
+    /// <summary>Opens a batch in the main canvas - wired to
+    /// <see cref="BatchesSectionViewModel.EditRequested"/>, which reads it fresh from disk first.</summary>
+    private void OpenBatchEditor(string filePath, Batch batch)
+    {
+        if (WorkspaceExplorer.ActiveRoot is not { } root)
+        {
+            return;
+        }
+
+        var editor = _editorFactory.CreateBatchEditor(
+            batch, filePath, root.Workspace, [.. EnvironmentManager.Environments.Select(e => e.Name)]);
+
+        // A rename moves the file, so the list is rebuilt rather than relabelled.
+        editor.Saved += () => _ = LeftPane.BatchesSection.ReloadAsync();
+        ActiveEditor = editor;
     }
 
     /// <summary>Opens <paramref name="environment"/>'s variables for editing in the main canvas -

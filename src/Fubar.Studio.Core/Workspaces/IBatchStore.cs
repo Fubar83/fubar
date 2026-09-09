@@ -29,4 +29,29 @@ public interface IBatchStore
 
     /// <summary>Creates an empty batch named <paramref name="name"/> and returns its full path.</summary>
     string CreateBatch(string workspaceRoot, string name);
+
+    /// <summary>
+    /// Renames a batch and returns its new path.
+    /// </summary>
+    /// <remarks>
+    /// A batch's name IS its file name - <see cref="FindBatchAsync"/> resolves <c>@smoke</c> against
+    /// the directory listing - so renaming one moves a file rather than setting a field. Throws when a
+    /// batch by that name already exists: quietly replacing one occasion with another is not a rename.
+    /// </remarks>
+    string RenameBatch(string batchFilePath, string newName);
+
+    /// <summary>
+    /// Whether <paramref name="name"/> can name a batch.
+    /// </summary>
+    /// <remarks>
+    /// Both separators are rejected explicitly rather than left to
+    /// <see cref="System.IO.Path.GetInvalidFileNameChars"/>, which on Unix reports only NUL and
+    /// <c>/</c> - a name holding a backslash would pass there and produce one file on Windows and
+    /// another on Linux out of the same workspace.
+    /// </remarks>
+    static bool IsValidBatchName(string? name) =>
+        !string.IsNullOrWhiteSpace(name)
+        && !name.Contains('/')
+        && !name.Contains('\\')
+        && name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) < 0;
 }

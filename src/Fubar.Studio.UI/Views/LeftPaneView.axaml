@@ -216,13 +216,22 @@
                                                            Foreground="{DynamicResource TextSecondary}"
                                                            TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
-                                            <Button Grid.Column="1" Classes="secondary-btn"
-                                                    Content="Run"
-                                                    FontSize="11"
-                                                    Padding="8,2"
-                                                    VerticalAlignment="Center"
-                                                    Command="{Binding $parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).BatchesSection.RunCommand}"
-                                                    CommandParameter="{Binding}" />
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                                        VerticalAlignment="Center">
+                                                <Button Classes="secondary-btn"
+                                                        Content="Edit"
+                                                        FontSize="11"
+                                                        Padding="8,2"
+                                                        ToolTip.Tip="Its steps, its cleanup, and what judges it"
+                                                        Command="{Binding $parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).BatchesSection.EditCommand}"
+                                                        CommandParameter="{Binding}" />
+                                                <Button Classes="secondary-btn"
+                                                        Content="Run"
+                                                        FontSize="11"
+                                                        Padding="8,2"
+                                                        Command="{Binding $parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).BatchesSection.RunCommand}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>

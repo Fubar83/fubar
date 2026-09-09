@@ -82,4 +82,34 @@ public sealed class FileBatchStore : IBatchStore
 
         return path;
     }
+
+    public string RenameBatch(string batchFilePath, string newName)
+    {
+        if (!IBatchStore.IsValidBatchName(newName))
+        {
+            throw new ArgumentException($"\"{newName}\" cannot name a batch.", nameof(newName));
+        }
+
+        var destination = Path.Combine(
+            Path.GetDirectoryName(batchFilePath) ?? "", newName + Extension);
+
+        // Case-only renames are a move onto "the same" file on Windows and a different one elsewhere.
+        // Compared ordinally so "smoke" -> "Smoke" is still done rather than skipped.
+        if (string.Equals(destination, batchFilePath, StringComparison.Ordinal))
+        {
+            return batchFilePath;
+        }
+
+        // File.Move's own overwrite flag defaults to false, but the check is here anyway so the
+        // failure names the batch rather than the path.
+        if (!string.Equals(destination, batchFilePath, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(destination))
+        {
+            throw new IOException($"There is already a batch called \"{newName}\".");
+        }
+
+        File.Move(batchFilePath, destination);
+
+        return destination;
+    }
 }

@@ -144,6 +144,8 @@ public class BatchPlannerTests
             throw new NotSupportedException();
 
         public string CreateBatch(string workspaceRoot, string name) => throw new NotSupportedException();
+
+        public string RenameBatch(string batchFilePath, string newName) => throw new NotSupportedException();
     }
 
     /// <summary>

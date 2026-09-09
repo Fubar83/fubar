@@ -1,0 +1,205 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="620"
+             x:Class="Fubar.Studio.UI.Views.BatchEditorView"
+             x:DataType="vm:BatchEditorViewModel"
+             Background="{DynamicResource BgEditorCanvas}">
+
+    <!-- One batches/<name>.json (docs/spec-endpoints.md §9.7). Until this existed a batch was made
+         from the Left Pane and then edited as JSON, which meant its one real hazard - a step naming
+         an endpoint path that is not there - could only be found by running it. -->
+
+    <UserControl.Resources>
+        <!-- One template for both lists. A cleanup step is the same KIND of thing as a step - what
+             differs is when it runs and that it cannot fail the batch - so it is edited the same way
+             and the difference is said by the heading it sits under. -->
+        <DataTemplate x:Key="StepRow" DataType="vm:BatchStepRowViewModel">
+            <Border BorderBrush="{DynamicResource BorderEditor}" BorderThickness="0,0,0,1" Padding="6,5">
+                <Grid ColumnDefinitions="*,10,230,Auto,Auto,Auto">
+
+                    <ComboBox Grid.Column="0"
+                              ItemsSource="{Binding Targets}"
+                              SelectedItem="{Binding Target}"
+                              HorizontalAlignment="Stretch"
+                              Classes.unresolved="{Binding IsUnresolved}"
+                              ToolTip.Tip="An endpoint, or a folder to run everything under it" />
+
+                    <ComboBox Grid.Column="2"
+                              ItemsSource="{Binding Cases}"
+                              SelectedItem="{Binding SelectedCase}"
+                              HorizontalAlignment="Stretch"
+                              IsVisible="{Binding CanChooseCase}" />
+
+                    <!-- A folder, or an endpoint with no cases, has nothing to choose between. It says
+                         what it will do instead of showing a picker with one entry. -->
+                    <TextBlock Grid.Column="2"
+                               Classes="hint"
+                               VerticalAlignment="Center"
+                               Margin="8,0"
+                               IsVisible="{Binding !CanChooseCase}"
+                               Text="{Binding WholeTargetDescription}" />
+
+                    <Button Grid.Column="3" Classes="icon-btn" Content="&#x25B2;" FontSize="9"
+                            ToolTip.Tip="Move up"
+                            Command="{Binding $parent[ItemsControl].((vm:BatchEditorViewModel)DataContext).MoveUpCommand}"
+                            CommandParameter="{Binding}" />
+
+                    <Button Grid.Column="4" Classes="icon-btn" Content="&#x25BC;" FontSize="9"
+                            ToolTip.Tip="Move down"
+                            Command="{Binding $parent[ItemsControl].((vm:BatchEditorViewModel)DataContext).MoveDownCommand}"
+                            CommandParameter="{Binding}" />
+
+                    <Button Grid.Column="5" Classes="icon-btn icon-btn-danger" Content="&#x2715;" FontSize="11"
+                            ToolTip.Tip="Remove this step"
+                            Command="{Binding $parent[ItemsControl].((vm:BatchEditorViewModel)DataContext).RemoveCommand}"
+                            CommandParameter="{Binding}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <!-- A step whose target the workspace no longer has. It is not removed and not hidden: the
+             planner turns one into a step that ERRORS rather than skipping it, and this is the same
+             fact said earlier. -->
+        <Style Selector="ComboBox.unresolved">
+            <Setter Property="BorderBrush" Value="{DynamicResource StatusClientErrorFg}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <Style Selector="TextBlock.columnhead">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel Margin="20,16">
+
+        <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,14">
+
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Batch"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <TextBox Text="{Binding Name}" Width="240" FontWeight="Bold" FontSize="14"
+                         ToolTip.Tip="The file's name too - this is what @name means on the command line, so saving a new one renames the file" />
+                <Button Content="Save" Classes="primary-btn" Command="{Binding SaveCommand}" />
+
+                <fc:StatusDot Diameter="6"
+                              Background="{DynamicResource StatusDirty}"
+                              IsVisible="{Binding IsDirty}"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="Unsaved changes" />
+            </StackPanel>
+
+            <TextBox Text="{Binding Description}"
+                     PlaceholderText="What occasion this is for - &quot;the smoke test&quot; still owes the reader what it proves" />
+
+            <!-- What judges it, and against what. The three choices and their sentences are the Run
+                 window's own, because they are the same three. -->
+            <Border Background="{DynamicResource BgHeader}" CornerRadius="4" Padding="10,8">
+                <StackPanel Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Judged by" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondary}" />
+                        <ComboBox ItemsSource="{Binding Oracles}"
+                                  SelectedItem="{Binding SelectedOracle}"
+                                  MinWidth="180" />
+
+                        <TextBlock Text="on" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondary}" />
+                        <ComboBox ItemsSource="{Binding EnvironmentNames}"
+                                  SelectedItem="{Binding PrimaryEnvironment}"
+                                  MinWidth="150"
+                                  ToolTip.Tip="Leave empty to use whichever environment is active when it runs - which is what makes one batch usable from the toolbar and from CI" />
+
+                        <TextBlock Text="versus" VerticalAlignment="Center"
+                                   IsVisible="{Binding NeedsOtherEnvironment}"
+                                   Foreground="{DynamicResource TextSecondary}" />
+                        <ComboBox ItemsSource="{Binding EnvironmentNames}"
+                                  SelectedItem="{Binding OtherEnvironment}"
+                                  MinWidth="150"
+                                  IsVisible="{Binding NeedsOtherEnvironment}" />
+                    </StackPanel>
+
+                    <TextBlock Classes="hint" Text="{Binding OracleDescription}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <CheckBox Content="Stop at the first failure"
+                                  IsChecked="{Binding StopOnFailure}"
+                                  ToolTip.Tip="The right setting for a chain - and the reason cleanup belongs below rather than as a last step" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Wait between steps" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                            <NumericUpDown Value="{Binding DelayMilliseconds}"
+                                           Minimum="0"
+                                           Maximum="60000"
+                                           Increment="100"
+                                           FormatString="0"
+                                           Width="120" />
+                            <TextBlock Text="ms" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <ScrollViewer>
+            <StackPanel Spacing="6">
+
+                <!-- Steps -->
+
+                <TextBlock Text="STEPS" Classes="columnhead" Margin="6,4,0,0" />
+                <TextBlock Classes="hint" Margin="6,0,0,4"
+                           Text="In the order they are sent. The order is the batch's own and is never sorted - a batch that starts with a login is stating a dependency." />
+
+                <TextBlock Classes="hint" Margin="6,4"
+                           IsVisible="{Binding !HasSteps}"
+                           Text="No steps yet. Add one, and choose what it calls." />
+
+                <ItemsControl ItemsSource="{Binding Steps}" ItemTemplate="{StaticResource StepRow}" />
+
+                <Button Classes="secondary-btn"
+                        Content="+ Add step"
+                        Margin="6,4,0,0"
+                        HorizontalAlignment="Left"
+                        Command="{Binding AddStepCommand}" />
+
+                <!-- Cleanup -->
+
+                <Border Background="{DynamicResource BorderSubtle}" Height="1" Margin="0,14,0,8" />
+
+                <TextBlock Text="CLEANUP" Classes="columnhead" Margin="6,0,0,0" />
+                <TextBlock Classes="hint" Margin="6,0,0,4"
+                           Text="Run after the steps whatever happened to them, and never counted towards the verdict. Where the delete goes when it is housekeeping rather than a test: stopping at the first failure guarantees a step in the middle would otherwise skip it, leaving a row behind on every red run." />
+
+                <TextBlock Classes="hint" Margin="6,4"
+                           IsVisible="{Binding !HasTeardown}"
+                           Text="No cleanup. Fine for a batch that only reads." />
+
+                <ItemsControl ItemsSource="{Binding Teardown}" ItemTemplate="{StaticResource StepRow}" />
+
+                <Button Classes="secondary-btn"
+                        Content="+ Add cleanup step"
+                        Margin="6,4,0,20"
+                        HorizontalAlignment="Left"
+                        Command="{Binding AddTeardownCommand}" />
+            </StackPanel>
+        </ScrollViewer>
+
+    </DockPanel>
+
+</UserControl>
