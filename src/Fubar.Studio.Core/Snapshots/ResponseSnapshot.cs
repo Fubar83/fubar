@@ -29,6 +29,11 @@ public enum SnapshotScope
 /// </remarks>
 public sealed class ResponseSnapshot
 {
+    /// <summary>Which case of the endpoint this was recorded from, or null in the requests format.
+    /// The directory already says it; the field is here so the file still says what it is after
+    /// someone moves it, which is what <see cref="Environment"/> is for too.</summary>
+    public string? Case { get; set; }
+
     /// <summary>The environment this was recorded from, or null for a shared snapshot. The file says
     /// what it is, so nothing has to infer scope from a name a merge may have given it.</summary>
     public string? Environment { get; set; }

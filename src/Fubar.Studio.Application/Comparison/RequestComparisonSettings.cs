@@ -17,9 +17,13 @@ public interface IRequestComparisonSettings
 {
     /// <summary>Everything the chain says about judging this request: what counts as a difference,
     /// and which differences are allowed.</summary>
+    /// <param name="casePath">The <c>cases/&lt;name&gt;.json</c> being run, when there is one. The
+    /// innermost level, applied after the endpoint's own - null in the requests format and for an
+    /// endpoint sent as it stands.</param>
     Task<ResolvedRequestRules> ResolveRulesAsync(
         Workspace workspace,
         string requestPath,
+        string? casePath = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Just the comparison options, for the panes that render them and have no verdict to
@@ -28,7 +32,8 @@ public interface IRequestComparisonSettings
         Workspace workspace,
         string requestPath,
         CancellationToken cancellationToken = default) =>
-        (await ResolveRulesAsync(workspace, requestPath, cancellationToken).ConfigureAwait(false)).Comparison;
+        (await ResolveRulesAsync(workspace, requestPath, null, cancellationToken).ConfigureAwait(false))
+        .Comparison;
 }
 
 /// <summary>
@@ -45,20 +50,24 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
     private readonly IAppSettingsService _appSettings;
     private readonly IInheritanceResolver _inheritance;
     private readonly IRequestStore _requests;
+    private readonly IEndpointStore _endpoints;
 
     public RequestComparisonSettings(
         IAppSettingsService appSettings,
         IInheritanceResolver inheritance,
-        IRequestStore requests)
+        IRequestStore requests,
+        IEndpointStore endpoints)
     {
         _appSettings = appSettings;
         _inheritance = inheritance;
         _requests = requests;
+        _endpoints = endpoints;
     }
 
     public async Task<ResolvedRequestRules> ResolveRulesAsync(
         Workspace workspace,
         string requestPath,
+        string? casePath = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workspace);
@@ -95,6 +104,22 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
         if (request.Tolerances is { Count: > 0 } ownTolerances)
         {
             tolerances.Add(new ToleranceLayer(ownTolerances, ComparisonScope.Request, "Request"));
+        }
+
+        if (casePath is { Length: > 0 })
+        {
+            var endpointCase = await _endpoints.LoadCaseAsync(casePath, cancellationToken).ConfigureAwait(false);
+            var sourceName = $"Case: {endpointCase.Name}";
+
+            if (endpointCase.Comparison is { } caseComparison)
+            {
+                layers.Add(new ComparisonSettingsLayer(caseComparison, ComparisonScope.Case, sourceName));
+            }
+
+            if (endpointCase.Tolerances is { Count: > 0 } caseTolerances)
+            {
+                tolerances.Add(new ToleranceLayer(caseTolerances, ComparisonScope.Case, sourceName));
+            }
         }
 
         return new ResolvedRequestRules(

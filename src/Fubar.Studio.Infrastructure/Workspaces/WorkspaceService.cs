@@ -68,7 +68,14 @@ public sealed class WorkspaceService : IWorkspaceService
         // in a way that opening the wrong workspace is not.
         if (!IsWorkspaceRoot(rootPath))
         {
-            var manifest = new AppManifest { Name = new DirectoryInfo(rootPath).Name };
+            // NEW workspaces get the endpoints format; existing ones are never converted on open
+            // (spec §10.4). Stamped rather than left to default, so the file says which shape it is
+            // in and no code anywhere has to work it out from what is on disk.
+            var manifest = new AppManifest
+            {
+                Name = new DirectoryInfo(rootPath).Name,
+                Format = WorkspaceFormat.Endpoints,
+            };
 
             await SaveAppManifestAsync(rootPath, manifest, cancellationToken);
 
@@ -181,13 +188,55 @@ public sealed class WorkspaceService : IWorkspaceService
         return Directory.Exists(collectionsPath) ? ScanDirectory(collectionsPath) : [];
     }
 
+    /// <summary>
+    /// An endpoint directory as one node: the endpoint itself, with its cases as children.
+    /// </summary>
+    /// <remarks>
+    /// <para>Recognised structurally - a directory holding <c>endpoint.json</c> - rather than by
+    /// asking the manifest, and this is the one place that is right. The format field decides what
+    /// gets CREATED and which editor opens; the tree has to describe what is actually there, and a
+    /// half-converted workspace whose tree showed a folder full of stray json files would be a tree
+    /// nobody could act on. A workspace in the requests format has no <c>endpoint.json</c> anywhere,
+    /// so this costs it nothing.</para>
+    /// <para><c>cases/</c> and <c>snapshots/</c> are not folders. Scanning into them would put a
+    /// snapshot file in the tree as if it were a request, and a run over the folder would try to
+    /// send it.</para>
+    /// </remarks>
+    private WorkspaceTreeNode ScanEndpoint(string directoryPath)
+    {
+        var casesPath = Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.CasesDirName);
+
+        var cases = Directory.Exists(casesPath)
+            ? Directory.EnumerateFiles(casesPath, $"*{RequestFileExtension}")
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .Select(f => new WorkspaceTreeNode(
+                    Path.GetFileNameWithoutExtension(f), f, false, [])
+                {
+                    Kind = WorkspaceNodeKind.Case,
+                })
+                .ToList()
+            : [];
+
+        return new WorkspaceTreeNode(
+            Path.GetFileName(directoryPath),
+            directoryPath,
+            true,
+            cases,
+            TryReadRequestSummary(Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.EndpointFileName)))
+        {
+            Kind = WorkspaceNodeKind.Endpoint,
+        };
+    }
+
     private IReadOnlyList<WorkspaceTreeNode> ScanDirectory(string directoryPath)
     {
         var nodes = new List<WorkspaceTreeNode>();
 
         foreach (var dir in Directory.EnumerateDirectories(directoryPath).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
         {
-            nodes.Add(new WorkspaceTreeNode(Path.GetFileName(dir), dir, true, ScanDirectory(dir)));
+            nodes.Add(File.Exists(Path.Combine(dir, Core.Workspaces.IEndpointStore.EndpointFileName))
+                ? ScanEndpoint(dir)
+                : new WorkspaceTreeNode(Path.GetFileName(dir), dir, true, ScanDirectory(dir)));
         }
 
         foreach (var file in Directory.EnumerateFiles(directoryPath, $"*{RequestFileExtension}").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))

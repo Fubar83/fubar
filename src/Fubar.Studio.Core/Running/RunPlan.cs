@@ -12,7 +12,39 @@ namespace Fubar.Studio.Core.Running;
 /// loaded <see cref="RequestModel"/>s: a run of any size would otherwise hold every request in memory
 /// before sending the first one, and the runner has to re-read from disk anyway (see below).</param>
 /// <param name="FolderPath">The containing folder, for grouping in the report.</param>
-public sealed record RunStep(int Order, string Name, string FilePath, string FolderPath);
+/// <param name="CaseName">Which case of the endpoint this step is, or null in the requests format and
+/// for an endpoint sent as it stands. A case is a way of CALLING the endpoint, so it is a second
+/// coordinate rather than a different <paramref name="FilePath"/>.</param>
+/// <param name="CaseFilePath">Absolute path to the <c>cases/&lt;name&gt;.json</c>, read when the step's
+/// turn comes for the same reason the request is.</param>
+public sealed record RunStep(
+    int Order,
+    string Name,
+    string FilePath,
+    string FolderPath,
+    string? CaseName = null,
+    string? CaseFilePath = null)
+{
+    /// <summary>
+    /// What identifies this step to a reader - "Get order" or "Get order#not-found".
+    /// </summary>
+    /// <remarks>
+    /// A JUnit test name, so it must be stable and unique within a run: an index would leave CI
+    /// unable to say which test started failing the moment anything was reordered.
+    /// </remarks>
+    public string QualifiedName => CaseName is { Length: > 0 } name ? $"{Name}#{name}" : Name;
+
+    /// <summary>
+    /// The file that identifies WHAT WAS SENT - the case when there is one, the request or endpoint
+    /// otherwise.
+    /// </summary>
+    /// <remarks>
+    /// What a snapshot is keyed by. Two cases of one endpoint answer differently by design, so keying
+    /// snapshots on the endpoint alone would have each case overwrite the other's recording and every
+    /// run report the other case's answer as a regression.
+    /// </remarks>
+    public string SubjectPath => CaseFilePath is { Length: > 0 } path ? path : FilePath;
+}
 
 /// <summary>
 /// The ordered list of requests a run will send, flattened from a workspace subtree.
@@ -63,7 +95,9 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
             Walk(root, root.IsDirectory ? root.FullPath : ParentOf(root.FullPath), branch);
             foreach (var step in branch)
             {
-                if (seen.Add(step.FilePath))
+                // Keyed on the case as well as the endpoint: several cases share one endpoint.json,
+                // and keying on the file alone would silently run the first case and drop the rest.
+                if (seen.Add($"{step.FilePath}#{step.CaseFilePath}"))
                 {
                     steps.Add(step);
                 }
@@ -84,7 +118,7 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
         }
 
         var kept = Steps
-            .Where(s => s.Name.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(s => s.QualifiedName.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         return new RunPlan(Renumbered(kept));
@@ -92,17 +126,59 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
 
     private static void Walk(WorkspaceTreeNode node, string folderPath, List<RunStep> into)
     {
-        if (!node.IsDirectory)
+        switch (node.Kind)
         {
-            into.Add(new RunStep(into.Count + 1, RequestName(node.Name), node.FullPath, folderPath));
-            return;
-        }
+            case WorkspaceNodeKind.Request:
+                into.Add(new RunStep(into.Count + 1, RequestName(node.Name), node.FullPath, folderPath));
+                return;
 
-        foreach (var child in node.Children)
-        {
-            Walk(child, child.IsDirectory ? child.FullPath : node.FullPath, into);
+            // An endpoint runs every case it has - "run this endpoint" means "check the ways it is
+            // called", not "send one of them and hope it was the interesting one". An endpoint with no
+            // cases is sent as it stands, which is a legitimate state and not an empty run.
+            case WorkspaceNodeKind.Endpoint:
+                if (node.Children.Count == 0)
+                {
+                    into.Add(new RunStep(
+                        into.Count + 1, node.Name, EndpointFile(node.FullPath), ParentOf(node.FullPath)));
+                    return;
+                }
+
+                foreach (var child in node.Children)
+                {
+                    Walk(child, folderPath, into);
+                }
+
+                return;
+
+            case WorkspaceNodeKind.Case:
+                var endpointDirectory = EndpointDirectoryOfCase(node.FullPath);
+                into.Add(new RunStep(
+                    into.Count + 1,
+                    Path.GetFileName(endpointDirectory),
+                    EndpointFile(endpointDirectory),
+                    ParentOf(endpointDirectory),
+                    node.Name,
+                    node.FullPath));
+                return;
+
+            default:
+                foreach (var child in node.Children)
+                {
+                    Walk(child, child.IsDirectory ? child.FullPath : node.FullPath, into);
+                }
+
+                return;
         }
     }
+
+    private static string EndpointFile(string endpointDirectory) =>
+        Path.Combine(endpointDirectory, "endpoint.json");
+
+    /// <summary>A case lives at <c>&lt;endpoint&gt;/cases/&lt;name&gt;.json</c>, so its endpoint is two
+    /// levels up. Derived rather than carried: the tree already says where the file is, and a second
+    /// copy of that fact is a second thing to keep in step.</summary>
+    private static string EndpointDirectoryOfCase(string caseFilePath) =>
+        ParentOf(ParentOf(caseFilePath));
 
     private static List<RunStep> Renumbered(List<RunStep> steps) =>
         [.. steps.Select((s, i) => s with { Order = i + 1 })];

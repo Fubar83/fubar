@@ -102,10 +102,46 @@ public sealed class FileSnapshotStore : ISnapshotStore
     }
 
     /// <summary>The sibling directory holding one request's snapshots.</summary>
+    /// <summary>
+    /// Where one subject's snapshots live. The subject is whichever file identifies what was sent - a
+    /// <c>request.json</c>, an <c>endpoint.json</c>, or a case file - so callers say what they ran and
+    /// nothing has to carry a second "which case" argument down the whole stack.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><c>collections/Ping.json</c> → <c>collections/Ping.snapshots/</c> (requests format)</item>
+    /// <item><c>…/get-order/endpoint.json</c> → <c>…/get-order/snapshots/</c></item>
+    /// <item><c>…/get-order/cases/not-found.json</c> → <c>…/get-order/snapshots/not-found/</c></item>
+    /// </list>
+    /// <para>A directory per case rather than one file per environment for the whole endpoint: two
+    /// cases of an endpoint answer differently by design - that is what makes them two cases - so one
+    /// <c>staging.json</c> between them would have each overwrite the other, and every run would
+    /// report the other case's answer as a regression.</para>
+    /// </remarks>
     private static string DirectoryFor(string requestPath)
     {
         var parent = Path.GetDirectoryName(requestPath)
                      ?? throw new InvalidOperationException($"\"{requestPath}\" has no parent directory.");
+
+        if (string.Equals(
+                Path.GetFileName(requestPath),
+                Core.Workspaces.IEndpointStore.EndpointFileName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Path.Combine(parent, Core.Workspaces.IEndpointStore.SnapshotsDirName);
+        }
+
+        if (string.Equals(
+                Path.GetFileName(parent),
+                Core.Workspaces.IEndpointStore.CasesDirName,
+                StringComparison.OrdinalIgnoreCase)
+            && Path.GetDirectoryName(parent) is { } endpointDirectory)
+        {
+            return Path.Combine(
+                endpointDirectory,
+                Core.Workspaces.IEndpointStore.SnapshotsDirName,
+                Path.GetFileNameWithoutExtension(requestPath));
+        }
 
         return Path.Combine(parent, Path.GetFileNameWithoutExtension(requestPath) + SnapshotDirectorySuffix);
     }

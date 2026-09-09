@@ -18,11 +18,16 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 {
     private const string RequestExtension = ".json";
 
-    public WorkspaceNodeViewModel(string name, string fullPath, bool isDirectory)
+    public WorkspaceNodeViewModel(
+        string name,
+        string fullPath,
+        bool isDirectory,
+        WorkspaceNodeKind? kind = null)
     {
         Name = name;
         FullPath = fullPath;
         IsDirectory = isDirectory;
+        Kind = kind ?? (isDirectory ? WorkspaceNodeKind.Folder : WorkspaceNodeKind.Request);
     }
 
     [ObservableProperty]
@@ -48,6 +53,21 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
     public bool IsDirectory { get; }
 
+    /// <summary>What this node is - folder, request, endpoint or case. A directory flag alone can no
+    /// longer say: an endpoint is a directory and is not a folder.</summary>
+    public WorkspaceNodeKind Kind { get; }
+
+    /// <summary>An endpoint directory. Bound by the tree for its own glyph, and by the context menu,
+    /// which offers "Add case" here and nowhere else.</summary>
+    public bool IsEndpoint => Kind == WorkspaceNodeKind.Endpoint;
+
+    /// <summary>One case of an endpoint.</summary>
+    public bool IsCase => Kind == WorkspaceNodeKind.Case;
+
+    /// <summary>A plain folder - which an endpoint is NOT, though both are directories. What the
+    /// "New folder"/"New request" menu items key off, so neither is offered inside an endpoint.</summary>
+    public bool IsPlainFolder => Kind == WorkspaceNodeKind.Folder;
+
     public ObservableCollection<WorkspaceNodeViewModel> Children { get; } = [];
 
     /// <summary>
@@ -65,7 +85,13 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// </remarks>
     public WorkspaceTreeNode ToTreeNode() =>
         new(Name, FullPath, IsDirectory, [.. Children.Select(c => c.ToTreeNode())],
-            IsDirectory ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url, SendsNoAuth));
+            IsDirectory && !IsEndpoint ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url, SendsNoAuth))
+        {
+            // Carried, not re-derived: RunPlan expands an endpoint into its cases and a folder into
+            // its descendants, and getting that from the directory flag alone would send a case file
+            // as if it were a request.
+            Kind = Kind,
+        };
 
     /// <summary>Inline-rename state: when true, the TreeView shows an editable TextBox instead of the label.</summary>
     [ObservableProperty]
@@ -186,9 +212,18 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
             var node = incoming[i];
             var existing = Children.FirstOrDefault(c => c.FullPath == node.FullPath);
 
+            // A folder becomes an endpoint the moment an endpoint.json lands in it, and Kind is not
+            // something a node can change its mind about - so that one is rebuilt rather than
+            // reconciled. Everything else keeps its identity, and its selection and folding with it.
+            if (existing is not null && existing.Kind != node.Kind)
+            {
+                Children.Remove(existing);
+                existing = null;
+            }
+
             if (existing is null)
             {
-                var child = new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory)
+                var child = new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory, node.Kind)
                 {
                     Method = node.RequestSummary?.Method,
                     HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false,

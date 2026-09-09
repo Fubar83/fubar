@@ -14,8 +14,20 @@ public enum ComparisonScope
     /// <summary>A <c>_folder.json</c> between the workspace root and the request.</summary>
     Folder,
 
-    /// <summary>The request's own <c>request.json</c>.</summary>
+    /// <summary>The request's own <c>request.json</c> - or, in the endpoints format, its
+    /// <c>endpoint.json</c>. One value for both because it is one level: an endpoint IS the request,
+    /// stored under a different name, and splitting the enum would give the same rule two provenances
+    /// depending on which format a workspace happens to be in.</summary>
     Request,
+
+    /// <summary>One <c>cases/&lt;name&gt;.json</c> - the innermost containment level.</summary>
+    Case,
+
+    /// <summary>
+    /// A batch's overlay. NOT a containment level: a batch cuts across the tree, so it is applied
+    /// after the chain resolves rather than as a step in it (spec §4.2).
+    /// </summary>
+    Batch,
 }
 
 /// <summary>

@@ -111,6 +111,10 @@ public partial class RequestTestsViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Whether the timeout row is shown. Off for a case, which inherits its endpoint's -
+    /// offering a control there would promise an override the format does not have.</summary>
+    public bool ShowTimeout { get; init; } = true;
+
     public List<CaptureRule> CapturesToModel() => Captures.Select(c => c.ToModel()).ToList();
 
     public List<Assertion> AssertionsToModel() => Assertions.Select(a => a.ToModel()).ToList();

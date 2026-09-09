@@ -33,7 +33,7 @@ public class CollectionRunServiceTests
         FakeStore? store = null,
         FakeProfiles? profiles = null) =>
         new(execution, store ?? new FakeStore(), new FakeInheritance(), profiles ?? new FakeProfiles(),
-            new FakeComparer(), new FakeComparisonSettings());
+            new FakeComparer(), new FakeComparisonSettings(), new FakeEndpoints());
 
     // ---- Order and completeness ----------------------------------------------------------------
 
@@ -212,7 +212,7 @@ public class CollectionRunServiceTests
         var execution = new FakeExecution();
 
         await new CollectionRunService(execution, new FakeStore(), new FakeInheritance(), new FakeProfiles(),
-                new FakeComparer(), new FakeComparisonSettings())
+                new FakeComparer(), new FakeComparisonSettings(), new FakeEndpoints())
             .RunAsync(new CollectionRun(Plan(3), Ws, environment, RunOptions.Default));
 
         Assert.All(execution.Runs, r =>

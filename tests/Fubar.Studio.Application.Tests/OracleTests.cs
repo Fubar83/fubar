@@ -28,7 +28,7 @@ public class OracleTests
     private static CollectionRunService Sut(
         FakeExecution execution, FakeComparer? comparer = null, FakeComparisonSettings? settings = null) =>
         new(execution, new FakeStore(), new FakeInheritance(), new FakeProfiles(),
-            comparer ?? new FakeComparer(), settings ?? new FakeComparisonSettings());
+            comparer ?? new FakeComparer(), settings ?? new FakeComparisonSettings(), new FakeEndpoints());
 
     private static CollectionRun Run(IOracle? oracle, int steps = 1) =>
         new(Plan(steps), Ws, Staging, RunOptions.Default with { CaptureResponseBodies = true }, oracle);

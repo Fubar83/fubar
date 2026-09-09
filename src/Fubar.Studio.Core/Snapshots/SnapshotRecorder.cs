@@ -32,6 +32,7 @@ public static class SnapshotRecorder
         IReadOnlyDictionary<string, string> headers,
         string? environment,
         ResolvedSnapshotPolicy policy,
+        string? endpointCase = null,
         string? requestFingerprint = null,
         string? recordedBy = null)
     {
@@ -40,6 +41,7 @@ public static class SnapshotRecorder
 
         var snapshot = new ResponseSnapshot
         {
+            Case = endpointCase,
             Environment = environment,
             Status = status,
             RequestFingerprint = requestFingerprint,

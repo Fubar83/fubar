@@ -20,6 +20,7 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
     private readonly IAuthProfileStore _authProfiles;
     private readonly IResponseComparer _comparer;
     private readonly IRequestComparisonSettings _settings;
+    private readonly IEndpointStore _endpoints;
 
     public CollectionRunService(
         IRequestExecutionService execution,
@@ -27,7 +28,8 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
         IInheritanceResolver inheritance,
         IAuthProfileStore authProfiles,
         IResponseComparer comparer,
-        IRequestComparisonSettings settings)
+        IRequestComparisonSettings settings,
+        IEndpointStore endpoints)
     {
         _execution = execution;
         _requests = requests;
@@ -35,6 +37,7 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
         _authProfiles = authProfiles;
         _comparer = comparer;
         _settings = settings;
+        _endpoints = endpoints;
     }
 
     public async Task<RunReport> RunAsync(
@@ -281,7 +284,7 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
         try
         {
             var rules = await _settings
-                .ResolveRulesAsync(run.Workspace, report.Step.FilePath, cancellationToken)
+                .ResolveRulesAsync(run.Workspace, report.Step.FilePath, report.Step.CaseFilePath, cancellationToken)
                 .ConfigureAwait(false);
 
             var outcome = await _comparer
@@ -326,6 +329,16 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
         try
         {
             request = await _requests.LoadRequestAsync(step.FilePath, cancellationToken);
+
+            // A case is folded on here rather than in the plan, for the same reason the request is
+            // read here: a run sends what is SAVED, and a plan built ten minutes ago holding loaded
+            // documents would send what was saved then.
+            if (step.CaseFilePath is { Length: > 0 } casePath)
+            {
+                request = CaseMerge.Apply(
+                    request,
+                    await _endpoints.LoadCaseAsync(casePath, cancellationToken).ConfigureAwait(false));
+            }
         }
         catch (Exception ex)
         {

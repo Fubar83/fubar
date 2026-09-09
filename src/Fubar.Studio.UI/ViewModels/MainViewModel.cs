@@ -31,6 +31,7 @@ namespace Fubar.Studio.UI.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private readonly IRequestStore _workspaceService;
+    private readonly Fubar.Studio.Core.Workspaces.IEndpointStore _endpointStore;
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IEditorViewModelFactory _editorFactory;
     private readonly IRunDialogService _runDialog;
@@ -82,6 +83,7 @@ public partial class MainViewModel : ViewModelBase
         StatusLogViewModel statusLog,
         LeftPaneViewModel leftPane,
         IRequestStore workspaceService,
+        Fubar.Studio.Core.Workspaces.IEndpointStore endpointStore,
         IProtocolRegistry protocolRegistry,
         IEditorViewModelFactory editorFactory,
         IRunDialogService runDialog,
@@ -99,6 +101,7 @@ public partial class MainViewModel : ViewModelBase
         StatusLog = statusLog;
         LeftPane = leftPane;
         _workspaceService = workspaceService;
+        _endpointStore = endpointStore;
         _protocolRegistry = protocolRegistry;
         _editorFactory = editorFactory;
         _runDialog = runDialog;
@@ -114,6 +117,7 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorer.WorkspaceContentImported += workspace => _ = ActivateWorkspaceContextAsync(workspace);
 
         WorkspaceExplorer.RequestFileActivated += path => _ = OpenRequestAsync(path);
+        WorkspaceExplorer.CaseFileActivated += path => _ = OpenCaseAsync(path);
         WorkspaceExplorer.RunRequested += OnRunRequested;
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
@@ -527,6 +531,50 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusLog.LogError($"Failed to open \"{filePath}\": {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Opens one case of an endpoint in the main canvas.
+    /// </summary>
+    /// <remarks>
+    /// The endpoint is loaded too, and not only to display: the case editor seeds its path-parameter
+    /// grid from the endpoint's URL, so a case opens with the questions it has to answer rather than
+    /// an empty grid.
+    /// </remarks>
+    public async Task OpenCaseAsync(string caseFilePath)
+    {
+        if (!await ConfirmDiscardingActiveEditAsync())
+        {
+            return;
+        }
+
+        var workspace = WorkspaceExplorer.FindWorkspaceForPath(caseFilePath);
+        if (workspace is null)
+        {
+            StatusLog.LogError($"Could not find the owning workspace for \"{caseFilePath}\".");
+            return;
+        }
+
+        try
+        {
+            await ActivateWorkspaceContextAsync(workspace);
+
+            var endpointDirectory = _endpointStore.EndpointDirectoryOf(caseFilePath)
+                ?? throw new InvalidOperationException("this case is not inside an endpoint");
+
+            var endpoint = await _workspaceService.LoadRequestAsync(
+                Path.Combine(endpointDirectory, Core.Workspaces.IEndpointStore.EndpointFileName));
+
+            var endpointCase = await _endpointStore.LoadCaseAsync(caseFilePath);
+            var editor = _editorFactory.CreateCaseEditor(endpointCase, endpoint, caseFilePath, workspace);
+
+            editor.Saved += () => WorkspaceExplorer.RefreshRootFor(editor.FilePath);
+            ActiveEditor = editor;
+        }
+        catch (Exception ex)
+        {
+            StatusLog.LogError($"Failed to open \"{caseFilePath}\": {ex.Message}");
         }
     }
 

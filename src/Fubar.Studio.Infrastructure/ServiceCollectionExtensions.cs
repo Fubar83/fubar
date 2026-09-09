@@ -33,6 +33,8 @@ public static class ServiceCollectionExtensions
         // consumers can depend on the narrowest one they need (ISP) while sharing state/IO.
         services.AddSingleton<IRequestSerializer, RequestSerializer>();
         services.AddSingleton<ISnapshotStore, FileSnapshotStore>();
+        services.AddSingleton<IEndpointStore, FileEndpointStore>();
+        services.AddSingleton<IWorkspaceFormatConverter, WorkspaceFormatConverter>();
 
         services.AddSingleton<WorkspaceService>();
         services.AddSingleton<IWorkspaceService>(sp => sp.GetRequiredService<WorkspaceService>());

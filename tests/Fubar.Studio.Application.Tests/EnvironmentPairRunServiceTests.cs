@@ -31,7 +31,7 @@ public class EnvironmentPairRunServiceTests
 
     private static CollectionRunService Sut(FakeExecution execution) =>
         new(execution, new FakeStore(), new FakeInheritance(), new FakeProfiles(),
-            new FakeComparer(), new FakeComparisonSettings());
+            new FakeComparer(), new FakeComparisonSettings(), new FakeEndpoints());
 
     // ---- Interleaving ---------------------------------------------------------------------------
 

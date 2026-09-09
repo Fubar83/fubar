@@ -52,8 +52,24 @@
                               Command="{Binding CompareEnvironmentsCommand}"
                               ToolTip.Tip="Send every request to two environments and show where their answers differ" />
                     <Separator />
-                    <MenuItem Header="New Request" Command="{Binding NewRequestCommand}" />
+                    <!-- One of these, never both: two ways to make the same thing is how a tree ends
+                         up half in one format and half in the other. -->
+                    <MenuItem Header="New Request"
+                              Command="{Binding NewRequestCommand}"
+                              IsVisible="{Binding UsesRequests}" />
+                    <MenuItem Header="New Endpoint"
+                              Command="{Binding NewRequestCommand}"
+                              IsVisible="{Binding UsesEndpoints}" />
+                    <MenuItem Header="New Case"
+                              Command="{Binding NewCaseCommand}"
+                              IsVisible="{Binding CanAddCase}"
+                              ToolTip.Tip="One way of calling this endpoint - its parameters, and what it should answer" />
                     <MenuItem Header="New Folder" Command="{Binding NewFolderCommand}" />
+                    <Separator />
+                    <MenuItem Header="Convert to endpoints…"
+                              Command="{Binding ConvertToEndpointsCommand}"
+                              IsVisible="{Binding UsesRequests}"
+                              ToolTip.Tip="Split every request into an endpoint and one case. Copies the originals to .fubar/backup/ first." />
                     <Separator />
                     <MenuItem Header="Rename" Command="{Binding BeginRenameCommand}" />
                     <MenuItem Header="Duplicate" Command="{Binding DuplicateCommand}" />
@@ -83,6 +99,20 @@
                                   Content="{Binding Method}"
                                   IsVisible="{Binding Method, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}"
                                   Background="{Binding Method, Converter={x:Static methodConv:MethodToBrushConverter.Instance}}" />
+
+                        <!-- A case carries no method of its own - it is one way of calling the
+                             endpoint above it - so the badge slot says what the row IS instead of
+                             leaving a gap that reads as a missing badge. -->
+                        <TextBlock Grid.Column="0"
+                                   Width="38"
+                                   Margin="0,0,6,0"
+                                   FontSize="9"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Right"
+                                   Text="case"
+                                   ToolTip.Tip="One way of calling this endpoint"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   IsVisible="{Binding IsCase}" />
 
                         <!-- Name / inline rename -->
                         <Panel Grid.Column="1" VerticalAlignment="Center">

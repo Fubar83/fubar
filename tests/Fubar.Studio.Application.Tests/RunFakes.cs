@@ -92,6 +92,41 @@ internal sealed class FakeComparer : IResponseComparer
     }
 }
 
+/// <summary>Cases from a dictionary rather than a directory. Empty for every test that is about the
+/// requests format, where a step never names one.</summary>
+internal sealed class FakeEndpoints : IEndpointStore
+{
+    private readonly Dictionary<string, EndpointCase> _cases = new(StringComparer.OrdinalIgnoreCase);
+
+    public FakeEndpoints With(string path, EndpointCase endpointCase)
+    {
+        _cases[path] = endpointCase;
+        return this;
+    }
+
+    public bool IsEndpoint(string directory) => false;
+
+    public string? EndpointDirectoryOf(string path) => null;
+
+    public IReadOnlyList<CaseSummary> ListCases(string endpointDirectory) =>
+        [.. _cases.Select(c => new CaseSummary(c.Value.Name, c.Key))];
+
+    public Task<EndpointCase> LoadCaseAsync(string caseFilePath, CancellationToken ct = default) =>
+        _cases.TryGetValue(caseFilePath, out var found)
+            ? Task.FromResult(found)
+            : throw new FileNotFoundException(caseFilePath);
+
+    public Task SaveCaseAsync(string caseFilePath, EndpointCase endpointCase, CancellationToken ct = default)
+    {
+        _cases[caseFilePath] = endpointCase;
+        return Task.CompletedTask;
+    }
+
+    public string CreateCase(string endpointDirectory, string caseName) => throw new NotSupportedException();
+
+    public string CreateEndpoint(string parentDirectory, string endpointName) => throw new NotSupportedException();
+}
+
 /// <summary>No rules at any level, which is what most runner tests want to say.</summary>
 internal sealed class FakeComparisonSettings : IRequestComparisonSettings
 {
@@ -105,7 +140,7 @@ internal sealed class FakeComparisonSettings : IRequestComparisonSettings
     }
 
     public Task<ResolvedRequestRules> ResolveRulesAsync(
-        Workspace workspace, string requestPath, CancellationToken ct = default) =>
+        Workspace workspace, string requestPath, string? casePath = null, CancellationToken ct = default) =>
         Task.FromResult(new ResolvedRequestRules(ComparisonSettingsResolver.Resolve([]), Tolerances));
 }
 

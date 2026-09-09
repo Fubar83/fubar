@@ -35,7 +35,7 @@ public sealed class SnapshotOracle : IOracle
         var lookup = await _store
             .FindAsync(
                 context.Workspace.RootPath,
-                context.Step.FilePath,
+                context.Step.SubjectPath,
                 context.Environment?.Name,
                 cancellationToken)
             .ConfigureAwait(false);

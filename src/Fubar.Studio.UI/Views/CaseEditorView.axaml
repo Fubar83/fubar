@@ -1,0 +1,127 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:views="using:Fubar.Studio.UI.Views"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="560"
+             x:Class="Fubar.Studio.UI.Views.CaseEditorView"
+             x:DataType="vm:CaseEditorViewModel"
+             Background="{DynamicResource BgEditorCanvas}">
+
+    <!-- One case of an endpoint (docs/spec-endpoints.md §9.2). Deliberately NOT a second request
+         editor: the method, URL and auth belong to the endpoint and are shown here only as context,
+         because an edit made to them on this screen would either be lost or silently fork the
+         endpoint. -->
+    <DockPanel Margin="20,16">
+
+        <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,14">
+
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Case"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <TextBox Text="{Binding Name}" Width="240" FontWeight="Bold" FontSize="14" />
+                <Button Content="Save" Classes="primary-btn" Command="{Binding SaveCommand}" />
+            </StackPanel>
+
+            <TextBox Text="{Binding Description}"
+                     PlaceholderText="What this case is for - a case named &quot;not-found&quot; still owes the reader why" />
+
+            <Border Background="{DynamicResource BgSubtle}"
+                    CornerRadius="4"
+                    Padding="10,7">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding EndpointName}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding EndpointSummary}"
+                               FontFamily="{DynamicResource MonoFontFamily}"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <TabControl>
+
+            <!-- Seeded from the endpoint's URL, so the case opens with the questions it has to
+                 answer rather than an empty grid and a URL to squint at. -->
+            <TabItem Header="Path">
+                <DockPanel Margin="0,10,0,0">
+                    <TextBlock DockPanel.Dock="Top"
+                               Margin="6,0,6,8"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondary}"
+                               Text="Values for the {placeholders} in the endpoint's URL. {{Variables}} are filled from the environment instead." />
+
+                    <TextBlock DockPanel.Dock="Top"
+                               Margin="6,0"
+                               Foreground="{DynamicResource TextSecondary}"
+                               Text="This endpoint's URL has no placeholders."
+                               IsVisible="{Binding !PathParams.Count}" />
+
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding PathParams}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:KeyValueRowViewModel">
+                                    <Border BorderBrush="{DynamicResource BorderEditor}"
+                                            BorderThickness="0,0,0,1"
+                                            Padding="6,6">
+                                        <Grid ColumnDefinitions="200,*">
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Key}"
+                                                       VerticalAlignment="Center"
+                                                       FontFamily="{DynamicResource MonoFontFamily}" />
+                                            <TextBox Grid.Column="1"
+                                                     Text="{Binding Value}"
+                                                     PlaceholderText="Value"
+                                                     BorderThickness="0"
+                                                     Background="Transparent" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+
+            <TabItem Header="Query">
+                <fc:KeyValueGrid DataContext="{Binding QueryParams}"
+                                 Margin="0,10,0,0"
+                                 ItemsSource="{Binding Rows}"
+                                 AddButtonText="+ Add parameter"
+                                 AddCommand="{Binding AddRowCommand}"
+                                 RemoveCommand="{Binding RemoveRowCommand}" />
+            </TabItem>
+
+            <TabItem Header="Headers">
+                <fc:KeyValueGrid DataContext="{Binding Headers}"
+                                 Margin="0,10,0,0"
+                                 ItemsSource="{Binding Rows}"
+                                 AddButtonText="+ Add header"
+                                 AddCommand="{Binding AddRowCommand}"
+                                 RemoveCommand="{Binding RemoveRowCommand}" />
+            </TabItem>
+
+            <TabItem Header="Body">
+                <DockPanel Margin="0,10,0,0">
+                    <CheckBox DockPanel.Dock="Top"
+                              Margin="6,0,6,8"
+                              IsChecked="{Binding OverridesBody}"
+                              Content="{Binding BodyHint}" />
+
+                    <views:RequestBodyView DataContext="{Binding Body}"
+                                           IsEnabled="{Binding $parent[UserControl].((vm:CaseEditorViewModel)DataContext).OverridesBody}" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- Stating any assertion here REPLACES the endpoint's: a "not-found" case expecting 404
+                 cannot also carry the endpoint's "status equals 200". -->
+            <TabItem Header="Tests">
+                <views:RequestTestsView DataContext="{Binding Tests}" Margin="0,10,0,0" />
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</UserControl>

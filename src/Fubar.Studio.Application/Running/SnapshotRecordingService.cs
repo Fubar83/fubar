@@ -110,6 +110,7 @@ public sealed class SnapshotRecordingService : ISnapshotRecordingService
                 Headers(step),
                 recording.Scope == SnapshotScope.Shared ? null : recording.Environment?.Name,
                 policy,
+                step.Step.CaseName,
                 recordedBy: "fubar");
 
             foreach (var path in result.UnsupportedPaths)
@@ -118,7 +119,7 @@ public sealed class SnapshotRecordingService : ISnapshotRecordingService
             }
 
             await _store
-                .SaveAsync(recording.Workspace.RootPath, step.Step.FilePath, result.Snapshot, cancellationToken)
+                .SaveAsync(recording.Workspace.RootPath, step.Step.SubjectPath, result.Snapshot, cancellationToken)
                 .ConfigureAwait(false);
 
             written.Add(step.Step.Name);
