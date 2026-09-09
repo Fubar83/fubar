@@ -344,3 +344,76 @@ than it did - that margin was the plaque's, and at 16px it is legibility.
 Asset paths there are RELATIVE, not `avares://`. The authority in an avares URI is the ASSEMBLY name -
 `FubarAPIStudio`, not the project name `Fubar.Studio.UI` - and getting it wrong builds cleanly and then
 throws `FileNotFoundException` at startup, on whichever theme happens to be selected first.
+
+
+**A missing other side is never a pass** (Studio). Every oracle - a snapshot, another environment -
+answers with an `OtherSide` that is `From`, `Missing` or `NotApplicable`, and `Missing` reports
+`ComparisonVerdict.Unavailable`, which `RunReport.Ok` counts as a failure. "Nothing to compare,
+therefore fine" is how a suite stops testing without anyone noticing, and it is the failure mode this
+whole feature exists to refuse: a first run against no snapshot exits non-zero unless
+`--update-snapshots` was given. `NotApplicable` is the ONE exception and means the step never
+answered - reporting "no snapshot" there would blame the wrong thing.
+
+The row's verdict is a SECOND AXIS, not a `StepStatus` value. A request can pass every assertion it
+has and still differ from its snapshot; one enum would have to pick a winner and lose the other. Both
+appear on a run row and in the CLI's line, and the comparison verdict beats the status when they
+disagree - reading only the status printed "ok" against every row of a run whose summary then said
+"1 differ".
+
+**Recording is a separate act, never something a comparison run does when it finds nothing** (Studio).
+`ISnapshotRecordingService` is its own service, `--update-snapshots` its own flag, refused when
+combined with `--oracle snapshot` or `--oracle env:`; the run window has its own button for it. A
+snapshot that writes itself on the first failing run tests nothing ever again and does it silently. A
+step that could not be sent is reported rather than written as an empty snapshot every later run would
+then agree with.
+
+**The same redactions and normalisations run on BOTH sides** (Studio). A snapshot is written with
+`"generatedAt": "<timestamp>"`; the live response carries the real value. Comparing them as they are
+reports a difference on that field on every single run - so the rule written to stop the churn causes
+it instead, which is worse than having no rule. `SnapshotRecorder.ForComparison` applies the resolved
+policy to both sides in `CollectionRunService.JudgeAsync` and is idempotent, so re-applying it to the
+already-normalised side changes nothing. Do not "optimise" it away on the stored side: one code path
+for both is what stops the two drifting.
+
+**Tolerances need both sides to satisfy the rule, and only apply to a SEMANTIC comparison** (Studio).
+`$.requestId matches ^[0-9a-f]{32}$` forgives a regenerated id and still fails when the field comes
+back as an error message - that is the whole difference between a tolerance and an ignore. A rule
+stating no allowance, or several, is REPORTED rather than guessed at, and a text comparison has no
+fields to name, so the rules are reported as unapplied rather than forgiving whole hunks by accident.
+Forgiven differences are counted and shown ("3 within tolerance"), because a rule that turned out to
+be too generous is otherwise invisible until it hides a real regression.
+
+**`format` in `fubar.json` decides which shape a workspace is in - except in the tree** (Studio). One
+field, read when the workspace opens, so nothing has to work the answer out from what it finds on
+disk; new workspaces are created in the endpoints format and existing ones are never converted on
+open. The one deliberate exception is `WorkspaceService.ScanDirectory`, which recognises an endpoint
+by the presence of `endpoint.json`: the tree has to describe what is actually there, and a
+half-converted workspace whose tree showed a folder of stray json files would be a tree nobody could
+act on. A requests-format workspace has no `endpoint.json` anywhere, so it costs nothing.
+
+`WorkspaceFiles.KindOf` had to learn the same distinctions. "Any `.json` under `collections/` is a
+request" stopped being true the moment an endpoint directory held cases and snapshots too, and
+without the extra cases every recorded snapshot was validated against the request schema and reported
+as a malformed request.
+
+**Several steps of a run can share one file, so nothing may be keyed on the path alone** (Studio).
+Every case of an endpoint runs the same `endpoint.json`. `RunPlan.From`'s de-duplication, the run
+window's row lookup and anything else that indexes steps must key on the case as well - keying on the
+file threw on the duplicate in one place and silently ran the first case only in another. What a step
+was SENT is `RunStep.SubjectPath` (the case file when there is one), which is what a snapshot is keyed
+by; what identifies it to a reader is `QualifiedName` (`endpoint#case`), which is the JUnit test name.
+
+**A batch is an occasion, not a level of the hierarchy** (Studio). It cuts across the tree - the same
+endpoint appears in a smoke batch and a nightly one - so its rules are an OVERLAY applied after the
+containment chain resolves. Folded into the chain, an endpoint's effective settings would depend on
+which list happened to name it. Its steps run in the batch's own order, never sorted: a batch that
+starts with a login is stating a dependency. A step naming an endpoint or case that is not there is
+carried as a step with `RunStep.Unresolved` set and reported as `Errored`, never dropped - a batch
+that quietly shrank when something was renamed would keep passing while testing one thing fewer.
+
+**A selector resolves against the TREE, not the file system** (Studio). `TreeLookup` walks the nodes
+by name, so a selector can only name something the tree shows - which is also what stops
+`../../etc/passwd` naming a file. A selector that matches nothing is REFUSED rather than run as an
+empty plan, for the same reason an empty filtered run exits 1: a typo in a CI script must not pass.
+`#` and `@` rather than more path segments, because `orders/get-order/default` cannot be told from a
+folder called `default`.

@@ -19,6 +19,51 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
 
 ## Features
 
+- **Endpoints, and cases of them.** An endpoint is what your API offers — `GET
+  {{baseUrl}}/orders/{orderId}`, bearer auth, an `Accept` header — and a **case** is one way of
+  calling it: an id that exists, an id that does not, the page-two query. Cases live beside the
+  endpoint (`cases/not-found.json`), each stating only what is different about its call, so a second
+  case is a small file rather than a copy of everything. Running the endpoint runs every case.
+
+  Two placeholder syntaxes, on purpose: `{orderId}` is the endpoint's shape and a case fills it,
+  `{{baseUrl}}` is the environment's value. A `{param}` nobody filled is left visible in the URL
+  rather than emptied — `/orders/` would be a different request that gets a plausible-looking answer
+  from the wrong resource.
+
+  New workspaces are laid out this way. An existing one is never converted behind your back:
+  **Convert to endpoints…** shows you what it will do, copies the originals to `.fubar/backup/`, and
+  refuses rather than guessing when a name would collide.
+- **Regression testing against recorded snapshots.** Record what every request answers, then check
+  later runs against it: `Judge by → Recorded snapshot` in the Run window, or `fubar run --oracle
+  snapshot` in CI. **A missing snapshot fails the run** — "nothing to compare, therefore fine" is how
+  a suite stops testing without anyone noticing.
+
+  Recording is always something you asked for, never something a comparison run does when it finds
+  nothing; a snapshot that writes itself on the first failing run tests nothing ever again and does it
+  silently.
+
+  Snapshots are committed, so they are **redacted before they are written** — a token in a response
+  never reaches the file — and **normalised**, so `"generatedAt"` is stored as `<timestamp>` and the
+  file does not churn on every re-record. You choose when saving whether a snapshot is for the one
+  environment or shared by all of them.
+- **Does staging still agree with production?** `Judge by → Compare with Production`, or `fubar run
+  orders --oracle env:Production`. Everything is sent twice, interleaved, and the run reports the
+  fields where the two answers differ — each side sent through exactly the same code path, so a
+  difference is a difference between the systems rather than between two ways of asking.
+- **Tolerances, for the fields that legitimately move.** `{ "path": "$.total", "numeric": 0.01 }`, or
+  `withinSeconds`, `matches`, `lengthWithinPercent`, `oneOf`. Ignoring a total because it drifts by a
+  cent stops checking the total; a tolerance forgives the cent and still catches the euro. Both sides
+  have to satisfy the rule, so `$.requestId matches ^[0-9a-f]{32}$` forgives a regenerated id and
+  still fails when that field comes back as an error message. What was forgiven is counted and shown.
+- **Batches, for the occasions you have a name for.** `batches/smoke.json` lists the calls to make
+  together and what should judge them; run it from the left pane or as `fubar run @smoke`. A batch
+  sits beside the collection rather than inside it — the tree says what your API has, a batch says
+  what to call this time. A step naming something that has since been renamed **errors**; a batch that
+  quietly shrank would keep passing while testing one thing fewer.
+- **Rules inherit, and say what they add and remove.** Ignored paths, redactions, normalisations and
+  tolerances all resolve workspace → folders → endpoint → case, with a batch's own rules last. A level
+  states what it *changes* (`{ "add": [...], "remove": [...] }`), so one extra rule on one endpoint
+  does not mean restating its folder's — and does not silently stop inheriting them.
 - **Start from nothing.** *New Workspace…* — from the empty state, or the `+` in the title bar — takes
   an empty folder and lays out `fubar.json`, `collections/`, `environments/` and a `.gitignore` for
   the local-only execution history, then opens it. From there you build collections and environments,
@@ -37,7 +82,7 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   assert `StatusCode Equals 404` deliberately, so a runner that also called 4xx bad would be arguing
   with you about the thing you just told it to expect. Any non-2xx nobody asserted on is still flagged
   on its row, so nothing hides. A cancelled or empty run is never reported green.
-- **Run it in CI.** The same binary is a batch tool: `FubarAPIStudio --run --env Staging --report
+- **Run it in CI.** The same binary is a batch tool: `FubarAPIStudio run --env Staging --report
   results.xml` runs the collection, writes **JUnit XML** your build system already knows how to render,
   and exits `0` / `1` / `2` — passed, failed, could not run. A failed assertion becomes a failed test on
   the build page with its message, rather than a line in a log nobody opens. `--report results.json`

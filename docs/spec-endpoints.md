@@ -724,19 +724,55 @@ Each step is useful on its own and leaves the app shippable.
 2. ~~**`IResponseComparer` port + adapter (§10.2).**~~ **Done.** The comparison window judges through it,
    so the row and the pane share one definition of what counts. Adapter in the UI project, not
    Infrastructure - see §10.2.
-3. **The oracle seam.** `IOracle` with `none` and `environment:X` — both already exist as behaviour,
-   now behind one interface. The run pipeline stops knowing which one it has.
-4. **Snapshots.** `ISnapshotStore` (both scopes, and the resolution order in §5), the stable writer,
-   redaction, normalisation, tolerances, the
-   `snapshot` oracle, `--update-snapshots`. Still one request per file: a snapshot can key off the
-   request's path until step 5 renames it.
-5. **Endpoints and cases.** The format change, in NEW workspaces only (§10.4), behind a `format` field
-   in `fubar.json`. Everything it feeds already works. The opt-in converter ships with it, not after -
-   without it the split is permanent.
-6. **Batches**, then the CLI selector grammar that reaches all of it.
+3. ~~**The oracle seam.**~~ **Done.** `IOracle` with `NoOracle`, `SnapshotOracle` and
+   `EnvironmentOracle`; the run pipeline no longer knows which one it has. The environment oracle
+   sends the other side through the ORDINARY runner, one step at a time, rather than rebuilding how a
+   step is sent - any difference in how the two sides were sent would be reported as a difference
+   between the environments.
+4. ~~**Snapshots.**~~ **Done.** `ISnapshotStore` (both scopes and the resolution order in §5), the
+   stable writer, redaction, normalisation, tolerances (§6.3, all five kinds), the `snapshot` oracle
+   and `--update-snapshots`.
+
+   One thing this section did not say, and which makes or breaks the feature: **the same redactions
+   and normalisations have to run on the LIVE side too**. A snapshot stores
+   `"generatedAt": "<timestamp>"` while the response carries the real value, so without it every
+   normalised field differs on every run and the rule written to stop the churn causes it.
+   `SnapshotRecorder.ForComparison` is idempotent, so both sides go through one code path.
+5. ~~**Endpoints and cases.**~~ **Done.** The format change in new workspaces only (§10.4), behind
+   `format` in `fubar.json`, with *Convert to endpoints…* shipping alongside it.
+
+   One deviation: **the tree reads the directory rather than the field.** The format field decides
+   what gets created and which editor opens, but the tree has to describe what is actually there - a
+   half-converted workspace whose tree showed a folder of stray json files would be a tree nobody
+   could act on. It costs a requests-format workspace nothing, since it has no `endpoint.json`
+   anywhere.
+
+   A second: **snapshots are keyed per case** (`snapshots/<case>/<environment>.json`), which §3.4 left
+   open. Two cases of one endpoint answer differently by design - that is what makes them two cases -
+   so one file between them would have each overwrite the other's recording.
+6. ~~**Batches**, then the CLI selector grammar.~~ **Done.** `batches/<name>.json`, `RunSelector` and
+   `TreeLookup`, and `fubar run <selector>` with `--run` kept as the older spelling. A batch's steps
+   run in the batch's own order, and a step naming something that is no longer there ERRORS rather
+   than being skipped.
 
 Steps 1-4 need no format change and land in every workspace, old or new. That is what makes this
 incremental rather than a rewrite, and it means the two halves of §10.4 differ only from step 5 on.
+
+### 10.3.1 What is NOT built
+
+Named so it is a decision rather than an omission:
+
+- **`run:<id>` as an oracle** (§5). `.fubar/runs/` is not written, so there is nothing to compare
+  against. The seam takes it whenever it is wanted - it is one more `IOracle`.
+- **Accepting one field at a time from the diff** (§6.4). Recording is all-or-nothing per step, from
+  the run window's *Record snapshots* or from `--update-snapshots`. Per-field accept needs the diff
+  and the snapshot writer on the same screen, which the comparison window is not yet.
+- **`--force` and the uncommitted-snapshot check** (§6.4). Recording does not ask git anything.
+- **A batch editor.** Batches are listed and run from the left pane; the file is edited by hand.
+- **Case-level auth and snapshot policy.** A case carries comparison rules and tolerances; auth stops
+  at the endpoint (§4.4) and so does the snapshot policy, which §3.3's file shape already implied.
+- **`ComparisonScope.Workspace`.** `fubar.json` carries no comparison section, so the value would be
+  one nothing could ever produce.
 
 ### 10.4 Migration — **new workspaces only**
 
