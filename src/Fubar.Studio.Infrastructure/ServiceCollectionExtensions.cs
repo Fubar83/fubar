@@ -7,8 +7,10 @@ using Fubar.Studio.Core.Secrets;
 using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Testing;
 using Fubar.Studio.Core.Variables;
+using Fubar.Studio.Core.Snapshots;
 using Fubar.Studio.Core.Workspaces;
 using Fubar.Studio.Infrastructure.Auth;
+using Fubar.Studio.Infrastructure.Snapshots;
 using Fubar.Studio.Infrastructure.History;
 using Fubar.Studio.Infrastructure.Import;
 using Fubar.Studio.Infrastructure.Json;
@@ -30,6 +32,10 @@ public static class ServiceCollectionExtensions
         // One WorkspaceService instance, surfaced under the aggregate and each focused role interface so
         // consumers can depend on the narrowest one they need (ISP) while sharing state/IO.
         services.AddSingleton<IRequestSerializer, RequestSerializer>();
+        services.AddSingleton<ISnapshotStore, FileSnapshotStore>();
+        services.AddSingleton<IEndpointStore, FileEndpointStore>();
+        services.AddSingleton<IBatchStore, FileBatchStore>();
+        services.AddSingleton<IWorkspaceFormatConverter, WorkspaceFormatConverter>();
 
         services.AddSingleton<WorkspaceService>();
         services.AddSingleton<IWorkspaceService>(sp => sp.GetRequiredService<WorkspaceService>());

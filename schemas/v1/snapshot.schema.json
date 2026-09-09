@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fubar83.github.io/fubar/schemas/v1/snapshot.schema.json",
+  "title": "Fubar API Studio response snapshot",
+  "description": "A recorded response, kept to compare later runs against. Written normalised and redacted, never raw: a token that reaches this file has leaked into whatever the tracked history keeps.",
+  "type": "object",
+  "properties": {
+    "case": { "type": ["string", "null"], "description": "Which case this was recorded from, or null in the requests format." },
+    "environment": {
+      "type": ["string", "null"],
+      "description": "The scope. Null in _shared.json, which every environment without a file of its own uses. The file says what it is, so nothing has to infer scope from a name a merge may have given it."
+    },
+    "recordedAt": { "type": "string", "format": "date-time" },
+    "recordedBy": { "type": ["string", "null"] },
+    "status": { "type": "integer" },
+    "headers": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Only the headers the policy asked to keep. Storing all of them makes every snapshot churn on Date and Set-Cookie."
+    },
+    "bodyFormat": { "enum": ["json", "text"] },
+    "body": { "description": "The parsed body when it was JSON, so the committed file is a readable diff rather than one escaped string." },
+    "bodyText": { "type": ["string", "null"], "description": "The body as text, when it was not JSON." },
+    "requestFingerprint": { "type": ["string", "null"] }
+  }
+}

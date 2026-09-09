@@ -59,7 +59,10 @@ public static class LegacyRequestMigration
         {
             if (request.Comparison is null)
             {
-                request.Comparison = new ComparisonSettings { IgnoredPaths = [.. request.ResponseDiffIgnorePaths] };
+                request.Comparison = new ComparisonSettings
+                {
+                    IgnoredPaths = InheritedPaths.FromAdded(request.ResponseDiffIgnorePaths),
+                };
                 changes.Add($"moved {request.ResponseDiffIgnorePaths.Count} ignore rule(s) into the comparison section");
             }
             else

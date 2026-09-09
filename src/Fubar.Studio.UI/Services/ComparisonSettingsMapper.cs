@@ -13,7 +13,7 @@ namespace Fubar.Studio.UI.Services;
 /// <see cref="ComparisonOptions"/>. Keeping the mapping in one function is what stops that duplication
 /// from drifting: add a setting to one side and this stops compiling until the other side has it too.
 /// </summary>
-internal static class ComparisonSettingsMapper
+public static class ComparisonSettingsMapper
 {
     /// <summary>
     /// Builds the engine options for a comparison. <see cref="ComparisonMode.Auto"/> always, so
@@ -31,7 +31,7 @@ internal static class ComparisonSettingsMapper
             ReportPropertyOrder = resolved.ReportPropertyOrder.Value,
             MatchArraysByPosition = resolved.MatchArraysByPosition.Value,
             IgnoreNullVsMissing = resolved.IgnoreNullVsMissing.Value,
-            IgnoredPaths = [.. resolved.IgnoredPaths.Value],
+            IgnoredPaths = [.. resolved.IgnoredPathValues],
             ArrayKeyOverrides = new Dictionary<string, string>(resolved.ArrayKeyOverrides.Value),
         },
     };

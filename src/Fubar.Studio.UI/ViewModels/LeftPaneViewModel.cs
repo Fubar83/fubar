@@ -22,6 +22,10 @@ public sealed partial class LeftPaneViewModel : ViewModelBase
 
     public AuthProfilesSectionViewModel AuthProfilesSection { get; }
 
+    /// <summary>The occasions this workspace has a name for. Hidden entirely in a workspace that
+    /// cannot have them - see <see cref="BatchesSectionViewModel"/>.</summary>
+    public BatchesSectionViewModel BatchesSection { get; }
+
     /// <summary>
     /// Dark / Light / System.
     ///
@@ -48,17 +52,25 @@ public sealed partial class LeftPaneViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsAuthProfilesExpanded { get; set; }
 
+    /// <summary>Whether the Batches group is unfolded. Open by default, unlike the two above: a batch
+    /// is something you run rather than something you set up once, so a folded list of them would be a
+    /// folded list of the things this pane exists to start.</summary>
+    [ObservableProperty]
+    public partial bool IsBatchesExpanded { get; set; } = true;
+
     /// <summary>Settings are optional so the Gallery and tests can build this without a file.</summary>
     public LeftPaneViewModel(
         WorkspaceExplorerViewModel workspaceExplorer,
         EnvironmentsSectionViewModel environmentsSection,
         AuthProfilesSectionViewModel authProfilesSection,
+        BatchesSectionViewModel batchesSection,
         ThemeManagerViewModel theme,
         IAppSettingsService? settings = null)
     {
         WorkspaceExplorer = workspaceExplorer;
         EnvironmentsSection = environmentsSection;
         AuthProfilesSection = authProfilesSection;
+        BatchesSection = batchesSection;
         Theme = theme;
         _settings = settings;
 

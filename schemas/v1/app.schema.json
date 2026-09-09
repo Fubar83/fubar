@@ -9,6 +9,11 @@
     "id": { "type": "string", "description": "Stable id. Keys this workspace's secrets in the OS keyring." },
     "name": { "type": "string" },
     "version": { "type": "string", "default": "1.0.0" },
+    "format": {
+      "enum": ["requests", "endpoints"],
+      "default": "requests",
+      "description": "Which shape collections/ is in. Absent means requests - one <name>.json per request, what every workspace written before endpoints existed holds. THIS FIELD DECIDES, never the files on disk: read once when the workspace opens, so nothing has to guess which shape it is in from what it happens to find. An existing workspace is never converted on open; \"Convert to endpoints...\" does it explicitly, with a backup and a preview."
+    },
     "activeEnvironmentId": { "type": ["string", "null"] },
     "variables": {
       "type": "array",

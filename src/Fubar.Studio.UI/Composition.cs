@@ -1,7 +1,9 @@
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Infrastructure;
 using Fubar.Controls;
+using Fubar.Studio.Application.Comparison;
 using Fubar.Studio.Application.Requests;
+using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Diagnostics;
 using Fubar.Studio.Infrastructure.Diagnostics;
 using Fubar.Studio.Application.Running;
@@ -29,13 +31,25 @@ internal static class Composition
 
                 // Application-layer use-case services (orchestration over the Core ports above).
                 services.AddSingleton<IRequestExecutionService, RequestExecutionService>();
-                services.AddSingleton<ICollectionRunService, CollectionRunService>();
+                services.AddSingleton<IRequestComparisonSettings, RequestComparisonSettings>();
+                
+                // The oracles. A run picks one; none of them judges for itself.
+                services.AddSingleton<NoOracle>(_ => NoOracle.Instance);
+                services.AddSingleton<SnapshotOracle>();
+                services.AddSingleton<ISnapshotRecordingService, SnapshotRecordingService>();
+                services.AddSingleton<IBatchPlanner, BatchPlanner>();
+                // One instance behind both contracts: the paired run reuses the single-environment
+                // path step for step, so a difference between them could only be a bug.
+                services.AddSingleton<CollectionRunService>();
+                services.AddSingleton<ICollectionRunService>(s => s.GetRequiredService<CollectionRunService>());
+                services.AddSingleton<IEnvironmentPairRunService>(s => s.GetRequiredService<CollectionRunService>());
 
                 services.AddSingleton<IFolderPickerService, FolderPickerService>();
                 services.AddSingleton<IFilePickerService, FilePickerService>();
                 services.AddSingleton<IClipboardService, ClipboardService>();
                 services.AddSingleton<IImportDialogService, ImportDialogService>();
                 services.AddSingleton<IRunDialogService, RunDialogService>();
+                services.AddSingleton<IEnvironmentComparisonDialogService, EnvironmentComparisonDialogService>();
                 // One object for the request editor's dependencies: it took 24 constructor parameters,
                 // which made adding one a five-place edit.
                 services.AddSingleton<RequestEditorServices>();
@@ -63,6 +77,9 @@ internal static class Composition
                 // show. It belongs to Fubar Diff's structure panel; see docs/diff.md.
                 services.AddSingleton<IFileComparisonService, FileComparisonService>();
                 services.AddSingleton<IDiffPreviewService, DiffPreviewService>();
+                // The one place a response is judged - see DiffResponseComparer on why the adapter
+                // sits here rather than in Infrastructure.
+                services.AddSingleton<IResponseComparer, DiffResponseComparer>();
                 // Singleton on purpose: a response pinned on one request must survive opening another.
                 services.AddSingleton<IResponseBaselineService, ResponseBaselineService>();
 
@@ -78,6 +95,7 @@ internal static class Composition
                 services.AddScoped<WorkspaceExplorerViewModel>();
                 services.AddScoped<EnvironmentManagerViewModel>();
                 services.AddScoped<EnvironmentsSectionViewModel>();
+                services.AddScoped<BatchesSectionViewModel>();
                 services.AddScoped<AuthProfilesSectionViewModel>();
                 services.AddScoped<LeftPaneViewModel>();
                 services.AddScoped<IEditorViewModelFactory, EditorViewModelFactory>();

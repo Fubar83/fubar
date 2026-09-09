@@ -7,6 +7,7 @@ using Fubar.Studio.Core.Import;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Workspaces;
+using Fubar.Controls;
 using Fubar.Studio.UI.Services;
 
 namespace Fubar.Studio.UI.ViewModels;
@@ -33,6 +34,9 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     private readonly IFilePickerService _filePicker;
     private readonly StatusLogViewModel _statusLog;
     private readonly IAppSettingsService _settingsService;
+    private readonly IEndpointStore _endpointStore;
+    private readonly IWorkspaceFormatConverter _formatConverter;
+    private readonly IConfirmationService? _confirmation;
     private bool _suppressPersist;
 
     public WorkspaceExplorerViewModel(
@@ -45,8 +49,14 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         IImportDialogService importDialog,
         IFilePickerService filePicker,
         StatusLogViewModel statusLog,
-        IAppSettingsService settingsService)
+        IAppSettingsService settingsService,
+        IEndpointStore endpointStore,
+        IWorkspaceFormatConverter formatConverter,
+        IConfirmationService? confirmation = null)
     {
+        _endpointStore = endpointStore;
+        _formatConverter = formatConverter;
+        _confirmation = confirmation;
         _requestStore = requestStore;
         _workspaceStore = workspaceStore;
         _folderPicker = folderPicker;
@@ -85,6 +95,14 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
 
         OnPropertyChanged(nameof(HasActiveRootChildren));
+
+        // Which format this workspace is in decides what the menu offers, so switching tabs has to
+        // re-ask - the two workspaces open side by side need not be in the same one.
+        OnPropertyChanged(nameof(ActiveFormat));
+        OnPropertyChanged(nameof(UsesEndpoints));
+        OnPropertyChanged(nameof(UsesRequests));
+        OnPropertyChanged(nameof(CanAddCase));
+
         PersistOpenWorkspaces();
     }
 
@@ -201,6 +219,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     public bool HasActiveRootChildren => ActiveRoot is { Children.Count: > 0 };
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAddCase))]
     public partial WorkspaceNodeViewModel? SelectedNode { get; set; }
 
     /// <summary>
@@ -347,6 +366,21 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         _statusLog.Log($"Opened workspace \"{workspace.Manifest.Name}\" at {path}.");
     }
 
+    /// <summary>
+    /// Which shape the active workspace's collections are in. Read from the manifest, never sniffed
+    /// from the files - one field, so every screen agrees about which half of the product it is in.
+    /// </summary>
+    public WorkspaceFormat ActiveFormat => ActiveRoot?.Workspace.Manifest.Format ?? WorkspaceFormat.Requests;
+
+    /// <summary>Drives the menu: "New endpoint" in one format, "New request" in the other. Both are
+    /// never offered at once - two ways to make the same thing is how a tree ends up half converted.</summary>
+    public bool UsesEndpoints => ActiveFormat == WorkspaceFormat.Endpoints;
+
+    public bool UsesRequests => !UsesEndpoints;
+
+    /// <summary>"Add case" only inside an endpoint, which is the only place a case can live.</summary>
+    public bool CanAddCase => UsesEndpoints && SelectedNode is { Kind: WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case };
+
     [RelayCommand]
     private void NewRequest()
     {
@@ -357,9 +391,99 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var path = _requestStore.CreateRequest(parent, "New Request");
-        _statusLog.Log($"Created request: {path}");
+        var path = UsesEndpoints
+            ? _endpointStore.CreateEndpoint(parent, "New Endpoint")
+            : _requestStore.CreateRequest(parent, "New Request");
+
+        _statusLog.Log($"Created: {path}");
         RefreshRootFor(parent);
+    }
+
+    [RelayCommand]
+    private void NewCase()
+    {
+        if (SelectedNode is not { } node
+            || _endpointStore.EndpointDirectoryOf(node.FullPath) is not { } endpointDirectory)
+        {
+            _statusLog.Log("Select an endpoint to add a case to.");
+            return;
+        }
+
+        var path = _endpointStore.CreateCase(endpointDirectory, "new-case");
+        _statusLog.Log($"Created case: {path}");
+        RefreshRootFor(endpointDirectory);
+    }
+
+    /// <summary>
+    /// Splits every request in the active workspace into an endpoint and one case.
+    /// </summary>
+    /// <remarks>
+    /// The thing that closes the split between the two formats. Without it an existing workspace
+    /// would never get cases, batches or snapshots, and the decision to convert nothing on open would
+    /// be permanent rather than merely cautious (spec §10.4).
+    /// </remarks>
+    [RelayCommand]
+    private async Task ConvertToEndpointsAsync()
+    {
+        if (ActiveRoot is not { } root)
+        {
+            return;
+        }
+
+        var plan = _formatConverter.Preview(root.Workspace);
+
+        if (!plan.CanRun)
+        {
+            foreach (var blocker in plan.Blockers)
+            {
+                _statusLog.LogWarning(blocker);
+            }
+
+            return;
+        }
+
+        // Asked, and told exactly what will happen first. This rewrites committed files, and the one
+        // thing a preview must not do is undersell the size of what follows.
+        if (_confirmation is not null)
+        {
+            var confirmed = await _confirmation.ConfirmAsync(
+                "Convert to endpoints",
+                $"{plan.Steps.Count} request(s) become an endpoint directory with one case each.\n\n"
+                + "The originals are copied to .fubar/backup/ first. Snapshots move with their request.",
+                "Convert");
+
+            if (!confirmed)
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            var result = await _formatConverter.ConvertAsync(root.Workspace);
+
+            foreach (var warning in result.Warnings)
+            {
+                _statusLog.LogWarning(warning);
+            }
+
+            _statusLog.Log(
+                $"Converted {result.EndpointsCreated} request(s) to endpoints. Backup: {result.BackupPath}");
+
+            // Reloaded rather than patched in memory: the manifest on disk is now the authority on
+            // which format this workspace is in, and every screen reads it from there.
+            var reloaded = await _workspaceStore.LoadWorkspaceAsync(root.FullPath);
+            root.UpdateWorkspace(reloaded);
+            OnPropertyChanged(nameof(ActiveFormat));
+            OnPropertyChanged(nameof(UsesEndpoints));
+            OnPropertyChanged(nameof(UsesRequests));
+            root.Refresh();
+            WorkspaceContentImported?.Invoke(reloaded);
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not convert the workspace: {ex.Message}");
+        }
     }
 
     [RelayCommand]
@@ -649,12 +773,29 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     /// <summary>Raised when the user double-clicks a request file node - <see cref="MainViewModel"/> wires this to opening a tab.</summary>
     public event Action<string>? RequestFileActivated;
 
+    /// <summary>Raised when the user opens a case - <see cref="MainViewModel"/> wires this to the case
+    /// editor, which is a different surface from the request editor on purpose (spec §9.2).</summary>
+    public event Action<string>? CaseFileActivated;
+
     [RelayCommand]
     private void ActivateSelection()
     {
-        if (SelectedNode is { IsDirectory: false } node)
+        switch (SelectedNode)
         {
-            RequestFileActivated?.Invoke(node.FullPath);
+            case { Kind: WorkspaceNodeKind.Request } request:
+                RequestFileActivated?.Invoke(request.FullPath);
+                break;
+
+            // An endpoint IS a request, stored under a different name, so it opens in the request
+            // editor. Its directory is what the tree holds; endpoint.json is what the editor loads.
+            case { Kind: WorkspaceNodeKind.Endpoint } endpoint:
+                RequestFileActivated?.Invoke(
+                    Path.Combine(endpoint.FullPath, Core.Workspaces.IEndpointStore.EndpointFileName));
+                break;
+
+            case { Kind: WorkspaceNodeKind.Case } endpointCase:
+                CaseFileActivated?.Invoke(endpointCase.FullPath);
+                break;
         }
     }
 
@@ -672,6 +813,21 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         if (node is not null)
         {
             RunRequested?.Invoke(node);
+        }
+    }
+
+    /// <summary>Raised when the user asks to compare the selection across two environments. Wired by
+    /// <see cref="MainViewModel"/> for the same reason as <see cref="RunRequested"/>: it needs the
+    /// workspace's environments, which live beside this view model rather than in it.</summary>
+    public event Action<WorkspaceNodeViewModel>? CompareEnvironmentsRequested;
+
+    [RelayCommand]
+    private void CompareEnvironments()
+    {
+        var node = SelectedNode ?? ActiveRoot;
+        if (node is not null)
+        {
+            CompareEnvironmentsRequested?.Invoke(node);
         }
     }
 

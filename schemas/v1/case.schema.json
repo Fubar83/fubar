@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fubar83.github.io/fubar/schemas/v1/case.schema.json",
+  "title": "Fubar API Studio endpoint case",
+  "description": "One cases/<name>.json inside an endpoint directory: a particular way of calling it. Everything here is an override - what a case leaves out, it inherits from the endpoint.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": ["string", "null"], "description": "What this case is for. A case named \"not-found\" still owes the reader why." },
+    "pathParams": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Values for the {param} placeholders in the endpoint's URL. {{variables}} are the environment's and are filled elsewhere."
+    },
+    "queryParams": { "type": "array", "items": { "$ref": "request.schema.json#/$defs/keyValue" } },
+    "headers": { "type": "array", "items": { "$ref": "request.schema.json#/$defs/keyValue" } },
+    "body": {
+      "oneOf": [{ "type": "null" }, { "$ref": "request.schema.json#/$defs/body" }],
+      "description": "Null inherits the endpoint's body. A body of type \"none\" is a decision to send nothing, which is not the same statement."
+    },
+    "assertions": {
+      "type": "array",
+      "items": { "$ref": "request.schema.json#/$defs/assertion" },
+      "description": "Stating any REPLACES the endpoint's: a not-found case expecting 404 cannot also carry the endpoint's \"status equals 200\"."
+    },
+    "captures": { "type": "array", "items": { "$ref": "request.schema.json#/$defs/capture" } },
+    "comparison": { "$ref": "request.schema.json#/$defs/comparison" },
+    "tolerances": { "type": ["array", "null"], "items": { "$ref": "request.schema.json#/$defs/tolerance" } }
+  }
+}

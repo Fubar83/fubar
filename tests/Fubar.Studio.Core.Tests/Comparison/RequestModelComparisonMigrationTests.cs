@@ -22,7 +22,7 @@ public class RequestModelComparisonMigrationTests
         var result = LegacyRequestMigration.Apply(request);
 
         Assert.True(result.Changed);
-        Assert.Equal(["$.meta.requestId"], request.Comparison!.IgnoredPaths);
+        Assert.Equal(["$.meta.requestId"], request.Comparison!.IgnoredPaths!.Add);
         Assert.Empty(request.ResponseDiffIgnorePaths);
     }
 
@@ -38,12 +38,12 @@ public class RequestModelComparisonMigrationTests
         {
             Name = "r",
             ResponseDiffIgnorePaths = ["$.old"],
-            Comparison = new ComparisonSettings { IgnoredPaths = ["$.new"] },
+            Comparison = new ComparisonSettings { IgnoredPaths = InheritedPaths.FromAdded(["$.new"]) },
         };
 
         LegacyRequestMigration.Apply(request);
 
-        Assert.Equal(["$.new"], request.Comparison!.IgnoredPaths);
+        Assert.Equal(["$.new"], request.Comparison!.IgnoredPaths!.Add);
         Assert.Empty(request.ResponseDiffIgnorePaths);
     }
 

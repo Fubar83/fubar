@@ -180,4 +180,117 @@ public class CommandLineTests
         Assert.Contains("2  the run could not be attempted", CommandLine.Usage);
         Assert.Contains("A non-2xx status does NOT on its own fail the run", CommandLine.Usage);
     }
+
+    // ---- Oracles and snapshots -------------------------------------------------------------------
+
+    [Fact]
+    public void No_oracle_is_the_default_which_is_what_run_has_always_done()
+    {
+        Assert.Null(CommandLine.Parse(["--run"]).Oracle);
+    }
+
+    [Fact]
+    public void The_snapshot_oracle_is_selected_by_name()
+    {
+        Assert.Equal(
+            new CliOracle(CliOracleKind.Snapshot),
+            CommandLine.Parse(["--run", "--oracle", "snapshot"]).Oracle);
+    }
+
+    [Theory]
+    [InlineData("env:Production")]
+    [InlineData("environment:Production")]
+    public void The_environment_oracle_carries_the_environment_it_compares_against(string value)
+    {
+        Assert.Equal(
+            new CliOracle(CliOracleKind.Environment, "Production"),
+            CommandLine.Parse(["--run", "--oracle", value]).Oracle);
+    }
+
+    /// <summary>A comparison against nothing is not a comparison, and defaulting to some environment
+    /// would compare against one nobody named.</summary>
+    [Fact]
+    public void An_environment_oracle_with_no_environment_is_refused()
+    {
+        Assert.NotNull(CommandLine.Parse(["--run", "--oracle", "env:"]).Error);
+    }
+
+    /// <summary>There is no snapshot in a two-sided run to update, so this asks for something that
+    /// does not exist rather than for one of two readings.</summary>
+    [Fact]
+    public void Recording_during_an_environment_comparison_is_refused()
+    {
+        Assert.NotNull(
+            CommandLine.Parse(["--run", "--oracle", "env:Production", "--update-snapshots"]).Error);
+    }
+
+    // ---- The run verb and its selectors ----------------------------------------------------------
+
+    [Fact]
+    public void The_run_verb_means_the_whole_workspace()
+    {
+        var request = CommandLine.Parse(["run"]);
+
+        Assert.Null(request.Error);
+        Assert.Equal("", request.Run);
+    }
+
+    [Fact]
+    public void The_run_verb_takes_a_selector()
+    {
+        Assert.Equal("orders/get-order#default", CommandLine.Parse(["run", "orders/get-order#default"]).Run);
+        Assert.Equal("@smoke", CommandLine.Parse(["run", "@smoke"]).Run);
+    }
+
+    [Fact]
+    public void The_run_verb_chooses_the_headless_path()
+    {
+        Assert.True(CommandLine.IsHeadless(["run"]));
+        Assert.True(CommandLine.IsHeadless(["run", "@smoke"]));
+    }
+
+    /// <summary>Anywhere but first, "run" is an ordinary folder name - and turning one into a batch
+    /// job with no window is the surprise the headless list exists to avoid.</summary>
+    [Fact]
+    public void A_folder_called_run_does_not_make_an_invocation_headless()
+    {
+        Assert.False(CommandLine.IsHeadless(["--merge", "run"]));
+    }
+
+    [Fact]
+    public void An_unknown_oracle_is_refused_by_name_rather_than_ignored()
+    {
+        var request = CommandLine.Parse(["--run", "--oracle", "guesswork"]);
+
+        Assert.Contains("guesswork", request.Error!, StringComparison.Ordinal);
+    }
+
+    /// <summary>Recording and comparing are opposite acts. Accepting both would have to pick one
+    /// silently, and either choice surprises somebody.</summary>
+    [Fact]
+    public void Recording_and_comparing_at_once_is_refused()
+    {
+        var request = CommandLine.Parse(["--run", "--oracle", "snapshot", "--update-snapshots"]);
+
+        Assert.NotNull(request.Error);
+    }
+
+    [Fact]
+    public void Recording_alone_is_fine_and_defaults_to_per_environment()
+    {
+        var request = CommandLine.Parse(["--run", "--update-snapshots"]);
+
+        Assert.Null(request.Error);
+        Assert.True(request.UpdateSnapshots);
+        Assert.False(request.SharedSnapshots);
+    }
+
+    /// <summary>A run that must exit with a status code cannot also be showing a window, so the flags
+    /// that mean "batch" have to be recognised before Avalonia is configured.</summary>
+    [Fact]
+    public void The_new_flags_choose_the_headless_path()
+    {
+        Assert.True(CommandLine.IsHeadless(["--oracle", "snapshot"]));
+        Assert.True(CommandLine.IsHeadless(["--update-snapshots"]));
+    }
 }

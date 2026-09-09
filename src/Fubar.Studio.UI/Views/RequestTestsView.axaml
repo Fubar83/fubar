@@ -1,0 +1,103 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="500"
+             x:Class="Fubar.Studio.UI.Views.RequestTestsView"
+             x:Name="Root"
+             x:DataType="vm:RequestTestsViewModel">
+
+    <!-- The Tests surface: timeout, capture rules and assertions. One control rather than markup in
+         each editor - a request and a case both have these, and two copies would drift on exactly
+         the fields they exist to share. Timeout is hidden for a case, which inherits its endpoint's. -->
+    <ScrollViewer>
+        <StackPanel Margin="4" Spacing="18">
+
+            <StackPanel Spacing="6" IsVisible="{Binding ShowTimeout}">
+                <TextBlock Text="TIMEOUT" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <NumericUpDown Value="{Binding TimeoutValue}" Minimum="0" Increment="5" Width="150" FormatString="0" />
+                    <TextBlock Text="seconds — blank uses the default (100 s)" VerticalAlignment="Center"
+                               FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+                <TextBlock Text="CAPTURE VARIABLES" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Text="After a response, extract a value into a variable so later requests can use {{name}} (e.g. a login token)."
+                           FontSize="11" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="28,2*,1.4*,3*,1.4*,28">
+                    <TextBlock Grid.Column="1" Text="VARIABLE" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                    <TextBlock Grid.Column="2" Text="FROM" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                    <TextBlock Grid.Column="3" Text="EXPRESSION" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                    <TextBlock Grid.Column="4" Text="SCOPE" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Captures}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:CaptureRowViewModel">
+                            <Grid ColumnDefinitions="28,2*,1.4*,3*,1.4*,28" Margin="0,2">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1" Text="{Binding VariableName}" PlaceholderText="name" Margin="2,0" />
+                                <ComboBox Grid.Column="2" Margin="2,0" HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding #Root.((vm:RequestTestsViewModel)DataContext).SourceOptions}"
+                                          SelectedItem="{Binding Source}" />
+                                <TextBox Grid.Column="3" Text="{Binding Expression}" IsVisible="{Binding NeedsExpression}"
+                                         PlaceholderText="$.token  or  Header-Name"
+                                         FontFamily="Cascadia Code,Consolas,monospace" Margin="2,0" />
+                                <ComboBox Grid.Column="4" Margin="2,0" HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding #Root.((vm:RequestTestsViewModel)DataContext).ScopeOptions}"
+                                          SelectedItem="{Binding Scope}" />
+                                <Button Grid.Column="5" Classes="icon-btn" Content="&#x2715;" FontSize="11"
+                                        HorizontalAlignment="Center"
+                                        Command="{Binding #Root.((vm:RequestTestsViewModel)DataContext).RemoveCaptureCommand}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Classes="secondary-btn" Content="+ Add capture" HorizontalAlignment="Left"
+                        Command="{Binding AddCaptureCommand}" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+                <TextBlock Text="ASSERTIONS" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Text="Checks run against each response; results appear in the Response pane's Tests tab."
+                           FontSize="11" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="28,1.4*,3*,1.6*,2*,28">
+                    <TextBlock Grid.Column="1" Text="FROM" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                    <TextBlock Grid.Column="2" Text="TARGET" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                    <TextBlock Grid.Column="3" Text="OPERATOR" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                    <TextBlock Grid.Column="4" Text="EXPECTED" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="2,0" />
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Assertions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:AssertionRowViewModel">
+                            <Grid ColumnDefinitions="28,1.4*,3*,1.6*,2*,28" Margin="0,2">
+                                <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" Margin="2,0" HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding #Root.((vm:RequestTestsViewModel)DataContext).SourceOptions}"
+                                          SelectedItem="{Binding Source}" />
+                                <TextBox Grid.Column="2" Text="{Binding Target}" IsVisible="{Binding NeedsTarget}"
+                                         PlaceholderText="$.status  or  Header-Name"
+                                         FontFamily="Cascadia Code,Consolas,monospace" Margin="2,0" />
+                                <ComboBox Grid.Column="3" Margin="2,0" HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding #Root.((vm:RequestTestsViewModel)DataContext).OperatorOptions}"
+                                          SelectedItem="{Binding Operator}" />
+                                <TextBox Grid.Column="4" Text="{Binding Expected}" IsVisible="{Binding NeedsExpected}"
+                                         PlaceholderText="expected value" Margin="2,0" />
+                                <Button Grid.Column="5" Classes="icon-btn" Content="&#x2715;" FontSize="11"
+                                        HorizontalAlignment="Center"
+                                        Command="{Binding #Root.((vm:RequestTestsViewModel)DataContext).RemoveAssertionCommand}"
+                                        CommandParameter="{Binding}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Classes="secondary-btn" Content="+ Add assertion" HorizontalAlignment="Left"
+                        Command="{Binding AddAssertionCommand}" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

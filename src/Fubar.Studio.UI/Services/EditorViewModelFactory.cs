@@ -15,6 +15,9 @@ public interface IEditorViewModelFactory
     EnvironmentEditorViewModel CreateEnvironmentEditor(WorkspaceEnvironment environment, Workspace workspace);
 
     AuthProfileEditorViewModel CreateAuthProfileEditor(AuthProfile profile, Workspace workspace);
+
+    CaseEditorViewModel CreateCaseEditor(
+        EndpointCase endpointCase, RequestModel endpoint, string filePath, Workspace workspace);
 }
 
 /// <summary>
@@ -36,4 +39,9 @@ public sealed class EditorViewModelFactory : IEditorViewModelFactory
 
     public AuthProfileEditorViewModel CreateAuthProfileEditor(AuthProfile profile, Workspace workspace) =>
         ActivatorUtilities.CreateInstance<AuthProfileEditorViewModel>(_provider, profile, workspace);
+
+    public CaseEditorViewModel CreateCaseEditor(
+        EndpointCase endpointCase, RequestModel endpoint, string filePath, Workspace workspace) =>
+        ActivatorUtilities.CreateInstance<CaseEditorViewModel>(
+            _provider, endpointCase, endpoint, filePath, workspace);
 }

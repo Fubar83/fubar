@@ -54,6 +54,79 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Endpoints and cases.** An endpoint is a directory holding `endpoint.json` and `cases/`. The
+  endpoint states the operation — method, URL, headers, auth, true every time it is called; a case
+  states one invocation — its path parameters, its query, and what it should answer. Wanting a second
+  way to call the same endpoint used to mean duplicating the whole file, and the copies drifted.
+
+  Two placeholder syntaxes, deliberately: `{param}` is the endpoint's shape and the case fills it,
+  `{{variable}}` is the environment's value. Conflated, there is no way to say which of the two a
+  missing value should have come from. A `{param}` with no value is left visible rather than emptied —
+  `/orders/{orderId}` says what is missing; `/orders/` is a different request that gets a
+  plausible-looking answer from the wrong resource.
+
+  New workspaces are created in this format; existing ones are never converted on open. **Convert to
+  endpoints…** does it explicitly — it previews, refuses a name collision rather than guessing, copies
+  the originals to `.fubar/backup/` first, carries snapshots across, and stamps the format last so an
+  interrupted run leaves a workspace that still opens.
+
+- **Snapshot regression testing.** Record what every request answers, and compare later runs against
+  it. `Record snapshots` in the Run window, or `fubar run --update-snapshots` for the first recording
+  in CI; `--oracle snapshot` to compare.
+
+  Recording is always a deliberate act — never something a comparison run does when it finds nothing —
+  because a snapshot that writes itself on the first failing run tests nothing ever again and does it
+  silently. **A missing snapshot is reported and fails the run**; "nothing to compare, therefore fine"
+  is how a suite stops testing without anyone noticing.
+
+  Snapshots are **redacted and normalised before they are written**: a token never reaches the file,
+  and a timestamp is stored as `<timestamp>` so the file does not churn. The same rules are applied to
+  the live response before comparing, or every normalised field would differ on every run.
+
+  Scope is chosen when saving: per environment by default, or shared by all of them. Per-environment's
+  failure mode is a redundant file; shared's is a data difference reported as a regression, and a
+  regression tool that cries wolf stops being run.
+
+- **Compare two environments in one run.** `Judge by → Compare with Production` in the Run window, or
+  `--oracle env:Production`. Everything is sent twice, interleaved one step at a time, and the run
+  reports where the two answers differ. The other side goes through the ordinary runner, so auth,
+  variables and captures are identical on both sides — any difference in how they were sent would be
+  reported as a difference between the environments.
+
+- **Tolerances.** A field that is allowed to move, and by how much: `numeric`, `withinSeconds`,
+  `matches`, `lengthWithinPercent`, `oneOf`. The difference between a suite that catches regressions
+  and one that ignores half the payload — ignoring a total because it drifts by a cent stops checking
+  the total, a tolerance forgives the cent. Both sides have to satisfy the rule, so
+  `$.requestId matches ^[0-9a-f]{32}$` forgives a regenerated id and still fails when the field comes
+  back as an error message. Forgiven differences are counted and shown, never folded into the green.
+
+- **Batches.** A named list of calls to make together, with what should judge them —
+  `batches/smoke.json`, run from the left pane or as `fubar run @smoke`. A batch is an occasion, so it
+  sits beside the collection rather than inside it, and its rules are an overlay on whatever each
+  endpoint already resolves to rather than another level of the hierarchy. A step naming an endpoint
+  or case that is no longer there **errors rather than being skipped**: a batch that quietly shrank
+  when something was renamed would keep passing while testing one thing fewer.
+
+- **`fubar run <selector>`.**
+
+  ```
+  fubar run                            the whole workspace
+  fubar run orders                     a folder, depth-first
+  fubar run orders/get-order           an endpoint, all its cases
+  fubar run orders/get-order#default   one case
+  fubar run @smoke                     a batch
+  ```
+
+  `--run` is the older spelling of the same thing and still works. A selector that matches nothing is
+  refused rather than run as an empty plan, and a JUnit test is now named `endpoint#case` rather than
+  by the endpoint alone — four tests called `get-order` left CI unable to say which started failing.
+
+- **Rules inherit at every level, and lists say what they ADD and REMOVE.** Comparison settings,
+  snapshot policy and tolerances all resolve global → folders → endpoint → case, with a batch overlay
+  last. `"ignoredPaths": { "add": [...], "remove": [...] }` replaces wholesale replacement, so a
+  request needing one extra rule no longer has to restate its folder's — and no longer silently stops
+  inheriting them when it does. A bare array is still read as `add`.
+
 - **Run a collection from the command line, for CI.** `FubarAPIStudio --run --env Staging --report
   results.xml`. The same binary, switched into a batch tool by flags that have no meaning on screen —
   the rule Fubar Diff already uses, so starting the app normally is untouched.

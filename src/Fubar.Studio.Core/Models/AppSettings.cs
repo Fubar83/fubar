@@ -103,6 +103,14 @@ public sealed class AppSettings
     /// </summary>
     public ComparisonSettings? Comparison { get; set; }
 
+    /// <summary>Snapshot rules that apply everywhere unless a folder or request says otherwise.
+    /// Redactions especially belong here: a token is a token in every workspace.</summary>
+    public Snapshots.SnapshotPolicy? Snapshot { get; set; }
+
+    /// <summary>Fields allowed to move, and by how much. Resolved per path, closest level winning -
+    /// see <c>ToleranceResolver</c>. Null means this level states none.</summary>
+    public List<Comparison.Tolerance>? Tolerances { get; set; }
+
     public SessionState Session { get; set; } = new();
 
     // --- reading a file written before the grouping -------------------------------------------------

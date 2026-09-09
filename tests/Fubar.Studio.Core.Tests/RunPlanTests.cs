@@ -150,4 +150,88 @@ public class RunPlanTests
     {
         Assert.True(RunPlan.From(Tree()).Filtered("nothing-is-called-this").IsEmpty);
     }
+
+    // ---- Endpoints and cases ---------------------------------------------------------------------
+
+    private static WorkspaceTreeNode Case(string name, string endpointDirectory) =>
+        new(name, $"{endpointDirectory}/cases/{name}.json", IsDirectory: false, [])
+        {
+            Kind = WorkspaceNodeKind.Case,
+        };
+
+    private static WorkspaceTreeNode Endpoint(string name, string path, params WorkspaceTreeNode[] cases) =>
+        new(name, path, IsDirectory: true, cases) { Kind = WorkspaceNodeKind.Endpoint };
+
+    private static WorkspaceTreeNode EndpointTree() => Folder("collections", "/w/collections",
+        Folder("orders", "/w/collections/orders",
+            Endpoint("get-order", "/w/collections/orders/get-order",
+                Case("default", "/w/collections/orders/get-order"),
+                Case("not-found", "/w/collections/orders/get-order"))));
+
+    /// <summary>"Run this endpoint" means "check the ways it is called", not "send one of them and
+    /// hope it was the interesting one".</summary>
+    [Fact]
+    public void An_endpoint_runs_every_case_it_has()
+    {
+        var plan = RunPlan.From(EndpointTree());
+
+        Assert.Equal(["default", "not-found"], plan.Steps.Select(s => s.CaseName));
+        Assert.All(plan.Steps, s =>
+            Assert.Equal("/w/collections/orders/get-order/endpoint.json".Replace('/', Path.DirectorySeparatorChar), s.FilePath));
+    }
+
+    /// <summary>An endpoint with no cases is sent as it stands. That is a legitimate state, not an
+    /// empty run - and a run that silently skipped it would be a run that tested nothing.</summary>
+    [Fact]
+    public void An_endpoint_with_no_cases_is_still_one_step()
+    {
+        var plan = RunPlan.From(Endpoint("ping", "/w/collections/ping"));
+
+        var only = Assert.Single(plan.Steps);
+        Assert.Null(only.CaseName);
+        Assert.Equal("ping", only.Name);
+    }
+
+    /// <summary>The name has to be stable and unique within a run: it becomes the JUnit test name, and
+    /// two cases of one endpoint would otherwise be indistinguishable in CI.</summary>
+    [Fact]
+    public void A_case_step_is_named_endpoint_then_case()
+    {
+        Assert.Equal(
+            ["get-order#default", "get-order#not-found"],
+            RunPlan.From(EndpointTree()).Steps.Select(s => s.QualifiedName));
+    }
+
+    /// <summary>Every case shares one endpoint.json, so de-duplicating on the file alone would run
+    /// the first case and silently drop the rest.</summary>
+    [Fact]
+    public void Selecting_an_endpoint_and_one_of_its_cases_runs_each_case_once()
+    {
+        var endpoint = Endpoint("get-order", "/w/collections/orders/get-order",
+            Case("default", "/w/collections/orders/get-order"),
+            Case("not-found", "/w/collections/orders/get-order"));
+
+        var plan = RunPlan.From([endpoint, endpoint.Children[1]]);
+
+        Assert.Equal(["default", "not-found"], plan.Steps.Select(s => s.CaseName));
+    }
+
+    /// <summary>A snapshot is keyed by what was SENT. Two cases answer differently by design, so
+    /// keying on the endpoint would have each overwrite the other's recording.</summary>
+    [Fact]
+    public void A_case_step_is_its_own_subject_for_snapshots()
+    {
+        var plan = RunPlan.From(EndpointTree());
+
+        Assert.EndsWith("default.json", plan.Steps[0].SubjectPath, StringComparison.Ordinal);
+        Assert.EndsWith("not-found.json", plan.Steps[1].SubjectPath, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_filter_matches_a_case_name()
+    {
+        var plan = RunPlan.From(EndpointTree()).Filtered("not-found");
+
+        Assert.Equal("not-found", Assert.Single(plan.Steps).CaseName);
+    }
 }

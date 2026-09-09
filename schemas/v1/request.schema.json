@@ -21,6 +21,8 @@
     "assertions": { "type": "array", "items": { "$ref": "#/$defs/assertion" } },
     "suppressedInheritedHeaderKeys": { "type": "array", "items": { "type": "string" } },
     "comparison": { "$ref": "#/$defs/comparison" },
+    "snapshot": { "$ref": "#/$defs/snapshot" },
+    "tolerances": { "type": ["array", "null"], "items": { "$ref": "#/$defs/tolerance" } },
     "settings": { "type": ["object", "null"], "description": "Protocol-owned data bag." },
 
     "localVariables": {
@@ -135,8 +137,63 @@
         "reportPropertyOrder": { "type": ["boolean", "null"] },
         "matchArraysByPosition": { "type": ["boolean", "null"] },
         "ignoreNullVsMissing": { "type": ["boolean", "null"] },
-        "ignoredPaths": { "type": ["array", "null"], "items": { "type": "string" } },
+        "ignoredPaths": { "$ref": "#/$defs/inheritedPaths" },
         "arrayKeyOverrides": { "type": ["object", "null"], "additionalProperties": { "type": "string" } }
+      }
+    },
+    "inheritedPaths": {
+      "description": "What this level ADDS and REMOVES, rather than the whole list. A bare array is read as add, which is how the pre-inheritance shape still loads.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "array", "items": { "type": "string" }, "deprecated": true },
+        {
+          "type": "object",
+          "properties": {
+            "add": { "type": "array", "items": { "type": "string" } },
+            "remove": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "snapshotRule": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "description": "$.a.b, $..token, $.items[*].id" },
+        "as": { "type": "string", "description": "The replacement written into the file, e.g. <redacted>." }
+      }
+    },
+    "inheritedRules": {
+      "type": ["object", "null"],
+      "properties": {
+        "add": { "type": "array", "items": { "$ref": "#/$defs/snapshotRule" } },
+        "remove": { "type": "array", "items": { "type": "string" }, "description": "By path: a level saying 'not here' need not repeat what the ancestor replaced it with." }
+      }
+    },
+    "snapshot": {
+      "type": ["object", "null"],
+      "description": "What happens to a response on its way into a snapshot. Redact and normalise both run before the file is written; ignoring happens on read and leaves the real value committed.",
+      "properties": {
+        "redact": { "$ref": "#/$defs/inheritedRules" },
+        "normalize": { "$ref": "#/$defs/inheritedRules" },
+        "headers": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "description": "Response headers worth keeping. Absent keeps none; this list is closest-wins rather than add/remove."
+        }
+      }
+    },
+    "tolerance": {
+      "type": "object",
+      "required": ["path"],
+      "description": "A field allowed to move, and by how much. Exactly one allowance per entry - none, or several, is reported and not applied.",
+      "properties": {
+        "path": { "type": "string" },
+        "numeric": { "type": ["number", "null"] },
+        "withinSeconds": { "type": ["number", "null"] },
+        "matches": { "type": ["string", "null"] },
+        "lengthWithinPercent": { "type": ["number", "null"] },
+        "oneOf": { "type": ["array", "null"], "items": { "type": "string" } }
       }
     }
   }

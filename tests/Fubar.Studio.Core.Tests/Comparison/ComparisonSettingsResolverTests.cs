@@ -16,6 +16,10 @@ public class ComparisonSettingsResolverTests
 
     private static ComparisonSettingsLayer Request(ComparisonSettings? s) => new(s, ComparisonScope.Request, "Request");
 
+    private static InheritedPaths Paths(params string[] add) => InheritedPaths.FromAdded(add);
+
+    private static InheritedPaths Dropping(params string[] remove) => new() { Remove = [.. remove] };
+
     [Fact]
     public void With_no_layers_everything_falls_back_to_the_built_in_defaults()
     {
@@ -24,7 +28,7 @@ public class ComparisonSettingsResolverTests
         Assert.False(resolved.IgnoreWhitespace.Value);
         Assert.False(resolved.IgnoreCase.Value);
         Assert.False(resolved.ReportPropertyOrder.Value);
-        Assert.Empty(resolved.IgnoredPaths.Value);
+        Assert.Empty(resolved.IgnoredPaths);
         Assert.Empty(resolved.ArrayKeyOverrides.Value);
         Assert.Equal(ComparisonScope.Default, resolved.IgnoreWhitespace.Scope);
     }
@@ -74,7 +78,7 @@ public class ComparisonSettingsResolverTests
     {
         var resolved = ComparisonSettingsResolver.Resolve([
             Global(new ComparisonSettings { IgnoreWhitespace = true, IgnoreCase = true }),
-            Folder(new ComparisonSettings { IgnoredPaths = ["$.traceId"] }),
+            Folder(new ComparisonSettings { IgnoredPaths = Paths("$.traceId") }),
             Request(new ComparisonSettings { IgnoreCase = false }),
         ]);
 
@@ -86,9 +90,9 @@ public class ComparisonSettingsResolverTests
         Assert.True(resolved.IgnoreWhitespace.Value);
         Assert.Equal(ComparisonScope.Global, resolved.IgnoreWhitespace.Scope);
 
-        // Still the folder's.
-        Assert.Equal(["$.traceId"], resolved.IgnoredPaths.Value);
-        Assert.Equal(ComparisonScope.Folder, resolved.IgnoredPaths.Scope);
+        // Still the folder's, and the entry says so.
+        Assert.Equal(["$.traceId"], resolved.IgnoredPathValues);
+        Assert.Equal(ComparisonScope.Folder, resolved.IgnoredPaths[0].Scope);
     }
 
     [Fact]
@@ -104,31 +108,104 @@ public class ComparisonSettingsResolverTests
     }
 
     /// <summary>
-    /// Lists REPLACE rather than merge, so reading one level tells you exactly what applies - see
-    /// <see cref="ComparisonSettings.IgnoredPaths"/>' own note on why union was rejected.
+    /// Lists ACCUMULATE down the chain rather than the nearest level replacing everything above it.
+    /// This is the change that lets a request add one rule without restating its folder's - which is
+    /// what the UI used to do silently, ending inheritance for that setting.
     /// </summary>
     [Fact]
-    public void Ignored_paths_replace_rather_than_union()
+    public void Ignored_paths_accumulate_down_the_chain()
     {
         var resolved = ComparisonSettingsResolver.Resolve([
-            Folder(new ComparisonSettings { IgnoredPaths = ["$.traceId", "$..timestamp"] }),
-            Request(new ComparisonSettings { IgnoredPaths = ["$.meta.requestId"] }),
+            Folder(new ComparisonSettings { IgnoredPaths = Paths("$.traceId", "$..timestamp") }),
+            Request(new ComparisonSettings { IgnoredPaths = Paths("$.meta.requestId") }),
         ]);
 
-        Assert.Equal(["$.meta.requestId"], resolved.IgnoredPaths.Value);
+        Assert.Equal(["$.traceId", "$..timestamp", "$.meta.requestId"], resolved.IgnoredPathValues);
     }
 
-    /// <summary>An empty list is an override meaning "ignore nothing here", not "inherit".</summary>
+    /// <summary>Each entry carries the level that added it, which is what a chip's "inherited from"
+    /// label and its ✕ both need.</summary>
     [Fact]
-    public void An_empty_list_is_a_real_override_not_an_absent_one()
+    public void Each_resolved_path_names_the_level_that_added_it()
     {
         var resolved = ComparisonSettingsResolver.Resolve([
-            Folder(new ComparisonSettings { IgnoredPaths = ["$.traceId"] }),
-            Request(new ComparisonSettings { IgnoredPaths = [] }),
+            Folder(new ComparisonSettings { IgnoredPaths = Paths("$.traceId") }, "users"),
+            Request(new ComparisonSettings { IgnoredPaths = Paths("$.meta.requestId") }),
         ]);
 
-        Assert.Empty(resolved.IgnoredPaths.Value);
-        Assert.Equal(ComparisonScope.Request, resolved.IgnoredPaths.Scope);
+        Assert.Equal(ComparisonScope.Folder, resolved.IgnoredPaths[0].Scope);
+        Assert.Equal("Folder: users", resolved.IgnoredPaths[0].SourceName);
+        Assert.Equal(ComparisonScope.Request, resolved.IgnoredPaths[1].Scope);
+    }
+
+    /// <summary>The other half of add/remove: a level can drop a rule it inherited without touching
+    /// the level that set it, which is the only way to say "wrong for this one endpoint".</summary>
+    [Fact]
+    public void A_level_can_remove_an_inherited_path()
+    {
+        var resolved = ComparisonSettingsResolver.Resolve([
+            Folder(new ComparisonSettings { IgnoredPaths = Paths("$.traceId", "$..timestamp") }),
+            Request(new ComparisonSettings { IgnoredPaths = Dropping("$.traceId") }),
+        ]);
+
+        Assert.Equal(["$..timestamp"], resolved.IgnoredPathValues);
+    }
+
+    /// <summary>
+    /// Removing something nothing added is fine. A level is allowed to say "not here" about a rule an
+    /// ancestor might grow later, and failing over it would make the answer depend on the order the
+    /// files happened to be written in.
+    /// </summary>
+    [Fact]
+    public void Removing_a_path_nothing_added_is_not_an_error()
+    {
+        var resolved = ComparisonSettingsResolver.Resolve([
+            Request(new ComparisonSettings { IgnoredPaths = Dropping("$.neverSet") }),
+        ]);
+
+        Assert.Empty(resolved.IgnoredPaths);
+    }
+
+    /// <summary>A level re-adding what it already inherited must not duplicate it, and the DEEPEST
+    /// level to add it is the one reported - that is the file a reader would edit to be rid of it.</summary>
+    [Fact]
+    public void Re_adding_an_inherited_path_moves_its_origin_rather_than_duplicating_it()
+    {
+        var resolved = ComparisonSettingsResolver.Resolve([
+            Folder(new ComparisonSettings { IgnoredPaths = Paths("$.traceId") }),
+            Request(new ComparisonSettings { IgnoredPaths = Paths("$.traceId") }),
+        ]);
+
+        Assert.Equal(["$.traceId"], resolved.IgnoredPathValues);
+        Assert.Equal(ComparisonScope.Request, resolved.IgnoredPaths[0].Scope);
+    }
+
+    /// <summary>A removal at one level does not stop a deeper one adding it back.</summary>
+    [Fact]
+    public void A_deeper_level_can_add_back_what_a_nearer_ancestor_removed()
+    {
+        var resolved = ComparisonSettingsResolver.Resolve([
+            Global(new ComparisonSettings { IgnoredPaths = Paths("$.traceId") }),
+            Folder(new ComparisonSettings { IgnoredPaths = Dropping("$.traceId") }),
+            Request(new ComparisonSettings { IgnoredPaths = Paths("$.traceId") }),
+        ]);
+
+        Assert.Equal(["$.traceId"], resolved.IgnoredPathValues);
+        Assert.Equal(ComparisonScope.Request, resolved.IgnoredPaths[0].Scope);
+    }
+
+    /// <summary>A contribution that says nothing leaves what it inherited exactly as it was - the same
+    /// meaning "null" has for every scalar here.</summary>
+    [Fact]
+    public void An_empty_contribution_changes_nothing()
+    {
+        var resolved = ComparisonSettingsResolver.Resolve([
+            Folder(new ComparisonSettings { IgnoredPaths = Paths("$.traceId") }),
+            Request(new ComparisonSettings { IgnoredPaths = new InheritedPaths() }),
+        ]);
+
+        Assert.Equal(["$.traceId"], resolved.IgnoredPathValues);
+        Assert.Equal(ComparisonScope.Folder, resolved.IgnoredPaths[0].Scope);
     }
 
     [Fact]
@@ -150,11 +227,11 @@ public class ComparisonSettingsResolverTests
     [Fact]
     public void Resolved_collections_are_copies_not_the_stored_instances()
     {
-        var settings = new ComparisonSettings { IgnoredPaths = ["$.a"] };
+        var settings = new ComparisonSettings { IgnoredPaths = Paths("$.a") };
 
         var resolved = ComparisonSettingsResolver.Resolve([Request(settings)]);
-        settings.IgnoredPaths!.Add("$.b");
+        settings.IgnoredPaths!.Add.Add("$.b");
 
-        Assert.Equal(["$.a"], resolved.IgnoredPaths.Value);
+        Assert.Equal(["$.a"], resolved.IgnoredPathValues);
     }
 }

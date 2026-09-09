@@ -12,6 +12,22 @@ public enum RunReportFormat
     JUnit,
 }
 
+/// <summary>What <c>--oracle</c> named.</summary>
+public enum CliOracleKind
+{
+    /// <summary>No comparison; assertions decide the verdict.</summary>
+    None,
+
+    /// <summary>Compare against the recorded snapshot.</summary>
+    Snapshot,
+
+    /// <summary>Send twice and compare the two environments' answers.</summary>
+    Environment,
+}
+
+/// <param name="Environment">The second environment, for <see cref="CliOracleKind.Environment"/>.</param>
+public sealed record CliOracle(CliOracleKind Kind, string? Environment = null);
+
 /// <summary>
 /// What the command line asked for, when it asked for something the window cannot do.
 ///
@@ -43,6 +59,17 @@ public sealed record CliRequest
     public string? Filter { get; init; }
 
     public bool StopOnFailure { get; init; }
+
+    /// <summary>What judges each response. Absent means nothing, which is what --run has always
+    /// done.</summary>
+    public CliOracle? Oracle { get; init; }
+
+    /// <summary>Record snapshots instead of comparing against them. Never both: there is no snapshot
+    /// in that run to update.</summary>
+    public bool UpdateSnapshots { get; init; }
+
+    /// <summary>Record one snapshot for every environment rather than for the one being run.</summary>
+    public bool SharedSnapshots { get; init; }
 
     public int DelayMilliseconds { get; init; }
 
@@ -92,10 +119,17 @@ public static class CommandLine
     /// window, because turning an unrecognised argument into a silent batch job is the kind of surprise
     /// nobody can debug.
     /// </summary>
-    private static readonly string[] Headless = ["--run", "--validate", "--help", "-h", "--version"];
+    private static readonly string[] Headless =
+        ["--run", "--validate", "--help", "-h", "--version", "--oracle", "--update-snapshots"];
+
+    /// <summary>The verb form, <c>fubar run &lt;selector&gt;</c>. Recognised only in FIRST position:
+    /// anywhere else "run" is a perfectly ordinary folder name, and turning one into a batch job with
+    /// no window is the surprise this whole list exists to avoid.</summary>
+    private const string RunVerb = "run";
 
     public static bool IsHeadless(string[] args) =>
-        args.Any(a => Headless.Contains(a, StringComparer.OrdinalIgnoreCase));
+        args.Any(a => Headless.Contains(a, StringComparer.OrdinalIgnoreCase))
+        || (args.Length > 0 && string.Equals(args[0], RunVerb, StringComparison.OrdinalIgnoreCase));
 
     public static CliRequest Parse(string[] args)
     {
@@ -105,6 +139,14 @@ public static class CommandLine
         {
             var arg = args[i];
 
+            // "fubar run orders/get-order#default" - the same thing --run says, in the shape every
+            // other tool of this kind uses. --run stays for the release that follows this one.
+            if (i == 0 && string.Equals(arg, RunVerb, StringComparison.OrdinalIgnoreCase))
+            {
+                request = request with { Run = "" };
+                continue;
+            }
+
             switch (arg.ToLowerInvariant())
             {
                 case "--help":
@@ -113,6 +155,36 @@ public static class CommandLine
 
                 case "--version":
                     return request with { ShowVersion = true };
+
+                case "--oracle":
+                    if (NextValue(args, ref i) is not { Length: > 0 } oracle)
+                    {
+                        return request with { Error = OracleHelp };
+                    }
+
+                    if (ParseOracle(oracle) is not { } parsedOracle)
+                    {
+                        return request with { Error = $"Unknown oracle \"{oracle}\". {OracleHelp}" };
+                    }
+
+                    if (parsedOracle is { Kind: CliOracleKind.Environment, Environment: null or "" })
+                    {
+                        return request with
+                        {
+                            Error = "--oracle env: names no environment. Write env:<name>, e.g. env:production.",
+                        };
+                    }
+
+                    request = request with { Oracle = parsedOracle };
+                    break;
+
+                case "--update-snapshots":
+                    request = request with { UpdateSnapshots = true };
+                    break;
+
+                case "--shared-snapshots":
+                    request = request with { SharedSnapshots = true };
+                    break;
 
                 case "--run":
                     // A bare --run is legitimate and means the whole workspace, so a missing value is
@@ -252,7 +324,58 @@ public static class CommandLine
             }
         }
 
+        // Recording is not comparing. Accepting both would have to pick one silently, and either
+        // choice surprises somebody - so it is refused with the reason.
+        if (request.UpdateSnapshots && request.Oracle is { Kind: CliOracleKind.Snapshot })
+        {
+            return request with { Error = "--update-snapshots records snapshots; --oracle snapshot compares against them. Use one." };
+        }
+
+        // There is no snapshot in an environment comparison to update, so this combination asks for
+        // something that does not exist rather than for one of two readings.
+        if (request.UpdateSnapshots && request.Oracle is { Kind: CliOracleKind.Environment })
+        {
+            return request with
+            {
+                Error = "--update-snapshots has nothing to record in an environment comparison: it compares two live sides.",
+            };
+        }
+
         return request;
+    }
+
+    private const string OracleHelp = "Use none, snapshot, or env:<name>.";
+
+    /// <summary>
+    /// <c>none</c>, <c>snapshot</c>, or <c>env:NAME</c> / <c>environment:NAME</c>. Null for anything
+    /// else, so an unknown oracle is refused by name rather than falling back to no comparison - which
+    /// would be a green run that compared nothing.
+    /// </summary>
+    private static CliOracle? ParseOracle(string text)
+    {
+        if (string.Equals(text, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            return new CliOracle(CliOracleKind.None);
+        }
+
+        if (string.Equals(text, "snapshot", StringComparison.OrdinalIgnoreCase))
+        {
+            return new CliOracle(CliOracleKind.Snapshot);
+        }
+
+        var colon = text.IndexOf(':', StringComparison.Ordinal);
+        if (colon < 0)
+        {
+            return null;
+        }
+
+        var kind = text[..colon];
+        var environment = text[(colon + 1)..].Trim();
+
+        return string.Equals(kind, "env", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(kind, "environment", StringComparison.OrdinalIgnoreCase)
+            ? new CliOracle(CliOracleKind.Environment, environment)
+            : null;
     }
 
     /// <summary>
@@ -290,10 +413,18 @@ public static class CommandLine
         FubarAPIStudio - run a collection from the command line.
 
         Usage:
-          FubarAPIStudio --run [<folder-or-request>] [options]
+          FubarAPIStudio run [<selector>] [options]
 
-        The path is relative to the workspace's collections/ directory, or absolute.
-        Omit it to run the whole workspace.
+        A selector is one of:
+                                     the whole workspace
+          orders                     a folder, depth-first
+          orders/get-order           an endpoint, all its cases
+          orders/get-order#default   one case
+          @smoke                     a batch, with its own oracle and environment
+                                     unless the flags below override them
+
+        Paths are relative to the workspace's collections/ directory.
+        --run is the older spelling of the same thing and still works.
 
         Options:
           -w, --workspace <path>   Workspace root. Defaults to walking up from the run
@@ -304,6 +435,15 @@ public static class CommandLine
               --env-file <path>    Read KEY=VALUE lines from a file. Same idea, for more
                                    than a couple of them.
               --filter <text>      Only run requests whose name contains this text.
+              --oracle <what>      What judges each response:
+                                     none        assertions only (default)
+                                     snapshot    the recorded snapshot for this environment
+                                     env:<name>  send twice and compare the two answers
+                                   A missing other side is reported and fails the run - it is
+                                   never treated as a pass.
+              --update-snapshots   Record snapshots instead of comparing against them.
+              --shared-snapshots   With --update-snapshots, record one snapshot for every
+                                   environment rather than for the one being run.
               --stop-on-failure    Stop at the first failed or errored request.
               --delay <ms>         Wait this long between requests.
               --report <path>      Write a report.
@@ -344,10 +484,13 @@ public static class CommandLine
         the literal text to the server.
 
         Examples:
-          FubarAPIStudio --run --env Staging --report results.xml
-          FubarAPIStudio --run Orders --stop-on-failure
-          FubarAPIStudio --run -w ./api-tests --filter smoke -q
-          FubarAPIStudio --run --env CI --var api_key="$API_KEY" --report results.xml
+          FubarAPIStudio run --env Staging --report results.xml
+          FubarAPIStudio run orders --env Staging --oracle snapshot
+          FubarAPIStudio run orders/get-order#not-found --env Staging --oracle snapshot
+          FubarAPIStudio run orders --env Staging --oracle env:Production
+          FubarAPIStudio run @smoke --report results.xml --report-format junit
+          FubarAPIStudio run --env Staging --update-snapshots
+          FubarAPIStudio run --env CI --var api_key="$API_KEY" --report results.xml
           FubarAPIStudio --validate -w ./api-tests
         """;
 }

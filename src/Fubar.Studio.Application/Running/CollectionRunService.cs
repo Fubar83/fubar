@@ -1,7 +1,11 @@
+using Fubar.Studio.Core.Snapshots;
 using System.Diagnostics;
+using Fubar.Studio.Application.Comparison;
 using Fubar.Studio.Application.Requests;
 using Fubar.Studio.Core.Auth;
+using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Models;
+using Fubar.Studio.Core.Protocols;
 using Fubar.Studio.Core.Running;
 using Fubar.Studio.Core.Testing;
 using Fubar.Studio.Core.Workspaces;
@@ -9,23 +13,32 @@ using Fubar.Studio.Core.Workspaces;
 namespace Fubar.Studio.Application.Running;
 
 /// <inheritdoc cref="ICollectionRunService"/>
-public sealed class CollectionRunService : ICollectionRunService
+public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPairRunService
 {
     private readonly IRequestExecutionService _execution;
     private readonly IRequestStore _requests;
     private readonly IInheritanceResolver _inheritance;
     private readonly IAuthProfileStore _authProfiles;
+    private readonly IResponseComparer _comparer;
+    private readonly IRequestComparisonSettings _settings;
+    private readonly IEndpointStore _endpoints;
 
     public CollectionRunService(
         IRequestExecutionService execution,
         IRequestStore requests,
         IInheritanceResolver inheritance,
-        IAuthProfileStore authProfiles)
+        IAuthProfileStore authProfiles,
+        IResponseComparer comparer,
+        IRequestComparisonSettings settings,
+        IEndpointStore endpoints)
     {
         _execution = execution;
         _requests = requests;
         _inheritance = inheritance;
         _authProfiles = authProfiles;
+        _comparer = comparer;
+        _settings = settings;
+        _endpoints = endpoints;
     }
 
     public async Task<RunReport> RunAsync(
@@ -93,6 +106,8 @@ public sealed class CollectionRunService : ICollectionRunService
                 break;
             }
 
+            report = await JudgeAsync(report, run, cancellationToken).ConfigureAwait(false);
+
             reports.Add(report);
             progress?.Report(RunProgress.Finished(report, total));
 
@@ -115,16 +130,232 @@ public sealed class CollectionRunService : ICollectionRunService
         return new RunReport(reports, stopwatch.ElapsedMilliseconds, cancelled, stoppedEarly);
     }
 
+    /// <inheritdoc cref="IEnvironmentPairRunService.RunAsync"/>
+    public async Task<EnvironmentPairReport> RunAsync(
+        EnvironmentPairRun run,
+        IProgress<StepPairProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+
+        var leftName = run.Left?.Name ?? "No environment";
+        var rightName = run.Right?.Name ?? "No environment";
+
+        if (run.Plan.IsEmpty)
+        {
+            return EnvironmentPairReport.Empty with { LeftEnvironment = leftName, RightEnvironment = rightName };
+        }
+
+        // Read once for the whole run, for the reason given in the single-environment path above - and
+        // ONCE for both sides, not once per side: auth profiles are workspace-level, so re-reading them
+        // between left and right could only introduce a difference that came from the clock rather than
+        // from the environments, which is the one kind of difference this feature must never invent.
+        var profiles = await _authProfiles.LoadAuthProfilesAsync(run.Workspace.RootPath, cancellationToken);
+
+        // Bodies are the point of a comparison run, so it asks for them whatever the caller set.
+        var options = run.Options with { CaptureResponseBodies = true };
+        var left = new CollectionRun(run.Plan, run.Workspace, run.Left, options);
+        var right = new CollectionRun(run.Plan, run.Workspace, run.Right, options);
+
+        var stopwatch = Stopwatch.StartNew();
+        var pairs = new List<StepPair>(run.Plan.Count);
+        var total = run.Plan.Count;
+        var cancelled = false;
+        var stoppedEarly = false;
+
+        foreach (var step in run.Plan.Steps)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                cancelled = true;
+                break;
+            }
+
+            if (run.Options.DelayMilliseconds > 0 && pairs.Count > 0)
+            {
+                try
+                {
+                    await Task.Delay(run.Options.DelayMilliseconds, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled = true;
+                    break;
+                }
+            }
+
+            progress?.Report(StepPairProgress.Starting(step, total));
+
+            StepReport leftReport;
+            StepReport rightReport;
+            try
+            {
+                leftReport = await RunStepAsync(step, left, profiles, cancellationToken);
+                progress?.Report(StepPairProgress.LeftDone(step, total, leftReport));
+
+                rightReport = await RunStepAsync(step, right, profiles, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Skipped on both sides: a pair half-run is not a comparison, and reporting the half
+                // that did answer would invite a diff against nothing.
+                pairs.Add(new StepPair(step, StepReport.SkippedStep(step), StepReport.SkippedStep(step)));
+                cancelled = true;
+                break;
+            }
+
+            var pair = new StepPair(step, leftReport, rightReport);
+            pairs.Add(pair);
+            progress?.Report(StepPairProgress.Complete(pair, total));
+
+            // Either side failing stops the run, because the question was about both of them.
+            if (run.Options.StopOnFailure &&
+                (leftReport.Status is StepStatus.Failed or StepStatus.Errored ||
+                 rightReport.Status is StepStatus.Failed or StepStatus.Errored))
+            {
+                stoppedEarly = true;
+                break;
+            }
+        }
+
+        stopwatch.Stop();
+
+        foreach (var step in run.Plan.Steps.Skip(pairs.Count))
+        {
+            pairs.Add(new StepPair(step, StepReport.SkippedStep(step), StepReport.SkippedStep(step)));
+        }
+
+        return new EnvironmentPairReport(
+            leftName, rightName, pairs, stopwatch.ElapsedMilliseconds, cancelled, stoppedEarly);
+    }
+
+    /// <summary>
+    /// Asks the oracle for the other side and compares, leaving the step's own status alone: whether it
+    /// SENT is one question and whether it MATCHES is another, and a step can pass every assertion while
+    /// differing from its snapshot (see <see cref="StepReport.Comparison"/>).
+    ///
+    /// <para>An oracle that wanted a comparison and could not get one is reported as
+    /// <see cref="ComparisonVerdict.Unavailable"/>, never as a pass, and never as an error against the
+    /// request - the request answered; it is the other side that is missing.</para>
+    /// </summary>
+    private async Task<StepReport> JudgeAsync(
+        StepReport report,
+        CollectionRun run,
+        CancellationToken cancellationToken)
+    {
+        if (run.Oracle is not { } oracle || oracle.Kind == OracleKind.None)
+        {
+            return report;
+        }
+
+        var context = new OracleContext(report.Step, run.Workspace, run.Environment, report);
+
+        OtherSide other;
+        try
+        {
+            other = await oracle.ObtainAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return report with
+            {
+                Comparison = ComparisonVerdict.Unavailable,
+                ComparisonUnavailableReason = ex.Message,
+            };
+        }
+
+        if (other.Unavailable)
+        {
+            return report with
+            {
+                Comparison = ComparisonVerdict.Unavailable,
+                ComparisonUnavailableReason = other.MissingReason,
+            };
+        }
+
+        if (!other.Available || report.ResponseBody is not { } body)
+        {
+            return report;
+        }
+
+        try
+        {
+            var rules = await _settings
+                .ResolveRulesAsync(
+                    run.Workspace, report.Step.FilePath, report.Step.CaseFilePath, run.Overlay, cancellationToken)
+                .ConfigureAwait(false);
+
+            // Both sides through the same redactions and normalisations. A snapshot is stored with
+            // "generatedAt": "<timestamp>"; comparing that against a live response carrying the real
+            // value would report a difference on every run, and the rule written to stop the churn
+            // would cause it. Idempotent, so the already-normalised side is unchanged.
+            var left = SnapshotRecorder.ForComparison(other.Body!, rules.Snapshot);
+            var right = SnapshotRecorder.ForComparison(body, rules.Snapshot);
+
+            var outcome = await _comparer
+                .CompareAsync(left, right, rules.Comparison, cancellationToken)
+                .ConfigureAwait(false);
+
+            // Tolerances run on what the comparer FOUND, so the engine stays free of them and one
+            // definition of "a difference" still feeds the row, the pane and the report.
+            var tolerated = ToleranceEvaluator.Apply(outcome, rules.Tolerances, left, right);
+
+            return report with
+            {
+                Comparison = tolerated.Outcome.Same ? ComparisonVerdict.Same : ComparisonVerdict.Differs,
+                DifferenceCount = tolerated.Outcome.DifferenceCount,
+                ToleratedCount = tolerated.Tolerated,
+                ComparisonWarnings = tolerated.Warnings,
+                ComparedAgainst = other.Source,
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return report with
+            {
+                Comparison = ComparisonVerdict.Unavailable,
+                ComparisonUnavailableReason = ex.Message,
+                ComparedAgainst = other.Source,
+            };
+        }
+    }
+
     private async Task<StepReport> RunStepAsync(
         RunStep step,
         CollectionRun run,
         IReadOnlyList<AuthProfile> profiles,
         CancellationToken cancellationToken)
     {
+        // A batch naming something that is not there. Reported before anything is sent, because there
+        // is nothing to send - and reported rather than skipped, so a batch that shrank when an
+        // endpoint was renamed cannot keep passing while testing one thing fewer.
+        if (step.Unresolved is { Length: > 0 } unresolved)
+        {
+            return Errored(step, unresolved);
+        }
+
         RequestModel request;
         try
         {
             request = await _requests.LoadRequestAsync(step.FilePath, cancellationToken);
+
+            // A case is folded on here rather than in the plan, for the same reason the request is
+            // read here: a run sends what is SAVED, and a plan built ten minutes ago holding loaded
+            // documents would send what was saved then.
+            if (step.CaseFilePath is { Length: > 0 } casePath)
+            {
+                request = CaseMerge.Apply(
+                    request,
+                    await _endpoints.LoadCaseAsync(casePath, cancellationToken).ConfigureAwait(false));
+            }
         }
         catch (Exception ex)
         {
@@ -180,7 +411,12 @@ public sealed class CollectionRunService : ICollectionRunService
                 result.Result.SizeBytes,
                 result.Assertions,
                 result.Captures,
-                result.Result.IsSuccess ? null : result.Result.ErrorMessage);
+                result.Result.IsSuccess ? null : result.Result.ErrorMessage)
+            {
+                ResponseBody = BodyToCarry(run.Options, result.Result, out var tooLarge),
+                BodyTooLargeToCompare = tooLarge,
+                ContentType = run.Options.CaptureResponseBodies ? result.Result.ContentType : null,
+            };
         }
         catch (OperationCanceledException)
         {
@@ -190,6 +426,30 @@ public sealed class CollectionRunService : ICollectionRunService
         {
             return Errored(step, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// The response body, when the run asked for one and it is small enough to be worth comparing.
+    ///
+    /// <para>Over the cap it is dropped rather than truncated, and says so: two bodies cut at the same
+    /// length look identical past the cut, so a truncated body answers a comparison it cannot see all
+    /// of. A failed step carries nothing - the body of a transport error is not a response.</para>
+    /// </summary>
+    private static string? BodyToCarry(RunOptions options, ExecutionResult result, out bool tooLarge)
+    {
+        tooLarge = false;
+        if (!options.CaptureResponseBodies || !result.IsSuccess)
+        {
+            return null;
+        }
+
+        if (result.Body.Length > StepReport.MaxComparableBodyChars)
+        {
+            tooLarge = true;
+            return null;
+        }
+
+        return result.Body;
     }
 
     private static StepReport Errored(RunStep step, string error) =>
