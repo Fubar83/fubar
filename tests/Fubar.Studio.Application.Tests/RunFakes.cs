@@ -1,3 +1,4 @@
+using Fubar.Studio.Core.Snapshots;
 using Fubar.Studio.Application.Comparison;
 using Fubar.Studio.Application.Requests;
 using Fubar.Studio.Core.Protocols;
@@ -140,8 +141,10 @@ internal sealed class FakeComparisonSettings : IRequestComparisonSettings
     }
 
     public Task<ResolvedRequestRules> ResolveRulesAsync(
-        Workspace workspace, string requestPath, string? casePath = null, CancellationToken ct = default) =>
-        Task.FromResult(new ResolvedRequestRules(ComparisonSettingsResolver.Resolve([]), Tolerances));
+        Workspace workspace, string requestPath, string? casePath = null,
+        BatchOverlay? overlay = null, CancellationToken ct = default) =>
+        Task.FromResult(new ResolvedRequestRules(
+            ComparisonSettingsResolver.Resolve([]), Tolerances, ResolvedSnapshotPolicy.Empty));
 }
 
 /// <summary>

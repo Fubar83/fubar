@@ -192,7 +192,69 @@ public class CommandLineTests
     [Fact]
     public void The_snapshot_oracle_is_selected_by_name()
     {
-        Assert.Equal("snapshot", CommandLine.Parse(["--run", "--oracle", "snapshot"]).Oracle);
+        Assert.Equal(
+            new CliOracle(CliOracleKind.Snapshot),
+            CommandLine.Parse(["--run", "--oracle", "snapshot"]).Oracle);
+    }
+
+    [Theory]
+    [InlineData("env:Production")]
+    [InlineData("environment:Production")]
+    public void The_environment_oracle_carries_the_environment_it_compares_against(string value)
+    {
+        Assert.Equal(
+            new CliOracle(CliOracleKind.Environment, "Production"),
+            CommandLine.Parse(["--run", "--oracle", value]).Oracle);
+    }
+
+    /// <summary>A comparison against nothing is not a comparison, and defaulting to some environment
+    /// would compare against one nobody named.</summary>
+    [Fact]
+    public void An_environment_oracle_with_no_environment_is_refused()
+    {
+        Assert.NotNull(CommandLine.Parse(["--run", "--oracle", "env:"]).Error);
+    }
+
+    /// <summary>There is no snapshot in a two-sided run to update, so this asks for something that
+    /// does not exist rather than for one of two readings.</summary>
+    [Fact]
+    public void Recording_during_an_environment_comparison_is_refused()
+    {
+        Assert.NotNull(
+            CommandLine.Parse(["--run", "--oracle", "env:Production", "--update-snapshots"]).Error);
+    }
+
+    // ---- The run verb and its selectors ----------------------------------------------------------
+
+    [Fact]
+    public void The_run_verb_means_the_whole_workspace()
+    {
+        var request = CommandLine.Parse(["run"]);
+
+        Assert.Null(request.Error);
+        Assert.Equal("", request.Run);
+    }
+
+    [Fact]
+    public void The_run_verb_takes_a_selector()
+    {
+        Assert.Equal("orders/get-order#default", CommandLine.Parse(["run", "orders/get-order#default"]).Run);
+        Assert.Equal("@smoke", CommandLine.Parse(["run", "@smoke"]).Run);
+    }
+
+    [Fact]
+    public void The_run_verb_chooses_the_headless_path()
+    {
+        Assert.True(CommandLine.IsHeadless(["run"]));
+        Assert.True(CommandLine.IsHeadless(["run", "@smoke"]));
+    }
+
+    /// <summary>Anywhere but first, "run" is an ordinary folder name - and turning one into a batch
+    /// job with no window is the surprise the headless list exists to avoid.</summary>
+    [Fact]
+    public void A_folder_called_run_does_not_make_an_invocation_headless()
+    {
+        Assert.False(CommandLine.IsHeadless(["--merge", "run"]));
     }
 
     [Fact]

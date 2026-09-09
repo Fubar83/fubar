@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fubar83.github.io/fubar/schemas/v1/batch.schema.json",
+  "title": "Fubar API Studio batch",
+  "description": "One batches/<name>.json: a named list of calls to make together, with what should judge them. A batch is an OCCASION, which is why it sits beside the collection rather than inside it. Batches do not nest.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": ["string", "null"] },
+    "steps": {
+      "type": "array",
+      "description": "In the order they will be sent. The order is the batch's own: a batch that starts with a login is stating a dependency.",
+      "items": {
+        "type": "object",
+        "required": ["endpoint"],
+        "properties": {
+          "endpoint": { "type": "string", "description": "A path relative to collections/, e.g. orders/get-order." },
+          "case": { "type": ["string", "null"], "description": "One case name, or absent to run every case the endpoint has." }
+        }
+      }
+    },
+    "oracle": {
+      "type": ["object", "null"],
+      "properties": {
+        "kind": { "enum": ["none", "snapshot", "environment"] },
+        "environment": { "type": ["string", "null"], "description": "The second environment, for kind \"environment\"." }
+      }
+    },
+    "environments": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "One name for most oracles, two for an environment comparison. Empty means whatever the caller chose."
+    },
+    "options": {
+      "type": ["object", "null"],
+      "properties": {
+        "stopOnFailure": { "type": "boolean" },
+        "delayMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "overlay": {
+      "type": ["object", "null"],
+      "description": "The occasion's own rules, applied AFTER the containment chain resolves. A batch is not a level of the hierarchy - it cuts across the tree.",
+      "properties": {
+        "comparison": { "$ref": "request.schema.json#/$defs/comparison" },
+        "tolerances": { "type": ["array", "null"], "items": { "$ref": "request.schema.json#/$defs/tolerance" } }
+      }
+    }
+  }
+}

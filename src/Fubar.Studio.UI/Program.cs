@@ -45,13 +45,17 @@ sealed class Program
         return CliRunner
             .RunAsync(
                 CommandLine.Parse(args),
-                host.Services.GetRequiredService<ICollectionRunService>(),
-                host.Services.GetRequiredService<IWorkspaceStore>(),
-                host.Services.GetRequiredService<IRequestStore>(),
-                host.Services.GetRequiredService<IEnvironmentStore>(),
+                new CliServices(
+                    host.Services.GetRequiredService<ICollectionRunService>(),
+                    host.Services.GetRequiredService<IWorkspaceStore>(),
+                    host.Services.GetRequiredService<IRequestStore>(),
+                    host.Services.GetRequiredService<IEnvironmentStore>(),
+                    host.Services.GetRequiredService<Fubar.Studio.Core.Snapshots.ISnapshotStore>(),
+                    host.Services.GetRequiredService<ISnapshotRecordingService>(),
+                    host.Services.GetRequiredService<IBatchPlanner>(),
+                    host.Services.GetRequiredService<Fubar.Studio.Infrastructure.Variables.ExternalVariableSource>()),
                 Console.Out,
-                Console.Error,
-                host.Services.GetRequiredService<Fubar.Studio.Infrastructure.Variables.ExternalVariableSource>())
+                Console.Error)
             .GetAwaiter()
             .GetResult();
     }

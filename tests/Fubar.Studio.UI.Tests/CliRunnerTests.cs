@@ -33,13 +33,19 @@ public class CliRunnerTests
         FakeRunService? runService = null,
         FakeWorkspaces? workspaces = null,
         FakeRequests? requests = null,
-        FakeEnvironments? environments = null) =>
+        FakeEnvironments? environments = null,
+        FakeSnapshotRecording? recording = null,
+        FakeBatches? batches = null) =>
         CliRunner.RunAsync(
             CommandLine.Parse(args),
-            runService ?? new FakeRunService(),
-            workspaces ?? new FakeWorkspaces(),
-            requests ?? new FakeRequests(),
-            environments ?? new FakeEnvironments(),
+            new CliServices(
+                runService ?? new FakeRunService(),
+                workspaces ?? new FakeWorkspaces(),
+                requests ?? new FakeRequests(),
+                environments ?? new FakeEnvironments(),
+                new FakeSnapshots(),
+                recording ?? new FakeSnapshotRecording(),
+                batches ?? new FakeBatches()),
             _out,
             _error);
 
@@ -158,7 +164,7 @@ public class CliRunnerTests
         var exit = await Run(["--run", "Nope", "-w", FakeWorkspaces.Root]);
 
         Assert.Equal(CouldNotRun, exit);
-        Assert.Contains("not a folder or request", Error);
+        Assert.Contains("not a folder, endpoint or request", Error);
     }
 
     [Fact]
@@ -248,6 +254,195 @@ public class CliRunnerTests
 
         Assert.Equal(Passed, exit);
         Assert.Contains("Could not write the report", Error);
+    }
+
+    // ---- Oracles reach the run -------------------------------------------------------------------
+    //
+    // These exist because the flags for them shipped once already, parsed correctly, and then did
+    // nothing at all: CliRunner never looked at request.Oracle. Every test below asserts on what the
+    // RUN was given, not on what the parser produced.
+
+    [Fact]
+    public async Task Without_an_oracle_nothing_judges_the_responses()
+    {
+        var runService = new FakeRunService();
+
+        await Run(["--run", "-w", FakeWorkspaces.Root], runService);
+
+        Assert.Equal(OracleKind.None, runService.LastRun!.Oracle!.Kind);
+    }
+
+    [Fact]
+    public async Task The_snapshot_oracle_reaches_the_run()
+    {
+        var runService = new FakeRunService();
+
+        await Run(["--run", "-w", FakeWorkspaces.Root, "--oracle", "snapshot"], runService);
+
+        Assert.Equal(OracleKind.Snapshot, runService.LastRun!.Oracle!.Kind);
+
+        // Nothing can be compared without them, and a run that asked for a comparison and kept no
+        // bodies would report "no difference" for every step.
+        Assert.True(runService.LastRun.Options.CaptureResponseBodies);
+    }
+
+    [Fact]
+    public async Task The_environment_oracle_reaches_the_run_and_names_its_other_side()
+    {
+        var runService = new FakeRunService();
+
+        await Run(
+            ["--run", "-w", FakeWorkspaces.Root, "--env", "Staging", "--oracle", "env:Production"],
+            runService,
+            environments: new FakeEnvironments("Staging", "Production"));
+
+        var oracle = Assert.IsType<EnvironmentOracle>(runService.LastRun!.Oracle);
+        Assert.Equal("Production", oracle.OtherName);
+    }
+
+    /// <summary>Named and not found is an error here for the same reason it is for --env: comparing
+    /// against an environment nobody has would compare against nothing.</summary>
+    [Fact]
+    public async Task An_environment_oracle_naming_an_unknown_environment_exits_could_not_run()
+    {
+        var exit = await Run(
+            ["--run", "-w", FakeWorkspaces.Root, "--oracle", "env:Prod"],
+            environments: new FakeEnvironments("Staging", "Production"));
+
+        Assert.Equal(CouldNotRun, exit);
+        Assert.Contains("Production", Error);
+    }
+
+    // ---- Recording -------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Update_snapshots_records_instead_of_running_a_comparison()
+    {
+        var runService = new FakeRunService();
+        var recording = new FakeSnapshotRecording();
+
+        var exit = await Run(
+            ["--run", "-w", FakeWorkspaces.Root, "--env", "Staging", "--update-snapshots"],
+            runService,
+            environments: new FakeEnvironments("Staging"),
+            recording: recording);
+
+        Assert.Equal(Passed, exit);
+        Assert.NotNull(recording.Last);
+        Assert.Equal("Staging", recording.Last!.Environment!.Name);
+
+        // Recording is not a run with a flag on it: the ordinary run path is not entered at all.
+        Assert.Null(runService.LastRun);
+    }
+
+    /// <summary>Per environment by default: its failure mode is a redundant file, while a shared
+    /// snapshot across environments holding different data reports a data difference as a
+    /// regression.</summary>
+    [Fact]
+    public async Task Recording_is_per_environment_unless_shared_is_asked_for()
+    {
+        var perEnvironment = new FakeSnapshotRecording();
+        await Run(
+            ["--run", "-w", FakeWorkspaces.Root, "--env", "Staging", "--update-snapshots"],
+            environments: new FakeEnvironments("Staging"),
+            recording: perEnvironment);
+
+        var shared = new FakeSnapshotRecording();
+        await Run(
+            ["--run", "-w", FakeWorkspaces.Root, "--env", "Staging", "--update-snapshots", "--shared-snapshots"],
+            environments: new FakeEnvironments("Staging"),
+            recording: shared);
+
+        Assert.Equal(Fubar.Studio.Core.Snapshots.SnapshotScope.Environment, perEnvironment.Last!.Scope);
+        Assert.Equal(Fubar.Studio.Core.Snapshots.SnapshotScope.Shared, shared.Last!.Scope);
+    }
+
+    // ---- Selectors -------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_batch_selector_runs_the_batch_in_its_own_order()
+    {
+        var runService = new FakeRunService();
+        var batches = new FakeBatches().With(new Batch
+        {
+            Name = "smoke",
+            Steps = [new BatchStep("auth/login"), new BatchStep("orders/get-order", "default")],
+        });
+
+        var exit = await Run(["run", "@smoke", "-w", FakeWorkspaces.Root], runService, batches: batches);
+
+        Assert.Equal(Passed, exit);
+        Assert.Equal(["auth/login", "orders/get-order"], runService.LastRun!.Plan.Steps.Select(s => s.Name));
+    }
+
+    /// <summary>A typo in a CI script must not pass by running nothing.</summary>
+    [Fact]
+    public async Task A_batch_that_does_not_exist_exits_could_not_run()
+    {
+        var exit = await Run(["run", "@nope", "-w", FakeWorkspaces.Root]);
+
+        Assert.Equal(CouldNotRun, exit);
+        Assert.Contains("nope", Error, StringComparison.Ordinal);
+    }
+
+    /// <summary>The batch says what it is for; the command line still wins, so a batch written for
+    /// staging can be run against a branch deployment without editing the file.</summary>
+    [Fact]
+    public async Task A_batchs_oracle_and_environment_are_used_unless_the_command_line_says_otherwise()
+    {
+        var batches = new FakeBatches().With(new Batch
+        {
+            Name = "nightly",
+            Steps = [new BatchStep("orders/get-order")],
+            Oracle = new BatchOracle(BatchOracleKind.Snapshot),
+            Environments = ["Staging"],
+        });
+
+        var fromBatch = new FakeRunService();
+        await Run(["run", "@nightly", "-w", FakeWorkspaces.Root], fromBatch,
+            environments: new FakeEnvironments("Staging", "Production"), batches: batches);
+
+        Assert.Equal("Staging", fromBatch.LastRun!.Environment!.Name);
+        Assert.Equal(OracleKind.Snapshot, fromBatch.LastRun.Oracle!.Kind);
+
+        var overridden = new FakeRunService();
+        await Run(["run", "@nightly", "-w", FakeWorkspaces.Root, "--env", "Production", "--oracle", "none"],
+            overridden, environments: new FakeEnvironments("Staging", "Production"), batches: batches);
+
+        Assert.Equal("Production", overridden.LastRun!.Environment!.Name);
+        Assert.Equal(OracleKind.None, overridden.LastRun.Oracle!.Kind);
+    }
+
+    /// <summary>A batch cuts across the tree, so its rules are an overlay on whatever each endpoint
+    /// already resolves to - and the run has to be given them, or they apply to nothing.</summary>
+    [Fact]
+    public async Task A_batchs_overlay_reaches_the_run()
+    {
+        var runService = new FakeRunService();
+        var batches = new FakeBatches().With(new Batch
+        {
+            Name = "smoke",
+            Steps = [new BatchStep("orders/get-order")],
+            Overlay = new BatchOverlay
+            {
+                Tolerances = [new Fubar.Studio.Core.Comparison.Tolerance { Path = "$..elapsedMs", Numeric = 500 }],
+            },
+        });
+
+        await Run(["run", "@smoke", "-w", FakeWorkspaces.Root], runService, batches: batches);
+
+        Assert.NotNull(runService.LastRun!.Overlay);
+    }
+
+    [Fact]
+    public async Task The_run_verb_with_no_selector_runs_the_whole_workspace()
+    {
+        var runService = new FakeRunService();
+
+        var exit = await Run(["run", "-w", FakeWorkspaces.Root], runService);
+
+        Assert.Equal(Passed, exit);
+        Assert.Equal(2, runService.LastRun!.Plan.Count);
     }
 
     // ---- Fakes ---------------------------------------------------------------------------------
@@ -364,6 +559,67 @@ public class CliRunnerTests
         public string RenamePath(string path, string newName) => throw new NotSupportedException();
 
         public void DeletePath(string path) => throw new NotSupportedException();
+    }
+
+    /// <summary>Nothing recorded anywhere, which is what makes "no snapshot is never a pass" testable
+    /// from the command line.</summary>
+    private sealed class FakeSnapshots : Fubar.Studio.Core.Snapshots.ISnapshotStore
+    {
+        public Task<Fubar.Studio.Core.Snapshots.SnapshotLookup> FindAsync(
+            string workspaceRoot, string requestPath, string? environmentName, CancellationToken ct = default) =>
+            Task.FromResult(Fubar.Studio.Core.Snapshots.SnapshotLookup.None);
+
+        public Task SaveAsync(
+            string workspaceRoot, string requestPath, Fubar.Studio.Core.Snapshots.ResponseSnapshot snapshot,
+            CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<string>> ScopesAsync(
+            string workspaceRoot, string requestPath, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+    }
+
+    private sealed class FakeSnapshotRecording : ISnapshotRecordingService
+    {
+        public SnapshotRecording? Last { get; private set; }
+
+        public Task<SnapshotRecordingReport> RecordAsync(
+            SnapshotRecording recording,
+            IProgress<RunProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            Last = recording;
+
+            return Task.FromResult(new SnapshotRecordingReport(
+                new RunReport([], 1, false, false),
+                [.. recording.Plan.Steps.Select(s => s.QualifiedName)],
+                []));
+        }
+    }
+
+    private sealed class FakeBatches : IBatchPlanner
+    {
+        private readonly Dictionary<string, Batch> _batches = new(StringComparer.OrdinalIgnoreCase);
+
+        public FakeBatches With(Batch batch)
+        {
+            _batches[batch.Name] = batch;
+            return this;
+        }
+
+        public Task<ResolvedBatch> ExpandAsync(
+            Workspace workspace, string batchName, CancellationToken cancellationToken = default)
+        {
+            if (!_batches.TryGetValue(batchName, out var batch))
+            {
+                throw new InvalidOperationException($"There is no batch called \"{batchName}\".");
+            }
+
+            var steps = batch.Steps
+                .Select((s, i) => new RunStep(i + 1, s.Endpoint, $"/ws/collections/{s.Endpoint}", "/ws/collections", s.Case))
+                .ToList();
+
+            return Task.FromResult(new ResolvedBatch(batch, new RunPlan(steps)));
+        }
     }
 
     private sealed class FakeEnvironments(params string[] names) : IEnvironmentStore

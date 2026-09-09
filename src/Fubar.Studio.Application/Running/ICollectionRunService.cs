@@ -7,12 +7,15 @@ namespace Fubar.Studio.Application.Running;
 /// <param name="Plan">The ordered steps, already flattened and filtered by <see cref="RunPlan"/>.</param>
 /// <param name="Oracle">What judges each response. Null is <see cref="NoOracle"/> - assertions only,
 /// which is what a plain collection run has always done.</param>
+/// <param name="Overlay">The batch's own comparison rules, when this run came from one. Applied after
+/// the containment chain resolves, because a batch cuts across the tree rather than sitting in it.</param>
 public sealed record CollectionRun(
     RunPlan Plan,
     Workspace Workspace,
     WorkspaceEnvironment? Environment,
     RunOptions Options,
-    IOracle? Oracle = null);
+    IOracle? Oracle = null,
+    BatchOverlay? Overlay = null);
 
 /// <summary>
 /// Sends a collection of requests in order, running each one's captures and assertions, and reports what

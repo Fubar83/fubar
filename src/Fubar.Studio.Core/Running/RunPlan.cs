@@ -44,6 +44,16 @@ public sealed record RunStep(
     /// run report the other case's answer as a regression.
     /// </remarks>
     public string SubjectPath => CaseFilePath is { Length: > 0 } path ? path : FilePath;
+
+    /// <summary>
+    /// Why this step cannot be sent at all - a batch naming an endpoint or a case that is not there.
+    /// </summary>
+    /// <remarks>
+    /// Carried as a step rather than dropped when the plan is built. A batch that quietly shrank when
+    /// someone renamed an endpoint would keep passing while testing one thing fewer, and the report
+    /// would not say so. This way the run reports it as Errored, which is what it is.
+    /// </remarks>
+    public string? Unresolved { get; init; }
 }
 
 /// <summary>

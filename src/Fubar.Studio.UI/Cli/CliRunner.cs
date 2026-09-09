@@ -17,6 +17,25 @@ namespace Fubar.Studio.UI.Cli;
 /// completely different reactions from a build, and collapsing them would make the first look like the
 /// second.</para>
 /// </summary>
+/// <param name="Snapshots">Where recorded snapshots are read from, for <c>--oracle snapshot</c>.</param>
+/// <param name="Recording">What writes them, for <c>--update-snapshots</c>.</param>
+/// <param name="Batches">What expands <c>@name</c>.</param>
+/// <remarks>
+/// One record rather than eleven parameters, and every field REQUIRED. An optional service here reads
+/// as "this feature is unavailable in some builds", which is how a flag comes to parse, print nothing,
+/// and do nothing - which is exactly what happened to --oracle and --update-snapshots between the
+/// commit that added them and the commit that added this.
+/// </remarks>
+public sealed record CliServices(
+    ICollectionRunService Runner,
+    IWorkspaceStore Workspaces,
+    IRequestStore Requests,
+    IEnvironmentStore Environments,
+    ISnapshotStore Snapshots,
+    ISnapshotRecordingService Recording,
+    IBatchPlanner Batches,
+    ExternalVariableSource? ExternalVariables = null);
+
 public static class CliRunner
 {
     private const int Passed = 0;
@@ -25,15 +44,19 @@ public static class CliRunner
 
     public static async Task<int> RunAsync(
         CliRequest request,
-        ICollectionRunService runService,
-        IWorkspaceStore workspaces,
-        IRequestStore requests,
-        IEnvironmentStore environments,
+        CliServices services,
         TextWriter output,
         TextWriter error,
-        ExternalVariableSource? externalVariables = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var runService = services.Runner;
+        var workspaces = services.Workspaces;
+        var requests = services.Requests;
+        var environments = services.Environments;
+        var externalVariables = services.ExternalVariables;
+
         if (request.ShowHelp)
         {
             output.WriteLine(CommandLine.Usage);
@@ -81,22 +104,35 @@ public static class CliRunner
             return ValidateWorkspace(request, root, output, error);
         }
 
-        WorkspaceEnvironment? environment = null;
-        if (request.Environment is { } wanted)
+        IReadOnlyList<WorkspaceEnvironment>? loadedEnvironments = null;
+
+        // Named and not found is an ERROR, never a quiet fall back to none: every {{variable}} would
+        // resolve to nothing and the whole run would fail in a way that pointed at the requests
+        // rather than at the typo.
+        async Task<(WorkspaceEnvironment? Found, string? Error)> FindEnvironmentAsync(string wanted)
         {
-            var all = await environments.LoadEnvironmentsAsync(root, cancellationToken);
-            environment = all.FirstOrDefault(e =>
+            loadedEnvironments ??= await environments.LoadEnvironmentsAsync(root, cancellationToken);
+
+            var found = loadedEnvironments.FirstOrDefault(e =>
                 string.Equals(e.Name, wanted, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(e.Id, wanted, StringComparison.OrdinalIgnoreCase));
 
-            if (environment is null)
+            return found is null
+                ? (null, $"No environment called \"{wanted}\". Available: {Names(loadedEnvironments)}")
+                : (found, null);
+        }
+
+        WorkspaceEnvironment? environment = null;
+        if (request.Environment is { } wanted)
+        {
+            var (found, message) = await FindEnvironmentAsync(wanted);
+            if (message is not null)
             {
-                // Named and not found is an ERROR, never a quiet fall back to none: every {{variable}}
-                // would resolve to nothing and the whole run would fail in a way that pointed at the
-                // requests rather than at the typo.
-                error.WriteLine($"No environment called \"{wanted}\". Available: {Names(all)}");
+                error.WriteLine(message);
                 return CouldNotRun;
             }
+
+            environment = found;
         }
 
         // Variables supplied from outside the workspace, loaded once the rest of the command line is
@@ -130,11 +166,28 @@ public static class CliRunner
         }
 
         RunPlan plan;
+        Batch? batch = null;
         try
         {
-            plan = BuildPlan(request, root, requests).Filtered(request.Filter);
+            var selector = RunSelector.Parse(request.Run);
+
+            if (selector.Kind == RunSelectorKind.Batch)
+            {
+                var resolved = await services.Batches
+                    .ExpandAsync(workspace, selector.BatchName!, cancellationToken)
+                    .ConfigureAwait(false);
+
+                batch = resolved.Batch;
+                plan = resolved.Plan;
+            }
+            else
+            {
+                plan = TreeLookup.Expand(requests.BuildCollectionsTree(root), selector);
+            }
+
+            plan = plan.Filtered(request.Filter);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is FormatException or InvalidOperationException)
         {
             error.WriteLine(ex.Message);
             return CouldNotRun;
@@ -153,10 +206,26 @@ public static class CliRunner
             return Failed;
         }
 
+        // A batch states the environment it is about. The command line still wins - a batch written
+        // for staging has to be runnable against a branch deployment without editing the file.
+        if (environment is null && batch?.Environments is [{ Length: > 0 } batchEnvironment, ..])
+        {
+            var (found, message) = await FindEnvironmentAsync(batchEnvironment);
+            if (message is not null)
+            {
+                error.WriteLine($"This batch names an environment that is not here. {message}");
+                return CouldNotRun;
+            }
+
+            environment = found;
+        }
+
         var options = new RunOptions
         {
-            StopOnFailure = request.StopOnFailure,
-            DelayMilliseconds = request.DelayMilliseconds,
+            StopOnFailure = request.StopOnFailure || (batch?.Options?.StopOnFailure ?? false),
+            DelayMilliseconds = request.DelayMilliseconds != 0
+                ? request.DelayMilliseconds
+                : batch?.Options?.DelayMs ?? 0,
             // History is a record of what a PERSON sent. A CI run writing 200 entries per build into a
             // workspace's capped history would evict exactly that.
             RecordHistory = false,
@@ -177,11 +246,45 @@ public static class CliRunner
                 }
             });
 
+        // Recording is a deliberate act, and it is the opposite of comparing - so it is its own branch
+        // rather than a flag inside the run. The parser has already refused asking for both.
+        if (request.UpdateSnapshots)
+        {
+            return await RecordAsync(
+                request, services, new SnapshotRecording(
+                    plan,
+                    workspace,
+                    environment,
+                    request.SharedSnapshots ? SnapshotScope.Shared : SnapshotScope.Environment,
+                    options with { CaptureResponseBodies = true }),
+                progress, output, error, cancellationToken);
+        }
+
+        IOracle oracle;
+        try
+        {
+            oracle = await ResolveOracleAsync(request, batch, services, FindEnvironmentAsync);
+        }
+        catch (InvalidOperationException ex)
+        {
+            error.WriteLine(ex.Message);
+            return CouldNotRun;
+        }
+
+        // Bodies are only kept when something is going to compare them: a run of thirty requests would
+        // otherwise hold thirty response bodies for as long as its report is alive.
+        if (oracle.Kind != OracleKind.None)
+        {
+            options = options with { CaptureResponseBodies = true };
+        }
+
         RunReport report;
         try
         {
             report = await runService.RunAsync(
-                new CollectionRun(plan, workspace, environment, options), progress, cancellationToken);
+                new CollectionRun(plan, workspace, environment, options, oracle, batch?.Overlay),
+                progress,
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -238,9 +341,111 @@ public static class CliRunner
                 output.WriteLine(
                     $"  note: {unexpected.Step.QualifiedName} responded {unexpected.StatusCode} with no assertion to judge it.");
             }
+
+            // A rule that silently did nothing reads as a check. Printed even on a green run, because
+            // that is exactly the run where an unapplied tolerance is invisible.
+            foreach (var step in report.Steps)
+            {
+                foreach (var comparisonWarning in step.ComparisonWarnings)
+                {
+                    output.WriteLine($"  note: {step.Step.QualifiedName}: {comparisonWarning}");
+                }
+            }
         }
 
         return report.Ok ? Passed : Failed;
+    }
+
+    /// <summary>
+    /// What judges each response: the command line, then the batch's own choice, then nothing.
+    /// </summary>
+    /// <remarks>
+    /// The command line wins so a batch written to compare against snapshots can still be run once
+    /// with <c>--oracle none</c> to see what it actually returns - which is the first thing anybody
+    /// does when a snapshot run starts failing.
+    /// </remarks>
+    private static async Task<IOracle> ResolveOracleAsync(
+        CliRequest request,
+        Batch? batch,
+        CliServices services,
+        Func<string, Task<(WorkspaceEnvironment? Found, string? Error)>> findEnvironment)
+    {
+        var kind = request.Oracle?.Kind
+                   ?? batch?.Oracle?.Kind switch
+                   {
+                       BatchOracleKind.Snapshot => CliOracleKind.Snapshot,
+                       BatchOracleKind.Environment => CliOracleKind.Environment,
+                       _ => CliOracleKind.None,
+                   };
+
+        if (kind == CliOracleKind.Snapshot)
+        {
+            return new SnapshotOracle(services.Snapshots);
+        }
+
+        if (kind != CliOracleKind.Environment)
+        {
+            return NoOracle.Instance;
+        }
+
+        // The second environment: from --oracle env:NAME, else from the batch's second entry.
+        var named = request.Oracle?.Environment
+                    ?? batch?.Oracle?.Environment
+                    ?? (batch?.Environments is [_, { Length: > 0 } second, ..] ? second : null)
+                    ?? throw new InvalidOperationException(
+                        "An environment comparison needs a second environment. Use --oracle env:<name>.");
+
+        var (found, message) = await findEnvironment(named);
+
+        return found is null
+            ? throw new InvalidOperationException(message!)
+            : new EnvironmentOracle(services.Runner, found);
+    }
+
+    /// <summary>
+    /// Records what the plan returns, and reports what was written and what was not.
+    /// </summary>
+    /// <remarks>
+    /// Exit code by the same rule as a run: a step that could not be sent has nothing to record, and
+    /// reporting success for it would leave the next comparison run failing against a snapshot nobody
+    /// knew was missing.
+    /// </remarks>
+    private static async Task<int> RecordAsync(
+        CliRequest request,
+        CliServices services,
+        SnapshotRecording recording,
+        IProgress<RunProgress>? progress,
+        TextWriter output,
+        TextWriter error,
+        CancellationToken cancellationToken)
+    {
+        SnapshotRecordingReport report;
+        try
+        {
+            report = await services.Recording.RecordAsync(recording, progress, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            error.WriteLine($"The snapshots could not be recorded: {ex.Message}");
+            return CouldNotRun;
+        }
+
+        foreach (var warning in report.Warnings)
+        {
+            error.WriteLine($"  warning: {warning}");
+        }
+
+        if (!request.Quiet)
+        {
+            var scope = recording.Scope == SnapshotScope.Shared
+                ? "shared across environments"
+                : $"for {recording.Environment?.Name ?? "no environment"}";
+
+            output.WriteLine();
+            output.WriteLine($"Recorded {report.Written.Count} snapshot(s) {scope}.");
+        }
+
+        return report.Run.Errored == 0 && report.Warnings.Count == 0 ? Passed : Failed;
     }
 
     /// <summary>Reports on whichever thread called it. See the note where this is constructed.</summary>
@@ -249,20 +454,46 @@ public static class CliRunner
         public void Report(RunProgress value) => onReport(value);
     }
 
+    /// <summary>
+    /// One line per step.
+    /// </summary>
+    /// <remarks>
+    /// The comparison verdict is on the SAME line and beats the request's own status, because it is
+    /// the answer the run was asked for. Reading only <c>Status</c> printed "ok" against every row of
+    /// a run whose summary then said "1 differ" - which is a report that contradicts itself and sends
+    /// the reader to the wrong place.
+    /// </remarks>
     private static string Line(StepReport step)
     {
-        var mark = step.Status switch
+        var mark = step switch
         {
-            StepStatus.Passed when step.IsUnexpectedStatus && step.Assertions.Count == 0 => "!",
-            StepStatus.Passed => "ok",
-            StepStatus.Failed => "FAIL",
-            StepStatus.Errored => "ERROR",
+            { Status: StepStatus.Errored } => "ERROR",
+            { Status: StepStatus.Failed } => "FAIL",
+            { Comparison: ComparisonVerdict.Differs } => "DIFF",
+            { Comparison: ComparisonVerdict.Unavailable } => "?",
+            { Status: StepStatus.Passed, IsUnexpectedStatus: true, Assertions.Count: 0 } => "!",
+            { Status: StepStatus.Passed } => "ok",
             _ => "skip",
         };
 
-        var detail = step.Status == StepStatus.Errored
-            ? step.Error ?? "no response"
-            : $"{step.StatusCode} · {step.ElapsedMilliseconds:N0} ms";
+        var detail = step switch
+        {
+            { Status: StepStatus.Errored } => step.Error ?? "no response",
+
+            { Comparison: ComparisonVerdict.Differs } =>
+                $"{step.DifferenceCount} difference{(step.DifferenceCount == 1 ? "" : "s")} from {step.ComparedAgainst}",
+
+            { Comparison: ComparisonVerdict.Unavailable } =>
+                step.ComparisonUnavailableReason ?? "nothing to compare against",
+
+            // Which side it agreed with, because a run that quietly switched from the shared snapshot
+            // to a per-environment one is a run whose green means something different.
+            { Comparison: ComparisonVerdict.Same } =>
+                $"{step.StatusCode} · {step.ElapsedMilliseconds:N0} ms · matches {step.ComparedAgainst}"
+                + (step.ToleratedCount > 0 ? $" ({step.ToleratedCount} within tolerance)" : ""),
+
+            _ => $"{step.StatusCode} · {step.ElapsedMilliseconds:N0} ms",
+        };
 
         var line = $"{mark,-5} {step.Step.Order,3}. {step.Step.QualifiedName}  ({detail})";
 
@@ -312,57 +543,6 @@ public static class CliRunner
         return null;
     }
 
-    private static RunPlan BuildPlan(CliRequest request, string root, IRequestStore requests)
-    {
-        var tree = requests.BuildCollectionsTree(root);
-
-        if (string.IsNullOrEmpty(request.Run))
-        {
-            return RunPlan.From(tree);
-        }
-
-        var target = Path.GetFullPath(
-            Path.IsPathRooted(request.Run)
-                ? request.Run
-                : Path.Combine(root, "collections", request.Run));
-
-        var node = Find(tree, target)
-                   ?? throw new InvalidOperationException(
-                       $"\"{request.Run}\" is not a folder or request in this workspace.");
-
-        return RunPlan.From(node);
-    }
-
-    private static WorkspaceTreeNode? Find(IEnumerable<WorkspaceTreeNode> nodes, string fullPath)
-    {
-        foreach (var node in nodes)
-        {
-            // A request is stored as <name>.json and nobody types the extension, so --run Orders/Create
-            // has to find Orders/Create.json. Matched both with and without it.
-            if (PathMatches(node.FullPath, fullPath)
-                || (!node.IsDirectory && PathMatches(WithoutExtension(node.FullPath), fullPath)))
-            {
-                return node;
-            }
-
-            if (Find(node.Children, fullPath) is { } found)
-            {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
-    private static string WithoutExtension(string path) =>
-        Path.Combine(Path.GetDirectoryName(path) ?? "", Path.GetFileNameWithoutExtension(path));
-
-    private static bool PathMatches(string? a, string b) =>
-        a is not null
-        && string.Equals(
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)),
-            Path.TrimEndingDirectorySeparator(b),
-            StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Checks every workspace file against its schema, with the same exit contract as a run.

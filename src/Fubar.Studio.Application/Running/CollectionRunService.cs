@@ -1,3 +1,4 @@
+using Fubar.Studio.Core.Snapshots;
 using System.Diagnostics;
 using Fubar.Studio.Application.Comparison;
 using Fubar.Studio.Application.Requests;
@@ -284,16 +285,24 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
         try
         {
             var rules = await _settings
-                .ResolveRulesAsync(run.Workspace, report.Step.FilePath, report.Step.CaseFilePath, cancellationToken)
+                .ResolveRulesAsync(
+                    run.Workspace, report.Step.FilePath, report.Step.CaseFilePath, run.Overlay, cancellationToken)
                 .ConfigureAwait(false);
 
+            // Both sides through the same redactions and normalisations. A snapshot is stored with
+            // "generatedAt": "<timestamp>"; comparing that against a live response carrying the real
+            // value would report a difference on every run, and the rule written to stop the churn
+            // would cause it. Idempotent, so the already-normalised side is unchanged.
+            var left = SnapshotRecorder.ForComparison(other.Body!, rules.Snapshot);
+            var right = SnapshotRecorder.ForComparison(body, rules.Snapshot);
+
             var outcome = await _comparer
-                .CompareAsync(other.Body!, body, rules.Comparison, cancellationToken)
+                .CompareAsync(left, right, rules.Comparison, cancellationToken)
                 .ConfigureAwait(false);
 
             // Tolerances run on what the comparer FOUND, so the engine stays free of them and one
             // definition of "a difference" still feeds the row, the pane and the report.
-            var tolerated = ToleranceEvaluator.Apply(outcome, rules.Tolerances, other.Body, body);
+            var tolerated = ToleranceEvaluator.Apply(outcome, rules.Tolerances, left, right);
 
             return report with
             {
@@ -325,6 +334,14 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
         IReadOnlyList<AuthProfile> profiles,
         CancellationToken cancellationToken)
     {
+        // A batch naming something that is not there. Reported before anything is sent, because there
+        // is nothing to send - and reported rather than skipped, so a batch that shrank when an
+        // endpoint was renamed cannot keep passing while testing one thing fewer.
+        if (step.Unresolved is { Length: > 0 } unresolved)
+        {
+            return Errored(step, unresolved);
+        }
+
         RequestModel request;
         try
         {

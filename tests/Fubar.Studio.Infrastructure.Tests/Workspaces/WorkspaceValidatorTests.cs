@@ -127,6 +127,16 @@ public class WorkspaceValidatorTests : IDisposable
     [InlineData("collections/Orders/_folder.json", WorkspaceFileKind.FolderConfig)]
     [InlineData("environments/staging.json", WorkspaceFileKind.Environment)]
     [InlineData("package.json", WorkspaceFileKind.Unknown)]
+
+    // The endpoints format puts several kinds of document under collections/, so "any .json under
+    // collections is a request" no longer holds. Without these, every case and every recorded
+    // snapshot would be validated against the request schema and reported as a malformed request.
+    [InlineData("collections/orders/get-order/endpoint.json", WorkspaceFileKind.Request)]
+    [InlineData("collections/orders/get-order/cases/default.json", WorkspaceFileKind.Case)]
+    [InlineData("collections/orders/get-order/snapshots/staging.json", WorkspaceFileKind.Snapshot)]
+    [InlineData("collections/orders/get-order/snapshots/default/staging.json", WorkspaceFileKind.Snapshot)]
+    [InlineData("collections/Ping.snapshots/_shared.json", WorkspaceFileKind.Snapshot)]
+    [InlineData("batches/smoke.json", WorkspaceFileKind.Batch)]
     public void A_file_is_recognised_from_its_path(string relative, WorkspaceFileKind expected)
     {
         var path = Path.Combine(_root, relative.Replace('/', Path.DirectorySeparatorChar));
@@ -150,6 +160,13 @@ public class WorkspaceValidatorTests : IDisposable
     [InlineData(typeof(CaptureRule), "request.schema.json")]
     [InlineData(typeof(Assertion), "request.schema.json")]
     [InlineData(typeof(ComparisonSettings), "request.schema.json")]
+    [InlineData(typeof(Fubar.Studio.Core.Comparison.Tolerance), "request.schema.json")]
+    [InlineData(typeof(EndpointCase), "case.schema.json")]
+    [InlineData(typeof(Batch), "batch.schema.json")]
+    [InlineData(typeof(BatchStep), "batch.schema.json")]
+    [InlineData(typeof(BatchOptions), "batch.schema.json")]
+    [InlineData(typeof(BatchOverlay), "batch.schema.json")]
+    [InlineData(typeof(Fubar.Studio.Core.Snapshots.ResponseSnapshot), "snapshot.schema.json")]
     public void Every_model_property_appears_in_its_schema(Type model, string schemaFile)
     {
         var schema = File.ReadAllText(Path.Combine(SchemasDirectory(), schemaFile));

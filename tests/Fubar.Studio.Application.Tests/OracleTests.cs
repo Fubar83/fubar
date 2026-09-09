@@ -132,6 +132,55 @@ public class OracleTests
         Assert.Equal("""{"is":true}""", right);
     }
 
+    // ---- The environment oracle ------------------------------------------------------------------
+
+    private static readonly WorkspaceEnvironment Production = new() { Id = "prod", Name = "Production" };
+
+    /// <summary>The other side is sent through the ORDINARY runner, so auth, variables and captures
+    /// are identical on both sides by construction - which matters more here than anywhere, since any
+    /// difference in how the two were sent would be reported as a difference between environments.</summary>
+    [Fact]
+    public async Task Two_environments_that_agree_are_the_same_and_the_report_names_the_other_side()
+    {
+        var execution = new FakeExecution().Body("""{"a":1}""");
+        var runner = Sut(execution);
+
+        var report = await runner.RunAsync(Run(new EnvironmentOracle(runner, Production)));
+
+        Assert.Equal(ComparisonVerdict.Same, report.Steps[0].Comparison);
+        Assert.Equal("Production", report.Steps[0].ComparedAgainst);
+
+        // Twice: once for the run's own environment, once for the other side.
+        Assert.Equal(["r1@stg", "r1@prod"], execution.Sent);
+    }
+
+    [Fact]
+    public async Task Two_environments_that_differ_fail_the_run()
+    {
+        var execution = new FakeExecution().BodyPerEnvironment();
+        var runner = Sut(execution);
+
+        var report = await runner.RunAsync(Run(new EnvironmentOracle(runner, Production)));
+
+        Assert.Equal(ComparisonVerdict.Differs, report.Steps[0].Comparison);
+        Assert.False(report.Ok);
+    }
+
+    /// <summary>The other side failing is not "no difference". It is the run's answer being
+    /// unobtainable, which is never a pass.</summary>
+    [Fact]
+    public async Task An_other_side_that_did_not_answer_is_reported_and_is_never_a_pass()
+    {
+        var execution = new FakeExecution().Body("""{"a":1}""").ErrorOn("prod");
+        var runner = Sut(execution);
+
+        var report = await runner.RunAsync(Run(new EnvironmentOracle(runner, Production)));
+
+        Assert.Equal(ComparisonVerdict.Unavailable, report.Steps[0].Comparison);
+        Assert.Contains("Production", report.Steps[0].ComparisonUnavailableReason!, StringComparison.Ordinal);
+        Assert.False(report.Ok);
+    }
+
     // ---- Tolerances ------------------------------------------------------------------------------
 
     /// <summary>The tolerance is resolved from the chain and applied to what the comparer found - the

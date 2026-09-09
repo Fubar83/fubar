@@ -78,6 +78,46 @@ public static class SnapshotRecorder
         return new Recording(snapshot, redactions, normalisations, unsupported);
     }
 
+    /// <summary>
+    /// A LIVE response as the comparer must see it: the same redactions and normalisations the
+    /// snapshot was written with, applied again.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>The same transform has to run on both sides, or normalisation is worse than
+    /// useless.</b> A snapshot stores <c>"generatedAt": "&lt;timestamp&gt;"</c>; a live response
+    /// carries the real value; compared as they are, that field differs on every single run and the
+    /// rule written to stop the churn causes it instead.</para>
+    /// <para>Idempotent, so applying it to a stored snapshot as well is harmless - replacing
+    /// <c>&lt;timestamp&gt;</c> with <c>&lt;timestamp&gt;</c> changes nothing - and both sides go
+    /// through one code path rather than two that have to agree.</para>
+    /// <para>Keys are NOT sorted here. The comparer is semantic and treats objects as unordered
+    /// anyway, and sorting a live body would make the text fallback diff every line of a response
+    /// that had not changed.</para>
+    /// </remarks>
+    public static string ForComparison(string body, ResolvedSnapshotPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+
+        if (policy.Redact.Count == 0 && policy.Normalize.Count == 0)
+        {
+            return body;
+        }
+
+        if (!TryParseJson(body, out var node) || node is null)
+        {
+            // Not JSON, so there is nothing to walk. Returned as it stands rather than blanked: the
+            // comparison is still worth making, and Record() already reports the rules that could not
+            // be applied when this response was recorded.
+            return body;
+        }
+
+        var ignored = new List<string>();
+        ApplyAll(node, policy.Redact, ignored);
+        ApplyAll(node, policy.Normalize, ignored);
+
+        return node.ToJsonString(SnapshotJson.Options);
+    }
+
     private static int ApplyAll(JsonNode? node, IReadOnlyList<SnapshotRule> rules, List<string> unsupported)
     {
         var applied = 0;

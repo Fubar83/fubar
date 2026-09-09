@@ -34,6 +34,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRequestSerializer, RequestSerializer>();
         services.AddSingleton<ISnapshotStore, FileSnapshotStore>();
         services.AddSingleton<IEndpointStore, FileEndpointStore>();
+        services.AddSingleton<IBatchStore, FileBatchStore>();
         services.AddSingleton<IWorkspaceFormatConverter, WorkspaceFormatConverter>();
 
         services.AddSingleton<WorkspaceService>();

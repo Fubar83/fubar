@@ -38,6 +38,10 @@ public sealed class ResponseSnapshot
     /// what it is, so nothing has to infer scope from a name a merge may have given it.</summary>
     public string? Environment { get; set; }
 
+    /// <summary>Derived from <see cref="Environment"/>, and NOT written to the file: a stored copy
+    /// could contradict the field it is derived from, and then two readers of the same snapshot would
+    /// disagree about who it is for.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
     public SnapshotScope Scope => Environment is null ? SnapshotScope.Shared : SnapshotScope.Environment;
 
     public DateTimeOffset RecordedAt { get; set; } = DateTimeOffset.UtcNow;

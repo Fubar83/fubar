@@ -20,6 +20,15 @@ public enum WorkspaceFileKind
 
     /// <summary>A <c>_folder.json</c> inside a collections subfolder.</summary>
     FolderConfig,
+
+    /// <summary>One <c>cases/&lt;name&gt;.json</c> inside an endpoint.</summary>
+    Case,
+
+    /// <summary>A recorded response under <c>snapshots/</c> or <c>&lt;name&gt;.snapshots/</c>.</summary>
+    Snapshot,
+
+    /// <summary>One <c>batches/&lt;name&gt;.json</c>.</summary>
+    Batch,
 }
 
 /// <summary>
@@ -58,12 +67,58 @@ public static class WorkspaceFiles
             return WorkspaceFileKind.Environment;
         }
 
+        if (IsUnder(root, IBatchStore.BatchesDirName, full)
+            && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            return WorkspaceFileKind.Batch;
+        }
+
         if (IsUnder(root, "collections", full) && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
         {
-            return WorkspaceFileKind.Request;
+            // Inside an endpoint, the directory says what a file is. Without this every case and every
+            // recorded snapshot would be validated as a request and reported as a malformed one -
+            // which is what a rule that says "any .json under collections" grows into once the tree
+            // has more than one kind of thing in it.
+            return DirectoryName(full) switch
+            {
+                IEndpointStore.CasesDirName => WorkspaceFileKind.Case,
+                IEndpointStore.SnapshotsDirName => WorkspaceFileKind.Snapshot,
+                { } directory when directory.EndsWith(".snapshots", StringComparison.OrdinalIgnoreCase) =>
+                    WorkspaceFileKind.Snapshot,
+
+                // A per-case snapshot lives one level deeper: snapshots/<case>/<environment>.json.
+                _ when IsUnderSnapshots(full) => WorkspaceFileKind.Snapshot,
+                _ => WorkspaceFileKind.Request,
+            };
         }
 
         return WorkspaceFileKind.Unknown;
+    }
+
+    private static string? DirectoryName(string fullPath) =>
+        Path.GetFileName(Path.GetDirectoryName(fullPath));
+
+    private static bool IsUnderSnapshots(string fullPath)
+    {
+        for (var directory = Path.GetDirectoryName(fullPath);
+             directory is not null;
+             directory = Path.GetDirectoryName(directory))
+        {
+            var segment = Path.GetFileName(directory);
+
+            if (string.Equals(segment, IEndpointStore.SnapshotsDirName, StringComparison.OrdinalIgnoreCase)
+                || segment.EndsWith(".snapshots", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (string.Equals(segment, "collections", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The schema file name for a kind, or null for <see cref="WorkspaceFileKind.Unknown"/>.</summary>
@@ -74,6 +129,9 @@ public static class WorkspaceFiles
         WorkspaceFileKind.Environment => "environment.schema.json",
         WorkspaceFileKind.AuthProfiles => "auth-profiles.schema.json",
         WorkspaceFileKind.FolderConfig => "folder.schema.json",
+        WorkspaceFileKind.Case => "case.schema.json",
+        WorkspaceFileKind.Batch => "batch.schema.json",
+        WorkspaceFileKind.Snapshot => "snapshot.schema.json",
         _ => null,
     };
 

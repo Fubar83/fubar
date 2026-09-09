@@ -1,3 +1,4 @@
+using Fubar.Studio.Application.Comparison;
 using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Running;
@@ -45,22 +46,20 @@ public sealed class SnapshotRecordingService : ISnapshotRecordingService
 {
     private readonly ICollectionRunService _runner;
     private readonly ISnapshotStore _store;
-    private readonly IAppSettingsService _appSettings;
-    private readonly IInheritanceResolver _inheritance;
-    private readonly IRequestStore _requests;
+    private readonly IRequestComparisonSettings _rules;
 
     public SnapshotRecordingService(
         ICollectionRunService runner,
         ISnapshotStore store,
-        IAppSettingsService appSettings,
-        IInheritanceResolver inheritance,
-        IRequestStore requests)
+        IRequestComparisonSettings rules)
     {
         _runner = runner;
         _store = store;
-        _appSettings = appSettings;
-        _inheritance = inheritance;
-        _requests = requests;
+
+        // The SAME resolution the run uses to judge. Two walks down the same chain would be two
+        // chances to disagree about what gets redacted - and a snapshot written with one set of rules
+        // and compared with another differs on every run.
+        _rules = rules;
     }
 
     public async Task<SnapshotRecordingReport> RecordAsync(
@@ -101,8 +100,11 @@ public sealed class SnapshotRecordingService : ISnapshotRecordingService
                 continue;
             }
 
-            var policy = await ResolvePolicyAsync(recording.Workspace, step.Step.FilePath, cancellationToken)
-                .ConfigureAwait(false);
+            var policy = (await _rules
+                .ResolveRulesAsync(
+                    recording.Workspace, step.Step.FilePath, step.Step.CaseFilePath, null, cancellationToken)
+                .ConfigureAwait(false))
+                .Snapshot;
 
             var result = SnapshotRecorder.Record(
                 body,
@@ -140,34 +142,4 @@ public sealed class SnapshotRecordingService : ISnapshotRecordingService
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Content-Type"] = contentType }
             : [];
 
-    private async Task<ResolvedSnapshotPolicy> ResolvePolicyAsync(
-        Workspace workspace,
-        string requestPath,
-        CancellationToken cancellationToken)
-    {
-        var layers = new List<SnapshotPolicyLayer>();
-
-        var app = await _appSettings.LoadAsync(cancellationToken).ConfigureAwait(false);
-        if (app.Snapshot is { } global)
-        {
-            layers.Add(new SnapshotPolicyLayer(global, ComparisonScope.Global, "Global"));
-        }
-
-        var chain = await _inheritance
-            .GetInheritanceChainAsync(workspace.RootPath, requestPath, cancellationToken)
-            .ConfigureAwait(false);
-
-        foreach (var folder in chain.SnapshotLayers ?? [])
-        {
-            layers.Add(folder);
-        }
-
-        var request = await _requests.LoadRequestAsync(requestPath, cancellationToken).ConfigureAwait(false);
-        if (request.Snapshot is { } own)
-        {
-            layers.Add(new SnapshotPolicyLayer(own, ComparisonScope.Request, "Request"));
-        }
-
-        return SnapshotPolicyResolver.Resolve(layers);
-    }
 }

@@ -1,0 +1,116 @@
+using Fubar.Studio.Core.Models;
+using Fubar.Studio.Core.Running;
+using Fubar.Studio.Core.Workspaces;
+
+namespace Fubar.Studio.Application.Running;
+
+/// <summary>A batch and the steps it expands to, in its own order.</summary>
+public sealed record ResolvedBatch(Batch Batch, RunPlan Plan);
+
+/// <summary>Turns a batch into the plan a run executes.</summary>
+public interface IBatchPlanner
+{
+    /// <summary>Finds a batch by name and expands it.</summary>
+    /// <exception cref="InvalidOperationException">There is no batch by that name. Reported rather
+    /// than run as nothing: a typo in a CI script must not pass.</exception>
+    Task<ResolvedBatch> ExpandAsync(
+        Workspace workspace, string batchName, CancellationToken cancellationToken = default);
+}
+
+/// <inheritdoc cref="IBatchPlanner"/>
+public sealed class BatchPlanner : IBatchPlanner
+{
+    private readonly IBatchStore _batches;
+    private readonly IRequestStore _requests;
+
+    public BatchPlanner(IBatchStore batches, IRequestStore requests)
+    {
+        _batches = batches;
+        _requests = requests;
+    }
+
+    public async Task<ResolvedBatch> ExpandAsync(
+        Workspace workspace,
+        string batchName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+
+        var batch = await _batches.FindBatchAsync(workspace.RootPath, batchName, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException(Missing(workspace, batchName));
+
+        var tree = _requests.BuildCollectionsTree(workspace.RootPath);
+        var collections = Path.Combine(workspace.RootPath, "collections");
+        var steps = new List<RunStep>();
+
+        foreach (var step in batch.Steps)
+        {
+            var node = TreeLookup.Find(tree, (step.Endpoint ?? "").Replace('\\', '/').Trim('/'));
+
+            if (node is null)
+            {
+                // Reported as a step that ERRORS, never skipped. A batch that quietly shrank when
+                // someone renamed an endpoint would keep passing while testing one thing fewer, which
+                // is the failure this whole feature exists to refuse.
+                steps.Add(new RunStep(
+                    steps.Count + 1,
+                    step.Endpoint ?? "(unnamed)",
+                    collections,
+                    collections,
+                    step.Case)
+                {
+                    Unresolved = $"This batch names \"{step.Endpoint}\", which is not in this workspace.",
+                });
+
+                continue;
+            }
+
+            var expanded = step.Case is { Length: > 0 } wanted
+                ? Expand(node, wanted, collections)
+                : RunPlan.From(node).Steps;
+
+            foreach (var expandedStep in expanded)
+            {
+                steps.Add(expandedStep with { Order = steps.Count + 1 });
+            }
+        }
+
+        return new ResolvedBatch(batch, new RunPlan(steps));
+    }
+
+    /// <summary>One named case of an endpoint - or a step that errors saying which cases there are,
+    /// for the same reason a missing endpoint does.</summary>
+    private static IReadOnlyList<RunStep> Expand(WorkspaceTreeNode node, string wanted, string collections)
+    {
+        var caseNode = node.Kind == WorkspaceNodeKind.Endpoint
+            ? node.Children.FirstOrDefault(c => string.Equals(c.Name, wanted, StringComparison.OrdinalIgnoreCase))
+            : null;
+
+        if (caseNode is not null)
+        {
+            return RunPlan.From(caseNode).Steps;
+        }
+
+        var known = node.Children.Count == 0
+            ? "it has none"
+            : "it has: " + string.Join(", ", node.Children.Select(c => c.Name));
+
+        return
+        [
+            new RunStep(1, node.Name, node.FullPath, collections, wanted)
+            {
+                Unresolved = $"This batch names case \"{wanted}\" of \"{node.Name}\", and {known}.",
+            },
+        ];
+    }
+
+    private string Missing(Workspace workspace, string batchName)
+    {
+        var available = _batches.ListBatches(workspace.RootPath);
+
+        return available.Count == 0
+            ? $"This workspace has no batches. Create one under {IBatchStore.BatchesDirName}/."
+            : $"There is no batch called \"{batchName}\". There is: "
+              + string.Join(", ", available.Select(b => b.Name)) + ".";
+    }
+}

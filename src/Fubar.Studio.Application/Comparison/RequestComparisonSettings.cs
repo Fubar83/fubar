@@ -1,3 +1,4 @@
+using Fubar.Studio.Core.Snapshots;
 using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Settings;
@@ -20,10 +21,14 @@ public interface IRequestComparisonSettings
     /// <param name="casePath">The <c>cases/&lt;name&gt;.json</c> being run, when there is one. The
     /// innermost level, applied after the endpoint's own - null in the requests format and for an
     /// endpoint sent as it stands.</param>
+    /// <param name="overlay">The batch's own rules, applied AFTER the chain resolves. A batch is not
+    /// a level of the hierarchy - it cuts across the tree, so folding it in would make an endpoint's
+    /// settings depend on which list happened to name it.</param>
     Task<ResolvedRequestRules> ResolveRulesAsync(
         Workspace workspace,
         string requestPath,
         string? casePath = null,
+        BatchOverlay? overlay = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Just the comparison options, for the panes that render them and have no verdict to
@@ -32,17 +37,24 @@ public interface IRequestComparisonSettings
         Workspace workspace,
         string requestPath,
         CancellationToken cancellationToken = default) =>
-        (await ResolveRulesAsync(workspace, requestPath, null, cancellationToken).ConfigureAwait(false))
+        (await ResolveRulesAsync(workspace, requestPath, null, null, cancellationToken).ConfigureAwait(false))
         .Comparison;
 }
 
 /// <summary>
-/// The two halves of a verdict, resolved together because they come from the same walk down the same
-/// chain - and because a caller that got one without the other would compare with half the rules.
+/// Everything the chain says about judging one request, resolved in a single walk - and together,
+/// because a caller that got one part without the others would judge with a fraction of the rules.
 /// </summary>
+/// <param name="Snapshot">
+/// What to redact and normalise. Needed on the READ side as well as the write side: a snapshot is
+/// stored with <c>"generatedAt": "&lt;timestamp&gt;"</c>, so a live response carrying the real value
+/// differs from it on that field every single run unless the same rules are applied to both. That
+/// makes normalisation useless and is exactly the bug it exists to prevent.
+/// </param>
 public sealed record ResolvedRequestRules(
     ResolvedComparisonSettings Comparison,
-    IReadOnlyList<ResolvedTolerance> Tolerances);
+    IReadOnlyList<ResolvedTolerance> Tolerances,
+    ResolvedSnapshotPolicy Snapshot);
 
 /// <inheritdoc cref="IRequestComparisonSettings"/>
 public sealed class RequestComparisonSettings : IRequestComparisonSettings
@@ -68,12 +80,14 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
         Workspace workspace,
         string requestPath,
         string? casePath = null,
+        BatchOverlay? overlay = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workspace);
 
         var layers = new List<ComparisonSettingsLayer>();
         var tolerances = new List<ToleranceLayer>();
+        var snapshot = new List<SnapshotPolicyLayer>();
 
         // Read fresh rather than cached: this runs once per comparison, not per keystroke, and another
         // window may have changed the global defaults since the run started.
@@ -88,12 +102,18 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
             tolerances.Add(new ToleranceLayer(globalTolerances, ComparisonScope.Global, "Global"));
         }
 
+        if (app.Snapshot is { } globalSnapshot)
+        {
+            snapshot.Add(new SnapshotPolicyLayer(globalSnapshot, ComparisonScope.Global, "Global"));
+        }
+
         var chain = await _inheritance
             .GetInheritanceChainAsync(workspace.RootPath, requestPath, cancellationToken)
             .ConfigureAwait(false);
 
         layers.AddRange(chain.ComparisonLayers);
         tolerances.AddRange(chain.ToleranceLayers ?? []);
+        snapshot.AddRange(chain.SnapshotLayers ?? []);
 
         var request = await _requests.LoadRequestAsync(requestPath, cancellationToken).ConfigureAwait(false);
         if (request.Comparison is { } own)
@@ -104,6 +124,11 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
         if (request.Tolerances is { Count: > 0 } ownTolerances)
         {
             tolerances.Add(new ToleranceLayer(ownTolerances, ComparisonScope.Request, "Request"));
+        }
+
+        if (request.Snapshot is { } ownSnapshot)
+        {
+            snapshot.Add(new SnapshotPolicyLayer(ownSnapshot, ComparisonScope.Request, "Request"));
         }
 
         if (casePath is { Length: > 0 })
@@ -122,8 +147,26 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
             }
         }
 
+        // Last, and outside the chain: the occasion's rules beat every containment level, and read as
+        // "Batch: smoke" wherever provenance is shown.
+        if (overlay is { IsEmpty: false })
+        {
+            var sourceName = "Batch";
+
+            if (overlay.Comparison is { } batchComparison)
+            {
+                layers.Add(new ComparisonSettingsLayer(batchComparison, ComparisonScope.Batch, sourceName));
+            }
+
+            if (overlay.Tolerances is { Count: > 0 } batchTolerances)
+            {
+                tolerances.Add(new ToleranceLayer(batchTolerances, ComparisonScope.Batch, sourceName));
+            }
+        }
+
         return new ResolvedRequestRules(
             ComparisonSettingsResolver.Resolve(layers),
-            ToleranceResolver.Resolve(tolerances));
+            ToleranceResolver.Resolve(tolerances),
+            SnapshotPolicyResolver.Resolve(snapshot));
     }
 }
