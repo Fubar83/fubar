@@ -125,6 +125,48 @@ public class CollectionRunTests
         Assert.Equal("Run — Orders", window.Title);
     }
 
+    // ---- A step that appears twice --------------------------------------------------------------
+
+    /// <summary>The documented batch shape: "delete it" is both the last step (proving the delete
+    /// works) and the teardown (cleaning up a run that stopped before reaching it).</summary>
+    private CollectionRunViewModel VmWithRepeatedTeardown(FakeRunService service)
+    {
+        var delete = Step(2);
+        var plan = new RunPlan([Step(1), delete, delete with { Order = 3, IsTeardown = true }]);
+
+        return new(service, new FakeRecording(), new FakeSnapshotStore(), plan, Ws, null, [],
+            "pet-lifecycle", RecordingDiffPreview, new FakeSettingsContext());
+    }
+
+    [AvaloniaFact]
+    public async Task A_teardown_repeating_a_step_runs_instead_of_throwing()
+    {
+        // It threw out of ToDictionary - from a command handler, so it took the whole process down -
+        // because the rows were keyed on endpoint + case, which two of these three steps share. The
+        // command line ran the same batch happily, so the crash was reachable only by pressing the
+        // button, which is how it shipped.
+        var vm = VmWithRepeatedTeardown(new FakeRunService());
+
+        await vm.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, vm.Steps.Count);
+        Assert.All(vm.Steps, s => Assert.False(s.IsPending));
+    }
+
+    [AvaloniaFact]
+    public async Task The_repeated_step_and_its_cleanup_report_separately()
+    {
+        // The reason the key had to become unique rather than last-wins: two rows are the same case,
+        // and each has to show what IT did. A cleanup that found nothing left to delete says 404 while
+        // the step above it says 204, and collapsing them would hide exactly that.
+        var vm = VmWithRepeatedTeardown(new FakeRunService().StatusOn(3, 404));
+
+        await vm.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal("200", vm.Steps[1].StatusText);
+        Assert.Equal("404", vm.Steps[2].StatusText);
+    }
+
     // ---- Rows before anything is sent ----------------------------------------------------------
 
     [AvaloniaFact]

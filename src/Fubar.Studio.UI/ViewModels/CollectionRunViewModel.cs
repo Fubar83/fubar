@@ -240,7 +240,7 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
             // end up saying "skipped" rather than staying on "pending" forever.
             foreach (var step in report.Steps)
             {
-                if (byKey.TryGetValue(Key(step.Step), out var row))
+                if (byKey.TryGetValue(step.Step.Order, out var row))
                 {
                     row.Apply(step);
                 }
@@ -314,7 +314,7 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
 
     /// <summary>Everything both buttons do before they start: reset the rows, wire the progress, and
     /// put the window into its running state.</summary>
-    private (Dictionary<string, RunStepRowViewModel> ByKey, IProgress<RunProgress> Progress, RunOptions Options)
+    private (Dictionary<int, RunStepRowViewModel> ByKey, IProgress<RunProgress> Progress, RunOptions Options)
         Begin(RunPlan plan)
     {
         _cancellation?.Dispose();
@@ -331,16 +331,20 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
 
         NotifyCommands();
 
-        // Keyed on endpoint AND case: several cases share one endpoint.json, so keying on the file
-        // alone throws on the duplicate and would otherwise update the wrong row.
-        var byKey = Steps.ToDictionary(s => Key(s.Step), StringComparer.OrdinalIgnoreCase);
+        // Keyed on the step's ORDER, which is the only thing about a step that is unique - RunPlan
+        // renumbers every plan 1..n, teardown included. It used to key on endpoint + case, which is
+        // not: a teardown step is routinely the SAME case as one of the steps above it, because
+        // "delete it" both proves the delete works and cleans up after a run that stopped before
+        // reaching it. That duplicate threw out of ToDictionary, from a command handler, so pressing
+        // Run on the batch shape the docs recommend took the whole process down.
+        var byKey = Steps.ToDictionary(s => s.Step.Order);
         var completed = 0;
 
         // Progress<T> posts back to the captured (UI) context, which is what makes it safe to touch the
         // rows from here while the run itself is on a worker.
         var progress = new Progress<RunProgress>(update =>
         {
-            if (!byKey.TryGetValue(Key(update.Step), out var row))
+            if (!byKey.TryGetValue(update.Step.Order, out var row))
             {
                 return;
             }
@@ -373,8 +377,6 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         CancelCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanRecord));
     }
-
-    private static string Key(RunStep step) => $"{step.FilePath}#{step.CaseName}";
 
     private IOracle BuildOracle() => SelectedOracle switch
     {
