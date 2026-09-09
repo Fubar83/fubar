@@ -100,29 +100,53 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
         await ReloadAsync();
     }
 
+    /// <summary>
+    /// Rebuilds the list from the <c>batches/</c> directory.
+    /// </summary>
+    /// <remarks>
+    /// Built into a local list and published in one step, with a generation guard, because this used
+    /// to clear <see cref="Rows"/> and then refill it one <c>await</c> at a time: two reloads
+    /// overlapping - which is what switching workspace and re-opening an editor does within a few
+    /// milliseconds of each other - both cleared and then both added, and the group showed every batch
+    /// twice. It also means the list never blinks empty on the way.
+    /// </remarks>
     public async Task ReloadAsync()
     {
-        Rows.Clear();
+        var generation = ++_reloadGeneration;
 
-        if (_workspace is not { } workspace || !IsAvailable)
+        var loaded = new List<BatchRowViewModel>();
+
+        if (_workspace is { } workspace && IsAvailable)
+        {
+            foreach (var summary in _batches.ListBatches(workspace.RootPath))
+            {
+                try
+                {
+                    loaded.Add(new BatchRowViewModel(summary, await _batches.LoadBatchAsync(summary.FilePath)));
+                }
+                catch (Exception ex)
+                {
+                    // One unreadable batch does not hide the others, and it is SAID: a batch that
+                    // quietly vanished from the list is a batch nobody runs and nobody misses.
+                    _statusLog.LogWarning($"Could not read the batch \"{summary.Name}\": {ex.Message}");
+                }
+            }
+        }
+
+        // A newer reload started while this one was reading, so this answer is already stale.
+        if (generation != _reloadGeneration)
         {
             return;
         }
 
-        foreach (var summary in _batches.ListBatches(workspace.RootPath))
+        Rows.Clear();
+        foreach (var row in loaded)
         {
-            try
-            {
-                Rows.Add(new BatchRowViewModel(summary, await _batches.LoadBatchAsync(summary.FilePath)));
-            }
-            catch (Exception ex)
-            {
-                // One unreadable batch does not hide the others, and it is SAID: a batch that quietly
-                // vanished from the list is a batch nobody runs and nobody misses.
-                _statusLog.LogWarning($"Could not read the batch \"{summary.Name}\": {ex.Message}");
-            }
+            Rows.Add(row);
         }
     }
+
+    private int _reloadGeneration;
 
     [RelayCommand]
     private void Run(BatchRowViewModel? row)

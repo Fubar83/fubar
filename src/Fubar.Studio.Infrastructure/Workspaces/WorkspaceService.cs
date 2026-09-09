@@ -469,6 +469,51 @@ public sealed class WorkspaceService : IWorkspaceService
         return destination;
     }
 
+    public string MovePath(string path, string destinationDirectory)
+    {
+        var isDirectory = Directory.Exists(path);
+
+        if (!isDirectory && !File.Exists(path))
+        {
+            throw new FileNotFoundException($"There is nothing at \"{path}\" to move.", path);
+        }
+
+        var destination = Path.Combine(destinationDirectory, Path.GetFileName(path));
+
+        if (string.Equals(destination, path, StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        if (File.Exists(destination) || Directory.Exists(destination))
+        {
+            throw new IOException(
+                $"\"{Path.GetFileName(path)}\" already exists in \"{Path.GetFileName(destinationDirectory)}\".");
+        }
+
+        // A directory moved inside its own subtree is not a move anyone meant, and Directory.Move does
+        // not always refuse it - on some file systems it succeeds and takes the contents with it.
+        if (isDirectory
+            && (destinationDirectory + Path.DirectorySeparatorChar)
+                .StartsWith(path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException($"\"{Path.GetFileName(path)}\" cannot be moved inside itself.");
+        }
+
+        Directory.CreateDirectory(destinationDirectory);
+
+        if (isDirectory)
+        {
+            Directory.Move(path, destination);
+        }
+        else
+        {
+            File.Move(path, destination);
+        }
+
+        return destination;
+    }
+
     public void DeletePath(string path)
     {
         if (Directory.Exists(path))

@@ -35,6 +35,18 @@ public interface IRequestStore
     /// <summary>Renames the file or directory at <paramref name="path"/> in place and returns the new path.</summary>
     string RenamePath(string path, string newName);
 
+    /// <summary>
+    /// Moves the file or directory at <paramref name="path"/> into
+    /// <paramref name="destinationDirectory"/> and returns its new path.
+    /// </summary>
+    /// <remarks>
+    /// A move, not a copy: the point is that the thing stops being where it was. Refuses rather than
+    /// overwriting when the destination is taken, and refuses to move a directory into itself - a
+    /// folder dropped inside its own subtree is not a move anyone meant, and on some file systems it
+    /// succeeds and loses the contents.
+    /// </remarks>
+    string MovePath(string path, string destinationDirectory);
+
     /// <summary>Deletes the file, or recursively deletes the directory, at <paramref name="path"/>.</summary>
     void DeletePath(string path);
 }

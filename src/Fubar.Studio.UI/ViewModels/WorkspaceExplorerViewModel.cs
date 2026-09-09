@@ -107,6 +107,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(CanAddCase));
         OnPropertyChanged(nameof(CanAddBatch));
         OnPropertyChanged(nameof(IsScratchActive));
+        RefreshMoveTargets();
 
         PersistOpenWorkspaces();
     }
@@ -228,6 +229,8 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(CanAddBatch))]
     public partial WorkspaceNodeViewModel? SelectedNode { get; set; }
 
+    partial void OnSelectedNodeChanged(WorkspaceNodeViewModel? value) => RefreshMoveTargets();
+
     /// <summary>
     /// Narrows the tree to nodes matching by name, URL or method.
     ///
@@ -292,6 +295,12 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
 
         PersistOpenWorkspaces();
+
+        // Explicitly, because closing a tab that was NOT the active one changes nothing else here -
+        // and a closed workspace left in the list is a "Move to workspace" entry that would move
+        // something into a tree nobody is watching.
+        RefreshMoveTargets();
+
         WorkspaceClosed?.Invoke(root.Workspace);
         root.Dispose();
         _statusLog.Log($"Closed workspace \"{root.Name}\".");
@@ -423,6 +432,129 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     /// saved somewhere you did not choose is worth knowing about.</summary>
     public bool IsScratchActive => ActiveRoot is not null && string.Equals(
         ActiveRoot.FullPath, ScratchWorkspacePath, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The open workspaces the selection could be moved into - every one except its own.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the scratch pad: something tried out with no filing decisions has to be able
+    /// to become a real request later, or "try it here first" is a dead end. Open workspaces only,
+    /// because those are the ones whose format is known and whose tree is already watching.
+    /// </remarks>
+    public ObservableCollection<WorkspaceRootViewModel> MoveTargets { get; } = [];
+
+    /// <summary>
+    /// Whether the selection is a thing that can move between workspaces.
+    /// </summary>
+    /// <remarks>
+    /// A request, an endpoint or a folder - the things that stand on their own. A case and a batch
+    /// belong to their endpoint and go where it goes; moving one alone would leave a case with no
+    /// endpoint, which is not a state this format has. A draft has no file to move at all.
+    /// </remarks>
+    public bool CanMove =>
+        MoveTargets.Count > 0
+        && SelectedNode is
+        {
+            IsDraft: false,
+            Kind: WorkspaceNodeKind.Request or WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Folder,
+        }
+        && SelectedNode is not WorkspaceRootViewModel;
+
+    private void RefreshMoveTargets()
+    {
+        var owner = SelectedNode is null
+            ? null
+            : Roots.FirstOrDefault(r => SelectedNode.FullPath.StartsWith(r.FullPath, StringComparison.OrdinalIgnoreCase));
+
+        MoveTargets.Clear();
+        foreach (var root in Roots.Where(r => r != owner))
+        {
+            MoveTargets.Add(root);
+        }
+
+        OnPropertyChanged(nameof(CanMove));
+    }
+
+    /// <summary>
+    /// Moves the selection into <paramref name="target"/>'s <c>collections/</c>.
+    /// </summary>
+    /// <remarks>
+    /// Into the root of the target rather than a folder chosen here: picking the destination folder
+    /// needs a tree of its own, and the tree it lands in already has Rename and its own context menu
+    /// for putting it where it belongs. Landing somewhere findable beats a dialog.
+    /// </remarks>
+    [RelayCommand]
+    private async Task MoveToWorkspaceAsync(WorkspaceRootViewModel? target)
+    {
+        if (target is null || SelectedNode is not { } node || !CanMove)
+        {
+            return;
+        }
+
+        var owner = Roots.FirstOrDefault(
+            r => node.FullPath.StartsWith(r.FullPath, StringComparison.OrdinalIgnoreCase));
+
+        // The two formats store an endpoint and a request differently, and a directory holding
+        // endpoint.json dropped into a requests-format workspace is a folder full of files that
+        // workspace cannot send. Refused rather than half-working.
+        if (owner is not null
+            && owner.Workspace.Manifest.Format != target.Workspace.Manifest.Format
+            && node.Kind != WorkspaceNodeKind.Folder)
+        {
+            _statusLog.LogError(
+                $"\"{node.DisplayName}\" is in the {owner.Workspace.Manifest.Format.ToString().ToLowerInvariant()} "
+                + $"format and \"{target.Workspace.Manifest.Name}\" is in the "
+                + $"{target.Workspace.Manifest.Format.ToString().ToLowerInvariant()} format.");
+            return;
+        }
+
+        if (!await ConfirmMoveAsync(node, target))
+        {
+            return;
+        }
+
+        try
+        {
+            var from = node.FullPath;
+            var moved = _requestStore.MovePath(from, Path.Combine(target.FullPath, "collections"));
+
+            _statusLog.Log($"Moved \"{node.DisplayName}\" into \"{target.Workspace.Manifest.Name}\".");
+
+            SelectedNode = null;
+            RefreshRootFor(from);
+            target.Refresh();
+            ActiveRoot = target;
+
+            PathMoved?.Invoke(from, moved);
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not move \"{node.DisplayName}\": {ex.Message}");
+        }
+    }
+
+    /// <summary>Raised after a successful move, with where it was and where it is now - the shell
+    /// re-opens whatever was showing the old path, which no longer exists.</summary>
+    public event Action<string, string>? PathMoved;
+
+    /// <summary>
+    /// A move takes something out of one repository and puts it in another, and both are usually
+    /// committed. Asked about rather than done quietly - with no confirmation service wired the answer
+    /// is yes, matching every other file operation here.
+    /// </summary>
+    private async Task<bool> ConfirmMoveAsync(WorkspaceNodeViewModel node, WorkspaceRootViewModel target)
+    {
+        if (_confirmation is null)
+        {
+            return true;
+        }
+
+        return await _confirmation.ConfirmAsync(
+            "Move to workspace",
+            $"Move \"{node.DisplayName}\" into \"{target.Workspace.Manifest.Name}\"? "
+            + "It stops being where it is now.",
+            "Move");
+    }
 
     /// <summary>
     /// Which shape the active workspace's collections are in. Read from the manifest, never sniffed

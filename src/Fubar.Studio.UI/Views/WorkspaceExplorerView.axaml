@@ -93,6 +93,24 @@
                               IsVisible="{Binding UsesRequests}"
                               ToolTip.Tip="Split every request into an endpoint and one case. Copies the originals to .fubar/backup/ first." />
                     <Separator />
+                    <!-- Hidden rather than greyed when there is nowhere to move to, which is this
+                         codebase's rule for a control that cannot do anything right now. Its items
+                         are the OTHER open workspaces - the ones whose format is known and whose tree
+                         is already watching. -->
+                    <MenuItem Header="Move to workspace"
+                              ItemsSource="{Binding MoveTargets}"
+                              IsVisible="{Binding CanMove}"
+                              ToolTip.Tip="Takes it out of here and puts it in another open workspace">
+                        <MenuItem.ItemContainerTheme>
+                            <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                          x:DataType="vm:WorkspaceRootViewModel">
+                                <Setter Property="Header" Value="{Binding Workspace.Manifest.Name}" />
+                                <Setter Property="Command"
+                                        Value="{Binding $parent[TreeView].((vm:WorkspaceExplorerViewModel)DataContext).MoveToWorkspaceCommand}" />
+                                <Setter Property="CommandParameter" Value="{Binding}" />
+                            </ControlTheme>
+                        </MenuItem.ItemContainerTheme>
+                    </MenuItem>
                     <MenuItem Header="Rename" Command="{Binding BeginRenameCommand}" />
                     <MenuItem Header="Duplicate" Command="{Binding DuplicateCommand}" />
                     <MenuItem Header="Delete" Command="{Binding DeleteCommand}" />

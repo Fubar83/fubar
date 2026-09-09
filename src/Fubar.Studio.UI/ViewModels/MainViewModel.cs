@@ -125,6 +125,7 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorer.CaseDrafted += path => _ = OpenCaseAsync(path, isDraft: true);
         WorkspaceExplorer.RequestDrafted += path => _ = OpenRequestAsync(path, isDraft: true);
         WorkspaceExplorer.DraftRenamed += OnDraftRenamed;
+        WorkspaceExplorer.PathMoved += OnPathMoved;
         WorkspaceExplorer.BatchOpened += OpenBatchEditor;
         WorkspaceExplorer.RunRequested += OnRunRequested;
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
@@ -603,6 +604,37 @@ public partial class MainViewModel : ViewModelBase
                 StringComparison.OrdinalIgnoreCase))
         {
             endpoint.FilePath = endpointFile;
+        }
+    }
+
+    /// <summary>
+    /// Something open was moved to another workspace, so the file the canvas is showing is no longer
+    /// there. Re-opened at its new home rather than closed: the move was a filing decision, not a
+    /// decision to stop working on it - and re-opening is also what picks up the new workspace's
+    /// environments, auth profiles and inherited rules, which are the whole reason it moved.
+    /// </summary>
+    private void OnPathMoved(string from, string to)
+    {
+        if (ActiveRequest is not { } open)
+        {
+            return;
+        }
+
+        // An endpoint's node is its directory; the editor holds the endpoint.json inside it. A folder
+        // move carries whatever was open along with everything else under it.
+        var endpointFile = Path.Combine(from, Core.Workspaces.IEndpointStore.EndpointFileName);
+
+        if (string.Equals(open.FilePath, from, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = OpenRequestAsync(to);
+        }
+        else if (string.Equals(open.FilePath, endpointFile, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = OpenRequestAsync(Path.Combine(to, Core.Workspaces.IEndpointStore.EndpointFileName));
+        }
+        else if (open.FilePath.StartsWith(from + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = OpenRequestAsync(to + open.FilePath[from.Length..]);
         }
     }
 

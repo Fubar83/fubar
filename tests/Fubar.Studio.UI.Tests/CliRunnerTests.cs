@@ -590,6 +590,8 @@ public class CliRunnerTests
 
         public string RenamePath(string path, string newName) => throw new NotSupportedException();
 
+        public string MovePath(string path, string destinationDirectory) => throw new NotSupportedException();
+
         public void DeletePath(string path) => throw new NotSupportedException();
     }
 
