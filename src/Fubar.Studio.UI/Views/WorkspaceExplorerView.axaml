@@ -84,8 +84,8 @@
                      badge, auth badge, and dirty dot are simply invisible on a folder node, since
                      WorkspaceNodeViewModel.Method/HasAuthOverride/IsDirty are only ever populated
                      for request files. -->
-                <TreeDataTemplate DataType="vm:WorkspaceNodeViewModel" ItemsSource="{Binding Children}">
-                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MinHeight="20">
+                <TreeDataTemplate DataType="vm:WorkspaceNodeViewModel" ItemsSource="{Binding DisplayChildren}">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MinHeight="20">
                         <!-- Method Badge (fc:Badge - the reusable pill) -->
                         <fc:Badge Grid.Column="0"
                                   Width="38"
@@ -135,7 +135,7 @@
                              must go out unauthenticated looked exactly like the ones carrying a
                              token. BadgeAuthNone had been in the palette for this the whole time and
                              was referenced by nothing. -->
-                        <fc:Badge Grid.Column="2"
+                        <fc:Badge Grid.Column="3"
                                   Content="Auth"
                                   FontSize="9"
                                   FontWeight="Normal"
@@ -155,7 +155,7 @@
                             </fc:Badge.IsVisible>
                         </fc:Badge>
 
-                        <fc:Badge Grid.Column="2"
+                        <fc:Badge Grid.Column="3"
                                   Content="No auth"
                                   FontSize="9"
                                   FontWeight="Normal"
@@ -168,8 +168,42 @@
                                   IsVisible="{Binding SendsNoAuth}"
                                   VerticalAlignment="Center" />
 
+                        <!-- Case count and snapshot state, in ONE stack: separate cells in the same
+                             grid column drew on top of each other. -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5"
+                                    VerticalAlignment="Center" Margin="4,0">
+
+                            <!-- Only past one: "1 case" on every row would be noise standing in for
+                                 the ordinary. -->
+                            <TextBlock Text="{Binding CaseCountText}"
+                                       IsVisible="{Binding HasSeveralCases}"
+                                       FontSize="9"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondary}" />
+
+                            <!-- Snapshot state. Three meanings, one glyph.
+
+                                 STALE is the one that earns its place: a green regression run against
+                                 a snapshot recorded before the endpoint or case changed is a lie, and
+                                 this is the only place anyone can notice it before running. -->
+                            <TextBlock Text="●" IsVisible="{Binding HasSnapshot}"
+                                       FontSize="10" VerticalAlignment="Center"
+                                       ToolTip.Tip="{Binding SnapshotTooltip}"
+                                       Foreground="{DynamicResource StatusSuccessFg}" />
+
+                            <TextBlock Text="○" IsVisible="{Binding HasNoSnapshot}"
+                                       FontSize="10" VerticalAlignment="Center"
+                                       ToolTip.Tip="{Binding SnapshotTooltip}"
+                                       Foreground="{DynamicResource TextSecondary}" />
+
+                            <TextBlock Text="⚑" IsVisible="{Binding HasStaleSnapshot}"
+                                       FontSize="10" FontWeight="Bold" VerticalAlignment="Center"
+                                       ToolTip.Tip="{Binding SnapshotTooltip}"
+                                       Foreground="{DynamicResource StatusClientErrorFg}" />
+                        </StackPanel>
+
                         <!-- Dirty Indicator Dot (fc:StatusDot) -->
-                        <fc:StatusDot Grid.Column="3"
+                        <fc:StatusDot Grid.Column="4"
                                       Diameter="6"
                                       Background="{DynamicResource StatusDirty}"
                                       IsVisible="{Binding IsDirty}"

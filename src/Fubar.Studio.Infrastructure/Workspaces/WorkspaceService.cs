@@ -220,6 +220,9 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         var casesPath = Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.CasesDirName);
 
+        var endpointFile = Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.EndpointFileName);
+        var edited = LastWrite(endpointFile);
+
         var cases = Directory.Exists(casesPath)
             ? Directory.EnumerateFiles(casesPath, $"*{RequestFileExtension}")
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
@@ -227,6 +230,15 @@ public sealed class WorkspaceService : IWorkspaceService
                     Path.GetFileNameWithoutExtension(f), f, false, [])
                 {
                     Kind = WorkspaceNodeKind.Case,
+
+                    // Either file can make a snapshot stale: a case's parameters and the endpoint's
+                    // URL both decide what was sent.
+                    Snapshots = SnapshotStateOf(
+                        Path.Combine(
+                            directoryPath,
+                            Core.Workspaces.IEndpointStore.SnapshotsDirName,
+                            Path.GetFileNameWithoutExtension(f)),
+                        Later(edited, LastWrite(f))),
                 })
                 .ToList()
             : [];
@@ -236,10 +248,66 @@ public sealed class WorkspaceService : IWorkspaceService
             directoryPath,
             true,
             cases,
-            TryReadRequestSummary(Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.EndpointFileName)))
+            TryReadRequestSummary(endpointFile))
         {
             Kind = WorkspaceNodeKind.Endpoint,
+
+            // An endpoint summarises its cases, worst-first: one stale case makes the endpoint stale,
+            // because that is the one a reader has to go and look at.
+            Snapshots = cases.Count == 0
+                ? SnapshotStateOf(
+                    Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.SnapshotsDirName), edited)
+                : cases.Any(c => c.Snapshots == SnapshotState.Stale) ? SnapshotState.Stale
+                : cases.All(c => c.Snapshots == SnapshotState.None) ? SnapshotState.None
+                : SnapshotState.Recorded,
         };
+    }
+
+    /// <summary>
+    /// Whether anything is recorded in <paramref name="snapshotDirectory"/>, and whether it predates
+    /// the last edit to what was sent.
+    /// </summary>
+    /// <remarks>
+    /// A green regression run against a snapshot recorded BEFORE the endpoint or case changed is a
+    /// lie, and the tree is the only place anyone can notice before running - so this is worth a
+    /// <c>Directory.EnumerateFiles</c> per endpoint on a refresh, which is the same order of work the
+    /// method badge already costs.
+    /// </remarks>
+    private static SnapshotState SnapshotStateOf(string snapshotDirectory, DateTime edited)
+    {
+        if (!Directory.Exists(snapshotDirectory))
+        {
+            return SnapshotState.None;
+        }
+
+        var recorded = DateTime.MinValue;
+        var any = false;
+
+        foreach (var file in Directory.EnumerateFiles(snapshotDirectory, $"*{RequestFileExtension}"))
+        {
+            any = true;
+            recorded = Later(recorded, LastWrite(file));
+        }
+
+        return !any ? SnapshotState.None
+            : recorded < edited ? SnapshotState.Stale
+            : SnapshotState.Recorded;
+    }
+
+    private static DateTime Later(DateTime a, DateTime b) => a > b ? a : b;
+
+    /// <summary>A file that cannot be stat'd reads as the beginning of time, so a missing endpoint
+    /// file never makes every snapshot under it look stale.</summary>
+    private static DateTime LastWrite(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+        }
+        catch (IOException)
+        {
+            return DateTime.MinValue;
+        }
     }
 
     private IReadOnlyList<WorkspaceTreeNode> ScanDirectory(string directoryPath)

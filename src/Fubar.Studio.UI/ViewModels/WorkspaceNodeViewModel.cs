@@ -71,6 +71,55 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     public ObservableCollection<WorkspaceNodeViewModel> Children { get; } = [];
 
     /// <summary>
+    /// What the TREE shows beneath this node, which is not always what it holds.
+    /// </summary>
+    /// <remarks>
+    /// An endpoint with one case is a leaf. The common endpoint has exactly one, and growing a level
+    /// to say "there is nothing more here" costs a row and a fold on every endpoint in the workspace.
+    /// Two or more get the expander and their names.
+    ///
+    /// <para>A VIEW concern only: <see cref="Children"/> stays complete, because <c>ToTreeNode</c>
+    /// feeds <c>RunPlan</c> - and an endpoint whose single case were hidden from the MODEL would be
+    /// sent with no case at all, which is a different request.</para>
+    /// </remarks>
+    public IEnumerable<WorkspaceNodeViewModel> DisplayChildren =>
+        Kind == WorkspaceNodeKind.Endpoint && Children.Count < 2 ? [] : Children;
+
+    /// <summary>How many ways this endpoint is called, shown as a badge only when there is more than
+    /// one - "1 case" on every row would be noise standing in for the ordinary.</summary>
+    public int CaseCount => Kind == WorkspaceNodeKind.Endpoint ? Children.Count : 0;
+
+    public bool HasSeveralCases => CaseCount > 1;
+
+    /// <summary>Formatted here rather than with a binding StringFormat, which silently rendered the
+    /// literal text with the number missing - a formatting bug that looks like a data bug.</summary>
+    public string CaseCountText => $"{CaseCount} cases";
+
+    /// <summary>Whether there is a recorded answer here, and whether it can still be believed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoSnapshot))]
+    [NotifyPropertyChangedFor(nameof(HasSnapshot))]
+    [NotifyPropertyChangedFor(nameof(HasStaleSnapshot))]
+    [NotifyPropertyChangedFor(nameof(SnapshotTooltip))]
+    public partial SnapshotState Snapshots { get; set; }
+
+    public bool HasSnapshot => Snapshots == SnapshotState.Recorded;
+
+    public bool HasNoSnapshot => Snapshots == SnapshotState.None;
+
+    /// <summary>Recorded before the endpoint or case was last edited. The badge that matters: a green
+    /// run against one of these is a lie.</summary>
+    public bool HasStaleSnapshot => Snapshots == SnapshotState.Stale;
+
+    public string SnapshotTooltip => Snapshots switch
+    {
+        SnapshotState.Recorded => "A snapshot is recorded, and was recorded after the last edit",
+        SnapshotState.None => "No snapshot recorded. A regression run here reports that and fails.",
+        SnapshotState.Stale => "Recorded BEFORE this was last edited - re-record it, or a green run means nothing",
+        _ => "",
+    };
+
+    /// <summary>
     /// Projects this node and its descendants back into the immutable <see cref="WorkspaceTreeNode"/>
     /// shape, so domain code (<c>RunPlan</c>) can work on the tree without knowing about view models.
     ///
@@ -229,6 +278,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                     HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false,
                     SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false,
                     Url = node.RequestSummary?.Url,
+                    Snapshots = node.Snapshots,
                 };
                 child.SyncChildren(node.Children);
                 Children.Insert(Math.Min(i, Children.Count), child);
@@ -246,8 +296,16 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                 existing.Url = node.RequestSummary?.Url;
                 existing.HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false;
                 existing.SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false;
+                existing.Snapshots = node.Snapshots;
                 existing.SyncChildren(node.Children);
             }
         }
+
+        // What the tree SHOWS depends on how many children there are - an endpoint becomes a leaf at
+        // one case and grows an expander at two - so adding or removing one has to re-ask.
+        OnPropertyChanged(nameof(DisplayChildren));
+        OnPropertyChanged(nameof(CaseCount));
+        OnPropertyChanged(nameof(HasSeveralCases));
+        OnPropertyChanged(nameof(CaseCountText));
     }
 }

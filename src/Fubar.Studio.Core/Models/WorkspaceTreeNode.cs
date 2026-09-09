@@ -32,6 +32,33 @@ public sealed record WorkspaceTreeNode(
 
     /// <summary>Whether this node is something a run can send - as opposed to a container of them.</summary>
     public bool IsRunnable => Kind is WorkspaceNodeKind.Request or WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case;
+
+    /// <summary>Whether there is a recorded answer here, and whether it can still be believed. An
+    /// endpoint summarises its cases: stale if any of them is, none if none of them has one.</summary>
+    public SnapshotState Snapshots { get; init; } = SnapshotState.Unknown;
+}
+
+/// <summary>
+/// Whether there is a recorded answer for this node, and whether it can still be believed.
+/// </summary>
+/// <remarks>
+/// <see cref="Stale"/> is the one that earns its place. A green regression run against a snapshot
+/// recorded BEFORE the endpoint or case was last edited is a lie, and the tree is the only place
+/// anyone can notice that before running.
+/// </remarks>
+public enum SnapshotState
+{
+    /// <summary>Not applicable - a folder, or the requests format.</summary>
+    Unknown,
+
+    /// <summary>Nothing recorded. A regression run here reports "no snapshot" and fails.</summary>
+    None,
+
+    /// <summary>Recorded, and recorded after the last edit.</summary>
+    Recorded,
+
+    /// <summary>Recorded BEFORE the endpoint or case was last edited.</summary>
+    Stale,
 }
 
 /// <summary>What a node in the collections tree is.</summary>
