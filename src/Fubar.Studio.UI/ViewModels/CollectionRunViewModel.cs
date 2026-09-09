@@ -1,3 +1,4 @@
+using Fubar.Studio.Core.Snapshots;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -17,27 +18,120 @@ namespace Fubar.Studio.UI.ViewModels;
 public sealed partial class CollectionRunViewModel : ViewModelBase
 {
     private readonly ICollectionRunService _runService;
+    private readonly ISnapshotRecordingService _recording;
+    private readonly ISnapshotStore _snapshots;
     private readonly Workspace _workspace;
     private readonly WorkspaceEnvironment? _environment;
     private readonly RunPlan _fullPlan;
+    private readonly Batch? _batch;
     private CancellationTokenSource? _cancellation;
 
     public CollectionRunViewModel(
         ICollectionRunService runService,
+        ISnapshotRecordingService recording,
+        ISnapshotStore snapshots,
         RunPlan plan,
         Workspace workspace,
         WorkspaceEnvironment? environment,
-        string target)
+        IReadOnlyList<WorkspaceEnvironment> allEnvironments,
+        string target,
+        Batch? batch = null)
     {
+        ArgumentNullException.ThrowIfNull(allEnvironments);
+
         _runService = runService;
+        _recording = recording;
+        _snapshots = snapshots;
         _fullPlan = plan;
         _workspace = workspace;
-        _environment = environment;
+        _batch = batch;
+
+        // A batch that names an environment is run against it, the way the command line does - a batch
+        // written for staging that silently went to whatever was selected in the toolbar would be a
+        // regression suite pointed at the wrong system, and the header here says which it used.
+        _environment = batch?.Environments is [{ Length: > 0 } named, ..]
+            ? allEnvironments.FirstOrDefault(
+                  e => string.Equals(e.Name, named, StringComparison.OrdinalIgnoreCase)) ?? environment
+            : environment;
+
+        environment = _environment;
 
         Target = target;
         EnvironmentName = environment?.Name ?? "No environment";
+
+        // Ordered least to most demanding, and the default is the one that compares nothing - the same
+        // thing Run has always done, so opening this window and pressing Run never quietly starts
+        // judging against something the user did not choose.
+        Oracles.Add(new RunOracleChoice(
+            "Nothing", "Assertions decide. What Run has always done.", OracleKind.None, null));
+
+        Oracles.Add(new RunOracleChoice(
+            "Recorded snapshot",
+            "Compare each response with what was recorded for this environment. A missing snapshot fails the run.",
+            OracleKind.Snapshot,
+            null));
+
+        foreach (var other in allEnvironments.Where(e => e.Id != environment?.Id))
+        {
+            Oracles.Add(new RunOracleChoice(
+                $"Compare with {other.Name}",
+                $"Send everything twice - to {EnvironmentName} and to {other.Name} - and report where the two answers differ.",
+                OracleKind.Environment,
+                other));
+        }
+
+        // A batch states what should judge it, so the window opens on that rather than on "nothing" -
+        // and it is still a picker, because the first thing anyone does when a snapshot run starts
+        // failing is run it once with no oracle to see what it actually returns.
+        SelectedOracle = FromBatch(batch) ?? Oracles[0];
         RebuildRows();
     }
+
+    /// <summary>The picker row a batch's own oracle corresponds to, or null when it names none this
+    /// workspace can offer - a batch comparing with an environment that has since been deleted.</summary>
+    private RunOracleChoice? FromBatch(Batch? batch) => batch?.Oracle?.Kind switch
+    {
+        BatchOracleKind.Snapshot => Oracles.FirstOrDefault(o => o.Kind == OracleKind.Snapshot),
+
+        BatchOracleKind.Environment => Oracles.FirstOrDefault(
+            o => o.Kind == OracleKind.Environment
+                 && (batch.Oracle.Environment is null
+                     || string.Equals(o.Other?.Name, batch.Oracle.Environment, StringComparison.OrdinalIgnoreCase))),
+
+        _ => null,
+    };
+
+    /// <summary>What judges each response, as one row of the picker.</summary>
+    /// <param name="Other">The second environment, for <see cref="OracleKind.Environment"/>.</param>
+    public sealed record RunOracleChoice(
+        string Label, string Description, OracleKind Kind, WorkspaceEnvironment? Other);
+
+    public ObservableCollection<RunOracleChoice> Oracles { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OracleDescription))]
+    [NotifyPropertyChangedFor(nameof(CanRecord))]
+    public partial RunOracleChoice? SelectedOracle { get; set; }
+
+    public string OracleDescription => SelectedOracle?.Description ?? "";
+
+    /// <summary>
+    /// Recording overwrites the file every later run is judged against, so it is offered where the
+    /// judging is chosen rather than hidden in a menu - and it is a separate button, never something
+    /// Run does when it finds nothing recorded.
+    /// </summary>
+    public bool CanRecord => !IsRunning;
+
+    /// <summary>
+    /// One snapshot for every environment, instead of one for the environment being run.
+    /// </summary>
+    /// <remarks>
+    /// Off by default. Per-environment's failure mode is a redundant file; shared's is a data
+    /// difference between two environments reported as a regression - and a regression tool that cries
+    /// wolf stops being run.
+    /// </remarks>
+    [ObservableProperty]
+    public partial bool ShareSnapshots { get; set; }
 
     /// <summary>What is being run - the folder's name, or the request's.</summary>
     public string Target { get; }
@@ -79,6 +173,8 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool? LastRunOk { get; set; }
 
+    partial void OnIsRunningChanged(bool value) => OnPropertyChanged(nameof(CanRecord));
+
     partial void OnLastRunOkChanged(bool? value)
     {
         OnPropertyChanged(nameof(IsVerdictOk));
@@ -112,51 +208,21 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
             return;
         }
 
-        _cancellation?.Dispose();
-        _cancellation = new CancellationTokenSource();
-
-        IsRunning = true;
-        LastRunOk = null;
-        Summary = null;
-        Status = $"Running 0 of {plan.Count}…";
-        foreach (var row in Steps)
-        {
-            row.Reset();
-        }
-
-        RunCommand.NotifyCanExecuteChanged();
-        CancelCommand.NotifyCanExecuteChanged();
-
-        var byPath = Steps.ToDictionary(s => s.Step.FilePath, StringComparer.OrdinalIgnoreCase);
-        var completed = 0;
-
-        // Progress<T> posts back to the captured (UI) context, which is what makes it safe to touch the
-        // rows from here while the run itself is on a worker.
-        var progress = new Progress<RunProgress>(update =>
-        {
-            if (!byPath.TryGetValue(update.Step.FilePath, out var row))
-            {
-                return;
-            }
-
-            if (update.IsStarting)
-            {
-                row.Starting();
-                Status = $"Running {completed + 1} of {update.Total} — {update.Step.Name}";
-                return;
-            }
-
-            row.Apply(update.Report!);
-            completed++;
-            Status = $"Ran {completed} of {update.Total}";
-        });
+        var oracle = BuildOracle();
+        var (byKey, progress, started) = Begin(plan);
 
         try
         {
             var report = await _runService.RunAsync(
-                new CollectionRun(plan, _workspace, _environment, CurrentOptions()),
+                new CollectionRun(
+                    plan,
+                    _workspace,
+                    _environment,
+                    started with { CaptureResponseBodies = oracle.Kind != OracleKind.None },
+                    oracle,
+                    _batch?.Overlay),
                 progress,
-                _cancellation.Token);
+                _cancellation!.Token);
 
             LastReport = report;
             LastRunOk = report.Ok;
@@ -168,7 +234,7 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
             // end up saying "skipped" rather than staying on "pending" forever.
             foreach (var step in report.Steps)
             {
-                if (byPath.TryGetValue(step.Step.FilePath, out var row))
+                if (byKey.TryGetValue(Key(step.Step), out var row))
                 {
                     row.Apply(step);
                 }
@@ -185,11 +251,131 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         }
         finally
         {
-            IsRunning = false;
-            RunCommand.NotifyCanExecuteChanged();
-            CancelCommand.NotifyCanExecuteChanged();
+            Finish();
         }
     }
+
+    /// <summary>
+    /// Records what every step returns, over whatever was recorded before.
+    /// </summary>
+    /// <remarks>
+    /// Its own button, never something Run does when it finds nothing recorded. A snapshot that writes
+    /// itself on the first failing run tests nothing ever again, and does it silently.
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanRun))]
+    private async Task RecordSnapshotsAsync()
+    {
+        var plan = CurrentPlan();
+        if (plan.IsEmpty)
+        {
+            return;
+        }
+
+        var (_, progress, started) = Begin(plan);
+
+        try
+        {
+            var report = await _recording.RecordAsync(
+                new SnapshotRecording(
+                    plan,
+                    _workspace,
+                    _environment,
+                    ShareSnapshots ? SnapshotScope.Shared : SnapshotScope.Environment,
+                    started),
+                progress,
+                _cancellation!.Token);
+
+            LastReport = report.Run;
+            LastRunOk = report.Run.Errored == 0 && report.Warnings.Count == 0;
+
+            var scope = ShareSnapshots ? "shared across environments" : $"for {EnvironmentName}";
+            Summary = $"Recorded {report.Written.Count} snapshot(s) {scope}."
+                      + (report.Warnings.Count > 0 ? " " + string.Join(" ", report.Warnings) : "");
+
+            Status = "Recorded.";
+        }
+        catch (Exception ex)
+        {
+            LastRunOk = false;
+            Summary = $"The snapshots could not be recorded: {ex.Message}";
+            Status = "Failed to record.";
+        }
+        finally
+        {
+            Finish();
+        }
+    }
+
+    /// <summary>Everything both buttons do before they start: reset the rows, wire the progress, and
+    /// put the window into its running state.</summary>
+    private (Dictionary<string, RunStepRowViewModel> ByKey, IProgress<RunProgress> Progress, RunOptions Options)
+        Begin(RunPlan plan)
+    {
+        _cancellation?.Dispose();
+        _cancellation = new CancellationTokenSource();
+
+        IsRunning = true;
+        LastRunOk = null;
+        Summary = null;
+        Status = $"Running 0 of {plan.Count}…";
+        foreach (var row in Steps)
+        {
+            row.Reset();
+        }
+
+        NotifyCommands();
+
+        // Keyed on endpoint AND case: several cases share one endpoint.json, so keying on the file
+        // alone throws on the duplicate and would otherwise update the wrong row.
+        var byKey = Steps.ToDictionary(s => Key(s.Step), StringComparer.OrdinalIgnoreCase);
+        var completed = 0;
+
+        // Progress<T> posts back to the captured (UI) context, which is what makes it safe to touch the
+        // rows from here while the run itself is on a worker.
+        var progress = new Progress<RunProgress>(update =>
+        {
+            if (!byKey.TryGetValue(Key(update.Step), out var row))
+            {
+                return;
+            }
+
+            if (update.IsStarting)
+            {
+                row.Starting();
+                Status = $"Running {completed + 1} of {update.Total} — {update.Step.QualifiedName}";
+                return;
+            }
+
+            row.Apply(update.Report!);
+            completed++;
+            Status = $"Ran {completed} of {update.Total}";
+        });
+
+        return (byKey, progress, CurrentOptions());
+    }
+
+    private void Finish()
+    {
+        IsRunning = false;
+        NotifyCommands();
+    }
+
+    private void NotifyCommands()
+    {
+        RunCommand.NotifyCanExecuteChanged();
+        RecordSnapshotsCommand.NotifyCanExecuteChanged();
+        CancelCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanRecord));
+    }
+
+    private static string Key(RunStep step) => $"{step.FilePath}#{step.CaseName}";
+
+    private IOracle BuildOracle() => SelectedOracle switch
+    {
+        { Kind: OracleKind.Snapshot } => new SnapshotOracle(_snapshots),
+        { Kind: OracleKind.Environment, Other: { } other } => new EnvironmentOracle(_runService, other),
+        _ => NoOracle.Instance,
+    };
 
     private bool CanRun() => !IsRunning && Steps.Count > 0;
 

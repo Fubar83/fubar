@@ -11,7 +11,13 @@ namespace Fubar.Studio.UI.Services;
 /// <summary>Opens the Run window for a plan.</summary>
 public interface IRunDialogService
 {
-    void Show(RunPlan plan, Workspace workspace, WorkspaceEnvironment? environment, string target);
+    void Show(
+        RunPlan plan,
+        Workspace workspace,
+        WorkspaceEnvironment? environment,
+        IReadOnlyList<WorkspaceEnvironment> allEnvironments,
+        string target,
+        Batch? batch = null);
 }
 
 /// <summary>
@@ -24,13 +30,26 @@ public interface IRunDialogService
 public sealed class RunDialogService : IRunDialogService
 {
     private readonly ICollectionRunService _runService;
+    private readonly ISnapshotRecordingService _recording;
+    private readonly Fubar.Studio.Core.Snapshots.ISnapshotStore _snapshots;
 
-    public RunDialogService(ICollectionRunService runService)
+    public RunDialogService(
+        ICollectionRunService runService,
+        ISnapshotRecordingService recording,
+        Fubar.Studio.Core.Snapshots.ISnapshotStore snapshots)
     {
         _runService = runService;
+        _recording = recording;
+        _snapshots = snapshots;
     }
 
-    public void Show(RunPlan plan, Workspace workspace, WorkspaceEnvironment? environment, string target)
+    public void Show(
+        RunPlan plan,
+        Workspace workspace,
+        WorkspaceEnvironment? environment,
+        IReadOnlyList<WorkspaceEnvironment> allEnvironments,
+        string target,
+        Batch? batch = null)
     {
         // Resolved lazily rather than injected, so this does not depend on DI construction order.
         if (Avalonia.Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime lifetime)
@@ -45,7 +64,8 @@ public sealed class RunDialogService : IRunDialogService
         }
 
         var window = new CollectionRunWindow(
-            new CollectionRunViewModel(_runService, plan, workspace, environment, target));
+            new CollectionRunViewModel(
+                _runService, _recording, _snapshots, plan, workspace, environment, allEnvironments, target, batch));
 
         window.Show(owner);
     }

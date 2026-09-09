@@ -3,8 +3,14 @@ using Fubar.Studio.Core.Running;
 
 namespace Fubar.Studio.UI.ViewModels;
 
-/// <summary>What a comparison row has concluded about one request.</summary>
-public enum ComparisonVerdict
+/// <summary>
+/// What one row of an environment COMPARISON has concluded about a request.
+///
+/// <para>Distinct from <c>Core.Running.ComparisonVerdict</c>, which is a run step&apos;s verdict against
+/// its oracle. Both used to be called ComparisonVerdict, and in a view model file the nearer one
+/// silently won - so a run row wrote a paired-comparison verdict and the compiler agreed.</para>
+/// </summary>
+public enum PairVerdict
 {
     /// <summary>Not run, or only one side is in so far.</summary>
     Pending,
@@ -67,7 +73,7 @@ public sealed partial class ComparisonRowViewModel : ViewModelBase
     public partial string? RightStatus { get; set; }
 
     [ObservableProperty]
-    public partial ComparisonVerdict Verdict { get; set; } = ComparisonVerdict.Pending;
+    public partial PairVerdict Verdict { get; set; } = PairVerdict.Pending;
 
     /// <summary>Why this row cannot be compared, in the user's words - shown instead of a difference
     /// count, because "not comparable" without a reason reads as a bug in the tool.</summary>
@@ -78,7 +84,7 @@ public sealed partial class ComparisonRowViewModel : ViewModelBase
     [ObservableProperty]
     public partial int? DifferenceCount { get; set; }
 
-    partial void OnVerdictChanged(ComparisonVerdict value)
+    partial void OnVerdictChanged(PairVerdict value)
     {
         OnPropertyChanged(nameof(IsSame));
         OnPropertyChanged(nameof(IsDifferent));
@@ -96,24 +102,24 @@ public sealed partial class ComparisonRowViewModel : ViewModelBase
 
     // Style-class flags. Avalonia's Classes is not bindable, so a view model exposes a bool per class
     // rather than a class-name string (see CLAUDE.md, Conventions).
-    public bool IsSame => Verdict == ComparisonVerdict.Same;
+    public bool IsSame => Verdict == PairVerdict.Same;
 
-    public bool IsDifferent => Verdict == ComparisonVerdict.Differs;
+    public bool IsDifferent => Verdict == PairVerdict.Differs;
 
-    public bool IsStatusMismatch => Verdict == ComparisonVerdict.StatusDiffers;
+    public bool IsStatusMismatch => Verdict == PairVerdict.StatusDiffers;
 
-    public bool IsNotComparable => Verdict == ComparisonVerdict.NotComparable;
+    public bool IsNotComparable => Verdict == PairVerdict.NotComparable;
 
-    public bool IsPending => Verdict == ComparisonVerdict.Pending && !IsRunning;
+    public bool IsPending => Verdict == PairVerdict.Pending && !IsRunning;
 
     /// <summary>The one-line verdict, so the row says its answer in words rather than only in colour.</summary>
     public string Summary => Verdict switch
     {
-        ComparisonVerdict.Same => "Same",
-        ComparisonVerdict.StatusDiffers => "Status differs",
-        ComparisonVerdict.Differs when DifferenceCount is { } n => n == 1 ? "1 difference" : $"{n} differences",
-        ComparisonVerdict.Differs => "Differs",
-        ComparisonVerdict.NotComparable => Note ?? "Not comparable",
+        PairVerdict.Same => "Same",
+        PairVerdict.StatusDiffers => "Status differs",
+        PairVerdict.Differs when DifferenceCount is { } n => n == 1 ? "1 difference" : $"{n} differences",
+        PairVerdict.Differs => "Differs",
+        PairVerdict.NotComparable => Note ?? "Not comparable",
         _ => IsRunning ? "Running…" : "",
     };
 
@@ -125,7 +131,7 @@ public sealed partial class ComparisonRowViewModel : ViewModelBase
         RightStatus = null;
         Note = null;
         DifferenceCount = null;
-        Verdict = ComparisonVerdict.Pending;
+        Verdict = PairVerdict.Pending;
     }
 
     public void Starting() => IsRunning = true;
@@ -136,7 +142,7 @@ public sealed partial class ComparisonRowViewModel : ViewModelBase
     /// <summary>
     /// Both sides are in. The verdict is everything that can be settled WITHOUT running a comparison -
     /// a status mismatch, a side that did not answer, identical text. Anything else is left
-    /// <see cref="ComparisonVerdict.Pending"/> for the caller to resolve with the comparison engine,
+    /// <see cref="PairVerdict.Pending"/> for the caller to resolve with the comparison engine,
     /// because only that knows this request's ignore rules and array keys.
     /// </summary>
     public void ApplyPair(StepPair pair)
@@ -148,27 +154,27 @@ public sealed partial class ComparisonRowViewModel : ViewModelBase
 
         if (pair.Left.Status == StepStatus.Skipped && pair.Right.Status == StepStatus.Skipped)
         {
-            Verdict = ComparisonVerdict.NotComparable;
+            Verdict = PairVerdict.NotComparable;
             Note = "Skipped";
             return;
         }
 
         if (pair.StatusDiffers)
         {
-            Verdict = ComparisonVerdict.StatusDiffers;
+            Verdict = PairVerdict.StatusDiffers;
             return;
         }
 
         if (pair.NotComparable)
         {
-            Verdict = ComparisonVerdict.NotComparable;
+            Verdict = PairVerdict.NotComparable;
             Note = Reason(pair);
             return;
         }
 
         if (pair.BodiesIdentical)
         {
-            Verdict = ComparisonVerdict.Same;
+            Verdict = PairVerdict.Same;
             DifferenceCount = 0;
         }
     }
@@ -177,7 +183,7 @@ public sealed partial class ComparisonRowViewModel : ViewModelBase
     public void ApplyComparison(int differences)
     {
         DifferenceCount = differences;
-        Verdict = differences == 0 ? ComparisonVerdict.Same : ComparisonVerdict.Differs;
+        Verdict = differences == 0 ? PairVerdict.Same : PairVerdict.Differs;
     }
 
     private static string Reason(StepPair pair)

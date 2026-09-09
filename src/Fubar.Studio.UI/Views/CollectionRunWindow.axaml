@@ -64,6 +64,25 @@
             <Setter Property="Opacity" Value="0.55" />
         </Style>
 
+        <!-- The answer differs from what it was compared against. Drawn as a WARNING rather than as a
+             failure: the request itself passed every assertion it had, and the two are separate axes
+             (see StepReport.Comparison) - but it is never green, because the run is not green. -->
+        <Style Selector="Border.pill.differing">
+            <Setter Property="Background" Value="{DynamicResource StatusClientErrorBg}" />
+        </Style>
+        <Style Selector="Border.pill.differing TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusClientErrorFg}" />
+        </Style>
+
+        <!-- Nothing to compare against. Red, and deliberately: "no snapshot, therefore fine" is how a
+             suite silently stops testing, so it reads as the failure it is. -->
+        <Style Selector="Border.pill.uncomparable">
+            <Setter Property="Background" Value="{DynamicResource StatusServerErrorBg}" />
+        </Style>
+        <Style Selector="Border.pill.uncomparable TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusServerErrorFg}" />
+        </Style>
+
         <Style Selector="Border.summary">
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="Padding" Value="10,6" />
@@ -111,6 +130,46 @@
                             IsVisible="{Binding IsRunning}" />
                 </Grid>
 
+                <!-- What judges each response. Its own row, above the incidental options, because it
+                     is the question that decides what the run MEANS - and because "compare against
+                     the snapshot" and "compare with production" used to be two separate windows. -->
+                <Grid ColumnDefinitions="Auto,220,Auto,Auto" ColumnSpacing="10">
+                    <TextBlock Grid.Column="0" Text="Judge by" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondary}" FontSize="12" />
+
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding Oracles}"
+                              SelectedItem="{Binding SelectedOracle}"
+                              HorizontalAlignment="Stretch"
+                              IsEnabled="{Binding !IsRunning}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CollectionRunViewModel+RunOracleChoice">
+                                <TextBlock Text="{Binding Label}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <!-- Recording is its own button, never something Run does when it finds nothing
+                         recorded: a snapshot that writes itself on the first failing run tests
+                         nothing ever again, and does it silently. -->
+                    <Button Grid.Column="2" Classes="secondary-btn"
+                            Content="Record snapshots"
+                            Command="{Binding RecordSnapshotsCommand}"
+                            IsVisible="{Binding CanRecord}"
+                            ToolTip.Tip="Send everything once and store the answers as the snapshots later runs are compared against. Overwrites whatever is there." />
+
+                    <CheckBox Grid.Column="3"
+                              Content="Share across environments"
+                              IsChecked="{Binding ShareSnapshots}"
+                              IsEnabled="{Binding !IsRunning}"
+                              ToolTip.Tip="One snapshot every environment uses, instead of one per environment. Right when the environments hold the same data; otherwise a data difference reads as a regression." />
+                </Grid>
+
+                <TextBlock Text="{Binding OracleDescription}"
+                           TextWrapping="Wrap"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondary}" />
+
                 <WrapPanel Orientation="Horizontal">
                     <CheckBox Content="Stop at the first failure"
                               IsChecked="{Binding StopOnFailure}"
@@ -145,7 +204,11 @@
                 <ItemsControl ItemsSource="{Binding Steps}" Margin="2">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:RunStepRowViewModel">
-                            <Grid ColumnDefinitions="34,Auto,*,Auto" Margin="8,5" ColumnSpacing="10">
+                            <!-- The name gets its own share of the width rather than whatever the
+                                 detail leaves: a compared row detail names the file it was judged
+                                 against, which is long enough to squeeze the name off the row
+                                 entirely - and the name is what the reader is looking for. -->
+                            <Grid ColumnDefinitions="34,Auto,2*,3*" Margin="8,5" ColumnSpacing="10">
 
                                 <TextBlock Grid.Column="0" Text="{Binding Order}"
                                            Foreground="{DynamicResource TextSecondary}"
@@ -158,6 +221,8 @@
                                         Classes.errored="{Binding IsErrored}"
                                         Classes.skipped="{Binding IsSkipped}"
                                         Classes.unexpected="{Binding IsUnexpectedStatus}"
+                                        Classes.differing="{Binding IsDiffering}"
+                                        Classes.uncomparable="{Binding IsUncomparable}"
                                         VerticalAlignment="Center">
                                     <Panel>
                                         <TextBlock Text="{Binding StatusText}"
@@ -195,6 +260,9 @@
                                 <TextBlock Grid.Column="3" Text="{Binding Detail}"
                                            Foreground="{DynamicResource TextSecondary}"
                                            FontSize="11" VerticalAlignment="Center"
+                                           TextAlignment="Right"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding Detail}"
                                            FontFamily="Cascadia Code,Consolas,monospace" />
                             </Grid>
                         </DataTemplate>

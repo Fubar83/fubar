@@ -52,7 +52,10 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
 
     // Style-class flags. Avalonia's Classes is not bindable, so a view model exposes a bool per class
     // rather than a class-name string (see CLAUDE.md, Conventions).
-    public bool IsPassed => Status == StepStatus.Passed && !IsUnexpectedStatus;
+    /// <summary>Green only when the request passed AND its answer was accepted. A step whose
+    /// snapshot differs passed every assertion it had - that is a second axis, and a row that showed
+    /// green while the summary said "1 differ" would be a report that contradicts itself.</summary>
+    public bool IsPassed => Status == StepStatus.Passed && !IsUnexpectedStatus && !IsDiffering && !IsUncomparable;
 
     public bool IsFailed => Status == StepStatus.Failed;
 
@@ -61,6 +64,14 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
     public bool IsSkipped => Status == StepStatus.Skipped;
 
     public bool IsPending => Status is null && !IsRunning;
+
+    /// <summary>The answer differs from what it was compared against - the request itself was fine.</summary>
+    [ObservableProperty]
+    public partial bool IsDiffering { get; set; }
+
+    /// <summary>There was nothing to compare against. Never a pass.</summary>
+    [ObservableProperty]
+    public partial bool IsUncomparable { get; set; }
 
     /// <summary>A request that answered with a non-2xx nobody asserted on. Drawn differently from both
     /// green and red, because it is neither: the run does not fail over it (see <see cref="RunReport"/>)
@@ -76,6 +87,8 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
         Detail = null;
         Error = null;
         IsUnexpectedStatus = false;
+        IsDiffering = false;
+        IsUncomparable = false;
         FailedAssertions.Clear();
         OnPropertyChanged(nameof(HasFailedAssertions));
     }
@@ -91,11 +104,15 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
         IsRunning = false;
         Status = report.Status;
         IsUnexpectedStatus = report.IsUnexpectedStatus && report.Assertions.Count == 0;
+        IsDiffering = report.Comparison == ComparisonVerdict.Differs;
+        IsUncomparable = report.Comparison == ComparisonVerdict.Unavailable;
 
-        StatusText = report.Status switch
+        StatusText = report switch
         {
-            StepStatus.Skipped => "skipped",
-            StepStatus.Errored => "error",
+            { Status: StepStatus.Skipped } => "skipped",
+            { Status: StepStatus.Errored } => "error",
+            { Comparison: ComparisonVerdict.Differs } => "differs",
+            { Comparison: ComparisonVerdict.Unavailable } => "no answer",
             _ => report.StatusCode is { } code ? code.ToString() : "-",
         };
 
@@ -126,6 +143,26 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
             parts.Add($"{report.AssertionsPassed}/{report.Assertions.Count} assertions");
         }
 
+        // Which side it was judged against, on every compared row. A run that quietly switched from
+        // the shared snapshot to a per-environment one someone recorded last week is a run whose green
+        // means something different from yesterday's.
+        var against = Against(report);
+
+        parts.AddRange(report.Comparison switch
+        {
+            ComparisonVerdict.Differs =>
+                [$"{report.DifferenceCount} difference{(report.DifferenceCount == 1 ? "" : "s")} from {against}"],
+
+            ComparisonVerdict.Unavailable =>
+                [report.ComparisonUnavailableReason ?? "nothing to compare against"],
+
+            ComparisonVerdict.Same => report.ToleratedCount > 0
+                ? [$"matches {against}", $"{report.ToleratedCount} within tolerance"]
+                : new[] { $"matches {against}" },
+
+            _ => [],
+        });
+
         // A capture that could not be applied is shown here rather than as an error, because the request
         // itself answered. It matters because the failure it causes usually lands several requests later
         // as a {{variable}} that never resolved, by which point nothing points back at this row.
@@ -137,6 +174,19 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
 
         return string.Join(" · ", parts);
     }
+
+    /// <summary>
+    /// The other side, short enough to sit on a row: the snapshot's file name, or the environment's.
+    /// </summary>
+    /// <remarks>
+    /// The full path is what the CLI prints and what the tooltip carries. On a row it is redundant -
+    /// the endpoint and case are already the row's own name, so the only part that says anything new
+    /// is the last segment - and long enough to push that name off the row entirely.
+    /// </remarks>
+    private static string Against(StepReport report) =>
+        report.ComparedAgainst is { Length: > 0 } source
+            ? source[(source.LastIndexOfAny(['/', '\\']) + 1)..]
+            : "nothing";
 
     private void RaiseClassFlags()
     {

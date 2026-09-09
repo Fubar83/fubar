@@ -1,3 +1,4 @@
+using Fubar.Studio.Application.Running;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -32,6 +33,7 @@ public partial class MainViewModel : ViewModelBase
 {
     private readonly IRequestStore _workspaceService;
     private readonly Fubar.Studio.Core.Workspaces.IEndpointStore _endpointStore;
+    private readonly IBatchPlanner _batchPlanner;
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IEditorViewModelFactory _editorFactory;
     private readonly IRunDialogService _runDialog;
@@ -84,6 +86,7 @@ public partial class MainViewModel : ViewModelBase
         LeftPaneViewModel leftPane,
         IRequestStore workspaceService,
         Fubar.Studio.Core.Workspaces.IEndpointStore endpointStore,
+        IBatchPlanner batchPlanner,
         IProtocolRegistry protocolRegistry,
         IEditorViewModelFactory editorFactory,
         IRunDialogService runDialog,
@@ -102,6 +105,7 @@ public partial class MainViewModel : ViewModelBase
         LeftPane = leftPane;
         _workspaceService = workspaceService;
         _endpointStore = endpointStore;
+        _batchPlanner = batchPlanner;
         _protocolRegistry = protocolRegistry;
         _editorFactory = editorFactory;
         _runDialog = runDialog;
@@ -122,6 +126,7 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
         LeftPane.AuthProfilesSection.EditRequested += OpenAuthProfileEditor;
+        LeftPane.BatchesSection.RunRequested += row => _ = OnRunBatchRequestedAsync(row);
 
         // A failure reported into a collapsed panel is not reported. The strip opens itself the first
         // time something actually goes wrong; the badge on the shell covers everything after that.
@@ -166,7 +171,47 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        _runDialog.Show(plan, root.Workspace, EnvironmentManager.ActiveEnvironment, node.Name);
+        _runDialog.Show(
+            plan,
+            root.Workspace,
+            EnvironmentManager.ActiveEnvironment,
+            [.. EnvironmentManager.Environments],
+            node.Name);
+    }
+
+    /// <summary>
+    /// Opens the Run window for a batch, with the batch's own oracle already chosen.
+    /// </summary>
+    /// <remarks>
+    /// The batch says what it is for; the window still lets it be changed before running, which is the
+    /// same rule the command line follows - a batch written for staging has to be runnable against a
+    /// branch deployment without editing the file.
+    /// </remarks>
+    private async Task OnRunBatchRequestedAsync(BatchRowViewModel row)
+    {
+        if (WorkspaceExplorer.ActiveRoot is not { } root)
+        {
+            return;
+        }
+
+        try
+        {
+            var resolved = await _batchPlanner.ExpandAsync(root.Workspace, row.Name);
+
+            _runDialog.Show(
+                resolved.Plan,
+                root.Workspace,
+                EnvironmentManager.ActiveEnvironment,
+                [.. EnvironmentManager.Environments],
+                $"@{row.Name}",
+                resolved.Batch);
+        }
+        catch (Exception ex)
+        {
+            // A batch naming an endpoint that is not there still RUNS - those steps error. Reaching
+            // here means the batch itself could not be read at all.
+            StatusLog.LogError($"Could not run \"{row.Name}\": {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -457,6 +502,7 @@ public partial class MainViewModel : ViewModelBase
             EnvironmentManager.ClearWorkspace();
             LeftPane.EnvironmentsSection.SetWorkspace(null);
             _ = LeftPane.AuthProfilesSection.SetWorkspaceAsync(null);
+            _ = LeftPane.BatchesSection.SetWorkspaceAsync(null);
         }
     }
 
@@ -486,6 +532,7 @@ public partial class MainViewModel : ViewModelBase
         await EnvironmentManager.LoadForWorkspaceAsync(workspace);
         LeftPane.EnvironmentsSection.SetWorkspace(workspace);
         await LeftPane.AuthProfilesSection.SetWorkspaceAsync(workspace);
+        await LeftPane.BatchesSection.SetWorkspaceAsync(workspace);
     }
 
     /// <summary>

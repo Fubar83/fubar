@@ -46,7 +46,7 @@
         </fc:EmptyState>
 
         <Grid IsVisible="{Binding WorkspaceExplorer.ActiveRoot, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
-              RowDefinitions="Auto,Auto,*">
+              RowDefinitions="Auto,Auto,Auto,*">
 
             <!-- Environments group.
 
@@ -178,7 +178,61 @@
                  Request / New Folder via a flyout menu (it has two create actions, not one) and its
                  list is the request tree itself, filling the remaining space. Last section in the
                  stack, so no bottom divider (BorderThickness="0"). -->
-            <fc:Section Grid.Row="2" Title="REQUESTS" BorderThickness="0" x:DataType="vm:LeftPaneViewModel">
+            <!-- Batches group. Beside the tree rather than in it: the tree says what the API HAS, a
+                 batch says what to call on a particular occasion, and the two lists change for
+                 different reasons. Hidden entirely in a workspace that cannot have batches, rather
+                 than shown empty - a group whose every row could only fail is worse than no group. -->
+            <fc:Section Grid.Row="2" Title="BATCHES" x:DataType="vm:LeftPaneViewModel"
+                        IsCollapsible="True"
+                        IsVisible="{Binding BatchesSection.IsAvailable}"
+                        IsExpanded="{Binding IsBatchesExpanded, Mode=TwoWay}">
+                <fc:Section.Action>
+                    <Button Classes="icon-btn"
+                            Content="+"
+                            FontSize="14"
+                            Padding="6,0"
+                            ToolTip.Tip="New Batch"
+                            Command="{Binding BatchesSection.NewBatchCommand}" />
+                </fc:Section.Action>
+                <StackPanel>
+                    <TextBlock Text="No batches yet. A batch is a named list of calls to make together - a smoke test, a nightly drift check."
+                               IsVisible="{Binding !BatchesSection.HasRows}"
+                               Margin="10,8"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}"
+                               TextWrapping="Wrap" />
+
+                    <ScrollViewer MaxHeight="140" IsVisible="{Binding BatchesSection.HasRows}">
+                        <ItemsControl ItemsSource="{Binding BatchesSection.Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:BatchRowViewModel">
+                                    <Border Classes="ListRow" Padding="10,4">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="1">
+                                                <TextBlock Text="{Binding Name}" FontSize="12"
+                                                           Foreground="{DynamicResource TextPrimary}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Detail}" FontSize="10"
+                                                           Foreground="{DynamicResource TextSecondary}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Classes="secondary-btn"
+                                                    Content="Run"
+                                                    FontSize="11"
+                                                    Padding="8,2"
+                                                    VerticalAlignment="Center"
+                                                    Command="{Binding $parent[ItemsControl].((vm:LeftPaneViewModel)DataContext).BatchesSection.RunCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </fc:Section>
+
+            <fc:Section Grid.Row="3" Title="REQUESTS" BorderThickness="0" x:DataType="vm:LeftPaneViewModel">
                 <fc:Section.Action>
                     <Button Classes="icon-btn"
                             Content="+"

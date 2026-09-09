@@ -95,6 +95,7 @@ internal static class Composition
                 services.AddScoped<WorkspaceExplorerViewModel>();
                 services.AddScoped<EnvironmentManagerViewModel>();
                 services.AddScoped<EnvironmentsSectionViewModel>();
+                services.AddScoped<BatchesSectionViewModel>();
                 services.AddScoped<AuthProfilesSectionViewModel>();
                 services.AddScoped<LeftPaneViewModel>();
                 services.AddScoped<IEditorViewModelFactory, EditorViewModelFactory>();

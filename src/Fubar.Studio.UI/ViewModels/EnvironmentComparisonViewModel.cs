@@ -242,7 +242,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
             await Task.Yield();
             await Task.WhenAll(_verdicts.ToArray());
 
-            foreach (var row in Rows.Where(r => r.Pair is not null && r.Verdict == ComparisonVerdict.Pending))
+            foreach (var row in Rows.Where(r => r.Pair is not null && r.Verdict == PairVerdict.Pending))
             {
                 await ResolveVerdictAsync(row);
             }
@@ -272,9 +272,9 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
 
     private void UpdateSummary(EnvironmentPairReport report)
     {
-        var comparable = Rows.Count(r => r.Verdict is not ComparisonVerdict.NotComparable and not ComparisonVerdict.Pending);
-        var differing = Rows.Count(r => r.Verdict is ComparisonVerdict.Differs or ComparisonVerdict.StatusDiffers);
-        var uncomparable = Rows.Count(r => r.Verdict == ComparisonVerdict.NotComparable);
+        var comparable = Rows.Count(r => r.Verdict is not PairVerdict.NotComparable and not PairVerdict.Pending);
+        var differing = Rows.Count(r => r.Verdict is PairVerdict.Differs or PairVerdict.StatusDiffers);
+        var uncomparable = Rows.Count(r => r.Verdict == PairVerdict.NotComparable);
 
         var parts = new List<string> { $"{comparable - differing}/{comparable} the same" };
         if (differing > 0) parts.Add($"{differing} differ");
@@ -295,7 +295,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
     /// </summary>
     private async Task ResolveVerdictAsync(ComparisonRowViewModel row)
     {
-        if (row.Verdict != ComparisonVerdict.Pending || row.Pair is not { } pair ||
+        if (row.Verdict != PairVerdict.Pending || row.Pair is not { } pair ||
             pair.Left.ResponseBody is not { } left || pair.Right.ResponseBody is not { } right)
         {
             return;
@@ -317,7 +317,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            row.Verdict = ComparisonVerdict.NotComparable;
+            row.Verdict = PairVerdict.NotComparable;
             row.Note = ex.Message;
         }
     }
@@ -421,9 +421,9 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
     {
         foreach (var row in Rows.Where(r => r.Pair is not null))
         {
-            if (row.Verdict is ComparisonVerdict.Differs or ComparisonVerdict.Same)
+            if (row.Verdict is PairVerdict.Differs or PairVerdict.Same)
             {
-                row.Verdict = ComparisonVerdict.Pending;
+                row.Verdict = PairVerdict.Pending;
                 row.DifferenceCount = null;
                 await ResolveVerdictAsync(row);
             }

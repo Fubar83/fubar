@@ -27,8 +27,47 @@ public class CollectionRunTests
 
     private static RunPlan Plan(int count) => new([.. Enumerable.Range(1, count).Select(Step)]);
 
-    private static CollectionRunViewModel Vm(FakeRunService service, int steps = 3) =>
-        new(service, Plan(steps), Ws, null, "Orders");
+    private static CollectionRunViewModel Vm(
+        FakeRunService service,
+        int steps = 3,
+        FakeRecording? recording = null,
+        WorkspaceEnvironment? environment = null,
+        params WorkspaceEnvironment[] allEnvironments) =>
+        new(service, recording ?? new FakeRecording(), new FakeSnapshotStore(),
+            Plan(steps), Ws, environment, allEnvironments, "Orders");
+
+    private sealed class FakeRecording : ISnapshotRecordingService
+    {
+        public SnapshotRecording? Last { get; private set; }
+
+        public Task<SnapshotRecordingReport> RecordAsync(
+            SnapshotRecording recording,
+            IProgress<RunProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            Last = recording;
+
+            return Task.FromResult(new SnapshotRecordingReport(
+                new RunReport([], 1, false, false),
+                [.. recording.Plan.Steps.Select(s => s.QualifiedName)],
+                []));
+        }
+    }
+
+    private sealed class FakeSnapshotStore : Fubar.Studio.Core.Snapshots.ISnapshotStore
+    {
+        public Task<Fubar.Studio.Core.Snapshots.SnapshotLookup> FindAsync(
+            string workspaceRoot, string requestPath, string? environmentName, CancellationToken ct = default) =>
+            Task.FromResult(Fubar.Studio.Core.Snapshots.SnapshotLookup.None);
+
+        public Task SaveAsync(
+            string workspaceRoot, string requestPath, Fubar.Studio.Core.Snapshots.ResponseSnapshot snapshot,
+            CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<string>> ScopesAsync(
+            string workspaceRoot, string requestPath, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+    }
 
     // ---- The window itself ---------------------------------------------------------------------
 
@@ -231,6 +270,103 @@ public class CollectionRunTests
 
         Assert.Equal(1, service.LastRun!.Plan.Count);
         Assert.Null(service.LastRun.Options.NameFilter);
+    }
+
+    // ---- Choosing what judges the run ----------------------------------------------------------
+
+    private static readonly WorkspaceEnvironment Staging = new() { Id = "stg", Name = "Staging" };
+
+    private static readonly WorkspaceEnvironment Production = new() { Id = "prod", Name = "Production" };
+
+    /// <summary>Opening this window and pressing Run must never quietly start judging against
+    /// something nobody chose, so the default is what Run has always done.</summary>
+    [AvaloniaFact]
+    public async Task Nothing_judges_the_run_unless_an_oracle_is_chosen()
+    {
+        var service = new FakeRunService();
+        var vm = Vm(service, environment: Staging, allEnvironments: [Staging, Production]);
+
+        await vm.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal(OracleKind.None, service.LastRun!.Oracle!.Kind);
+    }
+
+    [AvaloniaFact]
+    public async Task Choosing_the_snapshot_oracle_reaches_the_run()
+    {
+        var service = new FakeRunService();
+        var vm = Vm(service, environment: Staging, allEnvironments: [Staging, Production]);
+        vm.SelectedOracle = vm.Oracles.Single(o => o.Kind == OracleKind.Snapshot);
+
+        await vm.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal(OracleKind.Snapshot, service.LastRun!.Oracle!.Kind);
+
+        // Nothing can be compared without them, and a run that asked for a comparison and kept no
+        // bodies would report "no difference" for every step.
+        Assert.True(service.LastRun.Options.CaptureResponseBodies);
+    }
+
+    /// <summary>One entry per OTHER environment: comparing an environment with itself is not a
+    /// comparison, and offering it invites the click.</summary>
+    [AvaloniaFact]
+    public void The_environments_offered_exclude_the_one_being_run()
+    {
+        var vm = Vm(new FakeRunService(), environment: Staging, allEnvironments: [Staging, Production]);
+
+        var environments = vm.Oracles.Where(o => o.Kind == OracleKind.Environment).ToList();
+
+        Assert.Equal("Production", Assert.Single(environments).Other!.Name);
+    }
+
+    [AvaloniaFact]
+    public async Task Choosing_another_environment_reaches_the_run_as_an_environment_oracle()
+    {
+        var service = new FakeRunService();
+        var vm = Vm(service, environment: Staging, allEnvironments: [Staging, Production]);
+        vm.SelectedOracle = vm.Oracles.Single(o => o.Kind == OracleKind.Environment);
+
+        await vm.RunCommand.ExecuteAsync(null);
+
+        var oracle = Assert.IsType<EnvironmentOracle>(service.LastRun!.Oracle);
+        Assert.Equal("Production", oracle.OtherName);
+    }
+
+    // ---- Recording ------------------------------------------------------------------------------
+
+    /// <summary>Its own button, never something Run does when it finds nothing recorded: a snapshot
+    /// that writes itself on the first failing run tests nothing ever again, and does it silently.</summary>
+    [AvaloniaFact]
+    public async Task Recording_is_a_separate_act_from_running()
+    {
+        var service = new FakeRunService();
+        var recording = new FakeRecording();
+        var vm = Vm(service, recording: recording, environment: Staging, allEnvironments: [Staging]);
+
+        await vm.RecordSnapshotsCommand.ExecuteAsync(null);
+
+        Assert.NotNull(recording.Last);
+        Assert.Equal("Staging", recording.Last!.Environment!.Name);
+        Assert.Null(service.LastRun);
+    }
+
+    /// <summary>Per environment by default: its failure mode is a redundant file, while a shared
+    /// snapshot across environments holding different data reports a data difference as a
+    /// regression - and a regression tool that cries wolf stops being run.</summary>
+    [AvaloniaFact]
+    public async Task Recording_is_per_environment_unless_sharing_is_ticked()
+    {
+        var perEnvironment = new FakeRecording();
+        await Vm(new FakeRunService(), recording: perEnvironment, environment: Staging)
+            .RecordSnapshotsCommand.ExecuteAsync(null);
+
+        var shared = new FakeRecording();
+        var sharing = Vm(new FakeRunService(), recording: shared, environment: Staging);
+        sharing.ShareSnapshots = true;
+        await sharing.RecordSnapshotsCommand.ExecuteAsync(null);
+
+        Assert.Equal(Fubar.Studio.Core.Snapshots.SnapshotScope.Environment, perEnvironment.Last!.Scope);
+        Assert.Equal(Fubar.Studio.Core.Snapshots.SnapshotScope.Shared, shared.Last!.Scope);
     }
 
     // ---- Fake ----------------------------------------------------------------------------------
