@@ -163,13 +163,15 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
             return;
         }
 
-        var path = _batches.CreateBatch(workspace.RootPath, "new-batch");
-        _statusLog.Log($"Created batch: {path}");
-
-        await ReloadAsync();
+        // Proposed, not created: a new batch lives in its editor until the first Save, so making one
+        // and changing your mind leaves no new-batch.json behind. That also means it is not in this
+        // list yet - the list reads the directory, and there is nothing there to read.
+        var path = _batches.ProposeBatchPath(workspace.RootPath, "new-batch");
 
         // Opened straight away. A new batch is empty - a row saying "0 steps" with no way in but a
         // text editor is what made batches a JSON-editing job in the first place.
-        await OpenAsync(path, System.IO.Path.GetFileNameWithoutExtension(path));
+        EditRequested?.Invoke(path, new Batch { Name = System.IO.Path.GetFileNameWithoutExtension(path) });
+
+        await Task.CompletedTask;
     }
 }

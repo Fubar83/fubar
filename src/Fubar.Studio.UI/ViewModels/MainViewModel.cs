@@ -122,6 +122,7 @@ public partial class MainViewModel : ViewModelBase
 
         WorkspaceExplorer.RequestFileActivated += path => _ = OpenRequestAsync(path);
         WorkspaceExplorer.CaseFileActivated += path => _ = OpenCaseAsync(path);
+        WorkspaceExplorer.CaseDrafted += path => _ = OpenCaseAsync(path, isDraft: true);
         WorkspaceExplorer.BatchOpened += OpenBatchEditor;
         WorkspaceExplorer.RunRequested += OnRunRequested;
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
@@ -623,7 +624,10 @@ public partial class MainViewModel : ViewModelBase
     /// grid from the endpoint's URL, so a case opens with the questions it has to answer rather than
     /// an empty grid.
     /// </remarks>
-    public async Task OpenCaseAsync(string caseFilePath)
+    /// <param name="isDraft">A case that has not been written yet. Its file does not exist, so the
+    /// editor starts on a blank one and is dirty from the outset - it IS unsaved, and the tree says so
+    /// beside it until the first Save creates the file.</param>
+    public async Task OpenCaseAsync(string caseFilePath, bool isDraft = false)
     {
         if (!await ConfirmDiscardingActiveEditAsync())
         {
@@ -647,10 +651,19 @@ public partial class MainViewModel : ViewModelBase
             var endpoint = await _workspaceService.LoadRequestAsync(
                 Path.Combine(endpointDirectory, Core.Workspaces.IEndpointStore.EndpointFileName));
 
-            var endpointCase = await _endpointStore.LoadCaseAsync(caseFilePath);
+            var endpointCase = isDraft
+                ? new EndpointCase { Name = Path.GetFileNameWithoutExtension(caseFilePath) }
+                : await _endpointStore.LoadCaseAsync(caseFilePath);
+
             var editor = _editorFactory.CreateCaseEditor(endpointCase, endpoint, caseFilePath, workspace);
 
-            editor.Saved += () => WorkspaceExplorer.RefreshRootFor(editor.FilePath);
+            // A draft has nothing on disk to be clean against, so it opens dirty. Ctrl+S and the
+            // unsaved prompt then treat it like any other unsaved editor, which is the point.
+            editor.IsDirty = isDraft;
+
+            // The path it was OPENED at, not the one it saved to: renaming on save writes a different
+            // file, and the draft node still reserving the old one has to be retired by name.
+            editor.Saved += () => WorkspaceExplorer.DraftSaved(caseFilePath);
             ActiveEditor = editor;
         }
         catch (Exception ex)
@@ -708,8 +721,18 @@ public partial class MainViewModel : ViewModelBase
         var editor = _editorFactory.CreateBatchEditor(
             batch, filePath, root.Workspace, [.. EnvironmentManager.Environments.Select(e => e.Name)]);
 
-        // A rename moves the file, so the list is rebuilt rather than relabelled.
-        editor.Saved += () => _ = LeftPane.BatchesSection.ReloadAsync();
+        // A batch is unsaved until its first Save, and until then there is no file to be clean
+        // against - the same rule a drafted case follows.
+        editor.IsDirty = !File.Exists(filePath);
+
+        editor.Saved += () =>
+        {
+            // Both homes: the Left Pane lists the workspace's own, the tree holds an endpoint's - and
+            // a rename moves the file, so each is rebuilt rather than relabelled.
+            _ = LeftPane.BatchesSection.ReloadAsync();
+            WorkspaceExplorer.DraftSaved(filePath);
+        };
+
         ActiveEditor = editor;
     }
 

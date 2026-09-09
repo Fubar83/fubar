@@ -45,6 +45,27 @@ public interface IEndpointStore
     /// <summary>Creates an empty case named <paramref name="caseName"/> and returns its full path.</summary>
     string CreateCase(string endpointDirectory, string caseName);
 
+    /// <summary>
+    /// A free path for a case named <paramref name="caseName"/>, writing NOTHING.
+    /// </summary>
+    /// <remarks>
+    /// What a draft is addressed by. A new case is held in memory until it is saved, so the file it
+    /// WOULD occupy has to be reserved without creating it - otherwise "New case" leaves a
+    /// <c>new-case.json</c> behind on disk every time someone opens one and changes their mind.
+    /// </remarks>
+    string ProposeCasePath(string endpointDirectory, string caseName);
+
+    /// <summary>
+    /// Renames a case and returns its new path.
+    /// </summary>
+    /// <remarks>
+    /// A case's name IS its file name: <c>get-order#not-found</c> resolves against the tree, and the
+    /// tree takes a case's name from its file. A case whose two names disagree is one that nothing can
+    /// select by the name it displays - the same rule, and the same reason, as
+    /// <see cref="IBatchStore.RenameBatch"/>. Throws when a case by that name already exists.
+    /// </remarks>
+    string RenameCase(string caseFilePath, string newName);
+
     /// <summary>Creates an endpoint directory with an <c>endpoint.json</c> in it, and returns the
     /// directory.</summary>
     string CreateEndpoint(string parentDirectory, string endpointName);

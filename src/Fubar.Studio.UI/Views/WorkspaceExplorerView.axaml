@@ -224,14 +224,16 @@
                                        Foreground="{DynamicResource StatusClientErrorFg}" />
                         </StackPanel>
 
-                        <!-- Dirty Indicator Dot (fc:StatusDot) -->
+                        <!-- Unsaved dot (fc:StatusDot): edited and not saved, or never saved at all.
+                             A draft has no file behind it yet, and the dot is what says the row is
+                             something you still owe a Save. -->
                         <fc:StatusDot Grid.Column="4"
                                       Diameter="6"
                                       Background="{DynamicResource StatusDirty}"
-                                      IsVisible="{Binding IsDirty}"
+                                      IsVisible="{Binding IsUnsaved}"
                                       Margin="4,0,2,0"
                                       VerticalAlignment="Center"
-                                      ToolTip.Tip="Unsaved changes" />
+                                      ToolTip.Tip="Unsaved" />
                     </Grid>
                 </TreeDataTemplate>
             </fc:TreeView.DataTemplates>

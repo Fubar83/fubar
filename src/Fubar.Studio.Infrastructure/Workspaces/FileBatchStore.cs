@@ -70,17 +70,29 @@ public sealed class FileBatchStore : IBatchStore
         var directory = Path.Combine(owner, IBatchStore.BatchesDirName);
         Directory.CreateDirectory(directory);
 
-        var path = Path.Combine(directory, name + Extension);
-        var n = 2;
-        while (File.Exists(path))
-        {
-            path = Path.Combine(directory, $"{name} {n++}{Extension}");
-        }
+        var path = Unique(directory, name);
 
         var batch = new Batch { Name = Path.GetFileNameWithoutExtension(path) };
         File.WriteAllText(path, JsonSerializer.Serialize(batch, FubarJson.Options));
 
         return path;
+    }
+
+    public string ProposeBatchPath(string owner, string name) =>
+        Unique(Path.Combine(owner, IBatchStore.BatchesDirName), name);
+
+    /// <summary>A free file name, so creating twice makes two batches rather than overwriting the
+    /// first - and so a draft reserves a name without occupying it.</summary>
+    private static string Unique(string directory, string name)
+    {
+        var candidate = Path.Combine(directory, name + Extension);
+        var n = 2;
+        while (File.Exists(candidate))
+        {
+            candidate = Path.Combine(directory, $"{name} {n++}{Extension}");
+        }
+
+        return candidate;
     }
 
     public string RenameBatch(string batchFilePath, string newName)

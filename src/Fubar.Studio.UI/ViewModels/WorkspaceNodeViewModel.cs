@@ -118,6 +118,25 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     public bool IsBatch => Kind == WorkspaceNodeKind.Batch;
 
     /// <summary>
+    /// Made, but not written yet: this node has no file on disk.
+    /// </summary>
+    /// <remarks>
+    /// <para>A draft is held in memory until its editor is saved, so that "New case" does not leave a
+    /// <c>new-case.json</c> behind every time someone opens one and changes their mind.</para>
+    /// <para>The tree is otherwise a reflection of the file system, so a draft has to be exempted from
+    /// <see cref="SyncChildren"/>'s reconciliation twice over: it is never removed for being absent
+    /// from a scan, and the moment the scan DOES report it the flag clears and it becomes an ordinary
+    /// node. Everything else about it is real - its path is the file it will occupy, which is what
+    /// reserves the name.</para>
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsUnsaved))]
+    public partial bool IsDraft { get; set; }
+
+    /// <summary>What the tree's dot means: edited and not saved, or never saved at all.</summary>
+    public bool IsUnsaved => IsDirty || IsDraft;
+
+    /// <summary>
     /// What this endpoint holds, in ONE chip - never two.
     /// </summary>
     /// <remarks>
@@ -177,8 +196,13 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// left pane happens to be showing while someone types in the filter box - the filter is a way to
     /// find things, never a way to select them.
     /// </remarks>
+    /// <remarks>
+    /// Drafts are left out. This is what <c>RunPlan</c> walks, and the runner reads from disk - a case
+    /// that has not been saved yet has no file to send, so including it would turn "run this endpoint"
+    /// into a run with a step that cannot possibly work.
+    /// </remarks>
     public WorkspaceTreeNode ToTreeNode() =>
-        new(Name, FullPath, IsDirectory, [.. Children.Select(c => c.ToTreeNode())],
+        new(Name, FullPath, IsDirectory, [.. Children.Where(c => !c.IsDraft).Select(c => c.ToTreeNode())],
             IsDirectory && !IsEndpoint ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url, SendsNoAuth))
         {
             // Carried, not re-derived: RunPlan expands an endpoint into its cases and a folder into
@@ -214,6 +238,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
     /// <summary>True while this request is the active canvas and has unsaved edits.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsUnsaved))]
     public partial bool IsDirty { get; set; }
 
     /// <summary>The request's URL, null for a folder. Carried so the filter can match a host or a path
@@ -294,9 +319,11 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// <summary>Reconciles <see cref="Children"/> against a freshly scanned snapshot, by path identity.</summary>
     protected void SyncChildren(IReadOnlyList<WorkspaceTreeNode> incoming)
     {
+        // A draft has no file, so no scan will ever mention it. Removing it for that would delete the
+        // thing the user is in the middle of writing on the next file-system event.
         for (var i = Children.Count - 1; i >= 0; i--)
         {
-            if (!incoming.Any(n => n.FullPath == Children[i].FullPath))
+            if (!Children[i].IsDraft && !incoming.Any(n => n.FullPath == Children[i].FullPath))
             {
                 Children.RemoveAt(i);
             }
@@ -344,10 +371,17 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                 existing.HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false;
                 existing.SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false;
                 existing.Snapshots = node.Snapshots;
+
+                // The scan found it, so it is no longer a draft - saving is what makes one real, and
+                // this is the only place that can know it happened.
+                existing.IsDraft = false;
+
                 existing.SyncChildren(node.Children);
                 existing.SyncBatches(node.Batches);
             }
         }
+
+        MoveDraftsLast(Children);
 
         // What the tree SHOWS depends on how many children there are - an endpoint becomes a leaf at
         // one case and grows an expander at two - so adding or removing one has to re-ask.
@@ -365,7 +399,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     {
         for (var i = Batches.Count - 1; i >= 0; i--)
         {
-            if (!incoming.Any(n => n.FullPath == Batches[i].FullPath))
+            if (!Batches[i].IsDraft && !incoming.Any(n => n.FullPath == Batches[i].FullPath))
             {
                 Batches.RemoveAt(i);
             }
@@ -392,9 +426,31 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
             }
 
             existing.Name = node.Name;
+            existing.IsDraft = false;
         }
 
+        MoveDraftsLast(Batches);
         RaiseShapeChanged();
+    }
+
+    /// <summary>
+    /// Drafts sit at the end, in the order they were made.
+    /// </summary>
+    /// <remarks>
+    /// The scan does not mention them, so the reconciliation above moves the real nodes into scan
+    /// order around whatever position a draft happened to hold - which would shuffle it up the list
+    /// on every unrelated file change. Last is the one position nothing else competes for.
+    /// </remarks>
+    private static void MoveDraftsLast(ObservableCollection<WorkspaceNodeViewModel> nodes)
+    {
+        foreach (var draft in nodes.Where(n => n.IsDraft).ToList())
+        {
+            var from = nodes.IndexOf(draft);
+            if (from >= 0 && from != nodes.Count - 1)
+            {
+                nodes.Move(from, nodes.Count - 1);
+            }
+        }
     }
 
     private void RaiseShapeChanged()

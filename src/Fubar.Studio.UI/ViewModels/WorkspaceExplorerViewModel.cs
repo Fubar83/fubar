@@ -432,10 +432,57 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var path = _endpointStore.CreateCase(endpointDirectory, "new-case");
-        _statusLog.Log($"Created case: {path}");
-        RefreshRootFor(endpointDirectory);
-        CaseFileActivated?.Invoke(path);
+        // Proposed, not created: a new case lives in memory until it is saved, so opening one and
+        // changing your mind leaves nothing behind.
+        var path = _endpointStore.ProposeCasePath(endpointDirectory, "new-case");
+
+        if (AddDraft(endpointDirectory, path, WorkspaceNodeKind.Case) is null)
+        {
+            return;
+        }
+
+        CaseDrafted?.Invoke(path);
+    }
+
+    /// <summary>Raised when a new, unwritten case is made - the shell opens an editor on a blank one
+    /// rather than reading a file that is not there yet.</summary>
+    public event Action<string>? CaseDrafted;
+
+    /// <summary>
+    /// Puts an unwritten node into the tree under the endpoint that will hold it, and selects it.
+    /// </summary>
+    /// <remarks>
+    /// The tree is otherwise a reflection of the file system, so this is the one thing in it that disk
+    /// does not account for - see <see cref="WorkspaceNodeViewModel.IsDraft"/>, which is what keeps a
+    /// rescan from throwing it away a moment later.
+    /// </remarks>
+    private WorkspaceNodeViewModel? AddDraft(string endpointDirectory, string path, WorkspaceNodeKind kind)
+    {
+        if (FindNodeByPath(endpointDirectory) is not { } endpoint)
+        {
+            _statusLog.LogError($"\"{endpointDirectory}\" is not in the tree.");
+            return null;
+        }
+
+        var draft = new WorkspaceNodeViewModel(
+            Path.GetFileName(path), path, isDirectory: false, kind)
+        {
+            IsDraft = true,
+        };
+
+        if (kind == WorkspaceNodeKind.Batch)
+        {
+            endpoint.Batches.Add(draft);
+        }
+        else
+        {
+            endpoint.Children.Add(draft);
+        }
+
+        endpoint.IsExpanded = true;
+        SelectedNode = draft;
+
+        return draft;
     }
 
     /// <summary>
@@ -451,13 +498,16 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var path = _batchStore.CreateBatch(endpointDirectory, "new-batch");
-        _statusLog.Log($"Created batch: {path}");
-        RefreshRootFor(endpointDirectory);
+        var path = _batchStore.ProposeBatchPath(endpointDirectory, "new-batch");
+
+        if (AddDraft(endpointDirectory, path, WorkspaceNodeKind.Batch) is null)
+        {
+            return;
+        }
 
         // Opened straight away, for the same reason the Left Pane's does: a row saying "0 steps" with
         // no way in but a text editor is what made batches a JSON-editing job.
-        _ = OpenBatchAsync(path);
+        BatchOpened?.Invoke(path, new Batch { Name = Path.GetFileNameWithoutExtension(path) });
     }
 
     /// <summary>
@@ -775,6 +825,14 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // A draft has no file to delete - discarding it is just forgetting it. Going through
+        // DeletePath would throw about a path that was never meant to exist.
+        if (node.IsDraft)
+        {
+            DiscardDraft(node);
+            return;
+        }
+
         try
         {
             _requestStore.DeletePath(node.FullPath);
@@ -785,6 +843,57 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         {
             _statusLog.LogError($"Delete failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Retires the draft that was reserving <paramref name="draftPath"/>, then rescans.
+    /// </summary>
+    /// <remarks>
+    /// A draft reserves the file it WOULD occupy, and saving can write a different one: the name box
+    /// is the file's name, so saving a renamed draft creates <c>not-found.json</c> while the node is
+    /// still holding <c>new-case.json</c>. The scan then adds the real row beside a draft that will
+    /// never resolve, and the tree shows the same case twice - once forever unsaved.
+    /// </remarks>
+    public void DraftSaved(string draftPath)
+    {
+        if (FindNodeByPath(draftPath) is { IsDraft: true } draft)
+        {
+            foreach (var root in Roots)
+            {
+                if (RemoveDraft(root, draft))
+                {
+                    break;
+                }
+            }
+        }
+
+        RefreshRootFor(draftPath);
+    }
+
+    /// <summary>Takes an unwritten node back out of the tree. Nothing on disk is touched, because
+    /// nothing on disk was ever made.</summary>
+    private void DiscardDraft(WorkspaceNodeViewModel draft)
+    {
+        foreach (var root in Roots)
+        {
+            if (RemoveDraft(root, draft))
+            {
+                break;
+            }
+        }
+
+        SelectedNode = null;
+        _statusLog.Log($"Discarded \"{draft.DisplayName}\" - it was never saved.");
+    }
+
+    private static bool RemoveDraft(WorkspaceNodeViewModel parent, WorkspaceNodeViewModel draft)
+    {
+        if (parent.Children.Remove(draft) || parent.Batches.Remove(draft))
+        {
+            return true;
+        }
+
+        return parent.Children.Any(child => RemoveDraft(child, draft));
     }
 
     [RelayCommand]

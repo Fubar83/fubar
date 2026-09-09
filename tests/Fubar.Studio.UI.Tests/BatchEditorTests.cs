@@ -95,6 +95,12 @@ public class BatchEditorTests
 
         public string CreateCase(string endpointDirectory, string caseName) => throw new NotSupportedException();
 
+        public string ProposeCasePath(string endpointDirectory, string caseName) =>
+            throw new NotSupportedException();
+
+        public string RenameCase(string caseFilePath, string newName) =>
+            throw new NotSupportedException();
+
         public string CreateEndpoint(string parentDirectory, string endpointName) =>
             throw new NotSupportedException();
     }
@@ -125,6 +131,8 @@ public class BatchEditorTests
         }
 
         public string CreateBatch(string workspaceRoot, string name) => throw new NotSupportedException();
+
+        public string ProposeBatchPath(string owner, string name) => throw new NotSupportedException();
 
         public string RenameBatch(string batchFilePath, string newName)
         {

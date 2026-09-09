@@ -43,6 +43,9 @@ public interface IBatchStore
     /// and returns its full path.</summary>
     string CreateBatch(string owner, string name);
 
+    /// <inheritdoc cref="IEndpointStore.ProposeCasePath"/>
+    string ProposeBatchPath(string owner, string name);
+
     /// <summary>
     /// Renames a batch and returns its new path.
     /// </summary>
@@ -53,18 +56,6 @@ public interface IBatchStore
     /// </remarks>
     string RenameBatch(string batchFilePath, string newName);
 
-    /// <summary>
-    /// Whether <paramref name="name"/> can name a batch.
-    /// </summary>
-    /// <remarks>
-    /// Both separators are rejected explicitly rather than left to
-    /// <see cref="System.IO.Path.GetInvalidFileNameChars"/>, which on Unix reports only NUL and
-    /// <c>/</c> - a name holding a backslash would pass there and produce one file on Windows and
-    /// another on Linux out of the same workspace.
-    /// </remarks>
-    static bool IsValidBatchName(string? name) =>
-        !string.IsNullOrWhiteSpace(name)
-        && !name.Contains('/')
-        && !name.Contains('\\')
-        && name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) < 0;
+    /// <inheritdoc cref="DocumentName.IsValid"/>
+    static bool IsValidBatchName(string? name) => DocumentName.IsValid(name);
 }

@@ -125,6 +125,11 @@ internal sealed class FakeEndpoints : IEndpointStore
 
     public string CreateCase(string endpointDirectory, string caseName) => throw new NotSupportedException();
 
+    public string ProposeCasePath(string endpointDirectory, string caseName) =>
+        throw new NotSupportedException();
+
+    public string RenameCase(string caseFilePath, string newName) => throw new NotSupportedException();
+
     public string CreateEndpoint(string parentDirectory, string endpointName) => throw new NotSupportedException();
 }
 

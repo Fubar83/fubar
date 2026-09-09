@@ -131,9 +131,9 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
             snapshot.Add(new SnapshotPolicyLayer(ownSnapshot, ComparisonScope.Request, "Request"));
         }
 
-        if (casePath is { Length: > 0 })
+        if (casePath is { Length: > 0 }
+            && await TryLoadCaseAsync(casePath, cancellationToken).ConfigureAwait(false) is { } endpointCase)
         {
-            var endpointCase = await _endpoints.LoadCaseAsync(casePath, cancellationToken).ConfigureAwait(false);
             var sourceName = $"Case: {endpointCase.Name}";
 
             if (endpointCase.Comparison is { } caseComparison)
@@ -168,5 +168,27 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
             ComparisonSettingsResolver.Resolve(layers),
             ToleranceResolver.Resolve(tolerances),
             SnapshotPolicyResolver.Resolve(snapshot));
+    }
+
+    /// <summary>
+    /// The case at <paramref name="casePath"/>, or null when there is no file there yet.
+    /// </summary>
+    /// <remarks>
+    /// A case that has not been saved is a legitimate state - the Rules tab opens on one the moment
+    /// "New case" is chosen - and it simply contributes no rules of its own; everything above it still
+    /// applies. Only "not there" is forgiven: a file that exists and cannot be read still throws,
+    /// because that is a real problem and silently judging with a fraction of the rules is the failure
+    /// this whole type exists to prevent.
+    /// </remarks>
+    private async Task<EndpointCase?> TryLoadCaseAsync(string casePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _endpoints.LoadCaseAsync(casePath, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
     }
 }

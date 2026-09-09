@@ -97,6 +97,36 @@ public sealed class FileEndpointStore : IEndpointStore
         return path;
     }
 
+    public string ProposeCasePath(string endpointDirectory, string caseName) =>
+        Unique(Path.Combine(endpointDirectory, IEndpointStore.CasesDirName), caseName);
+
+    public string RenameCase(string caseFilePath, string newName)
+    {
+        if (!DocumentName.IsValid(newName))
+        {
+            throw new ArgumentException($"\"{newName}\" cannot name a case.", nameof(newName));
+        }
+
+        var destination = Path.Combine(Path.GetDirectoryName(caseFilePath) ?? "", newName + Extension);
+
+        // Compared ordinally so "created" -> "Created" is still done rather than skipped: the listing
+        // is what a reader sees, and a case that will not take its own capitalisation looks broken.
+        if (string.Equals(destination, caseFilePath, StringComparison.Ordinal))
+        {
+            return caseFilePath;
+        }
+
+        if (!string.Equals(destination, caseFilePath, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(destination))
+        {
+            throw new IOException($"There is already a case called \"{newName}\".");
+        }
+
+        File.Move(caseFilePath, destination);
+
+        return destination;
+    }
+
     public string CreateEndpoint(string parentDirectory, string endpointName)
     {
         var directory = UniqueDirectory(parentDirectory, endpointName);

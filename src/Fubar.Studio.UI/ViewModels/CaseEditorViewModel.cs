@@ -231,18 +231,47 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
     [RelayCommand]
     public async Task SaveAsync()
     {
+        var name = Name.Trim();
+
+        if (!DocumentName.IsValid(name))
+        {
+            _statusLog.LogError(
+                $"\"{Name}\" cannot be a case name: the name IS the file's name, so it cannot be "
+                + "empty or contain a path separator or any of \\ / : * ? \" < > |.");
+            return;
+        }
+
         try
         {
+            // Written first, renamed second: a rename that fails leaves the case where it was with
+            // its new contents, rather than a saved document nobody can find.
             await _endpoints.SaveCaseAsync(FilePath, ToModel());
             IsDirty = false;
-            _statusLog.Log($"Saved case \"{Name}\".");
+
+            if (!string.Equals(name, CurrentName, StringComparison.OrdinalIgnoreCase))
+            {
+                FilePath = _endpoints.RenameCase(FilePath, name);
+                _statusLog.Log($"Saved, and renamed to \"{name}\" - #{name} selects it now.");
+            }
+            else
+            {
+                _statusLog.Log($"Saved case \"{name}\".");
+            }
+
             Saved?.Invoke();
         }
         catch (Exception ex)
         {
-            _statusLog.LogError($"Could not save \"{Name}\": {ex.Message}");
+            // A failed RENAME still saved the contents, so the name goes back to the file's rather
+            // than leaving a box on screen claiming something the disk does not say.
+            Name = CurrentName;
+            _statusLog.LogError($"Could not save \"{name}\": {ex.Message}");
         }
     }
+
+    /// <summary>The case's name as the FILE says it - which is what <c>endpoint#case</c> resolves
+    /// against, since the tree takes a case's name from its file.</summary>
+    private string CurrentName => System.IO.Path.GetFileNameWithoutExtension(FilePath);
 
     /// <summary>
     /// Sends this one case and shows what came back.
