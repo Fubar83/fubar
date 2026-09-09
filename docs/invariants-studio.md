@@ -547,3 +547,23 @@ the auth badge off the right edge; disabling the tree's horizontal scrolling the
 "ge..." instead, which is the worse trade. The counts take turns (`ContentsText`) - cases when there
 are several, batches when there is no case count - and the horizontal scrollbar stays off, which is
 also what finally made a long request name ellipse instead of pushing its badges out of sight.
+
+**A bound collection must be ONE instance, mutated - never a fresh projection** (Studio).
+`WorkspaceNodeViewModel.DisplayChildren` merges an endpoint's cases and batches, and it was written as
+a computed property returning a new list on every read. Every notification then handed the TreeView a
+different collection, so the child containers were rebuilt and any selected case or batch lost its
+selection: opening one DESELECTED the very row being edited, and `New Case`, `New Batch` and `Move to
+workspace` - all of which key off the selection - stopped being offered the moment you opened the
+thing you wanted to add to. It is now one collection reconciled in place, and the node subscribes to
+its own `Children`/`Batches` so a draft added directly by the explorer is picked up too. The tests
+assert the instance is the SAME after a rescan, which is the part that matters.
+
+**Only the two surfaces that are not in the tree clear its selection** (Studio). An environment and an
+auth profile have no row, so opening one deselects the tree; a case and a batch DO have rows, and
+clearing for them was throwing away the highlight and the selection-gated commands together.
+
+**A list built by awaiting per item must be published in one step** (Studio).
+`BatchesSectionViewModel.ReloadAsync` cleared `Rows` and then refilled it one `await` at a time, so two
+overlapping reloads - which switching workspace and re-opening an editor do within milliseconds - both
+cleared and both added, and every batch appeared twice. It builds a local list, checks a generation
+counter, then publishes; a stale read cannot win, and the list no longer blinks empty on the way.

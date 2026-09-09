@@ -418,6 +418,42 @@ public partial class MainViewModel : ViewModelBase
         yield return new PaletteEntry("New Folder", "Command", "Ctrl+Shift+N",
             () => { WorkspaceExplorer.NewFolderCommand.Execute(null); return Task.CompletedTask; });
 
+        // The palette is the discovery surface, and everything below had lived only in the tree's
+        // right-click menu - which you have to already know to look in.
+        yield return new PaletteEntry("New scratch request", "Command", null,
+            () => WorkspaceExplorer.NewScratchRequestCommand.ExecuteAsync(null));
+
+        // Offered only where they can do anything, matching the menu's own rules: a case and a batch
+        // need an endpoint selected, and a move needs somewhere to move to.
+        if (WorkspaceExplorer.CanAddCase)
+        {
+            yield return new PaletteEntry("New Case", "Command", null,
+                () => { WorkspaceExplorer.NewCaseCommand.Execute(null); return Task.CompletedTask; });
+        }
+
+        if (WorkspaceExplorer.CanAddBatch)
+        {
+            yield return new PaletteEntry("New Batch", "Command", null,
+                () => { WorkspaceExplorer.NewBatchCommand.Execute(null); return Task.CompletedTask; });
+        }
+
+        if (WorkspaceExplorer.CanMove)
+        {
+            foreach (var target in WorkspaceExplorer.MoveTargets)
+            {
+                var destination = target;
+                yield return new PaletteEntry(
+                    $"Move to workspace: {destination.Workspace.Manifest.Name}", "Command", null,
+                    () => WorkspaceExplorer.MoveToWorkspaceCommand.ExecuteAsync(destination));
+            }
+        }
+
+        if (WorkspaceExplorer.UsesRequests && WorkspaceExplorer.ActiveRoot is not null)
+        {
+            yield return new PaletteEntry("Convert to endpoints...", "Command", null,
+                () => WorkspaceExplorer.ConvertToEndpointsCommand.ExecuteAsync(null));
+        }
+
         yield return new PaletteEntry("New Workspace...", "Command", null,
             () => WorkspaceExplorer.NewWorkspaceCommand.ExecuteAsync(null));
 
@@ -852,7 +888,12 @@ public partial class MainViewModel : ViewModelBase
         // request as "selected" even after switching to an environment/auth profile elsewhere.
         LeftPane.EnvironmentsSection.SelectedEnvironmentId = (value as EnvironmentEditorViewModel)?.EnvironmentId;
         LeftPane.AuthProfilesSection.SelectedProfileId = (value as AuthProfileEditorViewModel)?.ProfileId;
-        if (value is not RequestEditorViewModel)
+
+        // Cleared only for the two surfaces that are NOT in the tree. A case and a batch are rows in
+        // it, so opening one used to deselect the very thing being edited - the highlight vanished,
+        // and "New Case"/"New Batch"/"Move to workspace" all key off the selection, so they stopped
+        // being offered the moment you opened the thing you wanted to add to.
+        if (value is EnvironmentEditorViewModel or AuthProfileEditorViewModel)
         {
             WorkspaceExplorer.SelectedNode = null;
         }

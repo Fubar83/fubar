@@ -28,6 +28,12 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
         FullPath = fullPath;
         IsDirectory = isDirectory;
         Kind = kind ?? (isDirectory ? WorkspaceNodeKind.Folder : WorkspaceNodeKind.Request);
+
+        // Every route that changes what is under this node goes through one of these two - the
+        // reconciler, and the explorer adding or discarding a draft directly - so the display list
+        // follows them rather than each caller remembering to say so.
+        Children.CollectionChanged += (_, _) => RaiseShapeChanged();
+        Batches.CollectionChanged += (_, _) => RaiseShapeChanged();
     }
 
     [ObservableProperty]
@@ -82,20 +88,53 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// feeds <c>RunPlan</c> - and an endpoint whose single case were hidden from the MODEL would be
     /// sent with no case at all, which is a different request.</para>
     /// </remarks>
-    public IEnumerable<WorkspaceNodeViewModel> DisplayChildren
-    {
-        get
-        {
-            if (Kind != WorkspaceNodeKind.Endpoint)
-            {
-                return Children;
-            }
+    /// <remarks>
+    /// <para>ONE collection instance for the life of the node, reconciled in place. It used to be a
+    /// computed projection returning a fresh list on every read, which meant every notification handed
+    /// the TreeView a different collection: the child containers were rebuilt, and a selected case or
+    /// batch lost its selection - so opening one deselected the very row being edited, and every
+    /// command keyed off the selection stopped being offered.</para>
+    /// <para>A folder or a request has no batches, so its display list is just its children.</para>
+    /// </remarks>
+    public ObservableCollection<WorkspaceNodeViewModel> DisplayChildren { get; } = [];
 
-            // Cases first, then batches: a case is what the endpoint IS called with, a batch is a way
-            // of running several of them, so the parts come before the arrangements. An endpoint with
-            // exactly one case and no batches stays a leaf - "1 case" under an expander is a row that
-            // costs a click to learn nothing.
-            return Children.Count + Batches.Count < 2 ? [] : [.. Children, .. Batches];
+    /// <summary>
+    /// Cases first, then batches: a case is what the endpoint IS called with, a batch is a way of
+    /// running several of them, so the parts come before the arrangements. An endpoint with exactly
+    /// one case and no batches stays a leaf - "1 case" under an expander is a row that costs a click
+    /// to learn nothing.
+    /// </summary>
+    private IReadOnlyList<WorkspaceNodeViewModel> DesiredDisplayChildren =>
+        Kind != WorkspaceNodeKind.Endpoint ? [.. Children]
+        : Children.Count + Batches.Count < 2 ? []
+        : [.. Children, .. Batches];
+
+    /// <summary>Aligns <see cref="DisplayChildren"/> with what should be shown, touching only the rows
+    /// that actually changed - anything else would rebuild containers that are holding a selection.</summary>
+    private void SyncDisplayChildren()
+    {
+        var desired = DesiredDisplayChildren;
+
+        for (var i = DisplayChildren.Count - 1; i >= 0; i--)
+        {
+            if (!desired.Contains(DisplayChildren[i]))
+            {
+                DisplayChildren.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var existing = DisplayChildren.IndexOf(desired[i]);
+
+            if (existing < 0)
+            {
+                DisplayChildren.Insert(Math.Min(i, DisplayChildren.Count), desired[i]);
+            }
+            else if (existing != i)
+            {
+                DisplayChildren.Move(existing, i);
+            }
         }
     }
 
@@ -455,7 +494,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
     private void RaiseShapeChanged()
     {
-        OnPropertyChanged(nameof(DisplayChildren));
+        SyncDisplayChildren();
         OnPropertyChanged(nameof(CaseCount));
         OnPropertyChanged(nameof(BatchCount));
         OnPropertyChanged(nameof(ContentsText));

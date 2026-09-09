@@ -74,9 +74,10 @@ public class EndpointTreeShapeTests
 
         root.Load(Endpoint(Case("default"), Case("not-found")));
 
-        Assert.Contains(nameof(WorkspaceNodeViewModel.DisplayChildren), raised);
+        // DisplayChildren is a live collection now rather than a recomputed projection - it is
+        // MUTATED rather than re-raised, which is what lets the tree keep a selected row.
         Assert.Contains(nameof(WorkspaceNodeViewModel.ContentsText), raised);
-        Assert.Equal(2, root.Children.Single().DisplayChildren.Count());
+        Assert.Equal(2, root.Children.Single().DisplayChildren.Count);
     }
 
     /// <summary>A folder is never collapsed this way - only an endpoint's cases are.</summary>
@@ -172,7 +173,67 @@ public class EndpointTreeShapeTests
 
         root.Load(WithBatches([Case("default")], Batch("happy")));
 
-        Assert.Contains(nameof(WorkspaceNodeViewModel.DisplayChildren), raised);
         Assert.Contains(nameof(WorkspaceNodeViewModel.ContentsText), raised);
+        Assert.Equal(2, root.Children.Single().DisplayChildren.Count);
+    }
+    /// <summary>
+    /// The display list is ONE collection for the life of the node, mutated in place.
+    /// </summary>
+    /// <remarks>
+    /// It used to be a computed projection returning a fresh list on every read, so every
+    /// notification handed the TreeView a different collection: the child containers were rebuilt and
+    /// a selected case or batch lost its selection - which meant opening one deselected the very row
+    /// being edited, and every command keyed off the selection stopped being offered.
+    /// </remarks>
+    [Fact]
+    public void The_display_list_survives_a_rescan_as_the_same_collection()
+    {
+        var root = new Root();
+        root.Load(WithBatches([Case("default"), Case("not-found")], Batch("happy")));
+
+        var endpoint = root.Children.Single();
+        var before = endpoint.DisplayChildren;
+
+        root.Load(WithBatches([Case("default"), Case("not-found")], Batch("happy"), Batch("regression")));
+
+        Assert.Same(before, endpoint.DisplayChildren);
+        Assert.Equal(
+            ["default", "not-found", "happy", "regression"],
+            endpoint.DisplayChildren.Select(c => c.DisplayName));
+    }
+
+    /// <summary>A row that did not change keeps its identity, which is what the TreeView holds a
+    /// selection by.</summary>
+    [Fact]
+    public void A_row_that_did_not_change_is_the_same_node_after_a_rescan()
+    {
+        var root = new Root();
+        root.Load(WithBatches([Case("default"), Case("not-found")]));
+
+        var kept = root.Children.Single().DisplayChildren[0];
+
+        root.Load(WithBatches([Case("default"), Case("not-found")], Batch("happy")));
+
+        Assert.Same(kept, root.Children.Single().DisplayChildren[0]);
+    }
+
+    /// <summary>A draft is added straight to Children by the explorer, so the display list follows
+    /// the collections themselves rather than each caller remembering to announce it.</summary>
+    [Fact]
+    public void Adding_a_draft_directly_shows_it()
+    {
+        var root = new Root();
+        root.Load(WithBatches([Case("default")]));
+
+        var endpoint = root.Children.Single();
+        Assert.Empty(endpoint.DisplayChildren);
+
+        endpoint.Children.Add(new WorkspaceNodeViewModel(
+            "new-case.json", "/w/collections/get-order/cases/new-case.json", false, WorkspaceNodeKind.Case)
+        {
+            IsDraft = true,
+        });
+
+        Assert.Equal(2, endpoint.DisplayChildren.Count);
     }
 }

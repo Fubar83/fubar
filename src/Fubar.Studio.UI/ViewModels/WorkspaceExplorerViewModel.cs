@@ -106,6 +106,8 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(UsesRequests));
         OnPropertyChanged(nameof(CanAddCase));
         OnPropertyChanged(nameof(CanAddBatch));
+        OnPropertyChanged(nameof(CollectionsTitle));
+        OnPropertyChanged(nameof(NewCollectionItemTooltip));
         OnPropertyChanged(nameof(IsScratchActive));
         RefreshMoveTargets();
 
@@ -420,7 +422,9 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             ActiveRoot = root;
             SelectedNode = null;
 
-            NewRequestCommand.Execute(null);
+            // Drafted directly rather than through NewRequest, which routes BACK here when there is
+            // no workspace - two commands calling each other is a loop waiting for the first failure.
+            DraftRequestIn(Path.Combine(root.FullPath, "collections"));
         }
         catch (Exception ex)
         {
@@ -568,6 +572,20 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
     public bool UsesRequests => !UsesEndpoints;
 
+    /// <summary>
+    /// What the tree's group is called, which is not the same word in both formats.
+    /// </summary>
+    /// <remarks>
+    /// It was hardcoded to REQUESTS, so an endpoints workspace had a group headed "REQUESTS" whose
+    /// "+" said "New Request or Folder" directly above a menu offering "New Endpoint" - the pane
+    /// contradicting itself about what the things in it are.
+    /// </remarks>
+    public string CollectionsTitle => UsesEndpoints ? "ENDPOINTS" : "REQUESTS";
+
+    /// <inheritdoc cref="CollectionsTitle"/>
+    public string NewCollectionItemTooltip =>
+        UsesEndpoints ? "New Endpoint or Folder" : "New Request or Folder";
+
     /// <summary>"Add case" only inside an endpoint, which is the only place a case can live.</summary>
     public bool CanAddCase => UsesEndpoints && SelectedNode is { Kind: WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case };
 
@@ -592,24 +610,33 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void NewRequest()
     {
-        var parent = ResolveTargetDirectory();
-        if (parent is null)
+        // With nowhere to put it, make somewhere. Ctrl+N is the first thing anyone presses, and
+        // answering it with "Open a workspace before creating a request" is the dead end the scratch
+        // workspace exists to remove - having built the way out, this is where people arrive at it.
+        if (ResolveTargetDirectory() is not { } parent)
         {
-            _statusLog.Log("Open a workspace before creating a request.");
+            _ = NewScratchRequestAsync();
             return;
         }
 
-        // Proposed, not created - the same rule cases and batches follow. An endpoint is a DIRECTORY
-        // holding endpoint.json, so a drafted one is a directory that does not exist yet either;
-        // SaveRequestAsync makes it on the way to writing the file.
+        DraftRequestIn(parent);
+    }
+
+    /// <summary>
+    /// Puts an unwritten request or endpoint under <paramref name="parent"/> and opens it.
+    /// </summary>
+    /// <remarks>
+    /// Proposed, not created - the same rule cases and batches follow. An endpoint is a DIRECTORY
+    /// holding endpoint.json, so a drafted one is a directory that does not exist yet either;
+    /// SaveRequestAsync makes it on the way to writing the file.
+    /// </remarks>
+    private void DraftRequestIn(string parent)
+    {
         var path = UsesEndpoints
             ? ProposeDirectory(parent, "New Endpoint")
             : ProposeFile(parent, "New Request");
 
-        var draft = AddRootDraft(
-            parent, path, UsesEndpoints ? WorkspaceNodeKind.Endpoint : WorkspaceNodeKind.Request);
-
-        if (draft is null)
+        if (AddRootDraft(parent, path, UsesEndpoints ? WorkspaceNodeKind.Endpoint : WorkspaceNodeKind.Request) is null)
         {
             return;
         }
