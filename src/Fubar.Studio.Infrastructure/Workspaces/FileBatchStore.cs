@@ -10,9 +10,9 @@ public sealed class FileBatchStore : IBatchStore
 {
     private const string Extension = ".json";
 
-    public IReadOnlyList<BatchSummary> ListBatches(string workspaceRoot)
+    public IReadOnlyList<BatchSummary> ListBatches(string owner)
     {
-        var directory = Path.Combine(workspaceRoot, IBatchStore.BatchesDirName);
+        var directory = Path.Combine(owner, IBatchStore.BatchesDirName);
         if (!Directory.Exists(directory))
         {
             return [];
@@ -46,11 +46,11 @@ public sealed class FileBatchStore : IBatchStore
     /// directory actually holds cannot leave it.
     /// </remarks>
     public async Task<Batch?> FindBatchAsync(
-        string workspaceRoot,
+        string owner,
         string name,
         CancellationToken cancellationToken = default)
     {
-        var found = ListBatches(workspaceRoot)
+        var found = ListBatches(owner)
             .FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
 
         return found is null
@@ -65,9 +65,9 @@ public sealed class FileBatchStore : IBatchStore
         return JsonFile.WriteAtomicAsync(batchFilePath, batch, FubarJson.Options, cancellationToken);
     }
 
-    public string CreateBatch(string workspaceRoot, string name)
+    public string CreateBatch(string owner, string name)
     {
-        var directory = Path.Combine(workspaceRoot, IBatchStore.BatchesDirName);
+        var directory = Path.Combine(owner, IBatchStore.BatchesDirName);
         Directory.CreateDirectory(directory);
 
         var path = Path.Combine(directory, name + Extension);

@@ -82,18 +82,63 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// feeds <c>RunPlan</c> - and an endpoint whose single case were hidden from the MODEL would be
     /// sent with no case at all, which is a different request.</para>
     /// </remarks>
-    public IEnumerable<WorkspaceNodeViewModel> DisplayChildren =>
-        Kind == WorkspaceNodeKind.Endpoint && Children.Count < 2 ? [] : Children;
+    public IEnumerable<WorkspaceNodeViewModel> DisplayChildren
+    {
+        get
+        {
+            if (Kind != WorkspaceNodeKind.Endpoint)
+            {
+                return Children;
+            }
+
+            // Cases first, then batches: a case is what the endpoint IS called with, a batch is a way
+            // of running several of them, so the parts come before the arrangements. An endpoint with
+            // exactly one case and no batches stays a leaf - "1 case" under an expander is a row that
+            // costs a click to learn nothing.
+            return Children.Count + Batches.Count < 2 ? [] : [.. Children, .. Batches];
+        }
+    }
+
+    /// <summary>
+    /// This endpoint's own batches.
+    /// </summary>
+    /// <remarks>
+    /// Its own collection, never merged into <see cref="Children"/>, because <c>ToTreeNode</c> feeds
+    /// <c>RunPlan</c>: an endpoint's children are the cases a run of it SENDS, and a batch in there
+    /// would make an endpoint whose only child was a batch send nothing at all.
+    /// </remarks>
+    public ObservableCollection<WorkspaceNodeViewModel> Batches { get; } = [];
 
     /// <summary>How many ways this endpoint is called, shown as a badge only when there is more than
     /// one - "1 case" on every row would be noise standing in for the ordinary.</summary>
     public int CaseCount => Kind == WorkspaceNodeKind.Endpoint ? Children.Count : 0;
 
-    public bool HasSeveralCases => CaseCount > 1;
+    public int BatchCount => Kind == WorkspaceNodeKind.Endpoint ? Batches.Count : 0;
 
-    /// <summary>Formatted here rather than with a binding StringFormat, which silently rendered the
-    /// literal text with the number missing - a formatting bug that looks like a data bug.</summary>
-    public string CaseCountText => $"{CaseCount} cases";
+    public bool IsBatch => Kind == WorkspaceNodeKind.Batch;
+
+    /// <summary>
+    /// What this endpoint holds, in ONE chip - never two.
+    /// </summary>
+    /// <remarks>
+    /// <para>The pane is 260px and every row already carries a method badge and an auth badge. A
+    /// second count chip pushed the auth badge off the right edge; stopping that overflow then made
+    /// the NAME ellipse to "ge..." instead, which is the worse trade - the name is what the row is
+    /// for. So the counts take turns rather than sharing.</para>
+    /// <para>Cases win the slot when there are several, because they are what an endpoint IS; the
+    /// batch count gets it only when there is no case count to show. Either way, expanding shows
+    /// both, tagged.</para>
+    /// </remarks>
+    public string ContentsText => (CaseCount, BatchCount) switch
+    {
+        // One case is not worth a chip - it is the ordinary thing an endpoint has. One batch is,
+        // because it is something you can run rather than a way this endpoint is called.
+        ( > 1, _) => $"{CaseCount} cases",
+        (_, > 0) => BatchCount == 1 ? "1 batch" : $"{BatchCount} batches",
+        _ => "",
+    };
+
+    public bool HasContents => ContentsText.Length > 0;
 
     /// <summary>Whether there is a recorded answer here, and whether it can still be believed.</summary>
     [ObservableProperty]
@@ -190,6 +235,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// folded folders hides the only thing the pane is for.</para>
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasContents))]
     public partial bool IsExpanded { get; set; } = true;
 
     /// <summary>
@@ -281,6 +327,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                     Snapshots = node.Snapshots,
                 };
                 child.SyncChildren(node.Children);
+                child.SyncBatches(node.Batches);
                 Children.Insert(Math.Min(i, Children.Count), child);
             }
             else
@@ -298,14 +345,64 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                 existing.SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false;
                 existing.Snapshots = node.Snapshots;
                 existing.SyncChildren(node.Children);
+                existing.SyncBatches(node.Batches);
             }
         }
 
         // What the tree SHOWS depends on how many children there are - an endpoint becomes a leaf at
         // one case and grows an expander at two - so adding or removing one has to re-ask.
+        RaiseShapeChanged();
+    }
+
+    /// <summary>
+    /// Reconciles this endpoint's batches, the same way <see cref="SyncChildren"/> does its cases.
+    /// </summary>
+    /// <remarks>
+    /// A batch node has no children of its own - a batch names steps, it does not contain them - so
+    /// this does not recurse. Batches do not nest, and a batch of batches is a scheduler.
+    /// </remarks>
+    protected void SyncBatches(IReadOnlyList<WorkspaceTreeNode> incoming)
+    {
+        for (var i = Batches.Count - 1; i >= 0; i--)
+        {
+            if (!incoming.Any(n => n.FullPath == Batches[i].FullPath))
+            {
+                Batches.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < incoming.Count; i++)
+        {
+            var node = incoming[i];
+            var existing = Batches.FirstOrDefault(b => b.FullPath == node.FullPath);
+
+            if (existing is null)
+            {
+                Batches.Insert(
+                    Math.Min(i, Batches.Count),
+                    new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory, node.Kind));
+
+                continue;
+            }
+
+            var currentIndex = Batches.IndexOf(existing);
+            if (currentIndex != i)
+            {
+                Batches.Move(currentIndex, i);
+            }
+
+            existing.Name = node.Name;
+        }
+
+        RaiseShapeChanged();
+    }
+
+    private void RaiseShapeChanged()
+    {
         OnPropertyChanged(nameof(DisplayChildren));
         OnPropertyChanged(nameof(CaseCount));
-        OnPropertyChanged(nameof(HasSeveralCases));
-        OnPropertyChanged(nameof(CaseCountText));
+        OnPropertyChanged(nameof(BatchCount));
+        OnPropertyChanged(nameof(ContentsText));
+        OnPropertyChanged(nameof(HasContents));
     }
 }

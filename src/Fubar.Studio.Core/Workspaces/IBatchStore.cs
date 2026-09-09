@@ -17,18 +17,31 @@ public interface IBatchStore
 {
     const string BatchesDirName = "batches";
 
-    IReadOnlyList<BatchSummary> ListBatches(string workspaceRoot);
+    /// <summary>
+    /// Every batch belonging to <paramref name="owner"/> - the directory that HOLDS a
+    /// <c>batches/</c>, not the <c>batches/</c> directory itself.
+    /// </summary>
+    /// <remarks>
+    /// One method for both homes, because they are the same shape: the workspace root holds the
+    /// cross-cutting occasions, and an endpoint directory holds the ways of running that endpoint. A
+    /// second method would be two code paths for one question.
+    /// </remarks>
+    IReadOnlyList<BatchSummary> ListBatches(string owner);
 
     Task<Batch> LoadBatchAsync(string batchFilePath, CancellationToken cancellationToken = default);
 
-    /// <summary>Loads by NAME, as a selector like <c>@smoke</c> gives it. Null when there is no such
-    /// batch - reported by the caller, never treated as an empty run.</summary>
-    Task<Batch?> FindBatchAsync(string workspaceRoot, string name, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Loads by NAME from <paramref name="owner"/>, as a selector gives it - <c>@smoke</c> from the
+    /// workspace root, <c>orders/get-order@smoke</c> from that endpoint's directory. Null when there
+    /// is no such batch - reported by the caller, never treated as an empty run.
+    /// </summary>
+    Task<Batch?> FindBatchAsync(string owner, string name, CancellationToken cancellationToken = default);
 
     Task SaveBatchAsync(string batchFilePath, Batch batch, CancellationToken cancellationToken = default);
 
-    /// <summary>Creates an empty batch named <paramref name="name"/> and returns its full path.</summary>
-    string CreateBatch(string workspaceRoot, string name);
+    /// <summary>Creates an empty batch named <paramref name="name"/> under <paramref name="owner"/>
+    /// and returns its full path.</summary>
+    string CreateBatch(string owner, string name);
 
     /// <summary>
     /// Renames a batch and returns its new path.

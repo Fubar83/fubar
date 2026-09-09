@@ -174,7 +174,7 @@ public static class CliRunner
             if (selector.Kind == RunSelectorKind.Batch)
             {
                 var resolved = await services.Batches
-                    .ExpandAsync(workspace, selector.BatchName!, cancellationToken)
+                    .ExpandAsync(workspace, selector.BatchName!, selector.BatchOwnerPath, cancellationToken)
                     .ConfigureAwait(false);
 
                 batch = resolved.Batch;

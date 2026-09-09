@@ -122,6 +122,7 @@ public partial class MainViewModel : ViewModelBase
 
         WorkspaceExplorer.RequestFileActivated += path => _ = OpenRequestAsync(path);
         WorkspaceExplorer.CaseFileActivated += path => _ = OpenCaseAsync(path);
+        WorkspaceExplorer.BatchOpened += OpenBatchEditor;
         WorkspaceExplorer.RunRequested += OnRunRequested;
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
@@ -164,6 +165,14 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        // A batch in the tree runs through the planner, exactly as the Left Pane's do - it names its
+        // own steps, so expanding the NODE would send nothing.
+        if (node.Kind == WorkspaceNodeKind.Batch)
+        {
+            _ = OnRunBatchRequestedAsync(node.DisplayName, EndpointPathOf(node, root), root);
+            return;
+        }
+
         var plan = RunPlan.From(node.ToTreeNode());
         if (plan.IsEmpty)
         {
@@ -188,31 +197,55 @@ public partial class MainViewModel : ViewModelBase
     /// same rule the command line follows - a batch written for staging has to be runnable against a
     /// branch deployment without editing the file.
     /// </remarks>
-    private async Task OnRunBatchRequestedAsync(BatchRowViewModel row)
+    private Task OnRunBatchRequestedAsync(BatchRowViewModel row) =>
+        OnRunBatchRequestedAsync(row.Name, null, WorkspaceExplorer.ActiveRoot);
+
+    /// <param name="ownerPath">The endpoint this batch belongs to, relative to <c>collections/</c>, or
+    /// null for one of the workspace's own. It is also what the window is titled with, since
+    /// <c>@happy</c> and <c>orders/get-order@happy</c> are different batches.</param>
+    private async Task OnRunBatchRequestedAsync(
+        string name, string? ownerPath, WorkspaceRootViewModel? root)
     {
-        if (WorkspaceExplorer.ActiveRoot is not { } root)
+        if (root is null)
         {
             return;
         }
 
+        var qualified = ownerPath is { Length: > 0 } ? $"{ownerPath}@{name}" : $"@{name}";
+
         try
         {
-            var resolved = await _batchPlanner.ExpandAsync(root.Workspace, row.Name);
+            var resolved = await _batchPlanner.ExpandAsync(root.Workspace, name, ownerPath);
 
             _runDialog.Show(
                 resolved.Plan,
                 root.Workspace,
                 EnvironmentManager.ActiveEnvironment,
                 [.. EnvironmentManager.Environments],
-                $"@{row.Name}",
+                qualified,
                 resolved.Batch);
         }
         catch (Exception ex)
         {
             // A batch naming an endpoint that is not there still RUNS - those steps error. Reaching
             // here means the batch itself could not be read at all.
-            StatusLog.LogError($"Could not run \"{row.Name}\": {ex.Message}");
+            StatusLog.LogError($"Could not run \"{qualified}\": {ex.Message}");
         }
+    }
+
+    /// <summary>The endpoint a batch node belongs to, as a path relative to <c>collections/</c> - the
+    /// form a selector and the planner both use.</summary>
+    private static string? EndpointPathOf(WorkspaceNodeViewModel batch, WorkspaceRootViewModel root)
+    {
+        // <endpoint>/batches/<name>.json, so the endpoint is two levels up.
+        var endpoint = Path.GetDirectoryName(Path.GetDirectoryName(batch.FullPath));
+        if (endpoint is null)
+        {
+            return null;
+        }
+
+        return Path.GetRelativePath(Path.Combine(root.FullPath, "collections"), endpoint)
+            .Replace('\\', '/');
     }
 
     /// <summary>
@@ -661,8 +694,10 @@ public partial class MainViewModel : ViewModelBase
         return true;
     }
 
-    /// <summary>Opens a batch in the main canvas - wired to
-    /// <see cref="BatchesSectionViewModel.EditRequested"/>, which reads it fresh from disk first.</summary>
+    /// <summary>Opens a batch in the main canvas - wired to both
+    /// <see cref="BatchesSectionViewModel.EditRequested"/> and the tree's, each of which reads it
+    /// fresh from disk first: an editor opened on a stale copy would save it back over whatever has
+    /// happened to the file since.</summary>
     private void OpenBatchEditor(string filePath, Batch batch)
     {
         if (WorkspaceExplorer.ActiveRoot is not { } root)

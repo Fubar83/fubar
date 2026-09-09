@@ -35,6 +35,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     private readonly StatusLogViewModel _statusLog;
     private readonly IAppSettingsService _settingsService;
     private readonly IEndpointStore _endpointStore;
+    private readonly IBatchStore _batchStore;
     private readonly IWorkspaceFormatConverter _formatConverter;
     private readonly IConfirmationService? _confirmation;
     private bool _suppressPersist;
@@ -51,10 +52,12 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         StatusLogViewModel statusLog,
         IAppSettingsService settingsService,
         IEndpointStore endpointStore,
+        IBatchStore batchStore,
         IWorkspaceFormatConverter formatConverter,
         IConfirmationService? confirmation = null)
     {
         _endpointStore = endpointStore;
+        _batchStore = batchStore;
         _formatConverter = formatConverter;
         _confirmation = confirmation;
         _requestStore = requestStore;
@@ -102,6 +105,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(UsesEndpoints));
         OnPropertyChanged(nameof(UsesRequests));
         OnPropertyChanged(nameof(CanAddCase));
+        OnPropertyChanged(nameof(CanAddBatch));
 
         PersistOpenWorkspaces();
     }
@@ -220,6 +224,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAddCase))]
+    [NotifyPropertyChangedFor(nameof(CanAddBatch))]
     public partial WorkspaceNodeViewModel? SelectedNode { get; set; }
 
     /// <summary>
@@ -381,6 +386,24 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     /// <summary>"Add case" only inside an endpoint, which is the only place a case can live.</summary>
     public bool CanAddCase => UsesEndpoints && SelectedNode is { Kind: WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case };
 
+    /// <summary>"Add batch" in the same three places, for the same reason: an endpoint's batches live
+    /// beside its cases, so anything inside an endpoint can offer one.</summary>
+    public bool CanAddBatch => UsesEndpoints
+        && SelectedNode is { Kind: WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case or WorkspaceNodeKind.Batch };
+
+    /// <summary>The endpoint directory the selection sits in, or null when it is not inside one.</summary>
+    private string? SelectedEndpointDirectory => SelectedNode switch
+    {
+        { Kind: WorkspaceNodeKind.Endpoint } endpoint => endpoint.FullPath,
+
+        // A case is <endpoint>/cases/<name>.json and a batch is <endpoint>/batches/<name>.json, so
+        // both are two levels down. Walked rather than string-trimmed so the two stay in step.
+        { Kind: WorkspaceNodeKind.Case or WorkspaceNodeKind.Batch } child =>
+            Path.GetDirectoryName(Path.GetDirectoryName(child.FullPath)),
+
+        _ => null,
+    };
+
     [RelayCommand]
     private void NewRequest()
     {
@@ -412,6 +435,29 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         var path = _endpointStore.CreateCase(endpointDirectory, "new-case");
         _statusLog.Log($"Created case: {path}");
         RefreshRootFor(endpointDirectory);
+        CaseFileActivated?.Invoke(path);
+    }
+
+    /// <summary>
+    /// Adds a batch to the selected endpoint - a way of running THIS endpoint, as opposed to the
+    /// workspace's cross-cutting occasions in the Left Pane's Batches group.
+    /// </summary>
+    [RelayCommand]
+    private void NewBatch()
+    {
+        if (SelectedEndpointDirectory is not { } endpointDirectory)
+        {
+            _statusLog.Log("Select an endpoint to add a batch to.");
+            return;
+        }
+
+        var path = _batchStore.CreateBatch(endpointDirectory, "new-batch");
+        _statusLog.Log($"Created batch: {path}");
+        RefreshRootFor(endpointDirectory);
+
+        // Opened straight away, for the same reason the Left Pane's does: a row saying "0 steps" with
+        // no way in but a text editor is what made batches a JSON-editing job.
+        _ = OpenBatchAsync(path);
     }
 
     /// <summary>
@@ -796,6 +842,34 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             case { Kind: WorkspaceNodeKind.Case } endpointCase:
                 CaseFileActivated?.Invoke(endpointCase.FullPath);
                 break;
+
+            case { Kind: WorkspaceNodeKind.Batch } batch:
+                _ = OpenBatchAsync(batch.FullPath);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Raised when one of an endpoint's own batches is opened, with a freshly read copy of it -
+    /// <c>MainViewModel</c> puts it in the same editor the Left Pane's Batches group uses.
+    /// </summary>
+    /// <remarks>
+    /// Read here rather than by the shell, which has no batch store, and read fresh rather than kept
+    /// on the node: an editor opened on a stale copy would save it back over whatever has happened to
+    /// the file since.
+    /// </remarks>
+    public event Action<string, Batch>? BatchOpened;
+
+    private async Task OpenBatchAsync(string filePath)
+    {
+        try
+        {
+            BatchOpened?.Invoke(filePath, await _batchStore.LoadBatchAsync(filePath));
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError(
+                $"Could not open the batch \"{Path.GetFileNameWithoutExtension(filePath)}\": {ex.Message}");
         }
     }
 

@@ -243,6 +243,21 @@ public sealed class WorkspaceService : IWorkspaceService
                 .ToList()
             : [];
 
+        // This endpoint's own batches - ways of running IT, as opposed to the workspace's
+        // cross-cutting occasions. Kept off Children on purpose; see WorkspaceTreeNode.Batches.
+        var batchesPath = Path.Combine(directoryPath, Core.Workspaces.IBatchStore.BatchesDirName);
+
+        var batches = Directory.Exists(batchesPath)
+            ? Directory.EnumerateFiles(batchesPath, $"*{RequestFileExtension}")
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .Select(f => new WorkspaceTreeNode(
+                    Path.GetFileNameWithoutExtension(f), f, false, [])
+                {
+                    Kind = WorkspaceNodeKind.Batch,
+                })
+                .ToList()
+            : [];
+
         return new WorkspaceTreeNode(
             Path.GetFileName(directoryPath),
             directoryPath,
@@ -251,6 +266,7 @@ public sealed class WorkspaceService : IWorkspaceService
             TryReadRequestSummary(endpointFile))
         {
             Kind = WorkspaceNodeKind.Endpoint,
+            Batches = batches,
 
             // An endpoint summarises its cases, worst-first: one stale case makes the endpoint stale,
             // because that is the one a reader has to go and look at.

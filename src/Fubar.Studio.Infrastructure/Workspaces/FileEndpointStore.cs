@@ -33,8 +33,12 @@ public sealed class FileEndpointStore : IEndpointStore
             return null;
         }
 
-        // A case file is one level deeper, inside cases/.
-        if (string.Equals(Path.GetFileName(parent), IEndpointStore.CasesDirName, StringComparison.OrdinalIgnoreCase))
+        // A case file is one level deeper, inside cases/ - and so is a batch of this endpoint's own,
+        // inside batches/. Both are reserved names an endpoint owns rather than folders in the tree.
+        var directoryName = Path.GetFileName(parent);
+
+        if (string.Equals(directoryName, IEndpointStore.CasesDirName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(directoryName, IBatchStore.BatchesDirName, StringComparison.OrdinalIgnoreCase))
         {
             parent = Path.GetDirectoryName(parent);
         }

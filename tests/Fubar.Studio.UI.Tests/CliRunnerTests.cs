@@ -638,12 +638,19 @@ public class CliRunnerTests
             return this;
         }
 
+        /// <summary>Keyed by the qualified name, so a test can pin that the CLI passed the OWNER as
+        /// well as the name - <c>@happy</c> and <c>orders/get-order@happy</c> are different batches.</summary>
         public Task<ResolvedBatch> ExpandAsync(
-            Workspace workspace, string batchName, CancellationToken cancellationToken = default)
+            Workspace workspace,
+            string batchName,
+            string? ownerPath = null,
+            CancellationToken cancellationToken = default)
         {
-            if (!_batches.TryGetValue(batchName, out var batch))
+            var key = ownerPath is { Length: > 0 } ? $"{ownerPath}@{batchName}" : batchName;
+
+            if (!_batches.TryGetValue(key, out var batch))
             {
-                throw new InvalidOperationException($"There is no batch called \"{batchName}\".");
+                throw new InvalidOperationException($"There is no batch called \"{key}\".");
             }
 
             var steps = batch.Steps

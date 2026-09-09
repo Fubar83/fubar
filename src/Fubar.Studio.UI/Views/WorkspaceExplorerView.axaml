@@ -39,9 +39,13 @@
 
         <!-- Only the active workspace tab's own children populate the tree - the root itself isn't
              represented here anymore, since its name is already shown by its title-bar tab. -->
+        <!-- Horizontal scrolling off on purpose: it is what let rows overflow rather than ellipse, so
+             a long name or one badge too many pushed the auth badge off the edge and grew a scrollbar
+             nobody wants in a 260px pane. Off, the viewport width constrains every row. -->
         <fc:TreeView ItemsSource="{Binding ActiveRoot.Children}"
                   SelectedItem="{Binding SelectedNode}"
                   Background="Transparent"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   Tapped="TreeView_OnTapped"
                   PointerPressed="TreeView_OnPointerPressed">
 
@@ -64,6 +68,10 @@
                               Command="{Binding NewCaseCommand}"
                               IsVisible="{Binding CanAddCase}"
                               ToolTip.Tip="One way of calling this endpoint - its parameters, and what it should answer" />
+                    <MenuItem Header="New Batch"
+                              Command="{Binding NewBatchCommand}"
+                              IsVisible="{Binding CanAddBatch}"
+                              ToolTip.Tip="A named list of calls belonging to this endpoint - its cases in an order, with cleanup" />
                     <MenuItem Header="New Folder" Command="{Binding NewFolderCommand}" />
                     <Separator />
                     <MenuItem Header="Convert to endpoints…"
@@ -102,7 +110,9 @@
 
                         <!-- A case carries no method of its own - it is one way of calling the
                              endpoint above it - so the badge slot says what the row IS instead of
-                             leaving a gap that reads as a missing badge. -->
+                             leaving a gap that reads as a missing badge. A batch uses the same slot
+                             for the same reason: the two kinds of child an endpoint has are told
+                             apart by this tag and nothing else. -->
                         <TextBlock Grid.Column="0"
                                    Width="38"
                                    Margin="0,0,6,0"
@@ -113,6 +123,17 @@
                                    ToolTip.Tip="One way of calling this endpoint"
                                    Foreground="{DynamicResource TextSecondary}"
                                    IsVisible="{Binding IsCase}" />
+
+                        <TextBlock Grid.Column="0"
+                                   Width="38"
+                                   Margin="0,0,6,0"
+                                   FontSize="9"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Right"
+                                   Text="batch"
+                                   ToolTip.Tip="A named list of calls to make together, belonging to this endpoint"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   IsVisible="{Binding IsBatch}" />
 
                         <!-- Name / inline rename -->
                         <Panel Grid.Column="1" VerticalAlignment="Center">
@@ -173,12 +194,13 @@
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5"
                                     VerticalAlignment="Center" Margin="4,0">
 
-                            <!-- Only past one: "1 case" on every row would be noise standing in for
-                                 the ordinary. -->
-                            <TextBlock Text="{Binding CaseCountText}"
-                                       IsVisible="{Binding HasSeveralCases}"
+                            <!-- What is inside, while it is shut. One chip, not two: the pane is 260px
+                                 and a second one pushed the auth badge off the edge. -->
+                            <TextBlock Text="{Binding ContentsText}"
+                                       IsVisible="{Binding HasContents}"
                                        FontSize="9"
                                        VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextSecondary}" />
 
                             <!-- Snapshot state. Three meanings, one glyph.
