@@ -55,6 +55,24 @@
                             Command="{Binding Pane.IgnorePathCommand}"
                             CommandParameter="{Binding Pane.CurrentIgnorePath}" />
 
+                    <!-- Accepting is what makes a forty-difference wall workable: take the three that
+                         were intended, and what remains is the regression. Only shown when the left
+                         side is something that can be rewritten - a snapshot. -->
+                    <Button Classes="toolbar-btn" Content="&#x2713; Accept this field"
+                            Margin="8,0,0,0"
+                            ToolTip.Tip="Write this value into the recorded answer and leave the other differences standing"
+                            IsVisible="{Binding CanAccept}"
+                            IsEnabled="{Binding Pane.CanIgnoreCurrent}"
+                            Command="{Binding AcceptCommand}"
+                            CommandParameter="{Binding Pane.CurrentIgnorePath}" />
+
+                    <Button Classes="toolbar-btn"
+                            Content="{Binding AcceptAllLabel}"
+                            Margin="8,0,0,0"
+                            ToolTip.Tip="Re-record the whole answer. Everything shown here stops being a difference."
+                            IsVisible="{Binding CanAccept}"
+                            Command="{Binding AcceptCommand}" />
+
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
                     <!-- Comparison options, matching what Fubar Diff's own toolbar offers - these were

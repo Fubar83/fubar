@@ -34,6 +34,7 @@ public sealed class InheritedPaths
 
     public List<string> Remove { get; set; } = [];
 
+    [JsonIgnore]
     public bool IsEmpty => Add.Count == 0 && Remove.Count == 0;
 
     public static InheritedPaths FromAdded(IEnumerable<string> paths) => new() { Add = [.. paths] };

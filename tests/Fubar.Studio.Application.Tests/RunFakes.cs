@@ -47,6 +47,8 @@ internal sealed class FakeStore : IRequestStore
 
     public string RenamePath(string path, string newName) => throw new NotSupportedException();
 
+    public string MovePath(string path, string destinationDirectory) => throw new NotSupportedException();
+
     public void DeletePath(string path) => throw new NotSupportedException();
 }
 
@@ -123,9 +125,10 @@ internal sealed class FakeEndpoints : IEndpointStore
         return Task.CompletedTask;
     }
 
-    public string CreateCase(string endpointDirectory, string caseName) => throw new NotSupportedException();
+    public string ProposeCasePath(string endpointDirectory, string caseName) =>
+        throw new NotSupportedException();
 
-    public string CreateEndpoint(string parentDirectory, string endpointName) => throw new NotSupportedException();
+    public string RenameCase(string caseFilePath, string newName) => throw new NotSupportedException();
 }
 
 /// <summary>No rules at any level, which is what most runner tests want to say.</summary>
@@ -139,6 +142,10 @@ internal sealed class FakeComparisonSettings : IRequestComparisonSettings
         Tolerances.Add(new ResolvedTolerance(tolerance, ComparisonScope.Request, "Request"));
         return this;
     }
+
+    public Task<ResolvedRequestRules> ResolveFolderRulesAsync(
+        Workspace workspace, string folderPath, CancellationToken ct = default) =>
+        ResolveRulesAsync(workspace, folderPath, null, null, ct);
 
     public Task<ResolvedRequestRules> ResolveRulesAsync(
         Workspace workspace, string requestPath, string? casePath = null,
@@ -174,6 +181,18 @@ internal sealed class FakeExecution : IRequestExecutionService
 
     public FakeExecution ErrorOn(string environmentId) { _errors.Add(environmentId); return this; }
 
+    private readonly HashSet<string> _erroringSteps = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Fails one named request rather than a whole environment - what a teardown test needs,
+    /// since its cleanup step runs against the same environment as everything else.</summary>
+    public FakeExecution ErrorOnStep(string requestName) { _erroringSteps.Add(requestName); return this; }
+
+    private readonly HashSet<string> _failingAssertions = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Answers, but with a failed assertion - which is what a cleanup step reusing a test's
+    /// case looks like when the thing it deletes has already gone.</summary>
+    public FakeExecution AssertionFailureOn(string requestName) { _failingAssertions.Add(requestName); return this; }
+
     public FakeExecution CancelOn(string key, CancellationTokenSource source)
     {
         _cancelOn = (key, source);
@@ -197,7 +216,7 @@ internal sealed class FakeExecution : IRequestExecutionService
             throw new OperationCanceledException();
         }
 
-        if (_errors.Contains(env))
+        if (_errors.Contains(env) || _erroringSteps.Contains(run.Request.Name))
         {
             return Task.FromResult(new RequestRunResult(
                 new ExecutionResult { ErrorMessage = "No such host" }, null, [], [], null, null));
@@ -214,7 +233,9 @@ internal sealed class FakeExecution : IRequestExecutionService
                 ContentType = "application/json",
             },
             null,
-            [new AssertionResult(true, "status is 200", "200")],
+            _failingAssertions.Contains(run.Request.Name)
+                ? [new AssertionResult(false, "status is 204", "404")]
+                : [new AssertionResult(true, "status is 200", "200")],
             [],
             null,
             null));

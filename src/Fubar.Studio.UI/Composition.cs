@@ -94,6 +94,11 @@ internal static class Composition
                 // active-editor state. WindowManager creates a scope per window (see WindowManager.cs).
                 services.AddScoped<WorkspaceExplorerViewModel>();
                 services.AddScoped<EnvironmentManagerViewModel>();
+
+                // Transient: each editor showing a response owns its own pane, and two editors
+                // sharing one would show the other one's last response.
+                services.AddTransient<ResponsePanelViewModel>();
+                services.AddSingleton<IComparisonSettingsContext, ComparisonSettingsContextFactory>();
                 services.AddScoped<EnvironmentsSectionViewModel>();
                 services.AddScoped<BatchesSectionViewModel>();
                 services.AddScoped<AuthProfilesSectionViewModel>();

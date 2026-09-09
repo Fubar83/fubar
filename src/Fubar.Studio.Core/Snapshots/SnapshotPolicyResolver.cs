@@ -22,9 +22,9 @@ public static class SnapshotPolicyResolver
     {
         ArgumentNullException.ThrowIfNull(layers);
 
-        var redact = new List<SnapshotRule>();
-        var normalize = new List<SnapshotRule>();
-        IReadOnlyList<string> headers = [];
+        var redact = new List<ResolvedSnapshotRule>();
+        var normalize = new List<ResolvedSnapshotRule>();
+        var headers = new Resolved<IReadOnlyList<string>>([], ComparisonScope.Default, "Default");
 
         foreach (var layer in layers)
         {
@@ -33,19 +33,20 @@ public static class SnapshotPolicyResolver
                 continue;
             }
 
-            Apply(redact, policy.Redact);
-            Apply(normalize, policy.Normalize);
+            Apply(redact, policy.Redact, layer);
+            Apply(normalize, policy.Normalize, layer);
 
             if (policy.Headers is { } named)
             {
-                headers = [.. named];
+                headers = new Resolved<IReadOnlyList<string>>([.. named], layer.Scope, layer.SourceName);
             }
         }
 
         return new ResolvedSnapshotPolicy(redact, normalize, headers);
     }
 
-    private static void Apply(List<SnapshotRule> rules, InheritedRules? contribution)
+    private static void Apply(
+        List<ResolvedSnapshotRule> rules, InheritedRules? contribution, SnapshotPolicyLayer layer)
     {
         if (contribution is null)
         {
@@ -60,9 +61,10 @@ public static class SnapshotPolicyResolver
         foreach (var rule in contribution.Add)
         {
             // Re-stating a path replaces it: a level saying "$..token becomes <gone>" over an
-            // ancestor's "<redacted>" means the deeper one, not both.
+            // ancestor's "<redacted>" means the deeper one, not both - and the deepest level to state
+            // it is the one reported, since that is the one a reader would edit to change it.
             rules.RemoveAll(r => string.Equals(r.Path, rule.Path, StringComparison.Ordinal));
-            rules.Add(rule);
+            rules.Add(new ResolvedSnapshotRule(rule, layer.Scope, layer.SourceName));
         }
     }
 }

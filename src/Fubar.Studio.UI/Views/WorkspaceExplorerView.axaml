@@ -35,13 +35,56 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid>
+    <DockPanel>
+
+        <!-- Said, not left to be discovered: a scratch request is saved somewhere the user did not
+             choose, which is the whole point of it and also the thing they need to know before
+             relying on it. -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding IsScratchActive}"
+                Background="{DynamicResource BgHeader}"
+                Padding="10,6"
+                Margin="0,0,0,4">
+            <TextBlock Text="Scratch. Anything saved here lives with the app, not in a folder you chose - move it into a workspace when it is worth keeping."
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondary}" />
+        </Border>
+
+        <!-- Which half of the product this workspace is in, and what that costs. The conversion
+             existed but lived in a right-click menu you had to already know about - which is how
+             "the split closes by choice" turns into "closes never" (spec §10.4). Converting is still
+             a choice: nothing is rewritten on open. -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding IsRequestsFormatActive}"
+                Background="{DynamicResource BgHeader}"
+                Padding="10,7"
+                Margin="0,0,0,4">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Requests format. No cases, batches, snapshots or per-case rules here - those need endpoints."
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <Button Classes="secondary-btn"
+                        Content="Convert to endpoints…"
+                        FontSize="11"
+                        Padding="8,2"
+                        HorizontalAlignment="Left"
+                        Command="{Binding ConvertToEndpointsCommand}"
+                        ToolTip.Tip="Splits every request into an endpoint and one case, after a preview. Copies the originals to .fubar/backup/ first." />
+            </StackPanel>
+        </Border>
 
         <!-- Only the active workspace tab's own children populate the tree - the root itself isn't
              represented here anymore, since its name is already shown by its title-bar tab. -->
+        <!-- Horizontal scrolling off on purpose: it is what let rows overflow rather than ellipse, so
+             a long name or one badge too many pushed the auth badge off the edge and grew a scrollbar
+             nobody wants in a 260px pane. Off, the viewport width constrains every row. -->
         <fc:TreeView ItemsSource="{Binding ActiveRoot.Children}"
                   SelectedItem="{Binding SelectedNode}"
                   Background="Transparent"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                   Tapped="TreeView_OnTapped"
                   PointerPressed="TreeView_OnPointerPressed">
 
@@ -64,13 +107,42 @@
                               Command="{Binding NewCaseCommand}"
                               IsVisible="{Binding CanAddCase}"
                               ToolTip.Tip="One way of calling this endpoint - its parameters, and what it should answer" />
+                    <MenuItem Header="New Batch"
+                              Command="{Binding NewBatchCommand}"
+                              IsVisible="{Binding CanAddBatch}"
+                              ToolTip.Tip="A named list of calls belonging to this endpoint - its cases in an order, with cleanup" />
                     <MenuItem Header="New Folder" Command="{Binding NewFolderCommand}" />
+                    <Separator />
+                    <!-- A plain left-click on a folder row does not select it in this tree, so the
+                         folder's own settings need a way in that does not depend on that. -->
+                    <MenuItem Header="Folder settings…"
+                              Command="{Binding OpenFolderSettingsCommand}"
+                              IsVisible="{Binding CanOpenFolderSettings}"
+                              ToolTip.Tip="Headers, auth and rules inherited by everything beneath this folder" />
                     <Separator />
                     <MenuItem Header="Convert to endpoints…"
                               Command="{Binding ConvertToEndpointsCommand}"
                               IsVisible="{Binding UsesRequests}"
                               ToolTip.Tip="Split every request into an endpoint and one case. Copies the originals to .fubar/backup/ first." />
                     <Separator />
+                    <!-- Hidden rather than greyed when there is nowhere to move to, which is this
+                         codebase's rule for a control that cannot do anything right now. Its items
+                         are the OTHER open workspaces - the ones whose format is known and whose tree
+                         is already watching. -->
+                    <MenuItem Header="Move to workspace"
+                              ItemsSource="{Binding MoveTargets}"
+                              IsVisible="{Binding CanMove}"
+                              ToolTip.Tip="Takes it out of here and puts it in another open workspace">
+                        <MenuItem.ItemContainerTheme>
+                            <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}"
+                                          x:DataType="vm:WorkspaceRootViewModel">
+                                <Setter Property="Header" Value="{Binding Workspace.Manifest.Name}" />
+                                <Setter Property="Command"
+                                        Value="{Binding $parent[TreeView].((vm:WorkspaceExplorerViewModel)DataContext).MoveToWorkspaceCommand}" />
+                                <Setter Property="CommandParameter" Value="{Binding}" />
+                            </ControlTheme>
+                        </MenuItem.ItemContainerTheme>
+                    </MenuItem>
                     <MenuItem Header="Rename" Command="{Binding BeginRenameCommand}" />
                     <MenuItem Header="Duplicate" Command="{Binding DuplicateCommand}" />
                     <MenuItem Header="Delete" Command="{Binding DeleteCommand}" />
@@ -84,8 +156,8 @@
                      badge, auth badge, and dirty dot are simply invisible on a folder node, since
                      WorkspaceNodeViewModel.Method/HasAuthOverride/IsDirty are only ever populated
                      for request files. -->
-                <TreeDataTemplate DataType="vm:WorkspaceNodeViewModel" ItemsSource="{Binding Children}">
-                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MinHeight="20">
+                <TreeDataTemplate DataType="vm:WorkspaceNodeViewModel" ItemsSource="{Binding DisplayChildren}">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MinHeight="20">
                         <!-- Method Badge (fc:Badge - the reusable pill) -->
                         <fc:Badge Grid.Column="0"
                                   Width="38"
@@ -102,7 +174,9 @@
 
                         <!-- A case carries no method of its own - it is one way of calling the
                              endpoint above it - so the badge slot says what the row IS instead of
-                             leaving a gap that reads as a missing badge. -->
+                             leaving a gap that reads as a missing badge. A batch uses the same slot
+                             for the same reason: the two kinds of child an endpoint has are told
+                             apart by this tag and nothing else. -->
                         <TextBlock Grid.Column="0"
                                    Width="38"
                                    Margin="0,0,6,0"
@@ -113,6 +187,17 @@
                                    ToolTip.Tip="One way of calling this endpoint"
                                    Foreground="{DynamicResource TextSecondary}"
                                    IsVisible="{Binding IsCase}" />
+
+                        <TextBlock Grid.Column="0"
+                                   Width="38"
+                                   Margin="0,0,6,0"
+                                   FontSize="9"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Right"
+                                   Text="batch"
+                                   ToolTip.Tip="A named list of calls to make together, belonging to this endpoint"
+                                   Foreground="{DynamicResource TextSecondary}"
+                                   IsVisible="{Binding IsBatch}" />
 
                         <!-- Name / inline rename -->
                         <Panel Grid.Column="1" VerticalAlignment="Center">
@@ -135,7 +220,7 @@
                              must go out unauthenticated looked exactly like the ones carrying a
                              token. BadgeAuthNone had been in the palette for this the whole time and
                              was referenced by nothing. -->
-                        <fc:Badge Grid.Column="2"
+                        <fc:Badge Grid.Column="3"
                                   Content="Auth"
                                   FontSize="9"
                                   FontWeight="Normal"
@@ -155,7 +240,7 @@
                             </fc:Badge.IsVisible>
                         </fc:Badge>
 
-                        <fc:Badge Grid.Column="2"
+                        <fc:Badge Grid.Column="3"
                                   Content="No auth"
                                   FontSize="9"
                                   FontWeight="Normal"
@@ -168,20 +253,57 @@
                                   IsVisible="{Binding SendsNoAuth}"
                                   VerticalAlignment="Center" />
 
-                        <!-- Dirty Indicator Dot (fc:StatusDot) -->
-                        <fc:StatusDot Grid.Column="3"
+                        <!-- Case count and snapshot state, in ONE stack: separate cells in the same
+                             grid column drew on top of each other. -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5"
+                                    VerticalAlignment="Center" Margin="4,0">
+
+                            <!-- What is inside, while it is shut. One chip, not two: the pane is 260px
+                                 and a second one pushed the auth badge off the edge. -->
+                            <TextBlock Text="{Binding ContentsText}"
+                                       IsVisible="{Binding HasContents}"
+                                       FontSize="9"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextSecondary}" />
+
+                            <!-- Snapshot state. Three meanings, one glyph.
+
+                                 STALE is the one that earns its place: a green regression run against
+                                 a snapshot recorded before the endpoint or case changed is a lie, and
+                                 this is the only place anyone can notice it before running. -->
+                            <TextBlock Text="●" IsVisible="{Binding HasSnapshot}"
+                                       FontSize="10" VerticalAlignment="Center"
+                                       ToolTip.Tip="{Binding SnapshotTooltip}"
+                                       Foreground="{DynamicResource StatusSuccessFg}" />
+
+                            <TextBlock Text="○" IsVisible="{Binding HasNoSnapshot}"
+                                       FontSize="10" VerticalAlignment="Center"
+                                       ToolTip.Tip="{Binding SnapshotTooltip}"
+                                       Foreground="{DynamicResource TextSecondary}" />
+
+                            <TextBlock Text="⚑" IsVisible="{Binding HasStaleSnapshot}"
+                                       FontSize="10" FontWeight="Bold" VerticalAlignment="Center"
+                                       ToolTip.Tip="{Binding SnapshotTooltip}"
+                                       Foreground="{DynamicResource StatusClientErrorFg}" />
+                        </StackPanel>
+
+                        <!-- Unsaved dot (fc:StatusDot): edited and not saved, or never saved at all.
+                             A draft has no file behind it yet, and the dot is what says the row is
+                             something you still owe a Save. -->
+                        <fc:StatusDot Grid.Column="4"
                                       Diameter="6"
                                       Background="{DynamicResource StatusDirty}"
-                                      IsVisible="{Binding IsDirty}"
+                                      IsVisible="{Binding IsUnsaved}"
                                       Margin="4,0,2,0"
                                       VerticalAlignment="Center"
-                                      ToolTip.Tip="Unsaved changes" />
+                                      ToolTip.Tip="Unsaved" />
                     </Grid>
                 </TreeDataTemplate>
             </fc:TreeView.DataTemplates>
 
         </fc:TreeView>
 
-    </Grid>
+    </DockPanel>
 
 </UserControl>

@@ -43,6 +43,9 @@ namespace Fubar.Studio.UI.Services;
 /// <param name="ResponseBaseline">The pinned response, shared across editors.</param>
 /// <param name="AppSettings">Global comparison defaults.</param>
 /// <param name="FolderConfigStore">Folder-level comparison settings.</param>
+/// <param name="ComparisonSettingsContext">Builds the settings hierarchy a diff can write into, and
+/// writes it - shared with the run window, so a rule saved from a snapshot failure and one saved from
+/// an environment comparison land in the same place.</param>
 public sealed record RequestEditorServices(
     IRequestStore RequestStore,
     IAuthProfileStore AuthProfileStore,
@@ -62,4 +65,6 @@ public sealed record RequestEditorServices(
     IDiffPreviewService DiffPreview,
     IResponseBaselineService ResponseBaseline,
     IAppSettingsService AppSettings,
-    IFolderConfigStore FolderConfigStore);
+    IFolderConfigStore FolderConfigStore,
+    IComparisonSettingsContext ComparisonSettingsContext,
+    Fubar.Studio.Application.Comparison.IRequestComparisonSettings ComparisonSettings);

@@ -33,8 +33,12 @@ public sealed class FileEndpointStore : IEndpointStore
             return null;
         }
 
-        // A case file is one level deeper, inside cases/.
-        if (string.Equals(Path.GetFileName(parent), IEndpointStore.CasesDirName, StringComparison.OrdinalIgnoreCase))
+        // A case file is one level deeper, inside cases/ - and so is a batch of this endpoint's own,
+        // inside batches/. Both are reserved names an endpoint owns rather than folders in the tree.
+        var directoryName = Path.GetFileName(parent);
+
+        if (string.Equals(directoryName, IEndpointStore.CasesDirName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(directoryName, IBatchStore.BatchesDirName, StringComparison.OrdinalIgnoreCase))
         {
             parent = Path.GetDirectoryName(parent);
         }
@@ -80,30 +84,34 @@ public sealed class FileEndpointStore : IEndpointStore
         return JsonFile.WriteAtomicAsync(caseFilePath, endpointCase, FubarJson.Options, cancellationToken);
     }
 
-    public string CreateCase(string endpointDirectory, string caseName)
+    public string ProposeCasePath(string endpointDirectory, string caseName) =>
+        Unique(Path.Combine(endpointDirectory, IEndpointStore.CasesDirName), caseName);
+
+    public string RenameCase(string caseFilePath, string newName)
     {
-        var casesPath = Path.Combine(endpointDirectory, IEndpointStore.CasesDirName);
-        Directory.CreateDirectory(casesPath);
+        if (!DocumentName.IsValid(newName))
+        {
+            throw new ArgumentException($"\"{newName}\" cannot name a case.", nameof(newName));
+        }
 
-        var path = Unique(casesPath, caseName);
+        var destination = Path.Combine(Path.GetDirectoryName(caseFilePath) ?? "", newName + Extension);
 
-        var created = new EndpointCase { Name = Path.GetFileNameWithoutExtension(path) };
-        File.WriteAllText(path, JsonSerializer.Serialize(created, FubarJson.Options));
+        // Compared ordinally so "created" -> "Created" is still done rather than skipped: the listing
+        // is what a reader sees, and a case that will not take its own capitalisation looks broken.
+        if (string.Equals(destination, caseFilePath, StringComparison.Ordinal))
+        {
+            return caseFilePath;
+        }
 
-        return path;
-    }
+        if (!string.Equals(destination, caseFilePath, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(destination))
+        {
+            throw new IOException($"There is already a case called \"{newName}\".");
+        }
 
-    public string CreateEndpoint(string parentDirectory, string endpointName)
-    {
-        var directory = UniqueDirectory(parentDirectory, endpointName);
-        Directory.CreateDirectory(directory);
+        File.Move(caseFilePath, destination);
 
-        var endpoint = new RequestModel { Name = Path.GetFileName(directory) };
-        File.WriteAllText(
-            Path.Combine(directory, IEndpointStore.EndpointFileName),
-            JsonSerializer.Serialize(endpoint, FubarJson.Options));
-
-        return directory;
+        return destination;
     }
 
     /// <summary>A free file name, so creating twice makes two cases rather than overwriting the
@@ -115,18 +123,6 @@ public sealed class FileEndpointStore : IEndpointStore
         while (File.Exists(candidate))
         {
             candidate = Path.Combine(directory, $"{name} {n++}{Extension}");
-        }
-
-        return candidate;
-    }
-
-    private static string UniqueDirectory(string parent, string name)
-    {
-        var candidate = Path.Combine(parent, name);
-        var n = 2;
-        while (Directory.Exists(candidate))
-        {
-            candidate = Path.Combine(parent, $"{name} {n++}");
         }
 
         return candidate;

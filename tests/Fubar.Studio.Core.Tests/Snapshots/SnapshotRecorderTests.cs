@@ -1,3 +1,4 @@
+using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Snapshots;
 
 namespace Fubar.Studio.Core.Tests.Snapshots;
@@ -17,11 +18,19 @@ public class SnapshotRecorderTests
         SnapshotRecorder.Record(
             body, 200, headers ?? NoHeaders, "staging", policy ?? ResolvedSnapshotPolicy.Empty);
 
+    /// <summary>A policy as if the request itself had written every rule. The recorder does not read
+    /// provenance - only the Rules tab does - so these tests state the rules and nothing else.</summary>
     private static ResolvedSnapshotPolicy Policy(
         SnapshotRule[]? redact = null,
         SnapshotRule[]? normalize = null,
         string[]? headers = null) =>
-        new(redact ?? [], normalize ?? [], headers ?? []);
+        new(
+            [.. (redact ?? []).Select(From)],
+            [.. (normalize ?? []).Select(From)],
+            new Resolved<IReadOnlyList<string>>(headers ?? [], ComparisonScope.Request, "Request"));
+
+    private static ResolvedSnapshotRule From(SnapshotRule rule) =>
+        new(rule, ComparisonScope.Request, "Request");
 
     // ---- Redaction: a security test, not a formatting one ----------------------------------------
 

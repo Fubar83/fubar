@@ -48,6 +48,8 @@ internal sealed class RecordingWorkspaceService : IWorkspaceService
 
     public string RenamePath(string path, string newName) => throw new NotSupportedException();
 
+    public string MovePath(string path, string destinationDirectory) => throw new NotSupportedException();
+
     public void DeletePath(string path) => throw new NotSupportedException();
 
     public Task<IReadOnlyList<WorkspaceEnvironment>> LoadEnvironmentsAsync(string rootPath, CancellationToken cancellationToken = default) => throw new NotSupportedException();

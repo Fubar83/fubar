@@ -87,6 +87,15 @@ public sealed class SnapshotRecordingService : ISnapshotRecordingService
 
         foreach (var step in report.Steps)
         {
+            // Cleanup is not being tested, so there is nothing to record about it - the same reason
+            // the oracle skips it. Not a tidiness point: a batch reusing "delete-cat#created" as
+            // teardown reuses the case a STEP also ran, so recording both wrote the cleanup's 404
+            // over the step's 204 and every later run reported the step as a regression.
+            if (step.Step.IsTeardown)
+            {
+                continue;
+            }
+
             if (step.ResponseBody is not { } body)
             {
                 // Only a response can be recorded. A step that errored, was skipped, or whose body was

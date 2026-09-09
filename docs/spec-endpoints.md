@@ -3,7 +3,7 @@
 The design and reasoning are in [endpoints-and-oracles.md](endpoints-and-oracles.md). This is the
 specification: what it does, how the pieces fit, what is on disk, how it is used, and how to build it.
 
-Status: **steps 1-2 built** (§10.3); the rest written to be built from.
+Status: **built** — see §10.3 for the build order as it actually landed, and §10.3.1 for what is deliberately not built.
 
 ---
 
@@ -17,7 +17,7 @@ Status: **steps 1-2 built** (§10.3); the rest written to be built from.
 | **Case** | one concrete invocation of an endpoint: params, body, overrides | a recorded response | 0..n per endpoint |
 | **Snapshot** | a recorded response for a case, scoped to one environment or shared by all | an input | 0..1 shared + 0..1 per environment, per case |
 | **Environment** | a named set of variables + transport + credentials | a deployment | 0..n per workspace |
-| **Batch** | a named, ordered selection of cases + oracle + overlay | a folder | 0..n per workspace |
+| **Batch** | a named, ordered selection of cases + oracle + overlay | a folder | 0..n per workspace, plus 0..n per endpoint |
 | **Oracle** | what judges a response | a comparison implementation | 1 per run |
 | **Run** | one execution of a selection under one oracle | a batch | transient |
 
@@ -79,7 +79,9 @@ workspace/
         snapshots/
           _shared.json             used by every environment that has no file of its own
           staging.json             this environment only, and it wins for it
-  batches/
+        batches/
+          happy.json               ways of running THIS endpoint - orders/get-order@happy
+  batches/                         occasions that cut across the tree - @smoke
     smoke.json
     nightly-drift.json
   .fubar/                          never committed (already git-ignored)
@@ -91,7 +93,7 @@ Rules:
 
 - A directory containing `endpoint.json` **is** an endpoint. Its subdirectories are not folders.
 - A directory containing neither `endpoint.json` nor `fubar.json` is a folder.
-- `cases/` and `snapshots/` are reserved names inside an endpoint directory.
+- `cases/`, `snapshots/` and `batches/` are reserved names inside an endpoint directory.
 - One case per file, one snapshot per file. Both are for git: a case gets its own history, and a
   snapshot diff is reviewable on its own.
 
@@ -182,9 +184,12 @@ Both may exist for the same case, and the per-environment one wins for its envir
     { "endpoint": "orders/get-order", "case": "default" },
     { "endpoint": "orders/get-order", "case": "not-found" }
   ],
+  "teardown": [
+    { "endpoint": "orders/delete-order", "case": "created" }
+  ],
   "oracle": { "kind": "snapshot" },
   "environments": ["staging"],
-  "options": { "stopOnFailure": false, "delayMs": 0, "parallel": false },
+  "options": { "stopOnFailure": false, "delayMs": 0 },
   "overlay": {
     "comparison": { "ignoredPaths": { "add": ["$.version"] } },
     "tolerances": [{ "path": "$..elapsedMs", "numeric": 500 }]
@@ -197,6 +202,26 @@ Both may exist for the same case, and the per-environment one wins for its envir
   missing is reported as `Errored`, never skipped silently.
 - `environments` holds one name for most oracles and two for `environment:X`.
 - `overlay` is the occasion's settings (§4.2).
+- `teardown` is **cleanup, not test.** It runs after `steps` whatever happened to them, and never
+  changes the verdict.
+
+  It exists because a chain that creates something has to remove it again, and `stopOnFailure` — the
+  right setting for a chain — guarantees a failure in the middle skips the delete. Every red run then
+  leaves a row behind, which over a week of failing CI is a lot of rows nobody deletes.
+
+  Three rules follow from "not test", and each one is there to stop cleanup crying wolf:
+
+  - **Its assertions are dropped and its oracle is skipped.** A batch that reuses
+    `delete-order#created` as teardown reuses a case expecting `204`, and on a run where the delete
+    already happened as a step the cleanup finds `404`. That is the happy path.
+  - **Only "could not be sent at all" counts** — reported as `N cleanup steps did not finish`, beside
+    the verdict and never inside it. That is the actual leak signal.
+  - **It does not run after a cancellation.** Sending four more requests after Ctrl-C is the opposite
+    of stopping. That leaks, and it is the lesser surprise of the two.
+
+  If deleting is one of the things you are *testing*, it belongs in `steps`, where it is judged like
+  anything else. Putting it in both is reasonable and is what the worked example does: the step proves
+  delete works, and the teardown cleans up the runs where the step was never reached.
 
 ### 3.6 `_folder.json`
 
@@ -432,11 +457,21 @@ loses the ability to say which one started failing.
 ## 8 · CLI
 
 ```
-fubar run <selector> [--env NAME] [--oracle none|snapshot|env:NAME|run:ID]
-                     [--case NAME] [--update-snapshots] [--force]
+fubar run <selector> [--env NAME] [--oracle none|snapshot|env:NAME]
+                     [--update-snapshots] [--shared-snapshots]
                      [--report PATH] [--report-format junit|json]
-                     [--stop-on-failure] [--delay MS] [--parallel]
+                     [--stop-on-failure] [--delay MS] [--filter TEXT]
 ```
+
+Two flags this section used to list are gone, and neither is an omission:
+
+- **`--case NAME`** is `orders/get-order#default` in the selector instead. A flag would have had to
+  mean something for `--case` against a folder, and there is no good answer.
+- **`--parallel`** is not offered at any level, including in a batch's options. Captures chain, so two
+  requests in flight is a race on the session store whose winner depends on which response came back
+  first - it would silently break exactly the collections worth running.
+
+`run:<id>` is not built either; see §10.3.1.
 
 `<selector>` is one of:
 
@@ -445,7 +480,8 @@ fubar run <selector> [--env NAME] [--oracle none|snapshot|env:NAME|run:ID]
 orders                    a folder, depth-first
 orders/get-order          an endpoint, all its cases
 orders/get-order#default  one case
-@smoke                    a batch (its own oracle/environments unless overridden)
+@smoke                    a batch of the workspace's own (its oracle/environments unless overridden)
+orders/get-order@happy    a batch belonging to that endpoint
 ```
 
 Examples:
@@ -454,6 +490,7 @@ Examples:
 fubar run --env staging --oracle snapshot                 # regression, whole workspace
 fubar run orders --env staging --oracle env:production    # compare two environments
 fubar run @smoke --report junit=out.xml                   # a batch, for CI
+fubar run orders/get-order@happy --env staging            # one endpoint's own batch
 fubar run orders/get-order#not-found --env staging --oracle snapshot --update-snapshots
 ```
 
@@ -524,9 +561,13 @@ the decision in `decisions.md §A` rather than reopening it: switching case is n
 
 ### 9.3 Folder and workspace settings
 
-`_folder.json` has no editor today; it is written by the diff window's "save to folder" and otherwise
-edited by hand. That does not survive folders carrying auth, headers, variables, rules, snapshot
-policy and tolerances.
+**Built for a folder.** Selecting *Folder settings…* on a folder opens `_folder.json` on the canvas
+with `Headers · Auth · Rules` - the same tab vocabulary an endpoint uses, minus the ones a folder does
+not have (it carries no variables and nothing to send). Before this it was written by the diff
+window's "save to folder" and otherwise edited by hand, which did not survive folders carrying auth,
+headers, rules, snapshot policy and tolerances.
+
+The workspace row itself still has no editor for `fubar.json`'s own fields.
 
 Selecting a **folder** in the tree opens a folder editor on the same canvas, with the same tab
 vocabulary: `Headers · Auth · Variables · Rules`. Selecting the **workspace** row opens the same
@@ -544,7 +585,17 @@ Three entry points, in order of how often they are used:
 2. **The Rules tab** on an endpoint, folder or workspace: every rule that applies here, each with its
    source, grouped `Comparison · Snapshot policy · Tolerances`. Rules inherited from above are shown
    greyed with their origin; local ones are editable.
-3. **The batch editor** (§9.7) for occasion-only rules.
+
+   **Built**, on an endpoint and on a case. A folder or the workspace needs an editor to put it in
+   (§9.3, not built); the tab itself takes any level, which it is given as four delegates over the
+   document its own editor already loads and saves — a Rules tab that loaded and saved the file itself
+   would be a second writer racing that editor over one file.
+
+   A comparison option is three-state, not a checkbox: **Inherit** is a real answer and the commonest
+   one, and it shows what it is inheriting (`off · from Default`, `on · from Folder: orders`) beside
+   the control. A checkbox would make every option this level never mentioned look deliberately set,
+   and turning one off and on again would leave a local override behind that keeps overriding forever.
+3. **The batch editor** (§9.7) for occasion-only rules. Built — see §10.3 step 7.
 
 **Choosing the level is the whole skill**, so the save control never guesses. A rule written from a
 difference offers *this endpoint* (default), *folder: orders*, or *workspace* — the same SplitButton
@@ -625,6 +676,28 @@ the overlay rules — with the overlay marked as *applies to this batch only*, s
 for a permanent rule.
 
 *Add to batch…* on a tree row appends to an existing batch.
+
+**A batch has two homes.** `batches/` at the workspace root holds the occasions that cut across the
+tree; `<endpoint>/batches/` holds the ways of running one endpoint, and those show in the tree beside
+its cases, tagged. This reverses the "stored beside the collection rather than inside it" wording
+above for the endpoint-scoped case, deliberately: an endpoint's cases-in-an-order is a thing that
+belongs to the endpoint, and putting it anywhere else meant a workspace-level list of names like
+`get-cat-happy`. A batch name is unique only within one home, so a selector says either `@smoke` or
+`orders/get-order@happy`; a bare name never searches the endpoints, because two of them may each have
+a `happy` and resolving across both would mean whichever was scanned first.
+
+**Built**, except the two creation shortcuts: a batch is made from the Batches group's `+` or from an
+endpoint's *New Batch* (both open the new one straight away — a row saying "0 steps" with no way in
+but a text editor is what made this a JSON-editing job), and *Save as batch…* / *Add to batch…* are
+not built. The editor covers name,
+description, steps, cleanup, oracle, environments and options; the overlay is carried through
+untouched rather than shown, because "applies to this batch only" needs the marking above to be worth
+having and the rule editor to write it — both of which the Rules tab now has, so this is the next
+piece rather than a decision.
+
+Cleanup is a second list under its own heading, not a flag on a step: it runs whatever happened above
+and never counts towards the verdict, which is a different KIND of thing rather than a property of one
+step.
 
 ### 9.8 Import
 
@@ -755,6 +828,33 @@ Each step is useful on its own and leaves the app shippable.
    run in the batch's own order, and a step naming something that is no longer there ERRORS rather
    than being skipped.
 
+7. ~~**The batch editor (§9.7).**~~ **Done.** Steps and cleanup are pickers over the endpoints and
+   folders the workspace has, with the endpoint's own cases beside each; a step naming something that
+   is gone keeps its name in a red box saying "not in this workspace", matching what the planner does
+   with it at run time.
+
+   The name is the FILE's, and saving a changed one renames the file (`IBatchStore.RenameBatch`). A
+   selector resolves `@smoke` against the directory listing, not against anything inside the files, so
+   a batch whose two names disagree is one nothing can run by the name it displays - which the left
+   pane was already doing, running the name inside the file.
+
+8. ~~**The Rules tab (§9.4 item 2).**~~ **Done**, on an endpoint and on a case. Every rule that applies
+   there, grouped `Comparison · Tolerances · Snapshot policy`, each carrying the level that set it;
+   inherited ones in italics with their origin, local ones editable. Removing an inherited rule writes
+   a REMOVAL at this level rather than editing the level that wrote it.
+
+   Two things this required, and both were bugs rather than gaps. Snapshot rules were resolved without
+   provenance, so nothing could say where a redaction came from. And **both editors dropped rules on
+   save** - `BuildRequestModel` never copied `Snapshot` or `Tolerances`, and the case editor's
+   `ToModel` never copied `Comparison` or `Tolerances` - so a file carrying any of them lost it the
+   first time anyone pressed Ctrl+S, silently.
+
+9. ~~**Endpoint-scoped batches, tags in the tree, and drafts.**~~ **Done.** An endpoint holds batches
+   beside its cases; both are tagged in the tree. New cases, batches, endpoints and requests are DRAFTS
+   - held in memory, shown with the unsaved dot, written on the first Save - so making one and changing
+   your mind leaves nothing behind. And the empty state can open a scratch request with no workspace at
+   all, which is the shortest path this app has ever had from launch to a response.
+
 Steps 1-4 need no format change and land in every workspace, old or new. That is what makes this
 incremental rather than a rewrite, and it means the two halves of §10.4 differ only from step 5 on.
 
@@ -768,9 +868,16 @@ Named so it is a decision rather than an omission:
   the run window's *Record snapshots* or from `--update-snapshots`. Per-field accept needs the diff
   and the snapshot writer on the same screen, which the comparison window is not yet.
 - **`--force` and the uncommitted-snapshot check** (§6.4). Recording does not ask git anything.
-- **A batch editor.** Batches are listed and run from the left pane; the file is edited by hand.
 - **Case-level auth and snapshot policy.** A case carries comparison rules and tolerances; auth stops
   at the endpoint (§4.4) and so does the snapshot policy, which §3.3's file shape already implied.
+  The Rules tab on a case says this rather than leaving it to be discovered: the endpoint's policy is
+  shown, greyed, with a line saying where it is set.
+- **A workspace-level editor** (§9.3). `fubar.json` has no settings screen; a FOLDER now does
+  (`Headers · Auth · Rules`), and the workspace root is reachable as the outermost folder, but the
+  manifest's own fields are still edited by hand.
+- **Array identity from the Rules tab.** Shown with its origin, not editable there. Array keys are a
+  whole-set replacement rather than an add/remove list, so "remove this one" is not a thing the format
+  can express; they are written from a comparison window, where the array in question is on screen.
 - **`ComparisonScope.Workspace`.** `fubar.json` carries no comparison section, so the value would be
   one nothing could ever produce.
 
@@ -779,6 +886,12 @@ Named so it is a decision rather than an omission:
 **Decided.** Endpoints, cases, snapshots and batches exist only in workspaces whose `fubar.json`
 declares the new format. An existing workspace keeps today's request files and today's runner, and is
 never converted on open.
+
+**The route out is now visible** - which is the half of this that was missing. A requests-format
+workspace shows a line in the Left Pane naming what it does not have (cases, batches, snapshots,
+per-case rules) with *Convert to endpoints…* beside it. Converting is still a choice and still nothing
+happens on open; what changed is that the choice was previously a context-menu item you had to already
+know about, which is how "closes by choice" becomes "closes never".
 
 This is the lowest-risk option and it has one cost, which is worth stating plainly rather than
 discovering: **the product is in two halves, and nothing closes the split by itself.** Old workspaces

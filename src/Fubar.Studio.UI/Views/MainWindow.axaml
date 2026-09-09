@@ -241,10 +241,24 @@
                          - keeps IsVisible below evaluated against MainViewModel rather than against
                          whatever gets set as this element's own DataContext. -->
                     <ContentControl Content="{Binding ActiveEditor}" IsVisible="{Binding ActiveEditor, Converter={x:Static conv:ObjectConverters.IsNotNull}}" />
-                    <fc:EmptyState IsVisible="{Binding ActiveEditor, Converter={x:Static conv:ObjectConverters.IsNull}}"
-                                   Icon="&#x1F4C4;"
-                                   Title="Nothing open"
-                                   Description="Double-click a request, environment, or auth profile in the Explorer." />
+                    <!-- The empty state offers the one thing that needs no workspace, because
+                         "open a workspace first" is four filing decisions between launching the app
+                         and seeing a response - and none of them can be made sensibly before you know
+                         whether the request was worth keeping. -->
+                    <StackPanel IsVisible="{Binding ActiveEditor, Converter={x:Static conv:ObjectConverters.IsNull}}"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Spacing="14">
+                        <fc:EmptyState Icon="&#x1F4C4;"
+                                       Title="Nothing open"
+                                       Description="Send one request without setting anything up, or double-click something in the Explorer." />
+
+                        <Button Classes="primary-btn"
+                                Content="New request"
+                                HorizontalAlignment="Center"
+                                Command="{Binding WorkspaceExplorer.NewScratchRequestCommand}"
+                                ToolTip.Tip="Opens a scratch request. Nothing is written until you save it." />
+                    </StackPanel>
                 </Panel>
 
                 <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="{DynamicResource BorderSubtle}" ResizeDirection="Rows" />

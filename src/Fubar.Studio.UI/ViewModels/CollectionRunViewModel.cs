@@ -24,6 +24,8 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
     private readonly WorkspaceEnvironment? _environment;
     private readonly RunPlan _fullPlan;
     private readonly Batch? _batch;
+    private readonly Services.IDiffPreviewService _diffPreview;
+    private readonly Services.IComparisonSettingsContext _settingsContext;
     private CancellationTokenSource? _cancellation;
 
     public CollectionRunViewModel(
@@ -35,6 +37,8 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         WorkspaceEnvironment? environment,
         IReadOnlyList<WorkspaceEnvironment> allEnvironments,
         string target,
+        Services.IDiffPreviewService diffPreview,
+        Services.IComparisonSettingsContext settingsContext,
         Batch? batch = null)
     {
         ArgumentNullException.ThrowIfNull(allEnvironments);
@@ -45,6 +49,8 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         _fullPlan = plan;
         _workspace = workspace;
         _batch = batch;
+        _diffPreview = diffPreview;
+        _settingsContext = settingsContext;
 
         // A batch that names an environment is run against it, the way the command line does - a batch
         // written for staging that silently went to whatever was selected in the toolbar would be a
@@ -234,7 +240,7 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
             // end up saying "skipped" rather than staying on "pending" forever.
             foreach (var step in report.Steps)
             {
-                if (byKey.TryGetValue(Key(step.Step), out var row))
+                if (byKey.TryGetValue(step.Step.Order, out var row))
                 {
                     row.Apply(step);
                 }
@@ -308,7 +314,7 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
 
     /// <summary>Everything both buttons do before they start: reset the rows, wire the progress, and
     /// put the window into its running state.</summary>
-    private (Dictionary<string, RunStepRowViewModel> ByKey, IProgress<RunProgress> Progress, RunOptions Options)
+    private (Dictionary<int, RunStepRowViewModel> ByKey, IProgress<RunProgress> Progress, RunOptions Options)
         Begin(RunPlan plan)
     {
         _cancellation?.Dispose();
@@ -325,16 +331,20 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
 
         NotifyCommands();
 
-        // Keyed on endpoint AND case: several cases share one endpoint.json, so keying on the file
-        // alone throws on the duplicate and would otherwise update the wrong row.
-        var byKey = Steps.ToDictionary(s => Key(s.Step), StringComparer.OrdinalIgnoreCase);
+        // Keyed on the step's ORDER, which is the only thing about a step that is unique - RunPlan
+        // renumbers every plan 1..n, teardown included. It used to key on endpoint + case, which is
+        // not: a teardown step is routinely the SAME case as one of the steps above it, because
+        // "delete it" both proves the delete works and cleans up after a run that stopped before
+        // reaching it. That duplicate threw out of ToDictionary, from a command handler, so pressing
+        // Run on the batch shape the docs recommend took the whole process down.
+        var byKey = Steps.ToDictionary(s => s.Step.Order);
         var completed = 0;
 
         // Progress<T> posts back to the captured (UI) context, which is what makes it safe to touch the
         // rows from here while the run itself is on a worker.
         var progress = new Progress<RunProgress>(update =>
         {
-            if (!byKey.TryGetValue(Key(update.Step), out var row))
+            if (!byKey.TryGetValue(update.Step.Order, out var row))
             {
                 return;
             }
@@ -368,14 +378,132 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanRecord));
     }
 
-    private static string Key(RunStep step) => $"{step.FilePath}#{step.CaseName}";
-
     private IOracle BuildOracle() => SelectedOracle switch
     {
         { Kind: OracleKind.Snapshot } => new SnapshotOracle(_snapshots),
         { Kind: OracleKind.Environment, Other: { } other } => new EnvironmentOracle(_runService, other),
         _ => NoOracle.Instance,
     };
+
+    /// <summary>
+    /// Opens the two bodies this step was judged from, side by side.
+    /// </summary>
+    /// <remarks>
+    /// <para>"2 differences from Staging.json" is where the question starts, not where it ends. The
+    /// same pane the environment comparison uses - left is what it was compared against, right is what
+    /// came back - so the difference between the two features really is one label.</para>
+    /// <para>It carries the settings hierarchy too, so <em>Ignore this field</em> writes the rule at
+    /// the level you choose and into the same file the request editor would write it to.</para>
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanShowDifferences))]
+    private async Task ShowDifferencesAsync(RunStepRowViewModel? row)
+    {
+        if (row?.Report is not { ResponseBody: { } response, ComparedBody: { } compared } report)
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = await _settingsContext.BuildAsync(_workspace, row.Step.FilePath);
+
+            // Accepting is offered only against a SNAPSHOT. The other side of an environment
+            // comparison is a live system, and there is nothing there to write into.
+            var accept = SelectedOracle is { Kind: OracleKind.Snapshot }
+                ? new Services.SnapshotAcceptContext(
+                    System.IO.Path.GetFileName(report.ComparedAgainst) ?? "the snapshot",
+                    path => AcceptAsync(row, path))
+                : null;
+
+            await _diffPreview.ShowAsync(
+                compared,
+                response,
+                report.ComparedAgainst ?? "expected",
+                $"{row.Name} · {EnvironmentName}",
+                $"{row.Name} — {report.DifferenceCount} difference{(report.DifferenceCount == 1 ? "" : "s")}",
+                settings,
+                accept);
+        }
+        catch (Exception ex)
+        {
+            Status = $"Could not open the comparison: {ex.Message}";
+        }
+    }
+
+    private bool CanShowDifferences(RunStepRowViewModel? row) => row?.CanShowDifferences == true;
+
+    /// <summary>
+    /// Writes one field of this response into its snapshot, or the whole response when
+    /// <paramref name="path"/> is null, and returns the snapshot as it now reads.
+    /// </summary>
+    /// <remarks>
+    /// <para>The RESPONSE it writes is the one this run compared - already redacted and normalised by
+    /// the same rules the recorder uses - so accepting cannot put a token in a committed file, and
+    /// cannot bake in a timestamp that a normalise rule was written to remove.</para>
+    /// <para>The snapshot's SCOPE is preserved, never re-decided. Accepting into a shared snapshot is
+    /// a change to what every environment compares against; silently splitting it per environment
+    /// here would be a different change from the one that was asked for.</para>
+    /// </remarks>
+    private async Task<string?> AcceptAsync(RunStepRowViewModel row, string? path)
+    {
+        if (row.Report is not { ResponseBody: { } response } report)
+        {
+            return null;
+        }
+
+        try
+        {
+            var lookup = await _snapshots
+                .FindAsync(_workspace.RootPath, row.Step.SubjectPath, _environment?.Name);
+
+            if (lookup.Snapshot is not { } existing)
+            {
+                Status = "There is no snapshot to accept into - record one first.";
+                return null;
+            }
+
+            var body = response;
+
+            if (path is { Length: > 0 })
+            {
+                var snapshotBody = System.Text.Json.Nodes.JsonNode.Parse(existing.BodyForComparison());
+                var responseBody = System.Text.Json.Nodes.JsonNode.Parse(response);
+
+                if (snapshotBody is null || !SnapshotAccept.Field(snapshotBody, responseBody, path))
+                {
+                    Status = $"Could not accept {path}.";
+                    return null;
+                }
+
+                body = snapshotBody.ToJsonString(SnapshotJson.Options);
+            }
+
+            // Back through the recorder with an EMPTY policy: both sides were already redacted and
+            // normalised, and what is wanted here is the stable, key-sorted serialisation so the file
+            // diffs only where it changed.
+            var written = SnapshotRecorder.Record(
+                body,
+                report.StatusCode ?? existing.Status,
+                existing.Headers,
+                existing.Environment,
+                ResolvedSnapshotPolicy.Empty,
+                existing.Case,
+                recordedBy: "fubar");
+
+            await _snapshots.SaveAsync(_workspace.RootPath, row.Step.SubjectPath, written.Snapshot);
+
+            Status = path is { Length: > 0 }
+                ? $"Accepted {path} into {System.IO.Path.GetFileName(report.ComparedAgainst)}."
+                : $"Re-recorded {System.IO.Path.GetFileName(report.ComparedAgainst)}.";
+
+            return written.Snapshot.BodyForComparison();
+        }
+        catch (Exception ex)
+        {
+            Status = $"Could not accept: {ex.Message}";
+            return null;
+        }
+    }
 
     private bool CanRun() => !IsRunning && Steps.Count > 0;
 

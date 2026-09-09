@@ -17,6 +17,13 @@ namespace Fubar.Studio.Application.Tests;
 /// </summary>
 public class EnvironmentPairRunServiceTests
 {
+    /// <summary>Records every report as it is made, on the calling thread - so the ORDER asserted is
+    /// the order the service reported in, with nothing to wait for.</summary>
+    private sealed class Recorder(Action<StepPairProgress> onReport) : IProgress<StepPairProgress>
+    {
+        public void Report(StepPairProgress value) => onReport(value);
+    }
+
     private static readonly Workspace Ws = new() { RootPath = "/w", Manifest = new AppManifest { Name = "t" } };
 
     private static readonly WorkspaceEnvironment Staging = new() { Id = "stg", Name = "Staging" };
@@ -210,14 +217,15 @@ public class EnvironmentPairRunServiceTests
     [Fact]
     public async Task Progress_reports_the_left_side_before_the_pair_is_complete()
     {
+        // An INLINE IProgress, not Progress<T>: what is under test is the order the service REPORTS
+        // in, and Progress<T> posts through the synchronization context, so the test had to sleep and
+        // hope. Fifty milliseconds is not always enough on a loaded machine, and a test that fails
+        // once in six runs teaches people to re-run rather than to look.
         var seen = new List<string>();
-        var progress = new Progress<StepPairProgress>(p => seen.Add(
+        var progress = new Recorder(p => seen.Add(
             p.Pair is not null ? $"{p.Step.Name}:pair" : p.Left is not null ? $"{p.Step.Name}:left" : $"{p.Step.Name}:start"));
 
         await Sut(new FakeExecution()).RunAsync(Run(Plan(1)), progress);
-
-        // Progress<T> posts through the synchronization context, so give it a turn to drain.
-        await Task.Delay(50);
 
         Assert.Equal(["r1:start", "r1:left", "r1:pair"], seen);
     }

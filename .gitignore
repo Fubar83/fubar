@@ -27,3 +27,5 @@ publish/
 .DS_Store
 Thumbs.db
 
+# The demo workspace and its stub API - local, not part of the product
+examples/

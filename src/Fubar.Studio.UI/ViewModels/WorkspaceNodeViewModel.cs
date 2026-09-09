@@ -28,6 +28,12 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
         FullPath = fullPath;
         IsDirectory = isDirectory;
         Kind = kind ?? (isDirectory ? WorkspaceNodeKind.Folder : WorkspaceNodeKind.Request);
+
+        // Every route that changes what is under this node goes through one of these two - the
+        // reconciler, and the explorer adding or discarding a draft directly - so the display list
+        // follows them rather than each caller remembering to say so.
+        Children.CollectionChanged += (_, _) => RaiseShapeChanged();
+        Batches.CollectionChanged += (_, _) => RaiseShapeChanged();
     }
 
     [ObservableProperty]
@@ -71,6 +77,152 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     public ObservableCollection<WorkspaceNodeViewModel> Children { get; } = [];
 
     /// <summary>
+    /// What the TREE shows beneath this node, which is not always what it holds.
+    /// </summary>
+    /// <remarks>
+    /// An endpoint with one case is a leaf. The common endpoint has exactly one, and growing a level
+    /// to say "there is nothing more here" costs a row and a fold on every endpoint in the workspace.
+    /// Two or more get the expander and their names.
+    ///
+    /// <para>A VIEW concern only: <see cref="Children"/> stays complete, because <c>ToTreeNode</c>
+    /// feeds <c>RunPlan</c> - and an endpoint whose single case were hidden from the MODEL would be
+    /// sent with no case at all, which is a different request.</para>
+    /// </remarks>
+    /// <remarks>
+    /// <para>ONE collection instance for the life of the node, reconciled in place. It used to be a
+    /// computed projection returning a fresh list on every read, which meant every notification handed
+    /// the TreeView a different collection: the child containers were rebuilt, and a selected case or
+    /// batch lost its selection - so opening one deselected the very row being edited, and every
+    /// command keyed off the selection stopped being offered.</para>
+    /// <para>A folder or a request has no batches, so its display list is just its children.</para>
+    /// </remarks>
+    public ObservableCollection<WorkspaceNodeViewModel> DisplayChildren { get; } = [];
+
+    /// <summary>
+    /// Cases first, then batches: a case is what the endpoint IS called with, a batch is a way of
+    /// running several of them, so the parts come before the arrangements. An endpoint with exactly
+    /// one case and no batches stays a leaf - "1 case" under an expander is a row that costs a click
+    /// to learn nothing.
+    /// </summary>
+    private IReadOnlyList<WorkspaceNodeViewModel> DesiredDisplayChildren =>
+        Kind != WorkspaceNodeKind.Endpoint ? [.. Children]
+        : Children.Count + Batches.Count < 2 ? []
+        : [.. Children, .. Batches];
+
+    /// <summary>Aligns <see cref="DisplayChildren"/> with what should be shown, touching only the rows
+    /// that actually changed - anything else would rebuild containers that are holding a selection.</summary>
+    private void SyncDisplayChildren()
+    {
+        var desired = DesiredDisplayChildren;
+
+        for (var i = DisplayChildren.Count - 1; i >= 0; i--)
+        {
+            if (!desired.Contains(DisplayChildren[i]))
+            {
+                DisplayChildren.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var existing = DisplayChildren.IndexOf(desired[i]);
+
+            if (existing < 0)
+            {
+                DisplayChildren.Insert(Math.Min(i, DisplayChildren.Count), desired[i]);
+            }
+            else if (existing != i)
+            {
+                DisplayChildren.Move(existing, i);
+            }
+        }
+    }
+
+    /// <summary>
+    /// This endpoint's own batches.
+    /// </summary>
+    /// <remarks>
+    /// Its own collection, never merged into <see cref="Children"/>, because <c>ToTreeNode</c> feeds
+    /// <c>RunPlan</c>: an endpoint's children are the cases a run of it SENDS, and a batch in there
+    /// would make an endpoint whose only child was a batch send nothing at all.
+    /// </remarks>
+    public ObservableCollection<WorkspaceNodeViewModel> Batches { get; } = [];
+
+    /// <summary>How many ways this endpoint is called, shown as a badge only when there is more than
+    /// one - "1 case" on every row would be noise standing in for the ordinary.</summary>
+    public int CaseCount => Kind == WorkspaceNodeKind.Endpoint ? Children.Count : 0;
+
+    public int BatchCount => Kind == WorkspaceNodeKind.Endpoint ? Batches.Count : 0;
+
+    public bool IsBatch => Kind == WorkspaceNodeKind.Batch;
+
+    /// <summary>
+    /// Made, but not written yet: this node has no file on disk.
+    /// </summary>
+    /// <remarks>
+    /// <para>A draft is held in memory until its editor is saved, so that "New case" does not leave a
+    /// <c>new-case.json</c> behind every time someone opens one and changes their mind.</para>
+    /// <para>The tree is otherwise a reflection of the file system, so a draft has to be exempted from
+    /// <see cref="SyncChildren"/>'s reconciliation twice over: it is never removed for being absent
+    /// from a scan, and the moment the scan DOES report it the flag clears and it becomes an ordinary
+    /// node. Everything else about it is real - its path is the file it will occupy, which is what
+    /// reserves the name.</para>
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsUnsaved))]
+    public partial bool IsDraft { get; set; }
+
+    /// <summary>What the tree's dot means: edited and not saved, or never saved at all.</summary>
+    public bool IsUnsaved => IsDirty || IsDraft;
+
+    /// <summary>
+    /// What this endpoint holds, in ONE chip - never two.
+    /// </summary>
+    /// <remarks>
+    /// <para>The pane is 260px and every row already carries a method badge and an auth badge. A
+    /// second count chip pushed the auth badge off the right edge; stopping that overflow then made
+    /// the NAME ellipse to "ge..." instead, which is the worse trade - the name is what the row is
+    /// for. So the counts take turns rather than sharing.</para>
+    /// <para>Cases win the slot when there are several, because they are what an endpoint IS; the
+    /// batch count gets it only when there is no case count to show. Either way, expanding shows
+    /// both, tagged.</para>
+    /// </remarks>
+    public string ContentsText => (CaseCount, BatchCount) switch
+    {
+        // One case is not worth a chip - it is the ordinary thing an endpoint has. One batch is,
+        // because it is something you can run rather than a way this endpoint is called.
+        ( > 1, _) => $"{CaseCount} cases",
+        (_, > 0) => BatchCount == 1 ? "1 batch" : $"{BatchCount} batches",
+        _ => "",
+    };
+
+    public bool HasContents => ContentsText.Length > 0;
+
+    /// <summary>Whether there is a recorded answer here, and whether it can still be believed.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoSnapshot))]
+    [NotifyPropertyChangedFor(nameof(HasSnapshot))]
+    [NotifyPropertyChangedFor(nameof(HasStaleSnapshot))]
+    [NotifyPropertyChangedFor(nameof(SnapshotTooltip))]
+    public partial SnapshotState Snapshots { get; set; }
+
+    public bool HasSnapshot => Snapshots == SnapshotState.Recorded;
+
+    public bool HasNoSnapshot => Snapshots == SnapshotState.None;
+
+    /// <summary>Recorded before the endpoint or case was last edited. The badge that matters: a green
+    /// run against one of these is a lie.</summary>
+    public bool HasStaleSnapshot => Snapshots == SnapshotState.Stale;
+
+    public string SnapshotTooltip => Snapshots switch
+    {
+        SnapshotState.Recorded => "A snapshot is recorded, and was recorded after the last edit",
+        SnapshotState.None => "No snapshot recorded. A regression run here reports that and fails.",
+        SnapshotState.Stale => "Recorded BEFORE this was last edited - re-record it, or a green run means nothing",
+        _ => "",
+    };
+
+    /// <summary>
     /// Projects this node and its descendants back into the immutable <see cref="WorkspaceTreeNode"/>
     /// shape, so domain code (<c>RunPlan</c>) can work on the tree without knowing about view models.
     ///
@@ -83,8 +235,13 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// left pane happens to be showing while someone types in the filter box - the filter is a way to
     /// find things, never a way to select them.
     /// </remarks>
+    /// <remarks>
+    /// Drafts are left out. This is what <c>RunPlan</c> walks, and the runner reads from disk - a case
+    /// that has not been saved yet has no file to send, so including it would turn "run this endpoint"
+    /// into a run with a step that cannot possibly work.
+    /// </remarks>
     public WorkspaceTreeNode ToTreeNode() =>
-        new(Name, FullPath, IsDirectory, [.. Children.Select(c => c.ToTreeNode())],
+        new(Name, FullPath, IsDirectory, [.. Children.Where(c => !c.IsDraft).Select(c => c.ToTreeNode())],
             IsDirectory && !IsEndpoint ? null : new RequestSummary(Method ?? "GET", HasAuthOverride, Url, SendsNoAuth))
         {
             // Carried, not re-derived: RunPlan expands an endpoint into its cases and a folder into
@@ -120,6 +277,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
     /// <summary>True while this request is the active canvas and has unsaved edits.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsUnsaved))]
     public partial bool IsDirty { get; set; }
 
     /// <summary>The request's URL, null for a folder. Carried so the filter can match a host or a path
@@ -141,6 +299,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// folded folders hides the only thing the pane is for.</para>
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasContents))]
     public partial bool IsExpanded { get; set; } = true;
 
     /// <summary>
@@ -199,9 +358,11 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// <summary>Reconciles <see cref="Children"/> against a freshly scanned snapshot, by path identity.</summary>
     protected void SyncChildren(IReadOnlyList<WorkspaceTreeNode> incoming)
     {
+        // A draft has no file, so no scan will ever mention it. Removing it for that would delete the
+        // thing the user is in the middle of writing on the next file-system event.
         for (var i = Children.Count - 1; i >= 0; i--)
         {
-            if (!incoming.Any(n => n.FullPath == Children[i].FullPath))
+            if (!Children[i].IsDraft && !incoming.Any(n => n.FullPath == Children[i].FullPath))
             {
                 Children.RemoveAt(i);
             }
@@ -229,8 +390,10 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                     HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false,
                     SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false,
                     Url = node.RequestSummary?.Url,
+                    Snapshots = node.Snapshots,
                 };
                 child.SyncChildren(node.Children);
+                child.SyncBatches(node.Batches);
                 Children.Insert(Math.Min(i, Children.Count), child);
             }
             else
@@ -246,8 +409,95 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                 existing.Url = node.RequestSummary?.Url;
                 existing.HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false;
                 existing.SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false;
+                existing.Snapshots = node.Snapshots;
+
+                // The scan found it, so it is no longer a draft - saving is what makes one real, and
+                // this is the only place that can know it happened.
+                existing.IsDraft = false;
+
                 existing.SyncChildren(node.Children);
+                existing.SyncBatches(node.Batches);
             }
         }
+
+        MoveDraftsLast(Children);
+
+        // What the tree SHOWS depends on how many children there are - an endpoint becomes a leaf at
+        // one case and grows an expander at two - so adding or removing one has to re-ask.
+        RaiseShapeChanged();
+    }
+
+    /// <summary>
+    /// Reconciles this endpoint's batches, the same way <see cref="SyncChildren"/> does its cases.
+    /// </summary>
+    /// <remarks>
+    /// A batch node has no children of its own - a batch names steps, it does not contain them - so
+    /// this does not recurse. Batches do not nest, and a batch of batches is a scheduler.
+    /// </remarks>
+    protected void SyncBatches(IReadOnlyList<WorkspaceTreeNode> incoming)
+    {
+        for (var i = Batches.Count - 1; i >= 0; i--)
+        {
+            if (!Batches[i].IsDraft && !incoming.Any(n => n.FullPath == Batches[i].FullPath))
+            {
+                Batches.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < incoming.Count; i++)
+        {
+            var node = incoming[i];
+            var existing = Batches.FirstOrDefault(b => b.FullPath == node.FullPath);
+
+            if (existing is null)
+            {
+                Batches.Insert(
+                    Math.Min(i, Batches.Count),
+                    new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory, node.Kind));
+
+                continue;
+            }
+
+            var currentIndex = Batches.IndexOf(existing);
+            if (currentIndex != i)
+            {
+                Batches.Move(currentIndex, i);
+            }
+
+            existing.Name = node.Name;
+            existing.IsDraft = false;
+        }
+
+        MoveDraftsLast(Batches);
+        RaiseShapeChanged();
+    }
+
+    /// <summary>
+    /// Drafts sit at the end, in the order they were made.
+    /// </summary>
+    /// <remarks>
+    /// The scan does not mention them, so the reconciliation above moves the real nodes into scan
+    /// order around whatever position a draft happened to hold - which would shuffle it up the list
+    /// on every unrelated file change. Last is the one position nothing else competes for.
+    /// </remarks>
+    private static void MoveDraftsLast(ObservableCollection<WorkspaceNodeViewModel> nodes)
+    {
+        foreach (var draft in nodes.Where(n => n.IsDraft).ToList())
+        {
+            var from = nodes.IndexOf(draft);
+            if (from >= 0 && from != nodes.Count - 1)
+            {
+                nodes.Move(from, nodes.Count - 1);
+            }
+        }
+    }
+
+    private void RaiseShapeChanged()
+    {
+        SyncDisplayChildren();
+        OnPropertyChanged(nameof(CaseCount));
+        OnPropertyChanged(nameof(BatchCount));
+        OnPropertyChanged(nameof(ContentsText));
+        OnPropertyChanged(nameof(HasContents));
     }
 }

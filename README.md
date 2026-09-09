@@ -8,14 +8,17 @@ they share.
 
 | | |
 | --- | --- |
-| **[Fubar API Studio](docs/api-studio.md)** | An API client — a native, open-source Postman/Insomnia alternative. Request builder, environments, OAuth 2.0, OpenAPI import, assertions and captures. Ships as `FubarAPIStudio`. |
-| **[Fubar Diff](docs/diff.md)** | A diff tool. Side-by-side comparison with character-level highlighting, semantic JSON and YAML, folder comparison, three-way merge with an editable result, and a **structural C# comparison** that says which members changed and which were only reformatted or moved. Runs headless for CI. Ships as `FubarDiff`. |
-| **Fubar.Controls** | The shared design system: colour tokens with Dark/Light variants, and a catalog of composable Avalonia controls. Has its own sandbox app, the Gallery. |
+| **[Fubar API Studio →](docs/api-studio.md)** | An API client — a native, open-source Postman/Insomnia alternative. Endpoints with named cases, environments, OAuth 2.0, OpenAPI import, assertions and captures — and regression runs judged against recorded snapshots or against another environment. Ships as `FubarAPIStudio`. |
+| **[Fubar Diff →](docs/diff.md)** | A diff tool. Side-by-side comparison with character-level highlighting, semantic JSON and YAML, folder comparison, three-way merge with an editable result, and a **structural C# comparison** that says which members changed and which were only reformatted or moved. Runs headless for CI. Ships as `FubarDiff`. |
+| **[Fubar.Controls →](docs/controls.md)** | The shared design system: colour tokens with Dark/Light variants, and a catalog of composable Avalonia controls. Has its own sandbox app, the Gallery. |
 
-<!-- Screenshots: see docs/images/README.md. Uncomment as they land.
-| ![Fubar API Studio](docs/images/studio-request.png) | ![Fubar Diff](docs/images/diff-side-by-side.png) |
-| --- | --- |
--->
+[![Fubar API Studio](docs/images/studio-request.png)](docs/api-studio.md)
+
+<sub>**Fubar API Studio** — one endpoint, one of its cases, its assertions, and the answer. [More →](docs/api-studio.md)</sub>
+
+[![Fubar Diff](docs/images/diff-structural-csharp.png)](docs/diff.md)
+
+<sub>**Fubar Diff** — the text diff counts eight changes; the panel on the left names them: a field added, three members changed, one only reformatted, one only moved. [More →](docs/diff.md)</sub>
 
 ## Why one repository
 
@@ -92,7 +95,7 @@ src/
   Fubar.Studio.{Core,Application,Infrastructure,UI}/   API Studio
   Fubar.Diff.{Core,Application,Infrastructure,UI}/     Diff
 tests/                       one suite per project, plus architecture guards per app
-docs/                        per-app notes and pane specs
+docs/                        per-app READMEs, pane specs, invariants and changelogs
 build/                       publish scripts
 ```
 

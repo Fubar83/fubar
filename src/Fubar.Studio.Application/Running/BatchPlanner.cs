@@ -11,10 +11,17 @@ public sealed record ResolvedBatch(Batch Batch, RunPlan Plan);
 public interface IBatchPlanner
 {
     /// <summary>Finds a batch by name and expands it.</summary>
+    /// <param name="ownerPath">The endpoint whose batch this is, relative to <c>collections/</c> -
+    /// null for one of the workspace's own. Null is not "look everywhere": a name is unique only
+    /// within one home, and searching both would make <c>@happy</c> mean whichever endpoint happened
+    /// to be scanned first.</param>
     /// <exception cref="InvalidOperationException">There is no batch by that name. Reported rather
     /// than run as nothing: a typo in a CI script must not pass.</exception>
     Task<ResolvedBatch> ExpandAsync(
-        Workspace workspace, string batchName, CancellationToken cancellationToken = default);
+        Workspace workspace,
+        string batchName,
+        string? ownerPath = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <inheritdoc cref="IBatchPlanner"/>
@@ -32,18 +39,27 @@ public sealed class BatchPlanner : IBatchPlanner
     public async Task<ResolvedBatch> ExpandAsync(
         Workspace workspace,
         string batchName,
+        string? ownerPath = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workspace);
 
-        var batch = await _batches.FindBatchAsync(workspace.RootPath, batchName, cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException(Missing(workspace, batchName));
-
         var tree = _requests.BuildCollectionsTree(workspace.RootPath);
         var collections = Path.Combine(workspace.RootPath, "collections");
+
+        var owner = OwnerDirectory(tree, workspace, ownerPath);
+
+        var batch = await _batches.FindBatchAsync(owner, batchName, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException(Missing(owner, batchName, ownerPath));
         var steps = new List<RunStep>();
 
-        foreach (var step in batch.Steps)
+        // Teardown after the tested steps, in one list, flagged - the runner holds them back and runs
+        // them whatever happened above (see RunStep.IsTeardown).
+        var wanted = batch.Steps
+            .Select(s => (Step: s, IsTeardown: false))
+            .Concat(batch.Teardown.Select(s => (Step: s, IsTeardown: true)));
+
+        foreach (var (step, isTeardown) in wanted)
         {
             var node = TreeLookup.Find(tree, (step.Endpoint ?? "").Replace('\\', '/').Trim('/'));
 
@@ -60,18 +76,19 @@ public sealed class BatchPlanner : IBatchPlanner
                     step.Case)
                 {
                     Unresolved = $"This batch names \"{step.Endpoint}\", which is not in this workspace.",
+                    IsTeardown = isTeardown,
                 });
 
                 continue;
             }
 
-            var expanded = step.Case is { Length: > 0 } wanted
-                ? Expand(node, wanted, collections)
+            var expanded = step.Case is { Length: > 0 } named
+                ? Expand(node, named, collections)
                 : RunPlan.From(node).Steps;
 
             foreach (var expandedStep in expanded)
             {
-                steps.Add(expandedStep with { Order = steps.Count + 1 });
+                steps.Add(expandedStep with { Order = steps.Count + 1, IsTeardown = isTeardown });
             }
         }
 
@@ -104,13 +121,36 @@ public sealed class BatchPlanner : IBatchPlanner
         ];
     }
 
-    private string Missing(Workspace workspace, string batchName)
+    /// <summary>
+    /// The directory that HOLDS the <c>batches/</c> a name is looked up in - the workspace root, or
+    /// one endpoint's directory.
+    /// </summary>
+    private static string OwnerDirectory(
+        IReadOnlyList<WorkspaceTreeNode> tree, Workspace workspace, string? ownerPath)
     {
-        var available = _batches.ListBatches(workspace.RootPath);
+        if (ownerPath is not { Length: > 0 })
+        {
+            return workspace.RootPath;
+        }
+
+        var node = TreeLookup.Find(tree, ownerPath.Replace('\\', '/').Trim('/'))
+            ?? throw new InvalidOperationException(
+                $"\"{ownerPath}\" is not in this workspace, so it has no batches.");
+
+        return node.Kind == WorkspaceNodeKind.Endpoint
+            ? node.FullPath
+            : throw new InvalidOperationException(
+                $"\"{ownerPath}\" is not an endpoint. Only an endpoint and the workspace hold batches.");
+    }
+
+    private string Missing(string owner, string batchName, string? ownerPath)
+    {
+        var available = _batches.ListBatches(owner);
+        var where = ownerPath is { Length: > 0 } ? $"\"{ownerPath}\"" : "This workspace";
 
         return available.Count == 0
-            ? $"This workspace has no batches. Create one under {IBatchStore.BatchesDirName}/."
-            : $"There is no batch called \"{batchName}\". There is: "
+            ? $"{where} has no batches. Create one under {IBatchStore.BatchesDirName}/."
+            : $"There is no batch called \"{batchName}\" in {where.ToLowerInvariant()}. There is: "
               + string.Join(", ", available.Select(b => b.Name)) + ".";
     }
 }

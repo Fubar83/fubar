@@ -56,29 +56,50 @@ public partial class EnvironmentManagerViewModel : ViewModelBase
         ActiveWorkspace = workspace;
 
         var loaded = await _environmentStore.LoadEnvironmentsAsync(workspace.RootPath);
-        Environments.Clear();
-        foreach (var environment in loaded)
-        {
-            Environments.Add(environment);
-        }
 
-        // Setting ActiveEnvironment here is a restore, not a user choice - don't re-persist it
-        // straight back (that's harmless but pointless disk I/O on every request open).
+        // Suppressed across the WHOLE reload, not only the assignment at the end. Emptying the bound
+        // collection makes the ComboBox's selection model write null straight back through the
+        // two-way binding, and that arrived here looking exactly like a user choosing "no
+        // environment" - so `activeEnvironmentId` was erased from fubar.json every time this ran,
+        // which is on every workspace activation and every time the open request changes workspace.
+        // The next open then fell back to whichever environment sorted first: a workspace saved on
+        // Staging quietly came back up on Production, with the picker agreeing. Restoring a
+        // selection is not a choice, and neither is a collection being refilled underneath one.
         _suppressPersist = true;
-        ActiveEnvironment = Environments.FirstOrDefault(e => e.Id == workspace.Manifest.ActiveEnvironmentId)
-            ?? Environments.FirstOrDefault();
-        _suppressPersist = false;
+        try
+        {
+            Environments.Clear();
+            foreach (var environment in loaded)
+            {
+                Environments.Add(environment);
+            }
+
+            ActiveEnvironment = Environments.FirstOrDefault(e => e.Id == workspace.Manifest.ActiveEnvironmentId)
+                ?? Environments.FirstOrDefault();
+        }
+        finally
+        {
+            _suppressPersist = false;
+        }
     }
 
     /// <summary>Called when the last workspace tab closes - nothing left to resolve variables against.</summary>
     public void ClearWorkspace()
     {
-        ActiveWorkspace = null;
-        Environments.Clear();
-
+        // Same order as the reload above, and for the same reason: the flag goes up before the
+        // collection is touched. Nulling ActiveWorkspace first happens to make the write-back
+        // harmless here, but relying on that is one reordering away from persisting a null again.
         _suppressPersist = true;
-        ActiveEnvironment = null;
-        _suppressPersist = false;
+        try
+        {
+            ActiveWorkspace = null;
+            Environments.Clear();
+            ActiveEnvironment = null;
+        }
+        finally
+        {
+            _suppressPersist = false;
+        }
     }
 
     private async Task PersistActiveEnvironmentAsync(Workspace workspace, string? environmentId)

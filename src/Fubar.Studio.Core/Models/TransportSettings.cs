@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Fubar.Studio.Core.Models;
 
 /// <summary>
@@ -40,6 +42,8 @@ public sealed class TransportSettings
 
     /// <summary>True when nothing here departs from the defaults, so the section can be omitted from
     /// the file rather than persisted as a bag of nulls.</summary>
+
+    [JsonIgnore]
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(ClientCertificateThumbprint)
         && CertificateAuthorityPaths.Count == 0

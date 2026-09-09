@@ -174,7 +174,7 @@ public static class CliRunner
             if (selector.Kind == RunSelectorKind.Batch)
             {
                 var resolved = await services.Batches
-                    .ExpandAsync(workspace, selector.BatchName!, cancellationToken)
+                    .ExpandAsync(workspace, selector.BatchName!, selector.BatchOwnerPath, cancellationToken)
                     .ConfigureAwait(false);
 
                 batch = resolved.Batch;
@@ -467,6 +467,11 @@ public static class CliRunner
     {
         var mark = step switch
         {
+            // Cleanup never fails a run, so it never prints as a failure - "FAIL" on a row of a run
+            // reported as passed is a report arguing with itself. What went wrong is still printed
+            // underneath; only the word changes.
+            { Step.IsTeardown: true, Status: StepStatus.Failed or StepStatus.Errored } => "WARN",
+
             { Status: StepStatus.Errored } => "ERROR",
             { Status: StepStatus.Failed } => "FAIL",
             { Comparison: ComparisonVerdict.Differs } => "DIFF",
@@ -495,14 +500,29 @@ public static class CliRunner
             _ => $"{step.StatusCode} · {step.ElapsedMilliseconds:N0} ms",
         };
 
-        var line = $"{mark,-5} {step.Step.Order,3}. {step.Step.QualifiedName}  ({detail})";
+        // Marked, because a cleanup row that failed is not a failing test and a reader scanning a red
+        // run has to be able to tell the two apart at a glance.
+        var name = step.Step.IsTeardown
+            ? $"{step.Step.QualifiedName}  [cleanup]"
+            : step.Step.QualifiedName;
 
-        return step.AssertionsFailed == 0
+        var line = $"{mark,-5} {step.Step.Order,3}. {name}  ({detail})";
+
+        var notes = new List<string>();
+
+        notes.AddRange(step.Assertions.Where(a => !a.Passed)
+            .Select(a => a.Actual is { } actual ? $"        {a.Description} — got {actual}" : $"        {a.Description}"));
+
+        // A capture that could not be applied does not fail its own step - the request answered, and
+        // whether a missing field matters is what an assertion is for. It is printed HERE because the
+        // failure it causes usually lands several steps later as a {{variable}} that never resolved,
+        // and without this the step that actually caused it reads "ok".
+        notes.AddRange(step.Captures.Where(c => !c.Ok)
+            .Select(c => $"        could not capture {{{{{c.VariableName}}}}}: {c.Error ?? "no match"}"));
+
+        return notes.Count == 0
             ? line
-            : line + System.Environment.NewLine + string.Join(
-                System.Environment.NewLine,
-                step.Assertions.Where(a => !a.Passed)
-                    .Select(a => a.Actual is { } actual ? $"        {a.Description} — got {actual}" : $"        {a.Description}"));
+            : line + System.Environment.NewLine + string.Join(System.Environment.NewLine, notes);
     }
 
     /// <summary>

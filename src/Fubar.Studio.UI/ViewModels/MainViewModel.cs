@@ -34,6 +34,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRequestStore _workspaceService;
     private readonly Fubar.Studio.Core.Workspaces.IEndpointStore _endpointStore;
     private readonly IBatchPlanner _batchPlanner;
+    private readonly IAuthProfileStore _authProfiles;
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IEditorViewModelFactory _editorFactory;
     private readonly IRunDialogService _runDialog;
@@ -87,6 +88,7 @@ public partial class MainViewModel : ViewModelBase
         IRequestStore workspaceService,
         Fubar.Studio.Core.Workspaces.IEndpointStore endpointStore,
         IBatchPlanner batchPlanner,
+        IAuthProfileStore authProfiles,
         IProtocolRegistry protocolRegistry,
         IEditorViewModelFactory editorFactory,
         IRunDialogService runDialog,
@@ -106,6 +108,7 @@ public partial class MainViewModel : ViewModelBase
         _workspaceService = workspaceService;
         _endpointStore = endpointStore;
         _batchPlanner = batchPlanner;
+        _authProfiles = authProfiles;
         _protocolRegistry = protocolRegistry;
         _editorFactory = editorFactory;
         _runDialog = runDialog;
@@ -122,11 +125,18 @@ public partial class MainViewModel : ViewModelBase
 
         WorkspaceExplorer.RequestFileActivated += path => _ = OpenRequestAsync(path);
         WorkspaceExplorer.CaseFileActivated += path => _ = OpenCaseAsync(path);
+        WorkspaceExplorer.CaseDrafted += path => _ = OpenCaseAsync(path, isDraft: true);
+        WorkspaceExplorer.RequestDrafted += path => _ = OpenRequestAsync(path, isDraft: true);
+        WorkspaceExplorer.DraftRenamed += OnDraftRenamed;
+        WorkspaceExplorer.PathMoved += OnPathMoved;
+        WorkspaceExplorer.BatchOpened += OpenBatchEditor;
+        WorkspaceExplorer.FolderOpened += (path, config) => _ = OpenFolderEditorAsync(path, config);
         WorkspaceExplorer.RunRequested += OnRunRequested;
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
         LeftPane.AuthProfilesSection.EditRequested += OpenAuthProfileEditor;
         LeftPane.BatchesSection.RunRequested += row => _ = OnRunBatchRequestedAsync(row);
+        LeftPane.BatchesSection.EditRequested += OpenBatchEditor;
 
         // A failure reported into a collapsed panel is not reported. The strip opens itself the first
         // time something actually goes wrong; the badge on the shell covers everything after that.
@@ -163,6 +173,14 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        // A batch in the tree runs through the planner, exactly as the Left Pane's do - it names its
+        // own steps, so expanding the NODE would send nothing.
+        if (node.Kind == WorkspaceNodeKind.Batch)
+        {
+            _ = OnRunBatchRequestedAsync(node.DisplayName, EndpointPathOf(node, root), root);
+            return;
+        }
+
         var plan = RunPlan.From(node.ToTreeNode());
         if (plan.IsEmpty)
         {
@@ -187,31 +205,55 @@ public partial class MainViewModel : ViewModelBase
     /// same rule the command line follows - a batch written for staging has to be runnable against a
     /// branch deployment without editing the file.
     /// </remarks>
-    private async Task OnRunBatchRequestedAsync(BatchRowViewModel row)
+    private Task OnRunBatchRequestedAsync(BatchRowViewModel row) =>
+        OnRunBatchRequestedAsync(row.Name, null, WorkspaceExplorer.ActiveRoot);
+
+    /// <param name="ownerPath">The endpoint this batch belongs to, relative to <c>collections/</c>, or
+    /// null for one of the workspace's own. It is also what the window is titled with, since
+    /// <c>@happy</c> and <c>orders/get-order@happy</c> are different batches.</param>
+    private async Task OnRunBatchRequestedAsync(
+        string name, string? ownerPath, WorkspaceRootViewModel? root)
     {
-        if (WorkspaceExplorer.ActiveRoot is not { } root)
+        if (root is null)
         {
             return;
         }
 
+        var qualified = ownerPath is { Length: > 0 } ? $"{ownerPath}@{name}" : $"@{name}";
+
         try
         {
-            var resolved = await _batchPlanner.ExpandAsync(root.Workspace, row.Name);
+            var resolved = await _batchPlanner.ExpandAsync(root.Workspace, name, ownerPath);
 
             _runDialog.Show(
                 resolved.Plan,
                 root.Workspace,
                 EnvironmentManager.ActiveEnvironment,
                 [.. EnvironmentManager.Environments],
-                $"@{row.Name}",
+                qualified,
                 resolved.Batch);
         }
         catch (Exception ex)
         {
             // A batch naming an endpoint that is not there still RUNS - those steps error. Reaching
             // here means the batch itself could not be read at all.
-            StatusLog.LogError($"Could not run \"{row.Name}\": {ex.Message}");
+            StatusLog.LogError($"Could not run \"{qualified}\": {ex.Message}");
         }
+    }
+
+    /// <summary>The endpoint a batch node belongs to, as a path relative to <c>collections/</c> - the
+    /// form a selector and the planner both use.</summary>
+    private static string? EndpointPathOf(WorkspaceNodeViewModel batch, WorkspaceRootViewModel root)
+    {
+        // <endpoint>/batches/<name>.json, so the endpoint is two levels up.
+        var endpoint = Path.GetDirectoryName(Path.GetDirectoryName(batch.FullPath));
+        if (endpoint is null)
+        {
+            return null;
+        }
+
+        return Path.GetRelativePath(Path.Combine(root.FullPath, "collections"), endpoint)
+            .Replace('\\', '/');
     }
 
     /// <summary>
@@ -380,6 +422,42 @@ public partial class MainViewModel : ViewModelBase
         yield return new PaletteEntry("New Folder", "Command", "Ctrl+Shift+N",
             () => { WorkspaceExplorer.NewFolderCommand.Execute(null); return Task.CompletedTask; });
 
+        // The palette is the discovery surface, and everything below had lived only in the tree's
+        // right-click menu - which you have to already know to look in.
+        yield return new PaletteEntry("New scratch request", "Command", null,
+            () => WorkspaceExplorer.NewScratchRequestCommand.ExecuteAsync(null));
+
+        // Offered only where they can do anything, matching the menu's own rules: a case and a batch
+        // need an endpoint selected, and a move needs somewhere to move to.
+        if (WorkspaceExplorer.CanAddCase)
+        {
+            yield return new PaletteEntry("New Case", "Command", null,
+                () => { WorkspaceExplorer.NewCaseCommand.Execute(null); return Task.CompletedTask; });
+        }
+
+        if (WorkspaceExplorer.CanAddBatch)
+        {
+            yield return new PaletteEntry("New Batch", "Command", null,
+                () => { WorkspaceExplorer.NewBatchCommand.Execute(null); return Task.CompletedTask; });
+        }
+
+        if (WorkspaceExplorer.CanMove)
+        {
+            foreach (var target in WorkspaceExplorer.MoveTargets)
+            {
+                var destination = target;
+                yield return new PaletteEntry(
+                    $"Move to workspace: {destination.Workspace.Manifest.Name}", "Command", null,
+                    () => WorkspaceExplorer.MoveToWorkspaceCommand.ExecuteAsync(destination));
+            }
+        }
+
+        if (WorkspaceExplorer.UsesRequests && WorkspaceExplorer.ActiveRoot is not null)
+        {
+            yield return new PaletteEntry("Convert to endpoints...", "Command", null,
+                () => WorkspaceExplorer.ConvertToEndpointsCommand.ExecuteAsync(null));
+        }
+
         yield return new PaletteEntry("New Workspace...", "Command", null,
             () => WorkspaceExplorer.NewWorkspaceCommand.ExecuteAsync(null));
 
@@ -543,7 +621,76 @@ public partial class MainViewModel : ViewModelBase
     /// which is why it now asks. It used to write a line to the status log and carry on, and that log
     /// was collapsed by default, so the only notice of losing work went somewhere invisible.</para>
     /// </summary>
-    public async Task OpenRequestAsync(string filePath)
+    /// <summary>
+    /// A draft was pointed at a different file before it was ever saved, so the editor open on it has
+    /// to follow - otherwise Save writes the name that was replaced.
+    /// </summary>
+    private void OnDraftRenamed(string from, string to)
+    {
+        if (ActiveRequest is { } request
+            && string.Equals(request.FilePath, from, StringComparison.OrdinalIgnoreCase))
+        {
+            request.FilePath = to;
+            return;
+        }
+
+        // An endpoint's node is its DIRECTORY; the editor holds the endpoint.json inside it.
+        var endpointFile = Path.Combine(to, Core.Workspaces.IEndpointStore.EndpointFileName);
+
+        if (ActiveRequest is { } endpoint
+            && string.Equals(
+                endpoint.FilePath,
+                Path.Combine(from, Core.Workspaces.IEndpointStore.EndpointFileName),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            endpoint.FilePath = endpointFile;
+        }
+    }
+
+    /// <summary>
+    /// Something open was moved to another workspace, so the file the canvas is showing is no longer
+    /// there. Re-opened at its new home rather than closed: the move was a filing decision, not a
+    /// decision to stop working on it - and re-opening is also what picks up the new workspace's
+    /// environments, auth profiles and inherited rules, which are the whole reason it moved.
+    /// </summary>
+    private void OnPathMoved(string from, string to)
+    {
+        if (ActiveRequest is not { } open)
+        {
+            return;
+        }
+
+        // An endpoint's node is its directory; the editor holds the endpoint.json inside it. A folder
+        // move carries whatever was open along with everything else under it.
+        var endpointFile = Path.Combine(from, Core.Workspaces.IEndpointStore.EndpointFileName);
+
+        if (string.Equals(open.FilePath, from, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = OpenRequestAsync(to);
+        }
+        else if (string.Equals(open.FilePath, endpointFile, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = OpenRequestAsync(Path.Combine(to, Core.Workspaces.IEndpointStore.EndpointFileName));
+        }
+        else if (open.FilePath.StartsWith(from + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = OpenRequestAsync(to + open.FilePath[from.Length..]);
+        }
+    }
+
+    /// <summary>The name a drafted document opens under, taken from the path reserved for it.</summary>
+    private static string NameOf(string filePath) =>
+        string.Equals(
+            Path.GetFileName(filePath),
+            Core.Workspaces.IEndpointStore.EndpointFileName,
+            StringComparison.OrdinalIgnoreCase)
+            ? Path.GetFileName(Path.GetDirectoryName(filePath)) ?? "New Endpoint"
+            : Path.GetFileNameWithoutExtension(filePath);
+
+    /// <param name="isDraft">A request or endpoint that has not been written yet. Its file does not
+    /// exist, so the editor starts on a blank one and is dirty from the outset - it IS unsaved, and the
+    /// tree says so beside it until the first Save creates the file.</param>
+    public async Task OpenRequestAsync(string filePath, bool isDraft = false)
     {
         if (ActiveRequest is { } current && string.Equals(current.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
         {
@@ -568,11 +715,15 @@ public partial class MainViewModel : ViewModelBase
             // changed on disk since the last open.
             await ActivateWorkspaceContextAsync(workspace);
 
-            var request = await _workspaceService.LoadRequestAsync(filePath);
+            var request = isDraft
+                ? new RequestModel { Name = NameOf(filePath) }
+                : await _workspaceService.LoadRequestAsync(filePath);
+
             var provider = _protocolRegistry.Resolve(request.Kind);
             var editor = _editorFactory.CreateRequestEditor(request, filePath, provider, workspace);
 
-            editor.Saved += () => WorkspaceExplorer.RefreshRootFor(editor.FilePath);
+            editor.IsDirty = isDraft;
+            editor.Saved += () => WorkspaceExplorer.DraftSaved(editor.FilePath);
             ActiveEditor = editor;
         }
         catch (Exception ex)
@@ -589,7 +740,10 @@ public partial class MainViewModel : ViewModelBase
     /// grid from the endpoint's URL, so a case opens with the questions it has to answer rather than
     /// an empty grid.
     /// </remarks>
-    public async Task OpenCaseAsync(string caseFilePath)
+    /// <param name="isDraft">A case that has not been written yet. Its file does not exist, so the
+    /// editor starts on a blank one and is dirty from the outset - it IS unsaved, and the tree says so
+    /// beside it until the first Save creates the file.</param>
+    public async Task OpenCaseAsync(string caseFilePath, bool isDraft = false)
     {
         if (!await ConfirmDiscardingActiveEditAsync())
         {
@@ -613,10 +767,19 @@ public partial class MainViewModel : ViewModelBase
             var endpoint = await _workspaceService.LoadRequestAsync(
                 Path.Combine(endpointDirectory, Core.Workspaces.IEndpointStore.EndpointFileName));
 
-            var endpointCase = await _endpointStore.LoadCaseAsync(caseFilePath);
+            var endpointCase = isDraft
+                ? new EndpointCase { Name = Path.GetFileNameWithoutExtension(caseFilePath) }
+                : await _endpointStore.LoadCaseAsync(caseFilePath);
+
             var editor = _editorFactory.CreateCaseEditor(endpointCase, endpoint, caseFilePath, workspace);
 
-            editor.Saved += () => WorkspaceExplorer.RefreshRootFor(editor.FilePath);
+            // A draft has nothing on disk to be clean against, so it opens dirty. Ctrl+S and the
+            // unsaved prompt then treat it like any other unsaved editor, which is the point.
+            editor.IsDirty = isDraft;
+
+            // The path it was OPENED at, not the one it saved to: renaming on save writes a different
+            // file, and the draft node still reserving the old one has to be retired by name.
+            editor.Saved += () => WorkspaceExplorer.DraftSaved(caseFilePath);
             ActiveEditor = editor;
         }
         catch (Exception ex)
@@ -660,6 +823,64 @@ public partial class MainViewModel : ViewModelBase
         return true;
     }
 
+    /// <summary>
+    /// Opens a folder's own settings in the main canvas - the level almost every shared rule belongs
+    /// at, and until now the only one you had to edit by hand.
+    /// </summary>
+    private async Task OpenFolderEditorAsync(string folderPath, FolderConfig config)
+    {
+        if (WorkspaceExplorer.ActiveRoot is not { } root)
+        {
+            return;
+        }
+
+        try
+        {
+            await ActivateWorkspaceContextAsync(root.Workspace);
+
+            var profiles = await _authProfiles.LoadAuthProfilesAsync(root.FullPath);
+            var editor = _editorFactory.CreateFolderEditor(config, folderPath, root.Workspace, profiles);
+
+            // A folder's rules are inherited by everything under it, so a save changes what those
+            // requests resolve to - the tree is rebuilt rather than left showing the old answer.
+            editor.Saved += () => WorkspaceExplorer.RefreshRootFor(folderPath);
+            ActiveEditor = editor;
+        }
+        catch (Exception ex)
+        {
+            StatusLog.LogError($"Could not open \"{Path.GetFileName(folderPath)}\": {ex.Message}");
+        }
+    }
+
+    /// <summary>Opens a batch in the main canvas - wired to both
+    /// <see cref="BatchesSectionViewModel.EditRequested"/> and the tree's, each of which reads it
+    /// fresh from disk first: an editor opened on a stale copy would save it back over whatever has
+    /// happened to the file since.</summary>
+    private void OpenBatchEditor(string filePath, Batch batch)
+    {
+        if (WorkspaceExplorer.ActiveRoot is not { } root)
+        {
+            return;
+        }
+
+        var editor = _editorFactory.CreateBatchEditor(
+            batch, filePath, root.Workspace, [.. EnvironmentManager.Environments.Select(e => e.Name)]);
+
+        // A batch is unsaved until its first Save, and until then there is no file to be clean
+        // against - the same rule a drafted case follows.
+        editor.IsDirty = !File.Exists(filePath);
+
+        editor.Saved += () =>
+        {
+            // Both homes: the Left Pane lists the workspace's own, the tree holds an endpoint's - and
+            // a rename moves the file, so each is rebuilt rather than relabelled.
+            _ = LeftPane.BatchesSection.ReloadAsync();
+            WorkspaceExplorer.DraftSaved(filePath);
+        };
+
+        ActiveEditor = editor;
+    }
+
     /// <summary>Opens <paramref name="environment"/>'s variables for editing in the main canvas -
     /// wired to <see cref="EnvironmentsSectionViewModel.EditRequested"/>.</summary>
     private void OpenEnvironmentEditor(WorkspaceEnvironment environment)
@@ -700,7 +921,12 @@ public partial class MainViewModel : ViewModelBase
         // request as "selected" even after switching to an environment/auth profile elsewhere.
         LeftPane.EnvironmentsSection.SelectedEnvironmentId = (value as EnvironmentEditorViewModel)?.EnvironmentId;
         LeftPane.AuthProfilesSection.SelectedProfileId = (value as AuthProfileEditorViewModel)?.ProfileId;
-        if (value is not RequestEditorViewModel)
+
+        // Cleared only for the two surfaces that are NOT in the tree. A case and a batch are rows in
+        // it, so opening one used to deselect the very thing being edited - the highlight vanished,
+        // and "New Case"/"New Batch"/"Move to workspace" all key off the selection, so they stopped
+        // being offered the moment you opened the thing you wanted to add to.
+        if (value is EnvironmentEditorViewModel or AuthProfileEditorViewModel)
         {
             WorkspaceExplorer.SelectedNode = null;
         }

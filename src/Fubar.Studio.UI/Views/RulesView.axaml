@@ -1,0 +1,293 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="600"
+             x:Class="Fubar.Studio.UI.Views.RulesView"
+             x:DataType="vm:RulesViewModel">
+
+    <!-- The Rules tab (docs/spec-endpoints.md §9.4). The settings hierarchy was legible only by
+         opening four files and folding them in your head; this is that fold, shown. Inherited rules
+         carry their origin and are never edited in place - removing one writes a REMOVAL at this
+         level, because a click in one endpoint's window must not change what forty others do. -->
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <Style Selector="TextBlock.group">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,14,0,2" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <!-- Greyed, per the spec: inherited rules are shown so they can be reasoned about, and are
+             quieter than the ones written here, which are the ones this screen can change. -->
+        <Style Selector="TextBlock.inherited">
+            <Setter Property="Opacity" Value="0.75" />
+            <Setter Property="FontStyle" Value="Italic" />
+        </Style>
+
+        <Style Selector="TextBox.add">
+            <Setter Property="FontFamily" Value="Cascadia Code,Consolas,monospace" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Margin="6,10,6,20" Spacing="2">
+
+            <TextBlock Classes="hint"
+                       Text="Every rule that applies here, and where each came from. A rule written somewhere above is shown in italics with its origin; removing one of those stops it HERE and leaves the level that wrote it alone." />
+
+            <!-- Comparison -->
+
+            <TextBlock Classes="group" Text="COMPARISON" />
+            <TextBlock Classes="hint" Text="What counts as a difference." />
+
+            <ItemsControl ItemsSource="{Binding Options}" Margin="0,6,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:RuleOptionRowViewModel">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                            <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" FontSize="12"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Text="{Binding Explanation}" FontSize="10" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                        VerticalAlignment="Center">
+                                <!-- What it currently resolves to. "Inherit" on its own does not say
+                                     what is being inherited, which is the question being asked. -->
+                                <TextBlock Text="{Binding EffectiveDescription}"
+                                           FontSize="10"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondary}" />
+
+                                <ComboBox ItemsSource="{x:Static vm:RuleOptionRowViewModel.Choices}"
+                                          SelectedItem="{Binding Choice}"
+                                          MinWidth="90" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Classes="group" Text="NEVER REPORTED" />
+            <TextBlock Classes="hint"
+                       Text="Differences at these paths are not shown at all. Prefer a tolerance where one fits - ignoring a total because it drifts by a cent stops checking the total." />
+
+            <TextBlock Classes="hint" Margin="0,4"
+                       IsVisible="{Binding HasNoIgnoredPaths}"
+                       Text="Nothing is ignored here." />
+
+            <ItemsControl ItemsSource="{Binding IgnoredPaths}" Margin="0,4,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:RuleEntryRowViewModel">
+                        <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Path}" FontFamily="Cascadia Code,Consolas,monospace"
+                                           FontSize="12" VerticalAlignment="Center"
+                                           Classes.inherited="{Binding IsInherited}"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding SourceName}" FontSize="10" Margin="8,0"
+                                       VerticalAlignment="Center" Classes.inherited="{Binding IsInherited}"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                            <Button Grid.Column="2" Classes="icon-btn icon-btn-danger" Content="&#x2715;"
+                                    FontSize="11" VerticalAlignment="Center"
+                                    ToolTip.Tip="Stop ignoring this here"
+                                    Command="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).RemoveIgnoredPathCommand}"
+                                    CommandParameter="{Binding}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                <TextBox Classes="add" Text="{Binding NewIgnoredPath}" Width="320"
+                         PlaceholderText="$.meta.requestId" />
+                <Button Classes="secondary-btn" Content="Ignore this path"
+                        Command="{Binding AddIgnoredPathCommand}" />
+            </StackPanel>
+
+            <TextBlock Classes="group" Text="ARRAY IDENTITY" />
+            <TextBlock Classes="hint"
+                       Text="Which field identifies an array's elements, so a reordered list is not reported as every element changing. Set from a comparison window - a level states the whole set it wants, so there is nothing to add one of here." />
+
+            <TextBlock Classes="hint" Margin="0,4"
+                       IsVisible="{Binding HasNoArrayKeys}"
+                       Text="None. Arrays are matched by whatever the comparer detects." />
+
+            <ItemsControl ItemsSource="{Binding ArrayKeys}" Margin="0,4,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:RuleEntryRowViewModel">
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
+                            <TextBlock Text="{Binding Path}" FontFamily="Cascadia Code,Consolas,monospace"
+                                       FontSize="12" Foreground="{DynamicResource TextPrimary}" />
+                            <TextBlock Text="{Binding Detail}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                            <TextBlock Text="{Binding SourceName}" FontSize="10"
+                                       Classes.inherited="{Binding IsInherited}"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Tolerances -->
+
+            <TextBlock Classes="group" Text="TOLERANCES" />
+            <TextBlock Classes="hint"
+                       Text="A field that is allowed to move, and by how much. This is the difference between a suite that catches regressions and one that ignores half the payload: a tolerance keeps checking the total and only forgives the cent. Both sides have to satisfy it." />
+
+            <TextBlock Classes="hint" Margin="0,4"
+                       IsVisible="{Binding HasNoTolerances}"
+                       Text="Nothing is allowed to move here." />
+
+            <ItemsControl ItemsSource="{Binding Tolerances}" Margin="0,4,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:RuleEntryRowViewModel">
+                        <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Path}" FontFamily="Cascadia Code,Consolas,monospace"
+                                           FontSize="12" VerticalAlignment="Center"
+                                           Classes.inherited="{Binding IsInherited}"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Text="{Binding Detail}" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding SourceName}" FontSize="10" Margin="8,0"
+                                       VerticalAlignment="Center" Classes.inherited="{Binding IsInherited}"
+                                       Foreground="{DynamicResource TextSecondary}" />
+
+                            <!-- Only a local one. A tolerance is per-path closest-wins rather than
+                                 add/remove, so there is nothing to write here that means "allow
+                                 nothing" - restate it instead, or change it where it was written. -->
+                            <Button Grid.Column="2" Classes="icon-btn icon-btn-danger" Content="&#x2715;"
+                                    FontSize="11" VerticalAlignment="Center"
+                                    IsVisible="{Binding IsLocal}"
+                                    ToolTip.Tip="Remove this tolerance"
+                                    Command="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).RemoveToleranceCommand}"
+                                    CommandParameter="{Binding}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                <TextBox Classes="add" Text="{Binding NewTolerancePath}" Width="220"
+                         PlaceholderText="$.order.total" />
+                <ComboBox ItemsSource="{Binding ToleranceKinds}" SelectedItem="{Binding NewToleranceKind}"
+                          MinWidth="160" />
+                <TextBox Classes="add" Text="{Binding NewToleranceValue}" Width="180" />
+                <Button Classes="secondary-btn" Content="Allow this"
+                        Command="{Binding AddToleranceCommand}" />
+            </StackPanel>
+
+            <TextBlock Classes="hint" Text="{Binding ToleranceValueHint}" Margin="0,4,0,0" />
+
+            <!-- Snapshot policy -->
+
+            <TextBlock Classes="group" Text="SNAPSHOT POLICY" />
+            <TextBlock Classes="hint" Text="{Binding SnapshotNote}" />
+
+            <TextBlock Classes="group" Text="Redacted" FontWeight="Normal" Margin="0,8,0,2" />
+            <TextBlock Classes="hint"
+                       Text="Replaced before the file is written, because it must never be committed at all." />
+
+            <TextBlock Classes="hint" Margin="0,4"
+                       IsVisible="{Binding HasNoRedactions}"
+                       Text="Nothing is redacted. Everything in a response lands in the file as it came back." />
+
+            <ItemsControl ItemsSource="{Binding Redactions}" Margin="0,4,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:RuleEntryRowViewModel">
+                        <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Path}" FontFamily="Cascadia Code,Consolas,monospace"
+                                           FontSize="12" VerticalAlignment="Center"
+                                           Classes.inherited="{Binding IsInherited}"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Text="{Binding Detail}" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding SourceName}" FontSize="10" Margin="8,0"
+                                       VerticalAlignment="Center" Classes.inherited="{Binding IsInherited}"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                            <Button Grid.Column="2" Classes="icon-btn icon-btn-danger" Content="&#x2715;"
+                                    FontSize="11" VerticalAlignment="Center"
+                                    IsVisible="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).SupportsSnapshotPolicy}"
+                                    ToolTip.Tip="Stop redacting this here"
+                                    Command="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).RemoveRedactionCommand}"
+                                    CommandParameter="{Binding}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0"
+                        IsVisible="{Binding SupportsSnapshotPolicy}">
+                <TextBox Classes="add" Text="{Binding NewRedactPath}" Width="240"
+                         PlaceholderText="$..token" />
+                <TextBox Classes="add" Text="{Binding NewRedactAs}" Width="140" />
+                <Button Classes="secondary-btn" Content="Redact this"
+                        Command="{Binding AddRedactionCommand}" />
+            </StackPanel>
+
+            <TextBlock Classes="group" Text="Normalised" FontWeight="Normal" Margin="0,12,0,2" />
+            <TextBlock Classes="hint"
+                       Text="Replaced because it legitimately moves - a timestamp, a generated id - so the file does not churn. The same replacement runs on the live response before it is compared, or the rule written to stop the churn would cause it instead." />
+
+            <TextBlock Classes="hint" Margin="0,4"
+                       IsVisible="{Binding HasNoNormalisations}"
+                       Text="Nothing is normalised. Anything that changes on every call will differ on every run." />
+
+            <ItemsControl ItemsSource="{Binding Normalisations}" Margin="0,4,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:RuleEntryRowViewModel">
+                        <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Path}" FontFamily="Cascadia Code,Consolas,monospace"
+                                           FontSize="12" VerticalAlignment="Center"
+                                           Classes.inherited="{Binding IsInherited}"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Text="{Binding Detail}" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondary}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding SourceName}" FontSize="10" Margin="8,0"
+                                       VerticalAlignment="Center" Classes.inherited="{Binding IsInherited}"
+                                       Foreground="{DynamicResource TextSecondary}" />
+                            <Button Grid.Column="2" Classes="icon-btn icon-btn-danger" Content="&#x2715;"
+                                    FontSize="11" VerticalAlignment="Center"
+                                    IsVisible="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).SupportsSnapshotPolicy}"
+                                    ToolTip.Tip="Stop normalising this here"
+                                    Command="{Binding $parent[ItemsControl].((vm:RulesViewModel)DataContext).RemoveNormalisationCommand}"
+                                    CommandParameter="{Binding}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0"
+                        IsVisible="{Binding SupportsSnapshotPolicy}">
+                <TextBox Classes="add" Text="{Binding NewNormalisePath}" Width="240"
+                         PlaceholderText="$.generatedAt" />
+                <TextBox Classes="add" Text="{Binding NewNormaliseAs}" Width="140" />
+                <Button Classes="secondary-btn" Content="Normalise this"
+                        Command="{Binding AddNormalisationCommand}" />
+            </StackPanel>
+
+            <TextBlock Classes="group" Text="Headers kept" FontWeight="Normal" Margin="0,12,0,2" />
+            <TextBlock Classes="hint" Text="{Binding SnapshotHeaders}" />
+
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

@@ -14,6 +14,31 @@
          editor: the method, URL and auth belong to the endpoint and are shown here only as context,
          because an edit made to them on this screen would either be lost or silently fork the
          endpoint. -->
+    <!-- The response is DOCKED rather than a Grid column: a column keeps its width even when the
+         child in it is collapsed (CLAUDE.md - a Grid row needs its RowDefinition zeroed, and a
+         column is the same trap), which squeezed the case's own tabs into half the window before
+         anything had been sent. -->
+    <DockPanel>
+    <DockPanel DockPanel.Dock="Right"
+               Width="520"
+               IsVisible="{Binding Response.HasResponse}"
+               Margin="0,16,14,16">
+        <TextBlock DockPanel.Dock="Bottom"
+                   Text="{Binding ResponseNote}"
+                   IsVisible="{Binding ResponseNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   Margin="4,8,4,0"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextSecondary}" />
+
+        <views:ResponsePanelView DataContext="{Binding Response}" />
+    </DockPanel>
+
+    <Border DockPanel.Dock="Right"
+            Width="1"
+            Background="{DynamicResource BorderSubtle}"
+            IsVisible="{Binding Response.HasResponse}" />
+
     <DockPanel Margin="20,16">
 
         <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,14">
@@ -23,7 +48,18 @@
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondary}" />
                 <TextBox Text="{Binding Name}" Width="240" FontWeight="Bold" FontSize="14" />
-                <Button Content="Save" Classes="primary-btn" Command="{Binding SaveCommand}" />
+                <Button Content="Save" Classes="secondary-btn" Command="{Binding SaveCommand}" />
+
+                <!-- Sending one case is how anyone actually iterates on it. It goes through the
+                     ordinary run pipeline, so what happens here and what CI does cannot drift - and
+                     that pipeline reads from disk, hence the save first. -->
+                <Button Content="{Binding SendLabel}" Classes="primary-btn"
+                        Command="{Binding SendCommand}"
+                        IsVisible="{Binding !IsSending}"
+                        ToolTip.Tip="{Binding SendTooltip}" />
+                <Button Content="Cancel" Classes="secondary-btn"
+                        Command="{Binding CancelSendCommand}"
+                        IsVisible="{Binding IsSending}" />
             </StackPanel>
 
             <TextBox Text="{Binding Description}"
@@ -122,6 +158,14 @@
             <TabItem Header="Tests">
                 <views:RequestTestsView DataContext="{Binding Tests}" Margin="0,10,0,0" />
             </TabItem>
+
+            <!-- Every rule that applies to this case, and where each came from. A case is the
+                 innermost level for comparison rules and tolerances, and no level at all for snapshot
+                 policy - which the tab says rather than leaving to be discovered. -->
+            <TabItem Header="Rules">
+                <views:RulesView DataContext="{Binding Rules}" />
+            </TabItem>
         </TabControl>
+    </DockPanel>
     </DockPanel>
 </UserControl>

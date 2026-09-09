@@ -12,7 +12,11 @@ public sealed partial class BatchRowViewModel : ViewModelBase
     public BatchRowViewModel(BatchSummary summary, Batch batch)
     {
         FilePath = summary.FilePath;
-        Name = batch.Name;
+
+        // The FILE's name, not the document's. A selector says @smoke and IBatchStore.FindBatchAsync
+        // resolves that against the directory listing, so showing the name INSIDE the file would put a
+        // Run button next to a name nothing can be found by the moment the two disagree.
+        Name = summary.Name;
         Model = batch;
 
         var steps = $"{batch.Steps.Count} step{(batch.Steps.Count == 1 ? "" : "s")}";
@@ -76,6 +80,17 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
     /// because a run needs the active environment, which lives beside this view model.</summary>
     public event Action<BatchRowViewModel>? RunRequested;
 
+    /// <summary>
+    /// Raised when a batch is chosen for editing, with its file and a freshly read copy of it -
+    /// <c>MainViewModel</c> opens a <see cref="BatchEditorViewModel"/> for it in the main canvas.
+    /// </summary>
+    /// <remarks>
+    /// Re-read rather than the row's own <c>Model</c>, which was loaded when the workspace last
+    /// changed: an editor opened on a stale copy would save it back over whatever has happened to the
+    /// file since.
+    /// </remarks>
+    public event Action<string, Batch>? EditRequested;
+
     /// <summary>Called whenever the active workspace changes (or closes).</summary>
     public async Task SetWorkspaceAsync(Workspace? workspace)
     {
@@ -85,29 +100,53 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
         await ReloadAsync();
     }
 
+    /// <summary>
+    /// Rebuilds the list from the <c>batches/</c> directory.
+    /// </summary>
+    /// <remarks>
+    /// Built into a local list and published in one step, with a generation guard, because this used
+    /// to clear <see cref="Rows"/> and then refill it one <c>await</c> at a time: two reloads
+    /// overlapping - which is what switching workspace and re-opening an editor does within a few
+    /// milliseconds of each other - both cleared and then both added, and the group showed every batch
+    /// twice. It also means the list never blinks empty on the way.
+    /// </remarks>
     public async Task ReloadAsync()
     {
-        Rows.Clear();
+        var generation = ++_reloadGeneration;
 
-        if (_workspace is not { } workspace || !IsAvailable)
+        var loaded = new List<BatchRowViewModel>();
+
+        if (_workspace is { } workspace && IsAvailable)
+        {
+            foreach (var summary in _batches.ListBatches(workspace.RootPath))
+            {
+                try
+                {
+                    loaded.Add(new BatchRowViewModel(summary, await _batches.LoadBatchAsync(summary.FilePath)));
+                }
+                catch (Exception ex)
+                {
+                    // One unreadable batch does not hide the others, and it is SAID: a batch that
+                    // quietly vanished from the list is a batch nobody runs and nobody misses.
+                    _statusLog.LogWarning($"Could not read the batch \"{summary.Name}\": {ex.Message}");
+                }
+            }
+        }
+
+        // A newer reload started while this one was reading, so this answer is already stale.
+        if (generation != _reloadGeneration)
         {
             return;
         }
 
-        foreach (var summary in _batches.ListBatches(workspace.RootPath))
+        Rows.Clear();
+        foreach (var row in loaded)
         {
-            try
-            {
-                Rows.Add(new BatchRowViewModel(summary, await _batches.LoadBatchAsync(summary.FilePath)));
-            }
-            catch (Exception ex)
-            {
-                // One unreadable batch does not hide the others, and it is SAID: a batch that quietly
-                // vanished from the list is a batch nobody runs and nobody misses.
-                _statusLog.LogWarning($"Could not read the batch \"{summary.Name}\": {ex.Message}");
-            }
+            Rows.Add(row);
         }
     }
+
+    private int _reloadGeneration;
 
     [RelayCommand]
     private void Run(BatchRowViewModel? row)
@@ -115,6 +154,27 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
         if (row is not null)
         {
             RunRequested?.Invoke(row);
+        }
+    }
+
+    [RelayCommand]
+    private async Task EditAsync(BatchRowViewModel? row)
+    {
+        if (row is not null)
+        {
+            await OpenAsync(row.FilePath, row.Name);
+        }
+    }
+
+    private async Task OpenAsync(string filePath, string name)
+    {
+        try
+        {
+            EditRequested?.Invoke(filePath, await _batches.LoadBatchAsync(filePath));
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not open the batch \"{name}\": {ex.Message}");
         }
     }
 
@@ -127,9 +187,15 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
             return;
         }
 
-        var path = _batches.CreateBatch(workspace.RootPath, "new-batch");
-        _statusLog.Log($"Created batch: {path}");
+        // Proposed, not created: a new batch lives in its editor until the first Save, so making one
+        // and changing your mind leaves no new-batch.json behind. That also means it is not in this
+        // list yet - the list reads the directory, and there is nothing there to read.
+        var path = _batches.ProposeBatchPath(workspace.RootPath, "new-batch");
 
-        await ReloadAsync();
+        // Opened straight away. A new batch is empty - a row saying "0 steps" with no way in but a
+        // text editor is what made batches a JSON-editing job in the first place.
+        EditRequested?.Invoke(path, new Batch { Name = System.IO.Path.GetFileNameWithoutExtension(path) });
+
+        await Task.CompletedTask;
     }
 }

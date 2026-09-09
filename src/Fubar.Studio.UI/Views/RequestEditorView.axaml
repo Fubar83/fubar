@@ -298,6 +298,12 @@
                 <views:RequestTestsView DataContext="{Binding Tests}" />
             </TabItem>
 
+            <!-- Every rule that applies here, and where each came from - the settings hierarchy read
+                 out instead of folded in your head across four files. -->
+            <TabItem Header="Rules">
+                <views:RulesView DataContext="{Binding Rules}" />
+            </TabItem>
+
             <TabItem Header="History">
                 <DataGrid ItemsSource="{Binding ExecutionHistory}"
                           AutoGenerateColumns="False"

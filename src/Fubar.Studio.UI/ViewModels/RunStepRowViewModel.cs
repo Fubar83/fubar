@@ -26,6 +26,19 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
 
     public string Name { get; }
 
+    /// <summary>Cleanup rather than test. Marked on the row because a failing cleanup step is not a
+    /// failing test, and a reader scanning a red run has to tell the two apart at a glance.</summary>
+    public bool IsTeardown => Step.IsTeardown;
+
+    /// <summary>The finished report for this step, once it has one. Held so the row can be OPENED -
+    /// a difference count is where the question starts, not where it ends.</summary>
+    public StepReport? Report { get; private set; }
+
+    /// <summary>Whether there are two bodies to show. False for a step that never answered, and for a
+    /// run whose bodies were dropped for being too large to compare.</summary>
+    public bool CanShowDifferences =>
+        Report is { ResponseBody: not null, ComparedBody: not null };
+
     [ObservableProperty]
     public partial StepStatus? Status { get; set; }
 
@@ -57,9 +70,16 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
     /// green while the summary said "1 differ" would be a report that contradicts itself.</summary>
     public bool IsPassed => Status == StepStatus.Passed && !IsUnexpectedStatus && !IsDiffering && !IsUncomparable;
 
-    public bool IsFailed => Status == StepStatus.Failed;
+    /// <summary>Red is for a failing TEST. Cleanup cannot fail the run, so painting it red would put
+    /// a red row in a green report - see <see cref="IsCleanupProblem"/>, which is amber.</summary>
+    public bool IsFailed => Status == StepStatus.Failed && !IsTeardown;
 
-    public bool IsErrored => Status == StepStatus.Errored;
+    public bool IsErrored => Status == StepStatus.Errored && !IsTeardown;
+
+    /// <summary>Cleanup that did not do its job: worth seeing, never a failure. A skipped one keeps
+    /// the faded skipped style - it was not reached, which is a different thing from not working.</summary>
+    public bool IsCleanupProblem =>
+        IsTeardown && Status is StepStatus.Failed or StepStatus.Errored;
 
     public bool IsSkipped => Status == StepStatus.Skipped;
 
@@ -86,6 +106,7 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
         StatusText = null;
         Detail = null;
         Error = null;
+        Report = null;
         IsUnexpectedStatus = false;
         IsDiffering = false;
         IsUncomparable = false;
@@ -101,6 +122,7 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
 
     public void Apply(StepReport report)
     {
+        Report = report;
         IsRunning = false;
         Status = report.Status;
         IsUnexpectedStatus = report.IsUnexpectedStatus && report.Assertions.Count == 0;
@@ -195,6 +217,8 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsErrored));
         OnPropertyChanged(nameof(IsSkipped));
         OnPropertyChanged(nameof(IsPending));
+        OnPropertyChanged(nameof(IsCleanupProblem));
+        OnPropertyChanged(nameof(CanShowDifferences));
     }
 
     partial void OnIsRunningChanged(bool value) => RaiseClassFlags();

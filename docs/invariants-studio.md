@@ -417,3 +417,172 @@ by name, so a selector can only name something the tree shows - which is also wh
 empty plan, for the same reason an empty filtered run exits 1: a typo in a CI script must not pass.
 `#` and `@` rather than more path segments, because `orders/get-order/default` cannot be told from a
 folder called `default`.
+
+
+**Teardown is cleanup, not test, and every rule about it follows from that** (Studio). A chain that
+creates something has to remove it again, and `stopOnFailure` - the right setting for a chain -
+guarantees a failure in the middle skips the delete, so every red run leaks a row. `Batch.Teardown`
+steps are held back by `CollectionRunService` and run after everything else.
+
+They are excluded from the verdict (`RunReport.Judged` is what every count is over), their case's
+assertions are DROPPED and the oracle skips them. That last pair is not tidiness: a batch reusing
+`delete-cat#created` as teardown reuses a case expecting 204, and on a successful run - where the
+delete already happened as a step - the cleanup finds 404. Judged, that would report a failed cleanup
+on every green run, which is precisely the crying wolf teardown exists to avoid. What still counts is
+whether it could be SENT (`RunReport.CleanupFailed`), which is the real leak signal, and it is always
+said in the summary because a leak nobody hears about is the whole problem.
+
+Cleanup does NOT run after a cancellation. Sending four more requests after Ctrl-C is the opposite of
+stopping; that leaks, and it is the lesser surprise of the two.
+
+Nothing about a cleanup row may render as a failure - `CliRunner` prints `WARN`, not `FAIL`, and
+`RunStepRowViewModel.IsFailed`/`IsErrored` are false for one so the row is amber rather than red. A
+red row inside a run reported as passed is a report arguing with itself.
+
+**A capture that found nothing is printed on the step that could not capture it** (Studio). It
+deliberately does not fail that step - the request answered, and whether a missing field matters is
+what an assertion is for - so the line is the only thing that can point back at it. The failure lands
+several steps later as a `{{variable}}` that never resolved, by which point nothing else does. The run
+window has always shown "N captures failed" on the row; the CLI, which is where CI reads this, did
+not, so a chained run blamed the step that USED the variable rather than the one that failed to set
+it.
+
+**A batch's name is its FILE's name** (Studio). `@smoke` on the command line resolves through
+`IBatchStore.FindBatchAsync`, which matches against the `batches/` directory listing - never against
+the `name` inside the files. So a batch whose two names disagree is one that nothing can run by the
+name it displays, and the left pane had exactly that bug: `BatchRowViewModel.Name` was the document's
+name and `MainViewModel` passed it to the planner, which looked for a file by it.
+
+The row now carries the file name, and the batch editor's name box renames the FILE - written first,
+renamed second, so a rename that fails leaves the batch where it was with its new contents rather than
+a saved document nobody can find. `IBatchStore.RenameBatch` refuses a name that is not a file name
+(both separators rejected explicitly: `Path.GetInvalidFileNameChars` reports only NUL and `/` on Unix,
+so a backslash would pass there and produce one file on Windows and another on Linux out of one
+workspace) and refuses to replace an existing batch.
+
+**A step whose target is gone keeps its name, and says so** (Studio). `BatchPlanner` turns an
+unresolvable step into one that ERRORS rather than skipping it, because a batch that quietly shrank
+keeps passing while testing one thing fewer. The batch editor says the same thing earlier - a red
+border and "not in this workspace" - and `ToModel` keeps the step. The row builds its OWN target list
+containing whatever it names, because a `ComboBox` renders nothing when its selection is not among its
+items: the first build of this shipped the one row worth looking at as the one blank box on the screen.
+
+**Provenance is carried per rule, not per level, all the way to the UI** (Studio). `ResolvedPath`,
+`ResolvedTolerance` and `ResolvedSnapshotRule` each hold the `ComparisonScope` and source name of the
+level that contributed them, so the Rules tab can say "inherited from Folder: orders" beside a rule the
+endpoint did not write, and its `✕` knows whether removing it means deleting a local addition or
+writing a removal. `ResolvedSnapshotPolicy` documented this and did not do it; the resolver had the
+layer in hand and dropped it.
+
+**An inherited rule is stopped HERE, never edited where it was written** (Studio). Removing one from
+the Rules tab appends the path to this level's `remove` list (§4.3); removing a local one deletes it,
+and does NOT write a removal of something nothing above ever added. Re-adding what this level had
+stopped drops the removal first, so a file never says both `remove $.id` and `add $.id`. A click in
+one endpoint's window must not change what every other endpoint under that folder does.
+
+**A comparison option in the Rules tab is three-state** (Studio). Inherit / On / Off, and Inherit shows
+what it resolves to and who decided. A checkbox would make every option this level never mentioned look
+deliberately set, and toggling one off and on again would leave a local override behind that keeps
+overriding forever. Going back to Inherit drops the level's whole `comparison` section when nothing
+else in it is set - and an `ignoredPaths` that adds and removes nothing counts as nothing, or the file
+records a level that deliberately said something when it said nothing.
+
+**A computed property on a model is written to everybody's repository** (Studio).
+`System.Text.Json` serialises every public getter, and these files are committed and read in diffs. It
+had already happened - saving an endpoint with a snapshot policy wrote `"isEmpty": false` twice, and a
+tolerance would have written the `kind` derived from it beside the rule itself, where a hand edit would
+leave it stale. Every one of them is now `[JsonIgnore]`, pinned by
+`ComputedPropertiesTests`. Round-tripping does not catch this: the extra members deserialise back to
+nothing and every existing test passes. The file's TEXT is what is wrong.
+
+**An editor that rebuilds its model must carry every field it does not show** (Studio).
+`RequestEditorViewModel.BuildRequestModel` never copied `Snapshot` or `Tolerances` and
+`CaseEditorViewModel.ToModel` never copied `Comparison` or `Tolerances`, so a file carrying any of them
+lost it the first time anyone pressed Ctrl+S - silently, and in the rules that keep a token out of a
+committed file. Both build a fresh model rather than mutating the loaded one, which is the right shape
+and is exactly why a new field has to be added in two places. `_original.LocalVariables` and
+`_original.Settings` were already being carried for this reason; the rules were simply forgotten.
+
+**An endpoint's Children are what a run of it SENDS - nothing else may live there** (Studio).
+`RunPlan.Walk` expands an endpoint into its children and treats an endpoint with NONE as one to send
+as it stands. Two things therefore stay out: an endpoint's own batches, which hang off
+`WorkspaceTreeNode.Batches`, and drafts, which `ToTreeNode` filters. Either in `Children` produces the
+same silent failure - an endpoint whose only child was a batch would send nothing at all, and a case
+that has not been saved would go into a run as a step whose file does not exist. An empty run reported
+as a pass is what this whole area exists to refuse. `EndpointBatchPlanTests` and `DraftNodeTests` pin
+both.
+
+**A batch has two homes, and a name is unique only within one** (Studio). The workspace's `batches/`
+holds the occasions that cut across the tree; an endpoint's holds the ways of running that endpoint.
+So the selector grammar has `@smoke` and `orders/get-order@happy`, and a bare name NEVER searches the
+endpoints: two endpoints may each have a `happy`, and resolving a bare name across both would make it
+mean whichever was scanned first. `BatchPlanner.OwnerDirectory` refuses an owner that is not an
+endpoint, because only an endpoint and the workspace hold batches.
+
+**A draft is the one thing in the tree that disk does not account for** (Studio). New cases, batches,
+endpoints and requests are held in memory until the first Save, so opening one and changing your mind
+leaves nothing behind. The tree is reconciled against a fresh scan on every watcher event, so
+`SyncChildren` exempts a draft twice: never removed for being absent from a scan, and no longer a
+draft the moment the scan does report it. They sort last, because reconciliation moves the real rows
+into scan order around whatever position a draft holds. Deleting one only forgets it, and renaming one
+moves no file - it points the reservation at a different name and tells the open editor to follow, or
+Save writes the name that was just replaced.
+
+**A case, a batch and a request are addressed by their FILE name** (Studio). `get-order#not-found`,
+`@smoke` and `orders/get-order` all resolve against a directory listing, never against a `name` field
+inside a file. So an editor with a name box has to rename the FILE - `IEndpointStore.RenameCase` and
+`IBatchStore.RenameBatch`, written first and renamed second so a failed rename leaves the contents
+saved rather than a document nobody can find. The request editor has no name box, and renaming a
+request stays the tree's inline rename. One `DocumentName.IsValid` for all of them: the rule is about
+file names, and the second copy of it started life as a batch-shaped predicate being asked about cases.
+
+**Resolving rules forgives a file that is not there, and nothing else** (Studio).
+`RequestComparisonSettings` opens on drafted requests and cases whose files do not exist yet; those
+levels simply contribute nothing. A file that EXISTS and cannot be read still throws, because judging
+with a fraction of the rules is precisely the failure that type exists to prevent.
+
+**The tree row has no width for a second count chip** (Studio). The pane is 260px and every row
+already carries a method badge and an auth badge. Adding a batch count beside the case count pushed
+the auth badge off the right edge; disabling the tree's horizontal scrolling then ellipsed the NAME to
+"ge..." instead, which is the worse trade. The counts take turns (`ContentsText`) - cases when there
+are several, batches when there is no case count - and the horizontal scrollbar stays off, which is
+also what finally made a long request name ellipse instead of pushing its badges out of sight.
+
+**A bound collection must be ONE instance, mutated - never a fresh projection** (Studio).
+`WorkspaceNodeViewModel.DisplayChildren` merges an endpoint's cases and batches, and it was written as
+a computed property returning a new list on every read. Every notification then handed the TreeView a
+different collection, so the child containers were rebuilt and any selected case or batch lost its
+selection: opening one DESELECTED the very row being edited, and `New Case`, `New Batch` and `Move to
+workspace` - all of which key off the selection - stopped being offered the moment you opened the
+thing you wanted to add to. It is now one collection reconciled in place, and the node subscribes to
+its own `Children`/`Batches` so a draft added directly by the explorer is picked up too. The tests
+assert the instance is the SAME after a rescan, which is the part that matters.
+
+**Only the two surfaces that are not in the tree clear its selection** (Studio). An environment and an
+auth profile have no row, so opening one deselects the tree; a case and a batch DO have rows, and
+clearing for them was throwing away the highlight and the selection-gated commands together.
+
+**A list built by awaiting per item must be published in one step** (Studio).
+`BatchesSectionViewModel.ReloadAsync` cleared `Rows` and then refilled it one `await` at a time, so two
+overlapping reloads - which switching workspace and re-opening an editor do within milliseconds - both
+cleared and both added, and every batch appeared twice. It builds a local list, checks a generation
+counter, then publishes; a stale read cannot win, and the list no longer blinks empty on the way.
+
+**Everything derived from the workspace FORMAT is re-raised in one place** (Studio). Two things change
+it - switching workspace tabs and converting one - and they had drifted: the conversion re-raised
+three of the derived properties and not the rest, so after converting, the pane still said "REQUESTS"
+and still offered to convert a workspace that already had. `RaiseFormatChanged` is called by both, so
+the next derived property cannot be added to only one of them.
+
+**A folder's chain is anchored on its own `_folder.json`** (Studio). `GetInheritanceChainAsync` walks
+up from a file's PARENT, so naming the file inside the folder is what makes the folder itself the
+innermost level rather than the one above it. And a `RuleLevel` at a folder must carry the source NAME
+as well as the scope: every folder in the chain is `ComparisonScope.Folder`, so matching on scope alone
+made a grandparent's rules look like this folder's own - and then offered to delete them from here,
+which is what "an inherited rule is never edited in place" exists to prevent.
+
+**A test that waits on `Progress<T>` with a sleep is a flake** (Studio).
+`EnvironmentPairRunServiceTests` slept 50ms for the synchronization context to drain and failed about
+once in six runs on a loaded machine. What those tests assert is the ORDER the service reports in, so
+they use an inline `IProgress<T>` that records on the calling thread and wait for nothing. A test that
+fails intermittently teaches people to re-run rather than to look.

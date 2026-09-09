@@ -348,72 +348,17 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
     /// overrides - plus how to persist a change at any level. The same shape the request editor builds,
     /// for the same reason: a rule written here is the same rule, in the same file.
     /// </summary>
-    private async Task<DiffSettingsContext> BuildSettingsContextAsync(string requestPath)
-    {
-        var layers = new List<ComparisonSettingsLayer>();
-
-        var app = await _services.AppSettings.LoadAsync();
-        if (app.Comparison is { } global)
-        {
-            layers.Add(new ComparisonSettingsLayer(global, ComparisonScope.Global, "Global"));
-        }
-
-        var chain = await _services.InheritanceResolver.GetInheritanceChainAsync(_workspace.RootPath, requestPath);
-        layers.AddRange(chain.ComparisonLayers);
-
-        var request = await _services.RequestStore.LoadRequestAsync(requestPath);
-
-        return new DiffSettingsContext(
-            layers,
-            request.Comparison?.Clone(),
-            Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(requestPath))),
-            (scope, settings) => SaveComparisonSettingsAsync(requestPath, scope, settings));
-    }
-
     /// <summary>
-    /// Writes one level's comparison overrides, then re-runs the affected rows' verdicts so the list
-    /// agrees with the rule that was just saved. Fails soft at every level, like the editor's: losing a
-    /// comparison over a failed write is the wrong trade in a window whose job is the comparison.
+    /// The comparison-settings hierarchy for one request - global, then its folders, then its own
+    /// overrides - plus how to persist a change at any level.
     /// </summary>
-    private async Task SaveComparisonSettingsAsync(string requestPath, ComparisonScope scope, ComparisonSettings? settings)
-    {
-        try
-        {
-            switch (scope)
-            {
-                case ComparisonScope.Global:
-                    var app = await _services.AppSettings.LoadAsync();
-                    app.Comparison = settings;
-                    await _services.AppSettings.SaveAsync(app);
-                    _services.StatusLog.Log("Saved global comparison defaults");
-                    break;
-
-                case ComparisonScope.Folder when Path.GetDirectoryName(Path.GetDirectoryName(requestPath)) is { } folder:
-                    var config = await _services.FolderConfigStore.LoadFolderConfigAsync(folder);
-                    config.Comparison = settings;
-                    await _services.FolderConfigStore.SaveFolderConfigAsync(folder, config);
-                    _services.StatusLog.Log($"Saved comparison settings to folder {Path.GetFileName(folder)}");
-                    break;
-
-                case ComparisonScope.Request:
-                    var persisted = await _services.RequestStore.LoadRequestAsync(requestPath);
-                    persisted.Comparison = settings;
-                    persisted.ResponseDiffIgnorePaths = [];
-                    await _services.RequestStore.SaveRequestAsync(requestPath, persisted);
-                    _services.StatusLog.Log($"Saved comparison settings to {Path.GetFileName(requestPath)}");
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            _services.StatusLog.LogError($"Could not save comparison settings: {ex.Message}");
-            return;
-        }
-
-        // A saved rule changes what "the same" means, so every row that has one is judged again. Only
-        // the rows that already ran - this is a re-verdict, not a re-run.
-        await RejudgeAsync();
-    }
+    /// <remarks>
+    /// Delegated rather than built here. The run window needed exactly this the moment a failing
+    /// snapshot row could be opened, and a rule written from either place is the same rule, in the
+    /// same file, at the same level - two copies is how the two come to disagree about where it goes.
+    /// </remarks>
+    private Task<DiffSettingsContext> BuildSettingsContextAsync(string requestPath) =>
+        _services.ComparisonSettingsContext.BuildAsync(_workspace, requestPath, RejudgeAsync);
 
     /// <summary>Re-runs every completed row's comparison. Cheap next to re-sending the requests, and it
     /// is what makes a rule feel like it applied to the whole list rather than to the open row.</summary>

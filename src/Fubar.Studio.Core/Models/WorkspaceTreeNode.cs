@@ -32,6 +32,47 @@ public sealed record WorkspaceTreeNode(
 
     /// <summary>Whether this node is something a run can send - as opposed to a container of them.</summary>
     public bool IsRunnable => Kind is WorkspaceNodeKind.Request or WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case;
+
+    /// <summary>Whether there is a recorded answer here, and whether it can still be believed. An
+    /// endpoint summarises its cases: stale if any of them is, none if none of them has one.</summary>
+    public SnapshotState Snapshots { get; init; } = SnapshotState.Unknown;
+
+    /// <summary>
+    /// This endpoint's own batches - <c>&lt;endpoint&gt;/batches/&lt;name&gt;.json</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Deliberately NOT in <see cref="Children"/>.</b> Children is what a run of this node SENDS:
+    /// <c>RunPlan.Walk</c> expands an endpoint into its children and treats an endpoint with none as
+    /// one to send as it stands. Put a batch in there and an endpoint whose only child was a batch
+    /// would stop being sent at all and contribute nothing - an empty run reported as a pass, which is
+    /// the failure this whole area exists to refuse.
+    /// <para>So: <see cref="Children"/> is what running THIS sends; <see cref="Batches"/> is what you
+    /// can choose to run HERE.</para>
+    /// </remarks>
+    public IReadOnlyList<WorkspaceTreeNode> Batches { get; init; } = [];
+}
+
+/// <summary>
+/// Whether there is a recorded answer for this node, and whether it can still be believed.
+/// </summary>
+/// <remarks>
+/// <see cref="Stale"/> is the one that earns its place. A green regression run against a snapshot
+/// recorded BEFORE the endpoint or case was last edited is a lie, and the tree is the only place
+/// anyone can notice that before running.
+/// </remarks>
+public enum SnapshotState
+{
+    /// <summary>Not applicable - a folder, or the requests format.</summary>
+    Unknown,
+
+    /// <summary>Nothing recorded. A regression run here reports "no snapshot" and fails.</summary>
+    None,
+
+    /// <summary>Recorded, and recorded after the last edit.</summary>
+    Recorded,
+
+    /// <summary>Recorded BEFORE the endpoint or case was last edited.</summary>
+    Stale,
 }
 
 /// <summary>What a node in the collections tree is.</summary>
@@ -49,6 +90,16 @@ public enum WorkspaceNodeKind
 
     /// <summary>One <c>cases/&lt;name&gt;.json</c>.</summary>
     Case,
+
+    /// <summary>
+    /// One <c>batches/&lt;name&gt;.json</c> - a named list of calls, either the workspace's own or an
+    /// endpoint's.
+    /// </summary>
+    /// <remarks>
+    /// An endpoint's batches hang off <see cref="WorkspaceTreeNode.Batches"/>, never off
+    /// <c>Children</c>: a batch is a thing you run, not a thing running the endpoint sends.
+    /// </remarks>
+    Batch,
 }
 
 /// <summary>

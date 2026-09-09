@@ -9,6 +9,20 @@ namespace Fubar.Studio.Infrastructure.Workspaces;
 
 public sealed class WorkspaceService : IWorkspaceService
 {
+    /// <summary>
+    /// What makes a directory an endpoint. ONE definition, shared with the scanner below.
+    /// </summary>
+    /// <remarks>
+    /// The scanner used to test for <c>endpoint.json</c> itself, which meant two implementations of
+    /// "is this an endpoint" that nothing kept in step - and the tree deciding one way while the store
+    /// decided the other is a workspace that renders as one shape and behaves as another.
+    /// </remarks>
+    private readonly IEndpointStore _endpoints;
+
+    /// <summary>Defaulted so the importers' tests and the Gallery can still <c>new</c> this up; the
+    /// app supplies the registered instance.</summary>
+    public WorkspaceService(IEndpointStore? endpoints = null) => _endpoints = endpoints ?? new FileEndpointStore();
+
     private const string AppManifestFileName = "fubar.json";
     private const string AuthFileName = "auth.json";
     private const string CollectionsDirName = "collections";
@@ -206,6 +220,9 @@ public sealed class WorkspaceService : IWorkspaceService
     {
         var casesPath = Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.CasesDirName);
 
+        var endpointFile = Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.EndpointFileName);
+        var edited = LastWrite(endpointFile);
+
         var cases = Directory.Exists(casesPath)
             ? Directory.EnumerateFiles(casesPath, $"*{RequestFileExtension}")
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
@@ -213,6 +230,30 @@ public sealed class WorkspaceService : IWorkspaceService
                     Path.GetFileNameWithoutExtension(f), f, false, [])
                 {
                     Kind = WorkspaceNodeKind.Case,
+
+                    // Either file can make a snapshot stale: a case's parameters and the endpoint's
+                    // URL both decide what was sent.
+                    Snapshots = SnapshotStateOf(
+                        Path.Combine(
+                            directoryPath,
+                            Core.Workspaces.IEndpointStore.SnapshotsDirName,
+                            Path.GetFileNameWithoutExtension(f)),
+                        Later(edited, LastWrite(f))),
+                })
+                .ToList()
+            : [];
+
+        // This endpoint's own batches - ways of running IT, as opposed to the workspace's
+        // cross-cutting occasions. Kept off Children on purpose; see WorkspaceTreeNode.Batches.
+        var batchesPath = Path.Combine(directoryPath, Core.Workspaces.IBatchStore.BatchesDirName);
+
+        var batches = Directory.Exists(batchesPath)
+            ? Directory.EnumerateFiles(batchesPath, $"*{RequestFileExtension}")
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .Select(f => new WorkspaceTreeNode(
+                    Path.GetFileNameWithoutExtension(f), f, false, [])
+                {
+                    Kind = WorkspaceNodeKind.Batch,
                 })
                 .ToList()
             : [];
@@ -222,10 +263,67 @@ public sealed class WorkspaceService : IWorkspaceService
             directoryPath,
             true,
             cases,
-            TryReadRequestSummary(Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.EndpointFileName)))
+            TryReadRequestSummary(endpointFile))
         {
             Kind = WorkspaceNodeKind.Endpoint,
+            Batches = batches,
+
+            // An endpoint summarises its cases, worst-first: one stale case makes the endpoint stale,
+            // because that is the one a reader has to go and look at.
+            Snapshots = cases.Count == 0
+                ? SnapshotStateOf(
+                    Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.SnapshotsDirName), edited)
+                : cases.Any(c => c.Snapshots == SnapshotState.Stale) ? SnapshotState.Stale
+                : cases.All(c => c.Snapshots == SnapshotState.None) ? SnapshotState.None
+                : SnapshotState.Recorded,
         };
+    }
+
+    /// <summary>
+    /// Whether anything is recorded in <paramref name="snapshotDirectory"/>, and whether it predates
+    /// the last edit to what was sent.
+    /// </summary>
+    /// <remarks>
+    /// A green regression run against a snapshot recorded BEFORE the endpoint or case changed is a
+    /// lie, and the tree is the only place anyone can notice before running - so this is worth a
+    /// <c>Directory.EnumerateFiles</c> per endpoint on a refresh, which is the same order of work the
+    /// method badge already costs.
+    /// </remarks>
+    private static SnapshotState SnapshotStateOf(string snapshotDirectory, DateTime edited)
+    {
+        if (!Directory.Exists(snapshotDirectory))
+        {
+            return SnapshotState.None;
+        }
+
+        var recorded = DateTime.MinValue;
+        var any = false;
+
+        foreach (var file in Directory.EnumerateFiles(snapshotDirectory, $"*{RequestFileExtension}"))
+        {
+            any = true;
+            recorded = Later(recorded, LastWrite(file));
+        }
+
+        return !any ? SnapshotState.None
+            : recorded < edited ? SnapshotState.Stale
+            : SnapshotState.Recorded;
+    }
+
+    private static DateTime Later(DateTime a, DateTime b) => a > b ? a : b;
+
+    /// <summary>A file that cannot be stat'd reads as the beginning of time, so a missing endpoint
+    /// file never makes every snapshot under it look stale.</summary>
+    private static DateTime LastWrite(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+        }
+        catch (IOException)
+        {
+            return DateTime.MinValue;
+        }
     }
 
     private IReadOnlyList<WorkspaceTreeNode> ScanDirectory(string directoryPath)
@@ -234,7 +332,7 @@ public sealed class WorkspaceService : IWorkspaceService
 
         foreach (var dir in Directory.EnumerateDirectories(directoryPath).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
         {
-            nodes.Add(File.Exists(Path.Combine(dir, Core.Workspaces.IEndpointStore.EndpointFileName))
+            nodes.Add(_endpoints.IsEndpoint(dir)
                 ? ScanEndpoint(dir)
                 : new WorkspaceTreeNode(Path.GetFileName(dir), dir, true, ScanDirectory(dir)));
         }
@@ -358,6 +456,51 @@ public sealed class WorkspaceService : IWorkspaceService
         {
             return path;
         }
+
+        if (isDirectory)
+        {
+            Directory.Move(path, destination);
+        }
+        else
+        {
+            File.Move(path, destination);
+        }
+
+        return destination;
+    }
+
+    public string MovePath(string path, string destinationDirectory)
+    {
+        var isDirectory = Directory.Exists(path);
+
+        if (!isDirectory && !File.Exists(path))
+        {
+            throw new FileNotFoundException($"There is nothing at \"{path}\" to move.", path);
+        }
+
+        var destination = Path.Combine(destinationDirectory, Path.GetFileName(path));
+
+        if (string.Equals(destination, path, StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        if (File.Exists(destination) || Directory.Exists(destination))
+        {
+            throw new IOException(
+                $"\"{Path.GetFileName(path)}\" already exists in \"{Path.GetFileName(destinationDirectory)}\".");
+        }
+
+        // A directory moved inside its own subtree is not a move anyone meant, and Directory.Move does
+        // not always refuse it - on some file systems it succeeds and takes the contents with it.
+        if (isDirectory
+            && (destinationDirectory + Path.DirectorySeparatorChar)
+                .StartsWith(path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException($"\"{Path.GetFileName(path)}\" cannot be moved inside itself.");
+        }
+
+        Directory.CreateDirectory(destinationDirectory);
 
         if (isDirectory)
         {

@@ -24,7 +24,9 @@ Per-app detail lives in [`docs/api-studio.md`](docs/api-studio.md), [`docs/diff.
 **[`docs/spec-endpoints.md`](docs/spec-endpoints.md) is the canonical design for endpoints, cases,
 snapshots, oracles, tolerances and batches** — what is on disk, how the hierarchy resolves, what the
 CLI accepts, and §10.3, which says what is built and what deliberately is not.
-[`docs/endpoints-and-oracles.md`](docs/endpoints-and-oracles.md) is the shorter reasoning behind it.
+[`docs/endpoints-and-oracles.md`](docs/endpoints-and-oracles.md) is the shorter reasoning behind it,
+and [`docs/integration-tests.md`](docs/integration-tests.md) is the user-facing how-to: one chained
+flow built from nothing, with every assertion operator and how to read a red run.
 
 ## Build / run / test
 
@@ -34,7 +36,8 @@ dotnet test  Fubar.slnx                # every suite
 
 dotnet run --project src/Fubar.Studio.UI                   # API Studio
 dotnet run --project src/Fubar.Studio.UI -- run --report results.xml         # run a collection; 0 pass, 1 fail, 2 could not
-dotnet run --project src/Fubar.Studio.UI -- run @smoke --oracle snapshot     # a batch, against its recorded answers
+dotnet run --project src/Fubar.Studio.UI -- run @smoke --oracle snapshot     # a workspace batch, against its recorded answers
+dotnet run --project src/Fubar.Studio.UI -- run orders/get-order@happy       # one endpoint's own batch
 dotnet run --project src/Fubar.Diff.UI -- left.json right.json
 dotnet run --project src/Fubar.Diff.UI -- --check left.json right.json   # headless; 0 same, 1 differ, 2 failed
 dotnet run --project src/Fubar.Diff.UI -- --functional -q a.cs b.cs      # 0 unless the C# behaviour changed
@@ -88,7 +91,7 @@ no longer depends on at all. Split per app:
 - **[docs/invariants-diff.md](docs/invariants-diff.md)** — 61 entries. Alignment and filler
   discipline, semantic JSON, three-way merge, the location map, folder and binary comparison,
   scrolling and highlighting.
-- **[docs/invariants-studio.md](docs/invariants-studio.md)** — 38 entries. The CLI/window split,
+- **[docs/invariants-studio.md](docs/invariants-studio.md)** — 40 entries. The CLI/window split,
   OpenAPI import, collection runs, the settings hierarchy, and everything the regression features
   rest on: a missing other side is never a pass, recording is never automatic, and the same
   redactions run on both sides of a comparison.

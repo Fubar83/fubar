@@ -157,4 +157,66 @@ public class RunSelectorTests
         Assert.Throws<InvalidOperationException>(
             () => TreeLookup.Expand(Tree(), RunSelector.Parse("../../etc/passwd")));
     }
+    // ---- Two homes for batches ------------------------------------------------------------------
+
+    /// <summary>The unqualified form still means the workspace's own, cross-cutting batches.</summary>
+    [Fact]
+    public void An_unqualified_batch_belongs_to_the_workspace()
+    {
+        var selector = RunSelector.Parse("@smoke");
+
+        Assert.Equal(RunSelectorKind.Batch, selector.Kind);
+        Assert.Equal("smoke", selector.BatchName);
+        Assert.Null(selector.BatchOwnerPath);
+    }
+
+    /// <summary>
+    /// The qualified form names an endpoint's own batch.
+    /// </summary>
+    /// <remarks>
+    /// It exists because a batch name is unique only within one home: two endpoints may each have a
+    /// "happy", and neither of them is <c>@happy</c>. Searching both homes for a bare name would make
+    /// it mean whichever was scanned first.
+    /// </remarks>
+    [Fact]
+    public void A_qualified_batch_belongs_to_an_endpoint()
+    {
+        var selector = RunSelector.Parse("orders/get-order@happy");
+
+        Assert.Equal(RunSelectorKind.Batch, selector.Kind);
+        Assert.Equal("happy", selector.BatchName);
+        Assert.Equal("orders/get-order", selector.BatchOwnerPath);
+        Assert.Equal("orders/get-order@happy", selector.ToString());
+    }
+
+    [Fact]
+    public void Backslashes_in_a_qualified_batch_are_accepted()
+    {
+        Assert.Equal("orders/get-order", RunSelector.Parse(@"orders\get-order@happy").BatchOwnerPath);
+    }
+
+    [Theory]
+    [InlineData("@")]
+    [InlineData("orders/get-order@")]
+    public void A_selector_that_names_no_batch_is_refused(string text) =>
+        Assert.Throws<FormatException>(() => RunSelector.Parse(text));
+
+    /// <summary>A batch already says which steps it runs, so a case on top of it is asking for one
+    /// step of something that has already answered that question.</summary>
+    [Fact]
+    public void A_case_of_a_batch_is_refused()
+    {
+        var thrown = Assert.Throws<FormatException>(
+            () => RunSelector.Parse("orders/get-order@happy#default"));
+
+        Assert.Contains("already says which steps", thrown.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Expanding one is the batch store's job - the tree does not hold a batch's steps.</summary>
+    [Fact]
+    public void A_qualified_batch_is_not_expanded_by_the_tree()
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => TreeLookup.Expand(Tree(), RunSelector.Parse("orders/get-order@happy")));
+    }
 }

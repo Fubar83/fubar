@@ -35,6 +35,8 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     private readonly StatusLogViewModel _statusLog;
     private readonly IAppSettingsService _settingsService;
     private readonly IEndpointStore _endpointStore;
+    private readonly IBatchStore _batchStore;
+    private readonly IFolderConfigStore _folderConfigStore;
     private readonly IWorkspaceFormatConverter _formatConverter;
     private readonly IConfirmationService? _confirmation;
     private bool _suppressPersist;
@@ -51,10 +53,14 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         StatusLogViewModel statusLog,
         IAppSettingsService settingsService,
         IEndpointStore endpointStore,
+        IBatchStore batchStore,
+        IFolderConfigStore folderConfigStore,
         IWorkspaceFormatConverter formatConverter,
         IConfirmationService? confirmation = null)
     {
         _endpointStore = endpointStore;
+        _batchStore = batchStore;
+        _folderConfigStore = folderConfigStore;
         _formatConverter = formatConverter;
         _confirmation = confirmation;
         _requestStore = requestStore;
@@ -98,16 +104,36 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
         // Which format this workspace is in decides what the menu offers, so switching tabs has to
         // re-ask - the two workspaces open side by side need not be in the same one.
-        OnPropertyChanged(nameof(ActiveFormat));
-        OnPropertyChanged(nameof(UsesEndpoints));
-        OnPropertyChanged(nameof(UsesRequests));
-        OnPropertyChanged(nameof(CanAddCase));
+        RaiseFormatChanged();
+        OnPropertyChanged(nameof(IsScratchActive));
+        RefreshMoveTargets();
 
         PersistOpenWorkspaces();
     }
 
     private void OnActiveRootChildrenChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
         OnPropertyChanged(nameof(HasActiveRootChildren));
+
+    /// <summary>
+    /// Everything that reads the active workspace's FORMAT, in one place.
+    /// </summary>
+    /// <remarks>
+    /// Two things change it - switching tabs, and converting a workspace - and they had drifted: the
+    /// conversion re-raised three of these and not the rest, so after converting, the pane still said
+    /// "REQUESTS" and still offered to convert a workspace that already had. One method, called by
+    /// both, is what stops the next derived property being added to only one of them.
+    /// </remarks>
+    private void RaiseFormatChanged()
+    {
+        OnPropertyChanged(nameof(ActiveFormat));
+        OnPropertyChanged(nameof(UsesEndpoints));
+        OnPropertyChanged(nameof(UsesRequests));
+        OnPropertyChanged(nameof(CanAddCase));
+        OnPropertyChanged(nameof(CanAddBatch));
+        OnPropertyChanged(nameof(CollectionsTitle));
+        OnPropertyChanged(nameof(NewCollectionItemTooltip));
+        OnPropertyChanged(nameof(IsRequestsFormatActive));
+    }
 
     /// <summary>
     /// Saves which workspaces are open and which is active to <see cref="IAppSettingsService"/> so
@@ -220,7 +246,11 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAddCase))]
+    [NotifyPropertyChangedFor(nameof(CanAddBatch))]
+    [NotifyPropertyChangedFor(nameof(CanOpenFolderSettings))]
     public partial WorkspaceNodeViewModel? SelectedNode { get; set; }
+
+    partial void OnSelectedNodeChanged(WorkspaceNodeViewModel? value) => RefreshMoveTargets();
 
     /// <summary>
     /// Narrows the tree to nodes matching by name, URL or method.
@@ -286,6 +316,12 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         }
 
         PersistOpenWorkspaces();
+
+        // Explicitly, because closing a tab that was NOT the active one changes nothing else here -
+        // and a closed workspace left in the list is a "Move to workspace" entry that would move
+        // something into a tree nobody is watching.
+        RefreshMoveTargets();
+
         WorkspaceClosed?.Invoke(root.Workspace);
         root.Dispose();
         _statusLog.Log($"Closed workspace \"{root.Name}\".");
@@ -367,6 +403,183 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
+    /// Where a request goes when you have not chosen anywhere to put it.
+    /// </summary>
+    /// <remarks>
+    /// Under the app's own data directory, never in a folder the user picked - the point is that
+    /// trying something out costs no decisions and litters nothing. It is an ordinary workspace in
+    /// every other respect, so environments, auth, history and rules all work in it without a second
+    /// code path, and a request that turns out to be worth keeping can be moved into a real one.
+    /// </remarks>
+    public static string ScratchWorkspacePath { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Fubar", "scratch");
+
+    /// <summary>
+    /// Opens the scratch workspace (creating it the first time) and drafts a request in it.
+    /// </summary>
+    /// <remarks>
+    /// The answer to "I just want to send one request". Everything else here needs a workspace on
+    /// disk before it will do anything at all, which put four filing decisions between launching the
+    /// app and seeing a response - and none of them can be made sensibly before you know whether the
+    /// request was worth keeping. The request is a DRAFT, so even here nothing is written until Save.
+    /// </remarks>
+    [RelayCommand]
+    public async Task NewScratchRequestAsync()
+    {
+        try
+        {
+            var root = Roots.FirstOrDefault(r => string.Equals(
+                r.FullPath, ScratchWorkspacePath, StringComparison.OrdinalIgnoreCase));
+
+            if (root is null)
+            {
+                var workspace = await _workspaceStore.CreateWorkspaceAsync(ScratchWorkspacePath);
+                root = new WorkspaceRootViewModel(workspace, _requestStore);
+                Roots.Add(root);
+            }
+
+            ActiveRoot = root;
+            SelectedNode = null;
+
+            // Drafted directly rather than through NewRequest, which routes BACK here when there is
+            // no workspace - two commands calling each other is a loop waiting for the first failure.
+            DraftRequestIn(Path.Combine(root.FullPath, "collections"));
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not open the scratch workspace: {ex.Message}");
+        }
+    }
+
+    /// <summary>Whether the active workspace is the scratch one - the shell says so, because a request
+    /// saved somewhere you did not choose is worth knowing about.</summary>
+    public bool IsScratchActive => ActiveRoot is not null && string.Equals(
+        ActiveRoot.FullPath, ScratchWorkspacePath, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The open workspaces the selection could be moved into - every one except its own.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the scratch pad: something tried out with no filing decisions has to be able
+    /// to become a real request later, or "try it here first" is a dead end. Open workspaces only,
+    /// because those are the ones whose format is known and whose tree is already watching.
+    /// </remarks>
+    public ObservableCollection<WorkspaceRootViewModel> MoveTargets { get; } = [];
+
+    /// <summary>
+    /// Whether the selection is a thing that can move between workspaces.
+    /// </summary>
+    /// <remarks>
+    /// A request, an endpoint or a folder - the things that stand on their own. A case and a batch
+    /// belong to their endpoint and go where it goes; moving one alone would leave a case with no
+    /// endpoint, which is not a state this format has. A draft has no file to move at all.
+    /// </remarks>
+    public bool CanMove =>
+        MoveTargets.Count > 0
+        && SelectedNode is
+        {
+            IsDraft: false,
+            Kind: WorkspaceNodeKind.Request or WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Folder,
+        }
+        && SelectedNode is not WorkspaceRootViewModel;
+
+    private void RefreshMoveTargets()
+    {
+        var owner = SelectedNode is null
+            ? null
+            : Roots.FirstOrDefault(r => SelectedNode.FullPath.StartsWith(r.FullPath, StringComparison.OrdinalIgnoreCase));
+
+        MoveTargets.Clear();
+        foreach (var root in Roots.Where(r => r != owner))
+        {
+            MoveTargets.Add(root);
+        }
+
+        OnPropertyChanged(nameof(CanMove));
+    }
+
+    /// <summary>
+    /// Moves the selection into <paramref name="target"/>'s <c>collections/</c>.
+    /// </summary>
+    /// <remarks>
+    /// Into the root of the target rather than a folder chosen here: picking the destination folder
+    /// needs a tree of its own, and the tree it lands in already has Rename and its own context menu
+    /// for putting it where it belongs. Landing somewhere findable beats a dialog.
+    /// </remarks>
+    [RelayCommand]
+    private async Task MoveToWorkspaceAsync(WorkspaceRootViewModel? target)
+    {
+        if (target is null || SelectedNode is not { } node || !CanMove)
+        {
+            return;
+        }
+
+        var owner = Roots.FirstOrDefault(
+            r => node.FullPath.StartsWith(r.FullPath, StringComparison.OrdinalIgnoreCase));
+
+        // The two formats store an endpoint and a request differently, and a directory holding
+        // endpoint.json dropped into a requests-format workspace is a folder full of files that
+        // workspace cannot send. Refused rather than half-working.
+        if (owner is not null
+            && owner.Workspace.Manifest.Format != target.Workspace.Manifest.Format
+            && node.Kind != WorkspaceNodeKind.Folder)
+        {
+            _statusLog.LogError(
+                $"\"{node.DisplayName}\" is in the {owner.Workspace.Manifest.Format.ToString().ToLowerInvariant()} "
+                + $"format and \"{target.Workspace.Manifest.Name}\" is in the "
+                + $"{target.Workspace.Manifest.Format.ToString().ToLowerInvariant()} format.");
+            return;
+        }
+
+        if (!await ConfirmMoveAsync(node, target))
+        {
+            return;
+        }
+
+        try
+        {
+            var from = node.FullPath;
+            var moved = _requestStore.MovePath(from, Path.Combine(target.FullPath, "collections"));
+
+            _statusLog.Log($"Moved \"{node.DisplayName}\" into \"{target.Workspace.Manifest.Name}\".");
+
+            SelectedNode = null;
+            RefreshRootFor(from);
+            target.Refresh();
+            ActiveRoot = target;
+
+            PathMoved?.Invoke(from, moved);
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not move \"{node.DisplayName}\": {ex.Message}");
+        }
+    }
+
+    /// <summary>Raised after a successful move, with where it was and where it is now - the shell
+    /// re-opens whatever was showing the old path, which no longer exists.</summary>
+    public event Action<string, string>? PathMoved;
+
+    /// <summary>
+    /// A move takes something out of one repository and puts it in another, and both are usually
+    /// committed. Asked about rather than done quietly - with no confirmation service wired the answer
+    /// is yes, matching every other file operation here.
+    /// </summary>
+    private async Task<bool> ConfirmMoveAsync(WorkspaceNodeViewModel node, WorkspaceRootViewModel target)
+    {
+        if (_confirmation is null)
+        {
+            return true;
+        }
+
+        return await _confirmation.ConfirmAsync(
+            "Move to workspace",
+            $"Move \"{node.DisplayName}\" into \"{target.Workspace.Manifest.Name}\"? "
+            + "It stops being where it is now.",
+            "Move");
+    }
+
+    /// <summary>
     /// Which shape the active workspace's collections are in. Read from the manifest, never sniffed
     /// from the files - one field, so every screen agrees about which half of the product it is in.
     /// </summary>
@@ -378,25 +591,151 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
     public bool UsesRequests => !UsesEndpoints;
 
+    /// <summary>
+    /// What the tree's group is called, which is not the same word in both formats.
+    /// </summary>
+    /// <remarks>
+    /// It was hardcoded to REQUESTS, so an endpoints workspace had a group headed "REQUESTS" whose
+    /// "+" said "New Request or Folder" directly above a menu offering "New Endpoint" - the pane
+    /// contradicting itself about what the things in it are.
+    /// </remarks>
+    public string CollectionsTitle => UsesEndpoints ? "ENDPOINTS" : "REQUESTS";
+
+    /// <inheritdoc cref="CollectionsTitle"/>
+    public string NewCollectionItemTooltip =>
+        UsesEndpoints ? "New Endpoint or Folder" : "New Request or Folder";
+
+    /// <summary>
+    /// Whether this workspace is in the older requests format, and so has none of the features built
+    /// on cases.
+    /// </summary>
+    /// <remarks>
+    /// <para>The product is in two halves and nothing closes the split by itself (spec §10.4): an
+    /// existing workspace keeps today's request files and gets no cases, no batches, no snapshots and
+    /// no per-case rules. The decision NOT to convert on open stands - rewriting committed files
+    /// because someone opened a folder is not a thing to spring on anyone - but the way out was a
+    /// context-menu item you had to already know about, which is how "closes by choice" becomes
+    /// "closes never".</para>
+    /// <para>So the pane says which half it is in, and what that costs, with the conversion one click
+    /// away. Said once per workspace in one line rather than as a dialog, because it is information
+    /// rather than a demand.</para>
+    /// </remarks>
+    public bool IsRequestsFormatActive => ActiveRoot is not null && UsesRequests;
+
     /// <summary>"Add case" only inside an endpoint, which is the only place a case can live.</summary>
     public bool CanAddCase => UsesEndpoints && SelectedNode is { Kind: WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case };
+
+    /// <summary>"Add batch" in the same three places, for the same reason: an endpoint's batches live
+    /// beside its cases, so anything inside an endpoint can offer one.</summary>
+    public bool CanAddBatch => UsesEndpoints
+        && SelectedNode is { Kind: WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case or WorkspaceNodeKind.Batch };
+
+    /// <summary>The endpoint directory the selection sits in, or null when it is not inside one.</summary>
+    private string? SelectedEndpointDirectory => SelectedNode switch
+    {
+        { Kind: WorkspaceNodeKind.Endpoint } endpoint => endpoint.FullPath,
+
+        // A case is <endpoint>/cases/<name>.json and a batch is <endpoint>/batches/<name>.json, so
+        // both are two levels down. Walked rather than string-trimmed so the two stay in step.
+        { Kind: WorkspaceNodeKind.Case or WorkspaceNodeKind.Batch } child =>
+            Path.GetDirectoryName(Path.GetDirectoryName(child.FullPath)),
+
+        _ => null,
+    };
 
     [RelayCommand]
     private void NewRequest()
     {
-        var parent = ResolveTargetDirectory();
-        if (parent is null)
+        // With nowhere to put it, make somewhere. Ctrl+N is the first thing anyone presses, and
+        // answering it with "Open a workspace before creating a request" is the dead end the scratch
+        // workspace exists to remove - having built the way out, this is where people arrive at it.
+        if (ResolveTargetDirectory() is not { } parent)
         {
-            _statusLog.Log("Open a workspace before creating a request.");
+            _ = NewScratchRequestAsync();
             return;
         }
 
-        var path = UsesEndpoints
-            ? _endpointStore.CreateEndpoint(parent, "New Endpoint")
-            : _requestStore.CreateRequest(parent, "New Request");
+        DraftRequestIn(parent);
+    }
 
-        _statusLog.Log($"Created: {path}");
-        RefreshRootFor(parent);
+    /// <summary>
+    /// Puts an unwritten request or endpoint under <paramref name="parent"/> and opens it.
+    /// </summary>
+    /// <remarks>
+    /// Proposed, not created - the same rule cases and batches follow. An endpoint is a DIRECTORY
+    /// holding endpoint.json, so a drafted one is a directory that does not exist yet either;
+    /// SaveRequestAsync makes it on the way to writing the file.
+    /// </remarks>
+    private void DraftRequestIn(string parent)
+    {
+        var path = UsesEndpoints
+            ? ProposeDirectory(parent, "New Endpoint")
+            : ProposeFile(parent, "New Request");
+
+        if (AddRootDraft(parent, path, UsesEndpoints ? WorkspaceNodeKind.Endpoint : WorkspaceNodeKind.Request) is null)
+        {
+            return;
+        }
+
+        RequestDrafted?.Invoke(
+            UsesEndpoints ? Path.Combine(path, IEndpointStore.EndpointFileName) : path);
+    }
+
+    /// <summary>Raised when a new, unwritten request or endpoint is made - the shell opens an editor
+    /// on a blank one rather than reading a file that is not there yet.</summary>
+    public event Action<string>? RequestDrafted;
+
+    /// <summary>A free file path under <paramref name="parent"/>, writing nothing.</summary>
+    private static string ProposeFile(string parent, string name)
+    {
+        var candidate = Path.Combine(parent, name + ".json");
+        var n = 2;
+        while (File.Exists(candidate))
+        {
+            candidate = Path.Combine(parent, $"{name} {n++}.json");
+        }
+
+        return candidate;
+    }
+
+    private static string ProposeDirectory(string parent, string name)
+    {
+        var candidate = Path.Combine(parent, name);
+        var n = 2;
+        while (Directory.Exists(candidate))
+        {
+            candidate = Path.Combine(parent, $"{name} {n++}");
+        }
+
+        return candidate;
+    }
+
+    /// <summary>Puts an unwritten request or endpoint into the tree under the folder that will hold
+    /// it. Unlike a case or a batch, its parent may be the workspace root itself.</summary>
+    private WorkspaceNodeViewModel? AddRootDraft(string parentDirectory, string path, WorkspaceNodeKind kind)
+    {
+        var parent = FindNodeByPath(parentDirectory)
+                     ?? Roots.FirstOrDefault(r => string.Equals(
+                         Path.Combine(r.FullPath, "collections"), parentDirectory, StringComparison.OrdinalIgnoreCase));
+
+        if (parent is null)
+        {
+            _statusLog.LogError($"\"{parentDirectory}\" is not in the tree.");
+            return null;
+        }
+
+        var draft = new WorkspaceNodeViewModel(
+            Path.GetFileName(path), path, isDirectory: kind == WorkspaceNodeKind.Endpoint, kind)
+        {
+            IsDraft = true,
+            Method = "GET",
+        };
+
+        parent.Children.Add(draft);
+        parent.IsExpanded = true;
+        SelectedNode = draft;
+
+        return draft;
     }
 
     [RelayCommand]
@@ -409,9 +748,82 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        var path = _endpointStore.CreateCase(endpointDirectory, "new-case");
-        _statusLog.Log($"Created case: {path}");
-        RefreshRootFor(endpointDirectory);
+        // Proposed, not created: a new case lives in memory until it is saved, so opening one and
+        // changing your mind leaves nothing behind.
+        var path = _endpointStore.ProposeCasePath(endpointDirectory, "new-case");
+
+        if (AddDraft(endpointDirectory, path, WorkspaceNodeKind.Case) is null)
+        {
+            return;
+        }
+
+        CaseDrafted?.Invoke(path);
+    }
+
+    /// <summary>Raised when a new, unwritten case is made - the shell opens an editor on a blank one
+    /// rather than reading a file that is not there yet.</summary>
+    public event Action<string>? CaseDrafted;
+
+    /// <summary>
+    /// Puts an unwritten node into the tree under the endpoint that will hold it, and selects it.
+    /// </summary>
+    /// <remarks>
+    /// The tree is otherwise a reflection of the file system, so this is the one thing in it that disk
+    /// does not account for - see <see cref="WorkspaceNodeViewModel.IsDraft"/>, which is what keeps a
+    /// rescan from throwing it away a moment later.
+    /// </remarks>
+    private WorkspaceNodeViewModel? AddDraft(string endpointDirectory, string path, WorkspaceNodeKind kind)
+    {
+        if (FindNodeByPath(endpointDirectory) is not { } endpoint)
+        {
+            _statusLog.LogError($"\"{endpointDirectory}\" is not in the tree.");
+            return null;
+        }
+
+        var draft = new WorkspaceNodeViewModel(
+            Path.GetFileName(path), path, isDirectory: false, kind)
+        {
+            IsDraft = true,
+        };
+
+        if (kind == WorkspaceNodeKind.Batch)
+        {
+            endpoint.Batches.Add(draft);
+        }
+        else
+        {
+            endpoint.Children.Add(draft);
+        }
+
+        endpoint.IsExpanded = true;
+        SelectedNode = draft;
+
+        return draft;
+    }
+
+    /// <summary>
+    /// Adds a batch to the selected endpoint - a way of running THIS endpoint, as opposed to the
+    /// workspace's cross-cutting occasions in the Left Pane's Batches group.
+    /// </summary>
+    [RelayCommand]
+    private void NewBatch()
+    {
+        if (SelectedEndpointDirectory is not { } endpointDirectory)
+        {
+            _statusLog.Log("Select an endpoint to add a batch to.");
+            return;
+        }
+
+        var path = _batchStore.ProposeBatchPath(endpointDirectory, "new-batch");
+
+        if (AddDraft(endpointDirectory, path, WorkspaceNodeKind.Batch) is null)
+        {
+            return;
+        }
+
+        // Opened straight away, for the same reason the Left Pane's does: a row saying "0 steps" with
+        // no way in but a text editor is what made batches a JSON-editing job.
+        BatchOpened?.Invoke(path, new Batch { Name = Path.GetFileNameWithoutExtension(path) });
     }
 
     /// <summary>
@@ -474,9 +886,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             // which format this workspace is in, and every screen reads it from there.
             var reloaded = await _workspaceStore.LoadWorkspaceAsync(root.FullPath);
             root.UpdateWorkspace(reloaded);
-            OnPropertyChanged(nameof(ActiveFormat));
-            OnPropertyChanged(nameof(UsesEndpoints));
-            OnPropertyChanged(nameof(UsesRequests));
+            RaiseFormatChanged();
             root.Refresh();
             WorkspaceContentImported?.Invoke(reloaded);
         }
@@ -699,6 +1109,14 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // A draft has no file to move - renaming one only changes which file it will take. Going
+        // through RenamePath would throw about a path that was never meant to exist yet.
+        if (node.IsDraft)
+        {
+            RenameDraft(node, newName);
+            return;
+        }
+
         try
         {
             var newPath = _requestStore.RenamePath(node.FullPath, newName);
@@ -729,6 +1147,14 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // A draft has no file to delete - discarding it is just forgetting it. Going through
+        // DeletePath would throw about a path that was never meant to exist.
+        if (node.IsDraft)
+        {
+            DiscardDraft(node);
+            return;
+        }
+
         try
         {
             _requestStore.DeletePath(node.FullPath);
@@ -739,6 +1165,89 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         {
             _statusLog.LogError($"Delete failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Retires the draft that was reserving <paramref name="draftPath"/>, then rescans.
+    /// </summary>
+    /// <remarks>
+    /// A draft reserves the file it WOULD occupy, and saving can write a different one: the name box
+    /// is the file's name, so saving a renamed draft creates <c>not-found.json</c> while the node is
+    /// still holding <c>new-case.json</c>. The scan then adds the real row beside a draft that will
+    /// never resolve, and the tree shows the same case twice - once forever unsaved.
+    /// </remarks>
+    public void DraftSaved(string draftPath)
+    {
+        if (FindNodeByPath(draftPath) is { IsDraft: true } draft)
+        {
+            foreach (var root in Roots)
+            {
+                if (RemoveDraft(root, draft))
+                {
+                    break;
+                }
+            }
+        }
+
+        RefreshRootFor(draftPath);
+    }
+
+    /// <summary>
+    /// Points an unwritten node at a different file. Nothing moves, because nothing was written.
+    /// </summary>
+    /// <remarks>
+    /// The editor holding this draft was opened on the OLD path and will still save there, so it is
+    /// told to follow - otherwise renaming a draft before saving it would write the file under the
+    /// name you replaced.
+    /// </remarks>
+    private void RenameDraft(WorkspaceNodeViewModel draft, string newName)
+    {
+        if (!DocumentName.IsValid(newName))
+        {
+            _statusLog.LogError($"\"{newName}\" cannot be a name: it has to work as a file name.");
+            return;
+        }
+
+        var parent = Path.GetDirectoryName(draft.FullPath)!;
+        var from = draft.FullPath;
+
+        draft.FullPath = draft.IsDirectory
+            ? Path.Combine(parent, newName)
+            : Path.Combine(parent, newName + ".json");
+
+        draft.Name = Path.GetFileName(draft.FullPath);
+
+        DraftRenamed?.Invoke(from, draft.FullPath);
+    }
+
+    /// <summary>Raised when an unwritten node is renamed, with where it was and where it now points -
+    /// so an editor already open on it saves to the new file rather than the old one.</summary>
+    public event Action<string, string>? DraftRenamed;
+
+    /// <summary>Takes an unwritten node back out of the tree. Nothing on disk is touched, because
+    /// nothing on disk was ever made.</summary>
+    private void DiscardDraft(WorkspaceNodeViewModel draft)
+    {
+        foreach (var root in Roots)
+        {
+            if (RemoveDraft(root, draft))
+            {
+                break;
+            }
+        }
+
+        SelectedNode = null;
+        _statusLog.Log($"Discarded \"{draft.DisplayName}\" - it was never saved.");
+    }
+
+    private static bool RemoveDraft(WorkspaceNodeViewModel parent, WorkspaceNodeViewModel draft)
+    {
+        if (parent.Children.Remove(draft) || parent.Batches.Remove(draft))
+        {
+            return true;
+        }
+
+        return parent.Children.Any(child => RemoveDraft(child, draft));
     }
 
     [RelayCommand]
@@ -796,6 +1305,66 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             case { Kind: WorkspaceNodeKind.Case } endpointCase:
                 CaseFileActivated?.Invoke(endpointCase.FullPath);
                 break;
+
+            case { Kind: WorkspaceNodeKind.Batch } batch:
+                _ = OpenBatchAsync(batch.FullPath);
+                break;
+
+            // A folder holds the settings every request beneath it inherits, so opening one opens
+            // those - the level most shared rules belong at, and the last one with no editor.
+            case { Kind: WorkspaceNodeKind.Folder } folder:
+                _ = OpenFolderAsync(folder.FullPath);
+                break;
+        }
+    }
+
+    /// <summary>Raised when a folder is opened, with its <c>_folder.json</c> freshly read - the shell
+    /// puts it on the canvas.</summary>
+    public event Action<string, FolderConfig>? FolderOpened;
+
+    /// <summary>Whether the selection is a plain folder - not an endpoint, which is also a directory
+    /// but keeps its settings in its own file.</summary>
+    public bool CanOpenFolderSettings => SelectedNode is { Kind: WorkspaceNodeKind.Folder, IsDraft: false };
+
+    [RelayCommand]
+    private Task OpenFolderSettingsAsync() =>
+        SelectedNode is { Kind: WorkspaceNodeKind.Folder } folder
+            ? OpenFolderAsync(folder.FullPath)
+            : Task.CompletedTask;
+
+    private async Task OpenFolderAsync(string folderPath)
+    {
+        try
+        {
+            FolderOpened?.Invoke(folderPath, await _folderConfigStore.LoadFolderConfigAsync(folderPath));
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not open \"{Path.GetFileName(folderPath)}\": {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Raised when one of an endpoint's own batches is opened, with a freshly read copy of it -
+    /// <c>MainViewModel</c> puts it in the same editor the Left Pane's Batches group uses.
+    /// </summary>
+    /// <remarks>
+    /// Read here rather than by the shell, which has no batch store, and read fresh rather than kept
+    /// on the node: an editor opened on a stale copy would save it back over whatever has happened to
+    /// the file since.
+    /// </remarks>
+    public event Action<string, Batch>? BatchOpened;
+
+    private async Task OpenBatchAsync(string filePath)
+    {
+        try
+        {
+            BatchOpened?.Invoke(filePath, await _batchStore.LoadBatchAsync(filePath));
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError(
+                $"Could not open the batch \"{Path.GetFileNameWithoutExtension(filePath)}\": {ex.Message}");
         }
     }
 

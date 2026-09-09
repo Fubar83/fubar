@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fubar.Studio.Core.Json;
 using Fubar.Studio.Core.Models;
+using Fubar.Studio.Core.Running;
 using Fubar.Studio.Core.Workspaces;
 using Fubar.Studio.UI.Services;
 
@@ -23,7 +24,21 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
 {
     private readonly IEndpointStore _endpoints;
     private readonly StatusLogViewModel _statusLog;
+    private readonly Fubar.Studio.Application.Running.ICollectionRunService _runs;
+    private readonly EnvironmentManagerViewModel _environments;
     private readonly string _id;
+    private CancellationTokenSource? _sending;
+
+    /// <summary>
+    /// This case's own rules, carried through a save whether or not the Rules tab was opened.
+    /// </summary>
+    /// <remarks>
+    /// These used to be dropped: <c>ToModel</c> built a fresh <see cref="EndpointCase"/> and never
+    /// copied them, so a case carrying a tolerance lost it the first time anyone pressed Ctrl+S -
+    /// silently, and in a file whose whole job is to say what may differ.
+    /// </remarks>
+    private ComparisonSettings? _comparison;
+    private List<Core.Comparison.Tolerance>? _tolerances;
 
     public CaseEditorViewModel(
         EndpointCase endpointCase,
@@ -33,14 +48,27 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         IEndpointStore endpoints,
         IFilePickerService filePickerService,
         Core.Json.IJsonSchemaValidator schemaValidator,
-        StatusLogViewModel statusLog)
+        StatusLogViewModel statusLog,
+        Fubar.Studio.Application.Running.ICollectionRunService runs,
+        EnvironmentManagerViewModel environments,
+        ResponsePanelViewModel response,
+        Fubar.Studio.Application.Comparison.IRequestComparisonSettings comparisonSettings)
     {
         ArgumentNullException.ThrowIfNull(endpointCase);
         ArgumentNullException.ThrowIfNull(endpoint);
 
         _endpoints = endpoints;
         _statusLog = statusLog;
+        _runs = runs;
+        _environments = environments;
         _id = endpointCase.Id;
+        _comparison = endpointCase.Comparison;
+        _tolerances = endpointCase.Tolerances;
+
+        Response = response;
+        EndpointPath = System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(filePath))!,
+            IEndpointStore.EndpointFileName);
 
         FilePath = filePath;
         Workspace = workspace;
@@ -101,7 +129,32 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         {
             row.PropertyChanged += (_, _) => MarkDirty();
         }
+
+        // A case is the innermost level for comparison rules and tolerances, and no level at all for
+        // snapshot policy - a snapshot belongs to the endpoint. The tab says so rather than offering
+        // a control whose value would be dropped on save.
+        Rules = new RulesViewModel(
+            new RuleLevel
+            {
+                Scope = Core.Comparison.ComparisonScope.Case,
+                LevelName = "this case",
+                GetComparison = () => _comparison,
+                SetComparison = value => _comparison = value,
+                GetTolerances = () => _tolerances,
+                SetTolerances = value => _tolerances = value,
+                Changed = MarkDirty,
+            },
+            workspace,
+            EndpointPath,
+            filePath,
+            comparisonSettings,
+            statusLog);
+
+        _ = Rules.RefreshAsync();
     }
+
+    /// <summary>Every rule that applies to this case, and where each came from.</summary>
+    public RulesViewModel Rules { get; }
 
     public string FilePath { get; private set; }
 
@@ -146,8 +199,43 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         ? "This case sends its own body."
         : "This case sends the endpoint's body. Tick to send something else.";
 
+    /// <summary>The endpoint's own file - what a run of this case reads for the method, URL and auth.</summary>
+    public string EndpointPath { get; }
+
+    /// <summary>What came back, for the response the last Send produced.</summary>
+    /// <remarks>
+    /// Headers are not filled in here. A single-step run reports a body, a status and a time; the
+    /// response HEADERS are not on <c>StepReport</c>, so the tab would show an empty list rather than
+    /// nothing - see <see cref="ResponseNote"/>, which says so on screen rather than leaving it to be
+    /// discovered.
+    /// </remarks>
+    public ResponsePanelViewModel Response { get; }
+
     [ObservableProperty]
+    public partial bool IsSending { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SendLabel))]
+    [NotifyPropertyChangedFor(nameof(SendTooltip))]
     public partial bool IsDirty { get; set; }
+
+    /// <summary>
+    /// What Send is about to do, on the button rather than only in a tooltip.
+    /// </summary>
+    /// <remarks>
+    /// <para>Sending a case goes through the ORDINARY run pipeline, which reads from disk (spec §2:
+    /// "there is no separate run-a-single-request path, which is what stops the two from drifting"),
+    /// so it has to save first. The request editor's Send sends what is on screen and commits
+    /// nothing - the same word for two different bargains, and the case one quietly writes your edit
+    /// to a file you may have been experimenting in.</para>
+    /// <para>Both behaviours are right for what they do, so the button says which one it is instead of
+    /// pretending they are the same.</para>
+    /// </remarks>
+    public string SendLabel => IsDirty ? "Save & Send" : "Send";
+
+    public string SendTooltip => IsDirty
+        ? "Saves this case first - the runner reads from disk - then sends it with the endpoint's method, URL and auth"
+        : "Sends this case with the endpoint's method, URL and auth";
 
     partial void OnNameChanged(string value) => MarkDirty();
 
@@ -163,16 +251,192 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
     [RelayCommand]
     public async Task SaveAsync()
     {
+        var name = Name.Trim();
+
+        if (!DocumentName.IsValid(name))
+        {
+            _statusLog.LogError(
+                $"\"{Name}\" cannot be a case name: the name IS the file's name, so it cannot be "
+                + "empty or contain a path separator or any of \\ / : * ? \" < > |.");
+            return;
+        }
+
         try
         {
+            // Written first, renamed second: a rename that fails leaves the case where it was with
+            // its new contents, rather than a saved document nobody can find.
             await _endpoints.SaveCaseAsync(FilePath, ToModel());
             IsDirty = false;
-            _statusLog.Log($"Saved case \"{Name}\".");
+
+            if (!string.Equals(name, CurrentName, StringComparison.OrdinalIgnoreCase))
+            {
+                FilePath = _endpoints.RenameCase(FilePath, name);
+                _statusLog.Log($"Saved, and renamed to \"{name}\" - #{name} selects it now.");
+            }
+            else
+            {
+                _statusLog.Log($"Saved case \"{name}\".");
+            }
+
             Saved?.Invoke();
         }
         catch (Exception ex)
         {
-            _statusLog.LogError($"Could not save \"{Name}\": {ex.Message}");
+            // A failed RENAME still saved the contents, so the name goes back to the file's rather
+            // than leaving a box on screen claiming something the disk does not say.
+            Name = CurrentName;
+            _statusLog.LogError($"Could not save \"{name}\": {ex.Message}");
+        }
+    }
+
+    /// <summary>The case's name as the FILE says it - which is what <c>endpoint#case</c> resolves
+    /// against, since the tree takes a case's name from its file.</summary>
+    private string CurrentName => System.IO.Path.GetFileNameWithoutExtension(FilePath);
+
+    /// <summary>
+    /// Sends this one case and shows what came back.
+    /// </summary>
+    /// <remarks>
+    /// <para>Through the ORDINARY run pipeline, as a plan of one step. The spec's own rule (§2): "the
+    /// pipeline is the same for one case and for a batch of two hundred; there is no separate run-a-
+    /// single-request path, which is what stops the two from drifting." Auth resolution, variable
+    /// resolution, captures and assertions are then identical to what CI will do, by construction
+    /// rather than by two implementations agreeing.</para>
+    /// <para>It SAVES first, because the runner reads from disk. That is the honest behaviour for
+    /// something whose whole purpose is to be repeatable - and it is the same thing the run window
+    /// says about a collection - but it does mean pressing Send commits the edit.</para>
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task SendAsync()
+    {
+        if (IsDirty)
+        {
+            await SaveAsync();
+            if (IsDirty)
+            {
+                return;
+            }
+        }
+
+        IsSending = true;
+        SendCommand.NotifyCanExecuteChanged();
+        CancelSendCommand.NotifyCanExecuteChanged();
+
+        _sending = new CancellationTokenSource();
+        try
+        {
+            var step = new RunStep(1, EndpointName, EndpointPath, System.IO.Path.GetDirectoryName(EndpointPath)!, Name, FilePath);
+
+            var report = await _runs.RunAsync(
+                new Fubar.Studio.Application.Running.CollectionRun(
+                    new RunPlan([step]),
+                    Workspace,
+                    _environments.ActiveEnvironment,
+                    RunOptions.Default with { CaptureResponseBodies = true, RecordHistory = true }),
+                progress: null,
+                _sending.Token);
+
+            Apply(report.Steps.Count > 0 ? report.Steps[0] : null);
+        }
+        catch (OperationCanceledException)
+        {
+            _statusLog.Log($"Cancelled sending \"{Name}\".");
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not send \"{Name}\": {ex.Message}");
+        }
+        finally
+        {
+            _sending?.Dispose();
+            _sending = null;
+            IsSending = false;
+            SendCommand.NotifyCanExecuteChanged();
+            CancelSendCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanSend() => !IsSending;
+
+    [RelayCommand(CanExecute = nameof(CanCancelSend))]
+    private void CancelSend() => _sending?.Cancel();
+
+    private bool CanCancelSend() => IsSending;
+
+    /// <summary>What the response pane shows about a send that has not happened, or a limit of this
+    /// screen. Said on screen rather than left to be discovered.</summary>
+    [ObservableProperty]
+    public partial string? ResponseNote { get; set; }
+
+    private void Apply(StepReport? step)
+    {
+        if (step is null)
+        {
+            ResponseNote = "Nothing was sent.";
+            return;
+        }
+
+        var environment = _environments.ActiveEnvironment?.Name;
+        Response.SourceLabel = environment is null
+            ? $"{EndpointName}#{Name}"
+            : $"{EndpointName}#{Name} · {environment}";
+
+        Response.HasResponse = true;
+        Response.ElapsedMilliseconds = step.ElapsedMilliseconds;
+        Response.SizeBytes = step.SizeBytes;
+        Response.ContentType = step.ContentType;
+
+        if (step.Error is { Length: > 0 } error)
+        {
+            Response.StatusCode = 0;
+            Response.StatusText = "Error";
+            Response.LoadBody(error, []);
+            _statusLog.LogError($"{EndpointName}#{Name}: {error}");
+        }
+        else
+        {
+            Response.StatusCode = step.StatusCode ?? 0;
+            Response.StatusText = step.ReasonPhrase ?? "";
+            Response.LoadBody(Pretty(step.ResponseBody ?? ""), []);
+            _statusLog.Log(
+                $"{EndpointName}#{Name}: {step.StatusCode} {step.ReasonPhrase} - {step.ElapsedMilliseconds} ms");
+        }
+
+        Response.SetTestResults(step.Assertions);
+
+        // Named, never valued - the same rule the run report and the status log already follow.
+        foreach (var capture in step.Captures)
+        {
+            if (capture.Ok)
+            {
+                _statusLog.Log($"Captured {{{{{capture.VariableName}}}}} → {capture.Scope}");
+            }
+            else
+            {
+                _statusLog.LogWarning($"Capture \"{capture.VariableName}\" failed: {capture.Error}");
+            }
+        }
+
+        ResponseNote = step.BodyTooLargeToCompare
+            ? "The response was too large to keep, so only its status and timing are shown."
+            : "Response headers are not shown here - open the endpoint to send it with the full response pane.";
+    }
+
+    private static string Pretty(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return body;
+        }
+
+        try
+        {
+            return System.Text.Json.Nodes.JsonNode.Parse(body)
+                ?.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) ?? body;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return body;
         }
     }
 
@@ -188,6 +452,8 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
             Body = OverridesBody ? Body.ToModel() : null,
             Assertions = Tests.AssertionsToModel(),
             Captures = Tests.CapturesToModel(),
+            Comparison = _comparison,
+            Tolerances = _tolerances,
         };
 
         foreach (var row in PathParams)

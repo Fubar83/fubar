@@ -18,6 +18,12 @@ public interface IEditorViewModelFactory
 
     CaseEditorViewModel CreateCaseEditor(
         EndpointCase endpointCase, RequestModel endpoint, string filePath, Workspace workspace);
+
+    BatchEditorViewModel CreateBatchEditor(
+        Batch batch, string filePath, Workspace workspace, IReadOnlyList<string> environmentNames);
+
+    FolderEditorViewModel CreateFolderEditor(
+        FolderConfig config, string folderPath, Workspace workspace, IReadOnlyList<AuthProfile> authProfiles);
 }
 
 /// <summary>
@@ -44,4 +50,14 @@ public sealed class EditorViewModelFactory : IEditorViewModelFactory
         EndpointCase endpointCase, RequestModel endpoint, string filePath, Workspace workspace) =>
         ActivatorUtilities.CreateInstance<CaseEditorViewModel>(
             _provider, endpointCase, endpoint, filePath, workspace);
+
+    public BatchEditorViewModel CreateBatchEditor(
+        Batch batch, string filePath, Workspace workspace, IReadOnlyList<string> environmentNames) =>
+        ActivatorUtilities.CreateInstance<BatchEditorViewModel>(
+            _provider, batch, filePath, workspace, environmentNames);
+
+    public FolderEditorViewModel CreateFolderEditor(
+        FolderConfig config, string folderPath, Workspace workspace, IReadOnlyList<AuthProfile> authProfiles) =>
+        ActivatorUtilities.CreateInstance<FolderEditorViewModel>(
+            _provider, config, folderPath, workspace, authProfiles);
 }

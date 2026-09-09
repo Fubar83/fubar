@@ -68,7 +68,20 @@ public static class JsonPathMatcher
 
     private sealed record PatternStep(string? Name, bool Recursive, bool AllIndices, int? Index);
 
-    private sealed record PathStep(string? Name, int Index);
+    /// <summary>One step of a CONCRETE path: a property name, or an array index when
+    /// <see cref="Name"/> is null.</summary>
+    public sealed record PathStep(string? Name, int Index);
+
+    /// <summary>
+    /// The steps of a concrete path - the kind a difference reports, with no wildcards in it.
+    /// </summary>
+    /// <remarks>
+    /// Public so accepting a difference into a snapshot can address the same node the comparison
+    /// named, using the same parse. A second walker over the same strings is a second set of rules
+    /// about what <c>['a.b']</c> means.
+    /// </remarks>
+    public static IReadOnlyList<PathStep> Steps(string path) =>
+        TryParsePath(path, out var steps) ? steps : [];
 
     private static bool Match(List<PatternStep> pattern, int p, List<PathStep> path, int c)
     {

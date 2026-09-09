@@ -256,6 +256,26 @@ public class CliRunnerTests
         Assert.Contains("Could not write the report", Error);
     }
 
+    /// <summary>
+    /// A capture that found nothing does not fail its own step - the request answered, and whether a
+    /// missing field matters is what an assertion is for. It has to be SAID on that step's line all
+    /// the same: the failure it causes lands several steps later as a {{variable}} that never
+    /// resolved, and without this the step that actually caused it reads "ok".
+    /// </summary>
+    [Fact]
+    public async Task A_capture_that_found_nothing_is_said_on_the_step_that_could_not_capture_it()
+    {
+        var exit = await Run(
+            ["--run", "-w", FakeWorkspaces.Root],
+            new FakeRunService().CaptureFailureOn(1, "catId", "No value for body $.identifier."));
+
+        // Still green: this step did what it was asked to.
+        Assert.Equal(Passed, exit);
+
+        Assert.Contains("could not capture {{catId}}", Output, StringComparison.Ordinal);
+        Assert.Contains("$.identifier", Output, StringComparison.Ordinal);
+    }
+
     // ---- Oracles reach the run -------------------------------------------------------------------
     //
     // These exist because the flags for them shipped once already, parsed correctly, and then did
@@ -461,6 +481,14 @@ public class CliRunnerTests
 
         public FakeRunService UnexpectedStatusOn(int step, int code) { _unexpected = (step, code); return this; }
 
+        private (int Step, string Variable, string Error)? _captureFailure;
+
+        public FakeRunService CaptureFailureOn(int step, string variable, string error)
+        {
+            _captureFailure = (step, variable, error);
+            return this;
+        }
+
         public Task<RunReport> RunAsync(
             CollectionRun run,
             IProgress<RunProgress>? progress = null,
@@ -497,10 +525,14 @@ public class CliRunnerTests
                 ? [new AssertionResult(false, "status is 200", "500")]
                 : [new AssertionResult(true, "status is 200", "200")];
 
+            IReadOnlyList<CaptureResult> captures = _captureFailure is { } c && c.Step == n
+                ? [new CaptureResult(false, c.Variable, null, "Session", c.Error)]
+                : [];
+
             return new StepReport(
                 step,
                 _failures.Contains(n) ? StepStatus.Failed : StepStatus.Passed,
-                200, "OK", 12, 100, assertions, [], null);
+                200, "OK", 12, 100, assertions, captures, null);
         }
     }
 
@@ -558,6 +590,8 @@ public class CliRunnerTests
 
         public string RenamePath(string path, string newName) => throw new NotSupportedException();
 
+        public string MovePath(string path, string destinationDirectory) => throw new NotSupportedException();
+
         public void DeletePath(string path) => throw new NotSupportedException();
     }
 
@@ -606,12 +640,19 @@ public class CliRunnerTests
             return this;
         }
 
+        /// <summary>Keyed by the qualified name, so a test can pin that the CLI passed the OWNER as
+        /// well as the name - <c>@happy</c> and <c>orders/get-order@happy</c> are different batches.</summary>
         public Task<ResolvedBatch> ExpandAsync(
-            Workspace workspace, string batchName, CancellationToken cancellationToken = default)
+            Workspace workspace,
+            string batchName,
+            string? ownerPath = null,
+            CancellationToken cancellationToken = default)
         {
-            if (!_batches.TryGetValue(batchName, out var batch))
+            var key = ownerPath is { Length: > 0 } ? $"{ownerPath}@{batchName}" : batchName;
+
+            if (!_batches.TryGetValue(key, out var batch))
             {
-                throw new InvalidOperationException($"There is no batch called \"{batchName}\".");
+                throw new InvalidOperationException($"There is no batch called \"{key}\".");
             }
 
             var steps = batch.Steps

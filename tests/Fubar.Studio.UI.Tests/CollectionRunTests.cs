@@ -27,14 +27,47 @@ public class CollectionRunTests
 
     private static RunPlan Plan(int count) => new([.. Enumerable.Range(1, count).Select(Step)]);
 
-    private static CollectionRunViewModel Vm(
+    private CollectionRunViewModel Vm(
         FakeRunService service,
         int steps = 3,
         FakeRecording? recording = null,
         WorkspaceEnvironment? environment = null,
+        Fubar.Studio.Core.Snapshots.ISnapshotStore? snapshots = null,
+        Workspace? workspace = null,
         params WorkspaceEnvironment[] allEnvironments) =>
-        new(service, recording ?? new FakeRecording(), new FakeSnapshotStore(),
-            Plan(steps), Ws, environment, allEnvironments, "Orders");
+        new(service, recording ?? new FakeRecording(), snapshots ?? new FakeSnapshotStore(),
+            Plan(steps), workspace ?? Ws, environment, allEnvironments, "Orders",
+            RecordingDiffPreview, new FakeSettingsContext());
+
+    /// <summary>Records what a row asked to open, so "the button shows the two bodies the verdict was
+    /// reached from" is assertable without a window.</summary>
+    private readonly FakeDiffPreview RecordingDiffPreview = new();
+
+    private sealed class FakeDiffPreview : Fubar.Studio.UI.Services.IDiffPreviewService
+    {
+        public (string Left, string Right, string LeftLabel)? Shown { get; private set; }
+
+        /// <summary>What the pane was given to write back with, or null when the left side is not
+        /// something that can be rewritten.</summary>
+        public Fubar.Studio.UI.Services.SnapshotAcceptContext? Accept { get; private set; }
+
+        public Task ShowAsync(
+            string leftText, string rightText, string leftLabel, string rightLabel, string title,
+            Fubar.Studio.UI.Services.DiffSettingsContext? settings = null,
+            Fubar.Studio.UI.Services.SnapshotAcceptContext? accept = null)
+        {
+            Shown = (leftText, rightText, leftLabel);
+            Accept = accept;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeSettingsContext : Fubar.Studio.UI.Services.IComparisonSettingsContext
+    {
+        public Task<Fubar.Studio.UI.Services.DiffSettingsContext> BuildAsync(
+            Workspace workspace, string requestPath, Func<Task>? onSaved = null) =>
+            Task.FromResult(new Fubar.Studio.UI.Services.DiffSettingsContext([], null, null, null));
+    }
 
     private sealed class FakeRecording : ISnapshotRecordingService
     {
@@ -90,6 +123,48 @@ public class CollectionRunTests
         var window = new CollectionRunWindow(Vm(new FakeRunService()));
 
         Assert.Equal("Run — Orders", window.Title);
+    }
+
+    // ---- A step that appears twice --------------------------------------------------------------
+
+    /// <summary>The documented batch shape: "delete it" is both the last step (proving the delete
+    /// works) and the teardown (cleaning up a run that stopped before reaching it).</summary>
+    private CollectionRunViewModel VmWithRepeatedTeardown(FakeRunService service)
+    {
+        var delete = Step(2);
+        var plan = new RunPlan([Step(1), delete, delete with { Order = 3, IsTeardown = true }]);
+
+        return new(service, new FakeRecording(), new FakeSnapshotStore(), plan, Ws, null, [],
+            "pet-lifecycle", RecordingDiffPreview, new FakeSettingsContext());
+    }
+
+    [AvaloniaFact]
+    public async Task A_teardown_repeating_a_step_runs_instead_of_throwing()
+    {
+        // It threw out of ToDictionary - from a command handler, so it took the whole process down -
+        // because the rows were keyed on endpoint + case, which two of these three steps share. The
+        // command line ran the same batch happily, so the crash was reachable only by pressing the
+        // button, which is how it shipped.
+        var vm = VmWithRepeatedTeardown(new FakeRunService());
+
+        await vm.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, vm.Steps.Count);
+        Assert.All(vm.Steps, s => Assert.False(s.IsPending));
+    }
+
+    [AvaloniaFact]
+    public async Task The_repeated_step_and_its_cleanup_report_separately()
+    {
+        // The reason the key had to become unique rather than last-wins: two rows are the same case,
+        // and each has to show what IT did. A cleanup that found nothing left to delete says 404 while
+        // the step above it says 204, and collapsing them would hide exactly that.
+        var vm = VmWithRepeatedTeardown(new FakeRunService().StatusOn(3, 404));
+
+        await vm.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal("200", vm.Steps[1].StatusText);
+        Assert.Equal("404", vm.Steps[2].StatusText);
     }
 
     // ---- Rows before anything is sent ----------------------------------------------------------
@@ -332,6 +407,139 @@ public class CollectionRunTests
         Assert.Equal("Production", oracle.OtherName);
     }
 
+    // ---- Opening a difference --------------------------------------------------------------------
+
+    /// <summary>"2 differences from Staging.json" is where the question starts, not where it ends.
+    /// The two bodies opened are the ones the VERDICT was reached from - normalised, as compared -
+    /// not whatever is on disk now.</summary>
+    [AvaloniaFact]
+    public async Task A_differing_row_opens_the_two_bodies_it_was_judged_from()
+    {
+        var vm = Vm(new FakeRunService().DifferingOn(2, """{"a":1}""", """{"a":2}"""));
+        await vm.RunCommand.ExecuteAsync(null);
+
+        var row = vm.Steps.Single(s => s.Name == "r2");
+        Assert.True(row.CanShowDifferences);
+
+        await vm.ShowDifferencesCommand.ExecuteAsync(row);
+
+        var shown = RecordingDiffPreview.Shown;
+        Assert.NotNull(shown);
+        Assert.Equal("""{"a":1}""", shown!.Value.Left);
+        Assert.Equal("""{"a":2}""", shown.Value.Right);
+
+        // Which side it was judged against, because that is the thing a reader has to know before
+        // deciding whether the difference is a regression or a stale snapshot.
+        Assert.Equal("snapshots/staging.json", shown.Value.LeftLabel);
+    }
+
+    /// <summary>A row that never answered has nothing to open, and offering it would be a button that
+    /// does nothing.</summary>
+    [AvaloniaFact]
+    public async Task A_row_with_nothing_to_compare_offers_nothing_to_open()
+    {
+        var vm = Vm(new FakeRunService());
+        await vm.RunCommand.ExecuteAsync(null);
+
+        Assert.All(vm.Steps, s => Assert.False(s.CanShowDifferences));
+        Assert.False(vm.ShowDifferencesCommand.CanExecute(vm.Steps[0]));
+    }
+
+    // ---- Accepting ------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The whole loop, against a real snapshot on disk: a differing row is opened, one field is
+    /// accepted, and the FILE changes - with the other difference still standing, which is the point
+    /// of accepting one field rather than re-recording.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Accepting_one_field_rewrites_the_snapshot_and_leaves_the_rest_differing()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fubar-accept-" + Guid.NewGuid().ToString("n"));
+        var requestPath = Path.Combine(root, "collections", "r2", "request.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(requestPath)!);
+
+        try
+        {
+            var store = new Fubar.Studio.Infrastructure.Snapshots.FileSnapshotStore();
+            var workspace = new Workspace { RootPath = root, Manifest = new AppManifest { Name = "t" } };
+            var staging = new WorkspaceEnvironment { Id = "stg", Name = "Staging" };
+
+            await store.SaveAsync(root, requestPath, new Fubar.Studio.Core.Snapshots.ResponseSnapshot
+            {
+                Environment = "Staging",
+                Status = 200,
+                BodyFormat = "json",
+                Body = System.Text.Json.Nodes.JsonNode.Parse("""{"total":10,"currency":"EUR"}"""),
+            });
+
+            // The plan's steps have to live under THIS workspace: a snapshot is addressed by the path
+            // of what was sent, so a step pointing somewhere else looks up a file that is not there.
+            var plan = new RunPlan([new RunStep(1, "r2", requestPath, Path.GetDirectoryName(requestPath)!)]);
+
+            var vm = new CollectionRunViewModel(
+                new FakeRunService().DifferingOn(1, """{"total":10,"currency":"EUR"}""", """{"total":99,"currency":"USD"}"""),
+                new FakeRecording(),
+                store,
+                plan,
+                workspace,
+                staging,
+                [staging],
+                "Orders",
+                RecordingDiffPreview,
+                new FakeSettingsContext());
+
+            vm.SelectedOracle = vm.Oracles.Single(o => o.Kind == OracleKind.Snapshot);
+            await vm.RunCommand.ExecuteAsync(null);
+            await vm.ShowDifferencesCommand.ExecuteAsync(vm.Steps.Single(s => s.Name == "r2"));
+
+            var accept = RecordingDiffPreview.Accept;
+            Assert.NotNull(accept);
+
+            var written = await accept!.AcceptAsync("$.total");
+
+            Assert.NotNull(written);
+            Assert.Contains("99", written!, StringComparison.Ordinal);
+
+            // Still EUR: accepting one field is not re-recording, and the regression survives.
+            Assert.Contains("EUR", written, StringComparison.Ordinal);
+
+            var reloaded = await store.FindAsync(root, requestPath, "Staging");
+            Assert.Contains("99", reloaded.Snapshot!.BodyForComparison(), StringComparison.Ordinal);
+            Assert.Contains("EUR", reloaded.Snapshot.BodyForComparison(), StringComparison.Ordinal);
+
+            // The scope it was recorded with is kept, never re-decided.
+            Assert.Equal("Staging", reloaded.Snapshot.Environment);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>The other side of an environment comparison is a live system: there is nothing there
+    /// to write into, so the affordance is not offered rather than offered and broken.</summary>
+    [AvaloniaFact]
+    public async Task An_environment_comparison_offers_no_accept()
+    {
+        var staging = new WorkspaceEnvironment { Id = "stg", Name = "Staging" };
+        var production = new WorkspaceEnvironment { Id = "prod", Name = "Production" };
+
+        var vm = Vm(
+            new FakeRunService().DifferingOn(2, "{}", """{"a":1}"""),
+            environment: staging,
+            allEnvironments: [staging, production]);
+
+        vm.SelectedOracle = vm.Oracles.Single(o => o.Kind == OracleKind.Environment);
+        await vm.RunCommand.ExecuteAsync(null);
+        await vm.ShowDifferencesCommand.ExecuteAsync(vm.Steps.Single(s => s.Name == "r2"));
+
+        Assert.Null(RecordingDiffPreview.Accept);
+    }
+
     // ---- Recording ------------------------------------------------------------------------------
 
     /// <summary>Its own button, never something Run does when it finds nothing recorded: a snapshot
@@ -403,6 +611,15 @@ public class CollectionRunTests
 
         public FakeRunService ThrowOnStart() { _throwOnStart = true; return this; }
 
+        private (int Step, string Compared, string Response)? _differing;
+
+        /// <summary>A step whose answer differs, carrying both bodies exactly as the runner does.</summary>
+        public FakeRunService DifferingOn(int step, string compared, string response)
+        {
+            _differing = (step, compared, response);
+            return this;
+        }
+
         public Task<RunReport> RunAsync(
             CollectionRun run,
             IProgress<RunProgress>? progress = null,
@@ -437,6 +654,18 @@ public class CollectionRunTests
         private StepReport Build(RunStep step)
         {
             var n = step.Order;
+
+            if (_differing is { } differing && differing.Step == n)
+            {
+                return new StepReport(step, StepStatus.Passed, 200, "OK", 12, 340, [], [], null)
+                {
+                    Comparison = ComparisonVerdict.Differs,
+                    DifferenceCount = 1,
+                    ComparedAgainst = "snapshots/staging.json",
+                    ComparedBody = differing.Compared,
+                    ResponseBody = differing.Response,
+                };
+            }
 
             if (_errors.Contains(n))
             {

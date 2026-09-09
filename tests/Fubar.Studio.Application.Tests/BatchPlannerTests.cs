@@ -63,6 +63,34 @@ public class BatchPlannerTests
         Assert.Equal("not-found", Assert.Single(plan.Steps).CaseName);
     }
 
+    // ---- Teardown --------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Teardown_steps_come_after_the_tested_ones_and_are_flagged()
+    {
+        var batch = Batch(new BatchStep("auth/login"));
+        batch.Teardown = [new BatchStep("orders/get-order", "default")];
+
+        var plan = (await Sut(batch).ExpandAsync(Ws, "smoke")).Plan;
+
+        Assert.Equal([false, true], plan.Steps.Select(s => s.IsTeardown));
+        Assert.Equal(["login#default", "get-order#default"], plan.Steps.Select(s => s.QualifiedName));
+    }
+
+    /// <summary>Cleanup naming something that is not there is still reported, for the same reason a
+    /// tested step is: a teardown that quietly stopped running would leak on every run.</summary>
+    [Fact]
+    public async Task A_teardown_step_naming_nothing_still_errors()
+    {
+        var batch = Batch(new BatchStep("auth/login"));
+        batch.Teardown = [new BatchStep("orders/renamed-away")];
+
+        var plan = (await Sut(batch).ExpandAsync(Ws, "smoke")).Plan;
+
+        var cleanup = plan.Steps.Single(s => s.IsTeardown);
+        Assert.Contains("renamed-away", cleanup.Unresolved!, StringComparison.Ordinal);
+    }
+
     // ---- Missing pieces --------------------------------------------------------------------------
 
     [Fact]
@@ -99,23 +127,96 @@ public class BatchPlannerTests
         Assert.Contains("smoke", thrown.Message, StringComparison.Ordinal);
     }
 
+    // ---- Two homes --------------------------------------------------------------------------------
+
+    private static BatchPlanner EndpointOwned(Batch batch) =>
+        new(new FakeBatchStore(batch, "/w/collections/orders/get-order"), new TreeOnlyRequests());
+
+    /// <summary>An endpoint's own batch is found under the endpoint, not under the workspace.</summary>
+    [Fact]
+    public async Task A_qualified_name_looks_in_the_endpoints_home()
+    {
+        var plan = (await EndpointOwned(Batch(new BatchStep("orders/get-order", "not-found")))
+            .ExpandAsync(Ws, "smoke", "orders/get-order")).Plan;
+
+        Assert.Equal("not-found", Assert.Single(plan.Steps).CaseName);
+    }
+
+    /// <summary>
+    /// And a bare name does NOT find it.
+    /// </summary>
+    /// <remarks>
+    /// A name is unique only within one home: two endpoints may each have a "happy", and neither of
+    /// them is <c>@happy</c>. Searching both would make a bare name mean whichever was scanned first.
+    /// </remarks>
+    [Fact]
+    public async Task A_bare_name_does_not_find_an_endpoints_batch()
+    {
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => EndpointOwned(Batch()).ExpandAsync(Ws, "smoke"));
+
+        Assert.Contains("This workspace has no batches", thrown.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_qualified_name_does_not_find_the_workspaces_batch()
+    {
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Sut(Batch()).ExpandAsync(Ws, "smoke", "orders/get-order"));
+
+        Assert.Contains("orders/get-order", thrown.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_owner_that_is_not_in_the_workspace_is_refused()
+    {
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Sut(Batch()).ExpandAsync(Ws, "smoke", "orders/renamed-away"));
+
+        Assert.Contains("not in this workspace", thrown.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Only an endpoint and the workspace hold batches - a folder does not.</summary>
+    [Fact]
+    public async Task An_owner_that_is_not_an_endpoint_is_refused()
+    {
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Sut(Batch()).ExpandAsync(Ws, "smoke", "orders"));
+
+        Assert.Contains("is not an endpoint", thrown.Message, StringComparison.Ordinal);
+    }
+
     // ---- Fakes ------------------------------------------------------------------------------------
 
-    private sealed class FakeBatchStore(Batch batch) : IBatchStore
+    /// <summary>
+    /// Holds one batch, in ONE home.
+    /// </summary>
+    /// <param name="owner">The directory that holds its <c>batches/</c> - the workspace root by
+    /// default, or an endpoint's directory. Keyed on it so a test can pin that the planner asked the
+    /// right home: a bare name must not find an endpoint's batch, and vice versa.</param>
+    private sealed class FakeBatchStore(Batch batch, string owner = "/w") : IBatchStore
     {
-        public IReadOnlyList<BatchSummary> ListBatches(string workspaceRoot) =>
-            [new BatchSummary(batch.Name, $"/w/batches/{batch.Name}.json")];
+        public IReadOnlyList<BatchSummary> ListBatches(string askedOwner) =>
+            Owns(askedOwner) ? [new BatchSummary(batch.Name, $"{owner}/batches/{batch.Name}.json")] : [];
 
         public Task<Batch> LoadBatchAsync(string batchFilePath, CancellationToken ct = default) =>
             Task.FromResult(batch);
 
-        public Task<Batch?> FindBatchAsync(string workspaceRoot, string name, CancellationToken ct = default) =>
-            Task.FromResult(string.Equals(name, batch.Name, StringComparison.OrdinalIgnoreCase) ? batch : null);
+        public Task<Batch?> FindBatchAsync(string askedOwner, string name, CancellationToken ct = default) =>
+            Task.FromResult(
+                Owns(askedOwner) && string.Equals(name, batch.Name, StringComparison.OrdinalIgnoreCase)
+                    ? batch
+                    : null);
+
+        private bool Owns(string askedOwner) =>
+            string.Equals(askedOwner, owner, StringComparison.OrdinalIgnoreCase);
 
         public Task SaveBatchAsync(string batchFilePath, Batch value, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public string CreateBatch(string workspaceRoot, string name) => throw new NotSupportedException();
+        public string ProposeBatchPath(string owner, string name) => throw new NotSupportedException();
+
+        public string RenameBatch(string batchFilePath, string newName) => throw new NotSupportedException();
     }
 
     /// <summary>
@@ -154,6 +255,8 @@ public class BatchPlannerTests
         public string DuplicatePath(string path) => throw new NotSupportedException();
 
         public string RenamePath(string path, string newName) => throw new NotSupportedException();
+
+        public string MovePath(string path, string destinationDirectory) => throw new NotSupportedException();
 
         public void DeletePath(string path) => throw new NotSupportedException();
     }

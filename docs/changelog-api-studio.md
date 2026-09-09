@@ -39,6 +39,60 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Opening a request no longer erases the workspace's active environment.** The picker is a two-way
+  bound ComboBox, and reloading a workspace empties its list before refilling it — which made the
+  selection model write `null` straight back through the binding, indistinguishable from someone
+  choosing "no environment". That was persisted, so `activeEnvironmentId` was wiped from
+  `fubar.json` on every workspace activation and every time the open request changed workspace. The
+  next open then fell back to whichever environment sorted first: a workspace saved on Staging came
+  back up on Production, with the picker agreeing. Restoring a selection is not a choice, and neither
+  is a collection being refilled underneath one — the suppression now covers the whole reload rather
+  than just the assignment at the end.
+
+- **Running a batch whose teardown repeats one of its steps no longer takes the app down.** The Run
+  window keyed its rows on endpoint + case, which is not unique: "delete it" is routinely both the
+  last step (proving the delete works) and the teardown (cleaning up a run that stopped before
+  reaching it) — the shape the docs recommend. The duplicate threw out of `ToDictionary`, from a
+  command handler, so the process died on the button press. The command line ran the same batch
+  happily, which is how it shipped. Rows are keyed on the step's order now, which every plan
+  guarantees is unique, and the two rows for the same case report separately — the cleanup's 404 sits
+  under the step's 204 instead of overwriting it.
+
+- **A JUnit report no longer reports a comparison run as all-green.** The writer mapped only the step’s
+  status, so a run whose responses DIFFERED from their snapshots — or from the other environment — exited
+  1 while the file beside it said `failures="0"` with every test passing. The exit code and the build
+  page, which is what anyone actually looks at, gave two different answers to the same run. A difference
+  and a missing other side are both failed tests now, named (`3 differences from Production`,
+  `No snapshot recorded for Staging.`); the count in the header comes from the same predicate that
+  writes the elements, so the two cannot drift apart again. Teardown is described rather than judged,
+  matching the rule everywhere else that cleanup never decides the verdict, and a match a tolerance
+  forgave says so. The JSON report gained the same second axis per step — `comparison`,
+  `comparedAgainst`, `differences`, `tolerated` — plus a `teardown` flag, so a reader can tell cleanup
+  apart from what was being tested.
+
+- **Saving a request or a case no longer deletes its rules.** Both editors rebuild their document from
+  the screen, and neither copied the parts it does not show: a request's snapshot policy and
+  tolerances, a case's comparison settings and tolerances. So a file carrying any of them lost it the
+  first time anyone pressed Ctrl+S — silently, and in the rules that keep a token out of a committed
+  file.
+
+- **Workspace files no longer carry the app's own bookkeeping.** `System.Text.Json` serialises every
+  public getter, so convenience properties were being written into everybody's repository: saving an
+  endpoint with a snapshot policy wrote `"isEmpty": false` twice, and a tolerance would have written
+  the `kind` derived from the rule beside the rule. Round-tripping never noticed — the extra members
+  read back as nothing — so the test that pins this reads the file's text.
+
+- **Running a batch from the left pane works when its name has been changed.** `@smoke` resolves
+  against the `batches/` directory listing, but the Run button passed the name from *inside* the file,
+  so the two disagreeing made a batch unrunnable by the name shown next to the button.
+
+- **A case's name now takes.** Typing a new one in the case editor wrote it inside the file and left
+  the file itself alone, so `get-order#the-name-you-typed` selected nothing — the same divergence as
+  the batch above, and it renames the file now for the same reason.
+
+- **A long name in the tree ellipses instead of pushing its badges off the edge.** The tree scrolled
+  sideways rather than fitting, so a long request name quietly hid its own auth badge.
+
 - **Switching request no longer discards unsaved edits without asking, and neither does quitting.**
   Only one request is open at a time, so opening another one destroys the outgoing editor's changes;
   that used to write a line to the status log - collapsed by default - and carry on. Closing the
@@ -53,6 +107,63 @@ All notable changes to this project are documented here. The format is based on
   `%AppData%/Fubar/logs/` kept for seven days - so "send us your log" is answerable at all.
 
 ### Added
+
+- **Screenshots, and per-app READMEs that use them.** Nine images under `docs/images/`, every one shot
+  against a throwaway petstore workspace and a local stub: a request with its assertions and its
+  answer, the Rules tab showing what a case inherited from its folder, a chain finishing with its
+  cleanup line, a run judged against another environment reporting one difference rather than five,
+  the structural C# panel beside a text diff, two JSON documents whose properties were only shuffled,
+  and the Gallery. `docs/images/README.md` says what each has to show for a replacement to still be
+  that file, and what is still missing. The three per-app docs and the root README carry them — and
+  the broken links in all three, `docs/LeftPane.md` from inside `docs/` plus `LICENSE`,
+  `CONTRIBUTING.md` and `SECURITY.md` from a directory up, are fixed.
+
+- **Send one request without setting anything up.** The empty state has a *New request* button that
+  opens a scratch request — no workspace to create, no folder to choose, no file written. Previously
+  the fastest path from launch to a response was about six deliberate steps, four of them filing
+  decisions you cannot make sensibly before knowing whether the request was worth keeping. The scratch
+  workspace lives with the app rather than in a folder you picked, and the pane says so.
+
+- **An endpoint has its own batches**, in `<endpoint>/batches/`, shown in the tree beside its cases and
+  tagged `case` / `batch` so the two kinds of child are told apart. The workspace's `batches/` stays
+  for the occasions that cut across the tree; on the command line they are `@smoke` and
+  `orders/get-order@happy`, because a batch name is unique only within one home.
+
+- **Nothing is written until you save it.** New cases, batches, endpoints and requests are drafts: they
+  appear in the tree with the unsaved dot, open in their editor, and hit disk on the first Save.
+  Opening one and changing your mind now leaves nothing behind — previously every *New case* wrote a
+  `new-case.json` immediately. Delete on a draft just forgets it.
+
+- **A folder has its own editor** — *Folder settings…* on any folder, with `Headers · Auth · Rules`. A
+  folder is the level almost every shared rule belongs at, and it was the last one you had to edit by
+  hand. Its Rules tab tells the folder's own rules from an ancestor's, so removing one still only ever
+  stops it *here*.
+
+- **A requests-format workspace says what it is missing**, in one line in the Left Pane, with *Convert
+  to endpoints…* beside it. Nothing is converted on open — that decision stands — but the way out was
+  previously a context-menu item you had to already know about.
+
+- **Move a request into another workspace.** Right-click → *Move to workspace*, listing the other open
+  ones. It stops being where it was, whatever is open on it follows, and the format is checked first.
+
+- **A Rules tab**, on an endpoint and on a case: every rule that applies there — comparison options,
+  ignored paths, array identity, tolerances, snapshot redaction and normalisation — each carrying the
+  level that set it. The settings hierarchy used to be legible only by opening four files and folding
+  them in your head; this is that fold, shown. Inherited rules are in italics with their origin and are
+  never edited in place: removing one writes a removal *here*, because a click in one endpoint's window
+  must not change what forty others do. Tolerances and snapshot policy had no editor at all before this
+  — they were file-only.
+
+  Comparison options are three-state (Inherit / On / Off) and Inherit says what it is inheriting, so an
+  option nobody has touched cannot be mistaken for one this level chose.
+
+- **A batch editor.** Steps and cleanup are pickers over the endpoints and folders the workspace has,
+  with the endpoint's own cases beside each, so a step is chosen rather than typed — and a step naming
+  something that has since been renamed keeps its name in a red box saying "not in this workspace",
+  which is what a run would report. Previously a batch was created from the left pane and then edited
+  as JSON; `+` now opens the new one straight away.
+
+  A batch's name is its file's name, and changing it renames the file — that is what `@smoke` resolves.
 
 - **Endpoints and cases.** An endpoint is a directory holding `endpoint.json` and `cases/`. The
   endpoint states the operation — method, URL, headers, auth, true every time it is called; a case
@@ -106,6 +217,20 @@ All notable changes to this project are documented here. The format is based on
   endpoint already resolves to rather than another level of the hierarchy. A step naming an endpoint
   or case that is no longer there **errors rather than being skipped**: a batch that quietly shrank
   when something was renamed would keep passing while testing one thing fewer.
+
+- **Chained integration tests, with cleanup that actually runs.** A capture on one step feeds the
+  next — create a cat, read it back, rename it, delete it — through a session variable that is never
+  written to a committed file. The endpoint's `{catId}` placeholder is filled from `{{catId}}`, so the
+  chain reads as four ordinary endpoints rather than one special one.
+
+  A batch's new **`teardown`** list runs after the steps whatever happened to them. `stopOnFailure` is
+  the right setting for a chain and is exactly what skips the delete, so without this every red run
+  left a row behind. Cleanup never changes the verdict, its assertions are dropped and it is not
+  compared — a delete that finds nothing left to delete is the happy path — and what *is* reported is
+  cleanup that could not be sent at all. It does not run after a cancellation.
+
+  A capture that found nothing is now printed on the step that could not capture it. It does not fail
+  that step, so previously the run blamed the step that *used* the variable, several calls later.
 
 - **`fubar run <selector>`.**
 
