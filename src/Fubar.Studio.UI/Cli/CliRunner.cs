@@ -497,12 +497,21 @@ public static class CliRunner
 
         var line = $"{mark,-5} {step.Step.Order,3}. {step.Step.QualifiedName}  ({detail})";
 
-        return step.AssertionsFailed == 0
+        var notes = new List<string>();
+
+        notes.AddRange(step.Assertions.Where(a => !a.Passed)
+            .Select(a => a.Actual is { } actual ? $"        {a.Description} — got {actual}" : $"        {a.Description}"));
+
+        // A capture that could not be applied does not fail its own step - the request answered, and
+        // whether a missing field matters is what an assertion is for. It is printed HERE because the
+        // failure it causes usually lands several steps later as a {{variable}} that never resolved,
+        // and without this the step that actually caused it reads "ok".
+        notes.AddRange(step.Captures.Where(c => !c.Ok)
+            .Select(c => $"        could not capture {{{{{c.VariableName}}}}}: {c.Error ?? "no match"}"));
+
+        return notes.Count == 0
             ? line
-            : line + System.Environment.NewLine + string.Join(
-                System.Environment.NewLine,
-                step.Assertions.Where(a => !a.Passed)
-                    .Select(a => a.Actual is { } actual ? $"        {a.Description} — got {actual}" : $"        {a.Description}"));
+            : line + System.Environment.NewLine + string.Join(System.Environment.NewLine, notes);
     }
 
     /// <summary>
