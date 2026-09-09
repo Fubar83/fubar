@@ -143,6 +143,10 @@ internal sealed class FakeComparisonSettings : IRequestComparisonSettings
         return this;
     }
 
+    public Task<ResolvedRequestRules> ResolveFolderRulesAsync(
+        Workspace workspace, string folderPath, CancellationToken ct = default) =>
+        ResolveRulesAsync(workspace, folderPath, null, null, ct);
+
     public Task<ResolvedRequestRules> ResolveRulesAsync(
         Workspace workspace, string requestPath, string? casePath = null,
         BatchOverlay? overlay = null, CancellationToken ct = default) =>

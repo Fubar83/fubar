@@ -88,6 +88,13 @@
                               ToolTip.Tip="A named list of calls belonging to this endpoint - its cases in an order, with cleanup" />
                     <MenuItem Header="New Folder" Command="{Binding NewFolderCommand}" />
                     <Separator />
+                    <!-- A plain left-click on a folder row does not select it in this tree, so the
+                         folder's own settings need a way in that does not depend on that. -->
+                    <MenuItem Header="Folder settings…"
+                              Command="{Binding OpenFolderSettingsCommand}"
+                              IsVisible="{Binding CanOpenFolderSettings}"
+                              ToolTip.Tip="Headers, auth and rules inherited by everything beneath this folder" />
+                    <Separator />
                     <MenuItem Header="Convert to endpoints…"
                               Command="{Binding ConvertToEndpointsCommand}"
                               IsVisible="{Binding UsesRequests}"

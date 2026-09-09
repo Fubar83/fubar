@@ -38,6 +38,12 @@ public class RulesTabTests
 
         /// <summary>The real fold, over the real layers - so the rows say what a RUN would do rather
         /// than what a second, agreeing-by-luck implementation in a test would.</summary>
+        /// <summary>A folder resolves the same layers minus anything below it, which for this fake
+        /// is the same call with no case.</summary>
+        public Task<ResolvedRequestRules> ResolveFolderRulesAsync(
+            Workspace workspace, string folderPath, CancellationToken ct = default) =>
+            ResolveRulesAsync(workspace, folderPath, null, null, ct);
+
         public Task<ResolvedRequestRules> ResolveRulesAsync(
             Workspace workspace,
             string requestPath,
@@ -449,5 +455,40 @@ public class RulesTabTests
         Assert.Equal("Request", row.SourceName);
         Assert.True(row.IsLocal);
         Assert.Equal("within 5", row.Detail);
+    }
+    // ---- A folder is a level too ---------------------------------------------------------------
+
+    /// <summary>
+    /// Every folder in the chain carries <c>ComparisonScope.Folder</c>, so the level has to say WHICH
+    /// folder it is.
+    /// </summary>
+    /// <remarks>
+    /// Matching on scope alone would call a grandparent's rules this folder's own - and then offer to
+    /// delete them here, which is exactly what "an inherited rule is never edited in place" forbids.
+    /// </remarks>
+    [Fact]
+    public void A_folder_tells_its_own_rules_from_an_ancestors()
+    {
+        var own = new RuleEntryRowViewModel(
+            "$.a", "never reported", ComparisonScope.Folder, "Folder: orders",
+            ComparisonScope.Folder, "Folder: orders");
+
+        var ancestors = new RuleEntryRowViewModel(
+            "$.b", "never reported", ComparisonScope.Folder, "Folder: Workspace Root",
+            ComparisonScope.Folder, "Folder: orders");
+
+        Assert.True(own.IsLocal);
+        Assert.True(ancestors.IsInherited);
+    }
+
+    /// <summary>A level that gives no name matches on scope alone, which is right for the levels
+    /// where there is only ever one of them - a request, a case.</summary>
+    [Fact]
+    public void A_level_with_no_name_matches_on_scope_alone()
+    {
+        var row = new RuleEntryRowViewModel(
+            "$.a", "never reported", ComparisonScope.Request, "Request", ComparisonScope.Request);
+
+        Assert.True(row.IsLocal);
     }
 }

@@ -34,6 +34,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRequestStore _workspaceService;
     private readonly Fubar.Studio.Core.Workspaces.IEndpointStore _endpointStore;
     private readonly IBatchPlanner _batchPlanner;
+    private readonly IAuthProfileStore _authProfiles;
     private readonly IProtocolRegistry _protocolRegistry;
     private readonly IEditorViewModelFactory _editorFactory;
     private readonly IRunDialogService _runDialog;
@@ -87,6 +88,7 @@ public partial class MainViewModel : ViewModelBase
         IRequestStore workspaceService,
         Fubar.Studio.Core.Workspaces.IEndpointStore endpointStore,
         IBatchPlanner batchPlanner,
+        IAuthProfileStore authProfiles,
         IProtocolRegistry protocolRegistry,
         IEditorViewModelFactory editorFactory,
         IRunDialogService runDialog,
@@ -106,6 +108,7 @@ public partial class MainViewModel : ViewModelBase
         _workspaceService = workspaceService;
         _endpointStore = endpointStore;
         _batchPlanner = batchPlanner;
+        _authProfiles = authProfiles;
         _protocolRegistry = protocolRegistry;
         _editorFactory = editorFactory;
         _runDialog = runDialog;
@@ -127,6 +130,7 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorer.DraftRenamed += OnDraftRenamed;
         WorkspaceExplorer.PathMoved += OnPathMoved;
         WorkspaceExplorer.BatchOpened += OpenBatchEditor;
+        WorkspaceExplorer.FolderOpened += (path, config) => _ = OpenFolderEditorAsync(path, config);
         WorkspaceExplorer.RunRequested += OnRunRequested;
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
@@ -817,6 +821,35 @@ public partial class MainViewModel : ViewModelBase
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Opens a folder's own settings in the main canvas - the level almost every shared rule belongs
+    /// at, and until now the only one you had to edit by hand.
+    /// </summary>
+    private async Task OpenFolderEditorAsync(string folderPath, FolderConfig config)
+    {
+        if (WorkspaceExplorer.ActiveRoot is not { } root)
+        {
+            return;
+        }
+
+        try
+        {
+            await ActivateWorkspaceContextAsync(root.Workspace);
+
+            var profiles = await _authProfiles.LoadAuthProfilesAsync(root.FullPath);
+            var editor = _editorFactory.CreateFolderEditor(config, folderPath, root.Workspace, profiles);
+
+            // A folder's rules are inherited by everything under it, so a save changes what those
+            // requests resolve to - the tree is rebuilt rather than left showing the old answer.
+            editor.Saved += () => WorkspaceExplorer.RefreshRootFor(folderPath);
+            ActiveEditor = editor;
+        }
+        catch (Exception ex)
+        {
+            StatusLog.LogError($"Could not open \"{Path.GetFileName(folderPath)}\": {ex.Message}");
+        }
     }
 
     /// <summary>Opens a batch in the main canvas - wired to both

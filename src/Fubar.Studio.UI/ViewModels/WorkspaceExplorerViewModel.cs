@@ -36,6 +36,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     private readonly IAppSettingsService _settingsService;
     private readonly IEndpointStore _endpointStore;
     private readonly IBatchStore _batchStore;
+    private readonly IFolderConfigStore _folderConfigStore;
     private readonly IWorkspaceFormatConverter _formatConverter;
     private readonly IConfirmationService? _confirmation;
     private bool _suppressPersist;
@@ -53,11 +54,13 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         IAppSettingsService settingsService,
         IEndpointStore endpointStore,
         IBatchStore batchStore,
+        IFolderConfigStore folderConfigStore,
         IWorkspaceFormatConverter formatConverter,
         IConfirmationService? confirmation = null)
     {
         _endpointStore = endpointStore;
         _batchStore = batchStore;
+        _folderConfigStore = folderConfigStore;
         _formatConverter = formatConverter;
         _confirmation = confirmation;
         _requestStore = requestStore;
@@ -229,6 +232,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAddCase))]
     [NotifyPropertyChangedFor(nameof(CanAddBatch))]
+    [NotifyPropertyChangedFor(nameof(CanOpenFolderSettings))]
     public partial WorkspaceNodeViewModel? SelectedNode { get; set; }
 
     partial void OnSelectedNodeChanged(WorkspaceNodeViewModel? value) => RefreshMoveTargets();
@@ -1275,6 +1279,38 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             case { Kind: WorkspaceNodeKind.Batch } batch:
                 _ = OpenBatchAsync(batch.FullPath);
                 break;
+
+            // A folder holds the settings every request beneath it inherits, so opening one opens
+            // those - the level most shared rules belong at, and the last one with no editor.
+            case { Kind: WorkspaceNodeKind.Folder } folder:
+                _ = OpenFolderAsync(folder.FullPath);
+                break;
+        }
+    }
+
+    /// <summary>Raised when a folder is opened, with its <c>_folder.json</c> freshly read - the shell
+    /// puts it on the canvas.</summary>
+    public event Action<string, FolderConfig>? FolderOpened;
+
+    /// <summary>Whether the selection is a plain folder - not an endpoint, which is also a directory
+    /// but keeps its settings in its own file.</summary>
+    public bool CanOpenFolderSettings => SelectedNode is { Kind: WorkspaceNodeKind.Folder, IsDraft: false };
+
+    [RelayCommand]
+    private Task OpenFolderSettingsAsync() =>
+        SelectedNode is { Kind: WorkspaceNodeKind.Folder } folder
+            ? OpenFolderAsync(folder.FullPath)
+            : Task.CompletedTask;
+
+    private async Task OpenFolderAsync(string folderPath)
+    {
+        try
+        {
+            FolderOpened?.Invoke(folderPath, await _folderConfigStore.LoadFolderConfigAsync(folderPath));
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not open \"{Path.GetFileName(folderPath)}\": {ex.Message}");
         }
     }
 

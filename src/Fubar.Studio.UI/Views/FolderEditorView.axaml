@@ -1,0 +1,85 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Fubar.Studio.UI.ViewModels"
+             xmlns:views="using:Fubar.Studio.UI.Views"
+             xmlns:fc="using:Fubar.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="560"
+             x:Class="Fubar.Studio.UI.Views.FolderEditorView"
+             x:DataType="vm:FolderEditorViewModel"
+             Background="{DynamicResource BgEditorCanvas}">
+
+    <!-- One _folder.json (docs/spec-endpoints.md §9.3). A folder is the level almost every shared
+         rule belongs at, and it was the last one with no editor: its file was written by the
+         comparison window's "save to folder" and otherwise edited by hand. -->
+    <DockPanel Margin="20,16">
+
+        <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,14">
+
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Folder"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}" />
+                <TextBlock Text="{Binding Name}"
+                           VerticalAlignment="Center"
+                           FontWeight="Bold"
+                           FontSize="14"
+                           Foreground="{DynamicResource TextPrimary}" />
+
+                <Button Content="Save" Classes="primary-btn" Command="{Binding SaveCommand}" />
+
+                <fc:StatusDot Diameter="6"
+                              Background="{DynamicResource StatusDirty}"
+                              IsVisible="{Binding IsDirty}"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="Unsaved changes" />
+            </StackPanel>
+
+            <TextBlock Text="Everything set here applies to every request beneath this folder, unless one of them says otherwise. Renaming the folder is done in the tree."
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondary}" />
+        </StackPanel>
+
+        <TabControl>
+
+            <TabItem Header="Headers">
+                <fc:KeyValueGrid DataContext="{Binding Headers}"
+                                 Margin="0,10,0,0"
+                                 ItemsSource="{Binding Rows}"
+                                 AddButtonText="+ Add header"
+                                 AddCommand="{Binding AddRowCommand}"
+                                 RemoveCommand="{Binding RemoveRowCommand}" />
+            </TabItem>
+
+            <TabItem Header="Auth">
+                <StackPanel Margin="6,14,6,0" Spacing="8">
+                    <TextBlock Text="Which credential every request beneath this folder uses, unless it sets its own."
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondary}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Auth profile" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondary}" />
+
+                        <!-- "Inherit" is the first entry and the default, because a folder that says
+                             nothing about auth is the common case - a real profile in that slot would
+                             make silence look like a choice. -->
+                        <ComboBox ItemsSource="{Binding AuthProfiles}"
+                                  SelectedItem="{Binding SelectedAuthProfile}"
+                                  DisplayMemberBinding="{Binding Name}"
+                                  MinWidth="220" />
+                    </StackPanel>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Rules">
+                <views:RulesView DataContext="{Binding Rules}" />
+            </TabItem>
+
+        </TabControl>
+    </DockPanel>
+
+</UserControl>

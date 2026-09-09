@@ -21,6 +21,9 @@ public interface IEditorViewModelFactory
 
     BatchEditorViewModel CreateBatchEditor(
         Batch batch, string filePath, Workspace workspace, IReadOnlyList<string> environmentNames);
+
+    FolderEditorViewModel CreateFolderEditor(
+        FolderConfig config, string folderPath, Workspace workspace, IReadOnlyList<AuthProfile> authProfiles);
 }
 
 /// <summary>
@@ -52,4 +55,9 @@ public sealed class EditorViewModelFactory : IEditorViewModelFactory
         Batch batch, string filePath, Workspace workspace, IReadOnlyList<string> environmentNames) =>
         ActivatorUtilities.CreateInstance<BatchEditorViewModel>(
             _provider, batch, filePath, workspace, environmentNames);
+
+    public FolderEditorViewModel CreateFolderEditor(
+        FolderConfig config, string folderPath, Workspace workspace, IReadOnlyList<AuthProfile> authProfiles) =>
+        ActivatorUtilities.CreateInstance<FolderEditorViewModel>(
+            _provider, config, folderPath, workspace, authProfiles);
 }

@@ -31,6 +31,15 @@ public interface IRequestComparisonSettings
         BatchOverlay? overlay = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Everything the chain says at a FOLDER - the global defaults and every folder from the
+    /// workspace root down to and including this one. Nothing below it contributes.
+    /// </summary>
+    Task<ResolvedRequestRules> ResolveFolderRulesAsync(
+        Workspace workspace,
+        string folderPath,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Just the comparison options, for the panes that render them and have no verdict to
     /// reach.</summary>
     async Task<ResolvedComparisonSettings> ResolveAsync(
@@ -76,15 +85,44 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
         _endpoints = endpoints;
     }
 
-    public async Task<ResolvedRequestRules> ResolveRulesAsync(
+    /// <summary>
+    /// Everything the chain says at a FOLDER - the global defaults and every folder from the
+    /// workspace root down to and including this one.
+    /// </summary>
+    /// <remarks>
+    /// The chain is anchored on the folder's own <c>_folder.json</c> because
+    /// <c>GetInheritanceChainAsync</c> walks up from a file's PARENT: naming the file inside the
+    /// folder is what makes the folder itself the innermost level rather than the one above it.
+    /// Nothing below a folder contributes - a request's own rules are not in force "at" the folder.
+    /// </remarks>
+    public async Task<ResolvedRequestRules> ResolveFolderRulesAsync(
         Workspace workspace,
-        string requestPath,
-        string? casePath = null,
-        BatchOverlay? overlay = null,
+        string folderPath,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workspace);
 
+        var (layers, tolerances, snapshot) = await ChainAsync(
+            workspace,
+            Path.Combine(folderPath, FolderConfigFileName),
+            cancellationToken).ConfigureAwait(false);
+
+        return new ResolvedRequestRules(
+            ComparisonSettingsResolver.Resolve(layers),
+            ToleranceResolver.Resolve(tolerances),
+            SnapshotPolicyResolver.Resolve(snapshot));
+    }
+
+    /// <summary>The file a folder's own settings live in - the anchor a folder's chain is walked
+    /// from.</summary>
+    public const string FolderConfigFileName = "_folder.json";
+
+    /// <summary>The global defaults plus every folder above <paramref name="anchorPath"/>, which is
+    /// the part both entry points share.</summary>
+    private async Task<(List<ComparisonSettingsLayer> Comparison, List<ToleranceLayer> Tolerances,
+        List<SnapshotPolicyLayer> Snapshot)> ChainAsync(
+        Workspace workspace, string anchorPath, CancellationToken cancellationToken)
+    {
         var layers = new List<ComparisonSettingsLayer>();
         var tolerances = new List<ToleranceLayer>();
         var snapshot = new List<SnapshotPolicyLayer>();
@@ -108,12 +146,27 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
         }
 
         var chain = await _inheritance
-            .GetInheritanceChainAsync(workspace.RootPath, requestPath, cancellationToken)
+            .GetInheritanceChainAsync(workspace.RootPath, anchorPath, cancellationToken)
             .ConfigureAwait(false);
 
         layers.AddRange(chain.ComparisonLayers);
         tolerances.AddRange(chain.ToleranceLayers ?? []);
         snapshot.AddRange(chain.SnapshotLayers ?? []);
+
+        return (layers, tolerances, snapshot);
+    }
+
+    public async Task<ResolvedRequestRules> ResolveRulesAsync(
+        Workspace workspace,
+        string requestPath,
+        string? casePath = null,
+        BatchOverlay? overlay = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+
+        var (layers, tolerances, snapshot) =
+            await ChainAsync(workspace, requestPath, cancellationToken).ConfigureAwait(false);
 
         // A request that has not been saved yet contributes nothing of its own - see TryLoadAsync.
         var request = await TryLoadAsync(

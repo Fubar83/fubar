@@ -23,6 +23,17 @@ public sealed class RuleLevel
     /// here; everything else is inherited from somewhere a click here must not change.</summary>
     public required ComparisonScope Scope { get; init; }
 
+    /// <summary>
+    /// Which level of that scope, when the scope alone cannot say.
+    /// </summary>
+    /// <remarks>
+    /// Every folder in the chain carries <see cref="ComparisonScope.Folder"/>, so a folder editor
+    /// matching on scope alone would call its grandparent's rules its own - and then offer to delete
+    /// them here, which is exactly what "an inherited rule is never edited in place" forbids. The
+    /// chain names each folder layer ("Folder: orders"), so that is what tells them apart.
+    /// </remarks>
+    public string? SourceName { get; init; }
+
     /// <summary>How this level reads in a sentence: "stop ignoring $.id in this case".</summary>
     public required string LevelName { get; init; }
 
@@ -52,13 +63,23 @@ public sealed class RuleLevel
 public sealed partial class RuleEntryRowViewModel : ViewModelBase
 {
     public RuleEntryRowViewModel(
-        string path, string detail, ComparisonScope scope, string sourceName, ComparisonScope level)
+        string path,
+        string detail,
+        ComparisonScope scope,
+        string sourceName,
+        ComparisonScope level,
+        string? levelSourceName = null)
     {
         Path = path;
         Detail = detail;
         Scope = scope;
         SourceName = sourceName;
-        IsLocal = scope == level;
+
+        // The name too, when the level gave one: every folder in the chain shares one scope, so
+        // scope alone would make an ancestor's rules look like this folder's own.
+        IsLocal = scope == level
+            && (levelSourceName is null
+                || string.Equals(sourceName, levelSourceName, StringComparison.Ordinal));
     }
 
     public string Path { get; }
@@ -274,8 +295,10 @@ public sealed partial class RulesViewModel : ViewModelBase
     {
         try
         {
-            var rules = await _settings
-                .ResolveRulesAsync(_workspace, _requestPath, _casePath, null, cancellationToken)
+            // A folder has no request beneath it to resolve for - its own chain stops at itself.
+            var rules = await (_level.Scope == ComparisonScope.Folder
+                    ? _settings.ResolveFolderRulesAsync(_workspace, _requestPath, cancellationToken)
+                    : _settings.ResolveRulesAsync(_workspace, _requestPath, _casePath, null, cancellationToken))
                 .ConfigureAwait(true);
 
             Build(rules);
@@ -299,7 +322,7 @@ public sealed partial class RulesViewModel : ViewModelBase
         Options.Add(Option("Null is the same as missing", "An explicit null and an absent property are the same thing.", rules.Comparison.IgnoreNullVsMissing, own?.IgnoreNullVsMissing, v => Write(c => c.IgnoreNullVsMissing = v)));
 
         Fill(IgnoredPaths, rules.Comparison.IgnoredPaths.Select(
-            p => new RuleEntryRowViewModel(p.Path, "never reported", p.Scope, p.SourceName, _level.Scope)));
+            p => new RuleEntryRowViewModel(p.Path, "never reported", p.Scope, p.SourceName, _level.Scope, _level.SourceName)));
 
         Fill(ArrayKeys, rules.Comparison.ArrayKeyOverrides.Value.Select(
             pair => new RuleEntryRowViewModel(
@@ -307,17 +330,17 @@ public sealed partial class RulesViewModel : ViewModelBase
                 $"matched by {pair.Value}",
                 rules.Comparison.ArrayKeyOverrides.Scope,
                 rules.Comparison.ArrayKeyOverrides.SourceName,
-                _level.Scope)));
+                _level.Scope, _level.SourceName)));
 
         Fill(Redactions, rules.Snapshot.Redact.Select(
-            r => new RuleEntryRowViewModel(r.Path, $"→ {r.As}", r.Scope, r.SourceName, _level.Scope)));
+            r => new RuleEntryRowViewModel(r.Path, $"→ {r.As}", r.Scope, r.SourceName, _level.Scope, _level.SourceName)));
 
         Fill(Normalisations, rules.Snapshot.Normalize.Select(
-            r => new RuleEntryRowViewModel(r.Path, $"→ {r.As}", r.Scope, r.SourceName, _level.Scope)));
+            r => new RuleEntryRowViewModel(r.Path, $"→ {r.As}", r.Scope, r.SourceName, _level.Scope, _level.SourceName)));
 
         Fill(Tolerances, rules.Tolerances.Select(
             t => new RuleEntryRowViewModel(
-                t.Tolerance.Path, Describe(t.Tolerance), t.Scope, t.SourceName, _level.Scope)));
+                t.Tolerance.Path, Describe(t.Tolerance), t.Scope, t.SourceName, _level.Scope, _level.SourceName)));
 
         SnapshotHeaders = rules.Snapshot.Headers.Value is { Count: > 0 } headers
             ? $"{string.Join(", ", headers)} · from {rules.Snapshot.Headers.SourceName}"
