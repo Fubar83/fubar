@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fubar.Studio.Core.Json;
 using Fubar.Studio.Core.Models;
+using Fubar.Studio.Core.Running;
 using Fubar.Studio.Core.Workspaces;
 using Fubar.Studio.UI.Services;
 
@@ -23,7 +24,10 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
 {
     private readonly IEndpointStore _endpoints;
     private readonly StatusLogViewModel _statusLog;
+    private readonly Fubar.Studio.Application.Running.ICollectionRunService _runs;
+    private readonly EnvironmentManagerViewModel _environments;
     private readonly string _id;
+    private CancellationTokenSource? _sending;
 
     public CaseEditorViewModel(
         EndpointCase endpointCase,
@@ -33,14 +37,24 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         IEndpointStore endpoints,
         IFilePickerService filePickerService,
         Core.Json.IJsonSchemaValidator schemaValidator,
-        StatusLogViewModel statusLog)
+        StatusLogViewModel statusLog,
+        Fubar.Studio.Application.Running.ICollectionRunService runs,
+        EnvironmentManagerViewModel environments,
+        ResponsePanelViewModel response)
     {
         ArgumentNullException.ThrowIfNull(endpointCase);
         ArgumentNullException.ThrowIfNull(endpoint);
 
         _endpoints = endpoints;
         _statusLog = statusLog;
+        _runs = runs;
+        _environments = environments;
         _id = endpointCase.Id;
+
+        Response = response;
+        EndpointPath = System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(filePath))!,
+            IEndpointStore.EndpointFileName);
 
         FilePath = filePath;
         Workspace = workspace;
@@ -146,6 +160,21 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         ? "This case sends its own body."
         : "This case sends the endpoint's body. Tick to send something else.";
 
+    /// <summary>The endpoint's own file - what a run of this case reads for the method, URL and auth.</summary>
+    public string EndpointPath { get; }
+
+    /// <summary>What came back, for the response the last Send produced.</summary>
+    /// <remarks>
+    /// Headers are not filled in here. A single-step run reports a body, a status and a time; the
+    /// response HEADERS are not on <c>StepReport</c>, so the tab would show an empty list rather than
+    /// nothing - see <see cref="ResponseNote"/>, which says so on screen rather than leaving it to be
+    /// discovered.
+    /// </remarks>
+    public ResponsePanelViewModel Response { get; }
+
+    [ObservableProperty]
+    public partial bool IsSending { get; set; }
+
     [ObservableProperty]
     public partial bool IsDirty { get; set; }
 
@@ -173,6 +202,153 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         catch (Exception ex)
         {
             _statusLog.LogError($"Could not save \"{Name}\": {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Sends this one case and shows what came back.
+    /// </summary>
+    /// <remarks>
+    /// <para>Through the ORDINARY run pipeline, as a plan of one step. The spec's own rule (§2): "the
+    /// pipeline is the same for one case and for a batch of two hundred; there is no separate run-a-
+    /// single-request path, which is what stops the two from drifting." Auth resolution, variable
+    /// resolution, captures and assertions are then identical to what CI will do, by construction
+    /// rather than by two implementations agreeing.</para>
+    /// <para>It SAVES first, because the runner reads from disk. That is the honest behaviour for
+    /// something whose whole purpose is to be repeatable - and it is the same thing the run window
+    /// says about a collection - but it does mean pressing Send commits the edit.</para>
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task SendAsync()
+    {
+        if (IsDirty)
+        {
+            await SaveAsync();
+            if (IsDirty)
+            {
+                return;
+            }
+        }
+
+        IsSending = true;
+        SendCommand.NotifyCanExecuteChanged();
+        CancelSendCommand.NotifyCanExecuteChanged();
+
+        _sending = new CancellationTokenSource();
+        try
+        {
+            var step = new RunStep(1, EndpointName, EndpointPath, System.IO.Path.GetDirectoryName(EndpointPath)!, Name, FilePath);
+
+            var report = await _runs.RunAsync(
+                new Fubar.Studio.Application.Running.CollectionRun(
+                    new RunPlan([step]),
+                    Workspace,
+                    _environments.ActiveEnvironment,
+                    RunOptions.Default with { CaptureResponseBodies = true, RecordHistory = true }),
+                progress: null,
+                _sending.Token);
+
+            Apply(report.Steps.Count > 0 ? report.Steps[0] : null);
+        }
+        catch (OperationCanceledException)
+        {
+            _statusLog.Log($"Cancelled sending \"{Name}\".");
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not send \"{Name}\": {ex.Message}");
+        }
+        finally
+        {
+            _sending?.Dispose();
+            _sending = null;
+            IsSending = false;
+            SendCommand.NotifyCanExecuteChanged();
+            CancelSendCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanSend() => !IsSending;
+
+    [RelayCommand(CanExecute = nameof(CanCancelSend))]
+    private void CancelSend() => _sending?.Cancel();
+
+    private bool CanCancelSend() => IsSending;
+
+    /// <summary>What the response pane shows about a send that has not happened, or a limit of this
+    /// screen. Said on screen rather than left to be discovered.</summary>
+    [ObservableProperty]
+    public partial string? ResponseNote { get; set; }
+
+    private void Apply(StepReport? step)
+    {
+        if (step is null)
+        {
+            ResponseNote = "Nothing was sent.";
+            return;
+        }
+
+        var environment = _environments.ActiveEnvironment?.Name;
+        Response.SourceLabel = environment is null
+            ? $"{EndpointName}#{Name}"
+            : $"{EndpointName}#{Name} · {environment}";
+
+        Response.HasResponse = true;
+        Response.ElapsedMilliseconds = step.ElapsedMilliseconds;
+        Response.SizeBytes = step.SizeBytes;
+        Response.ContentType = step.ContentType;
+
+        if (step.Error is { Length: > 0 } error)
+        {
+            Response.StatusCode = 0;
+            Response.StatusText = "Error";
+            Response.LoadBody(error, []);
+            _statusLog.LogError($"{EndpointName}#{Name}: {error}");
+        }
+        else
+        {
+            Response.StatusCode = step.StatusCode ?? 0;
+            Response.StatusText = step.ReasonPhrase ?? "";
+            Response.LoadBody(Pretty(step.ResponseBody ?? ""), []);
+            _statusLog.Log(
+                $"{EndpointName}#{Name}: {step.StatusCode} {step.ReasonPhrase} - {step.ElapsedMilliseconds} ms");
+        }
+
+        Response.SetTestResults(step.Assertions);
+
+        // Named, never valued - the same rule the run report and the status log already follow.
+        foreach (var capture in step.Captures)
+        {
+            if (capture.Ok)
+            {
+                _statusLog.Log($"Captured {{{{{capture.VariableName}}}}} → {capture.Scope}");
+            }
+            else
+            {
+                _statusLog.LogWarning($"Capture \"{capture.VariableName}\" failed: {capture.Error}");
+            }
+        }
+
+        ResponseNote = step.BodyTooLargeToCompare
+            ? "The response was too large to keep, so only its status and timing are shown."
+            : "Response headers are not shown here - open the endpoint to send it with the full response pane.";
+    }
+
+    private static string Pretty(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return body;
+        }
+
+        try
+        {
+            return System.Text.Json.Nodes.JsonNode.Parse(body)
+                ?.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) ?? body;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return body;
         }
     }
 

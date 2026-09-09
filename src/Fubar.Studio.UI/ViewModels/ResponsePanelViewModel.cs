@@ -62,7 +62,12 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool HasResponse { get; set; }
 
+    // Every derived member below is bound in ResponsePanelView and computed from one of these, so it
+    // needs saying explicitly - the source generator raises the backing property and nothing else.
+    // Without them the strip showed whatever it evaluated to on the FIRST send and never moved: the
+    // status log said "201 Created - 66 ms" while the pane beside it said 0 ms, 0 B, on every send.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusIcon))]
     public partial int StatusCode { get; set; }
 
     [ObservableProperty]
@@ -79,6 +84,7 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
     };
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ElapsedTimeText))]
     public partial long ElapsedMilliseconds { get; set; }
 
     public string ElapsedTimeText => ElapsedMilliseconds >= 1000
@@ -86,6 +92,7 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
         : $"{ElapsedMilliseconds} ms";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContentSizeText))]
     public partial long SizeBytes { get; set; }
 
     public string ContentSizeText => SizeBytes switch
@@ -96,6 +103,8 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
     };
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContentTypeHeader))]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
     public partial string? ContentType { get; set; }
 
     public string ContentTypeHeader => ContentType ?? "";
@@ -121,6 +130,7 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
     // SeamlessTabControl whose SelectedIndex binds here two-way. 0=Pretty 1=Tree 2=Raw 3=Headers
     // 4=Preview (Preview's tab is only present when HasPreview, but it stays the last index).
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTreeViewSelected))]
     public partial int SelectedViewIndex { get; set; }
 
     /// <summary>True when the Tree tab is active - gates the JSONPath filter row inside that tab.</summary>
