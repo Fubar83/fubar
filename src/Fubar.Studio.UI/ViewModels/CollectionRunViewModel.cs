@@ -24,6 +24,8 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
     private readonly WorkspaceEnvironment? _environment;
     private readonly RunPlan _fullPlan;
     private readonly Batch? _batch;
+    private readonly Services.IDiffPreviewService _diffPreview;
+    private readonly Services.IComparisonSettingsContext _settingsContext;
     private CancellationTokenSource? _cancellation;
 
     public CollectionRunViewModel(
@@ -35,6 +37,8 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         WorkspaceEnvironment? environment,
         IReadOnlyList<WorkspaceEnvironment> allEnvironments,
         string target,
+        Services.IDiffPreviewService diffPreview,
+        Services.IComparisonSettingsContext settingsContext,
         Batch? batch = null)
     {
         ArgumentNullException.ThrowIfNull(allEnvironments);
@@ -45,6 +49,8 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         _fullPlan = plan;
         _workspace = workspace;
         _batch = batch;
+        _diffPreview = diffPreview;
+        _settingsContext = settingsContext;
 
         // A batch that names an environment is run against it, the way the command line does - a batch
         // written for staging that silently went to whatever was selected in the toolbar would be a
@@ -376,6 +382,44 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         { Kind: OracleKind.Environment, Other: { } other } => new EnvironmentOracle(_runService, other),
         _ => NoOracle.Instance,
     };
+
+    /// <summary>
+    /// Opens the two bodies this step was judged from, side by side.
+    /// </summary>
+    /// <remarks>
+    /// <para>"2 differences from Staging.json" is where the question starts, not where it ends. The
+    /// same pane the environment comparison uses - left is what it was compared against, right is what
+    /// came back - so the difference between the two features really is one label.</para>
+    /// <para>It carries the settings hierarchy too, so <em>Ignore this field</em> writes the rule at
+    /// the level you choose and into the same file the request editor would write it to.</para>
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanShowDifferences))]
+    private async Task ShowDifferencesAsync(RunStepRowViewModel? row)
+    {
+        if (row?.Report is not { ResponseBody: { } response, ComparedBody: { } compared } report)
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = await _settingsContext.BuildAsync(_workspace, row.Step.FilePath);
+
+            await _diffPreview.ShowAsync(
+                compared,
+                response,
+                report.ComparedAgainst ?? "expected",
+                $"{row.Name} · {EnvironmentName}",
+                $"{row.Name} — {report.DifferenceCount} difference{(report.DifferenceCount == 1 ? "" : "s")}",
+                settings);
+        }
+        catch (Exception ex)
+        {
+            Status = $"Could not open the comparison: {ex.Message}";
+        }
+    }
+
+    private bool CanShowDifferences(RunStepRowViewModel? row) => row?.CanShowDifferences == true;
 
     private bool CanRun() => !IsRunning && Steps.Count > 0;
 

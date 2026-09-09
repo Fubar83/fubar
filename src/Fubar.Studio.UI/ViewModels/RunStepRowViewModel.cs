@@ -30,6 +30,15 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
     /// failing test, and a reader scanning a red run has to tell the two apart at a glance.</summary>
     public bool IsTeardown => Step.IsTeardown;
 
+    /// <summary>The finished report for this step, once it has one. Held so the row can be OPENED -
+    /// a difference count is where the question starts, not where it ends.</summary>
+    public StepReport? Report { get; private set; }
+
+    /// <summary>Whether there are two bodies to show. False for a step that never answered, and for a
+    /// run whose bodies were dropped for being too large to compare.</summary>
+    public bool CanShowDifferences =>
+        Report is { ResponseBody: not null, ComparedBody: not null };
+
     [ObservableProperty]
     public partial StepStatus? Status { get; set; }
 
@@ -97,6 +106,7 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
         StatusText = null;
         Detail = null;
         Error = null;
+        Report = null;
         IsUnexpectedStatus = false;
         IsDiffering = false;
         IsUncomparable = false;
@@ -112,6 +122,7 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
 
     public void Apply(StepReport report)
     {
+        Report = report;
         IsRunning = false;
         Status = report.Status;
         IsUnexpectedStatus = report.IsUnexpectedStatus && report.Assertions.Count == 0;
@@ -207,6 +218,7 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsSkipped));
         OnPropertyChanged(nameof(IsPending));
         OnPropertyChanged(nameof(IsCleanupProblem));
+        OnPropertyChanged(nameof(CanShowDifferences));
     }
 
     partial void OnIsRunningChanged(bool value) => RaiseClassFlags();

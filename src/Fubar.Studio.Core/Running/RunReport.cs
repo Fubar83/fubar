@@ -66,6 +66,18 @@ public sealed record StepReport(
     /// </summary>
     public string? ResponseBody { get; init; }
 
+    /// <summary>
+    /// The OTHER side of the comparison - the snapshot, or the second environment's answer - exactly
+    /// as it was compared, redactions and normalisations already applied.
+    /// </summary>
+    /// <remarks>
+    /// Kept so a differing row can be opened and read. Re-fetching the snapshot instead would be
+    /// cheaper, but it would re-fetch whatever is on disk NOW rather than what this run compared
+    /// against, and for an environment oracle there is nothing on disk to re-fetch at all. Bounded by
+    /// the same cap as <see cref="ResponseBody"/>, and null whenever that is.
+    /// </remarks>
+    public string? ComparedBody { get; init; }
+
     /// <summary>The response's Content-Type, so a reader knows what it is looking at without sniffing
     /// the body.</summary>
     public string? ContentType { get; init; }

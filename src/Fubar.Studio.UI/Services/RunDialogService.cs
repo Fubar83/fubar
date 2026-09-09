@@ -32,15 +32,21 @@ public sealed class RunDialogService : IRunDialogService
     private readonly ICollectionRunService _runService;
     private readonly ISnapshotRecordingService _recording;
     private readonly Fubar.Studio.Core.Snapshots.ISnapshotStore _snapshots;
+    private readonly IDiffPreviewService _diffPreview;
+    private readonly IComparisonSettingsContext _settingsContext;
 
     public RunDialogService(
         ICollectionRunService runService,
         ISnapshotRecordingService recording,
-        Fubar.Studio.Core.Snapshots.ISnapshotStore snapshots)
+        Fubar.Studio.Core.Snapshots.ISnapshotStore snapshots,
+        IDiffPreviewService diffPreview,
+        IComparisonSettingsContext settingsContext)
     {
         _runService = runService;
         _recording = recording;
         _snapshots = snapshots;
+        _diffPreview = diffPreview;
+        _settingsContext = settingsContext;
     }
 
     public void Show(
@@ -65,7 +71,8 @@ public sealed class RunDialogService : IRunDialogService
 
         var window = new CollectionRunWindow(
             new CollectionRunViewModel(
-                _runService, _recording, _snapshots, plan, workspace, environment, allEnvironments, target, batch));
+                _runService, _recording, _snapshots, plan, workspace, environment, allEnvironments, target,
+                _diffPreview, _settingsContext, batch));
 
         window.Show(owner);
     }

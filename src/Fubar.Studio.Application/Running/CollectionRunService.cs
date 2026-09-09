@@ -360,6 +360,12 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
                 ToleratedCount = tolerated.Tolerated,
                 ComparisonWarnings = tolerated.Warnings,
                 ComparedAgainst = other.Source,
+
+                // Both sides as they were COMPARED - normalised, so opening the row shows the same
+                // two documents the verdict was reached from rather than two that differ everywhere
+                // the rules already excused.
+                ResponseBody = right,
+                ComparedBody = left,
             };
         }
         catch (OperationCanceledException)
