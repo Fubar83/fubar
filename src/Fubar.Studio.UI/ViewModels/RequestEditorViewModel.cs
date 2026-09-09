@@ -72,6 +72,18 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
     /// </summary>
     private ComparisonSettings? _comparisonOverrides;
 
+    /// <summary>
+    /// This request's own snapshot policy and tolerances - the Rules tab's half of the same level.
+    /// </summary>
+    /// <remarks>
+    /// Fields rather than read straight off <c>_original</c> at save time, because the Rules tab edits
+    /// them. They were also being DROPPED: <c>BuildRequestModel</c> never copied either one, so an
+    /// endpoint carrying a redaction rule lost it the first time anyone pressed Ctrl+S - silently, and
+    /// in exactly the rules that keep a token out of a committed file.
+    /// </remarks>
+    private Fubar.Studio.Core.Snapshots.SnapshotPolicy? _snapshotPolicy;
+    private List<Tolerance>? _tolerances;
+
     private ComparisonSettings? _globalComparison;
 
     private readonly IAppSettingsService _appSettings;
@@ -159,7 +171,32 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
         // The response pane owns Pin/Compare but knows nothing about requests, so it asks for the
         // rules when it needs them rather than being handed a snapshot that would go stale on save.
         _comparisonOverrides = request.Comparison?.Clone();
+        _snapshotPolicy = request.Snapshot?.Clone();
+        _tolerances = request.Tolerances is { } own ? [.. own.Select(t => t.Clone())] : null;
         Response.SettingsContextProvider = BuildSettingsContext;
+
+        // An endpoint (or a plain request) is the level below its folders and above its cases, and it
+        // is the level a snapshot policy belongs to.
+        Rules = new RulesViewModel(
+            new RuleLevel
+            {
+                Scope = ComparisonScope.Request,
+                LevelName = "this request",
+                GetComparison = () => _comparisonOverrides,
+                SetComparison = value => _comparisonOverrides = value,
+                GetTolerances = () => _tolerances,
+                SetTolerances = value => _tolerances = value,
+                GetSnapshot = () => _snapshotPolicy,
+                SetSnapshot = value => _snapshotPolicy = value,
+                Changed = MarkDirty,
+            },
+            workspace,
+            filePath,
+            null,
+            services.ComparisonSettings,
+            services.StatusLog);
+
+        _ = Rules.RefreshAsync();
 
         Method = request.Method;
         Url = request.Url;
@@ -277,6 +314,9 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
 
     /// <summary>The Tests tab: per-request timeout, response-capture rules, and assertions.</summary>
     public RequestTestsViewModel Tests { get; }
+
+    /// <summary>Every rule that applies to this request, and where each came from.</summary>
+    public RulesViewModel Rules { get; }
 
     /// <summary>Candidate query-parameter names offered as key autocompletion in the Params grid, or
     /// null when the spec declared none (the grid then shows a plain key textbox). Populated from an
@@ -840,6 +880,8 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
             Auth = auth,
             AuthProfileId = auth.Type == AuthType.Profile ? Auth.SelectedProfile?.Id : null,
             Comparison = _comparisonOverrides,
+            Snapshot = _snapshotPolicy,
+            Tolerances = _tolerances,
             Captures = Tests.CapturesToModel(),
             Assertions = Tests.AssertionsToModel(),
             SuppressedInheritedHeaderKeys = Headers.SuppressedInheritedKeys(),

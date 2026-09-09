@@ -66,4 +66,5 @@ public sealed record RequestEditorServices(
     IResponseBaselineService ResponseBaseline,
     IAppSettingsService AppSettings,
     IFolderConfigStore FolderConfigStore,
-    IComparisonSettingsContext ComparisonSettingsContext);
+    IComparisonSettingsContext ComparisonSettingsContext,
+    Fubar.Studio.Application.Comparison.IRequestComparisonSettings ComparisonSettings);

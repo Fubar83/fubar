@@ -29,6 +29,17 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
     private readonly string _id;
     private CancellationTokenSource? _sending;
 
+    /// <summary>
+    /// This case's own rules, carried through a save whether or not the Rules tab was opened.
+    /// </summary>
+    /// <remarks>
+    /// These used to be dropped: <c>ToModel</c> built a fresh <see cref="EndpointCase"/> and never
+    /// copied them, so a case carrying a tolerance lost it the first time anyone pressed Ctrl+S -
+    /// silently, and in a file whose whole job is to say what may differ.
+    /// </remarks>
+    private ComparisonSettings? _comparison;
+    private List<Core.Comparison.Tolerance>? _tolerances;
+
     public CaseEditorViewModel(
         EndpointCase endpointCase,
         RequestModel endpoint,
@@ -40,7 +51,8 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         StatusLogViewModel statusLog,
         Fubar.Studio.Application.Running.ICollectionRunService runs,
         EnvironmentManagerViewModel environments,
-        ResponsePanelViewModel response)
+        ResponsePanelViewModel response,
+        Fubar.Studio.Application.Comparison.IRequestComparisonSettings comparisonSettings)
     {
         ArgumentNullException.ThrowIfNull(endpointCase);
         ArgumentNullException.ThrowIfNull(endpoint);
@@ -50,6 +62,8 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         _runs = runs;
         _environments = environments;
         _id = endpointCase.Id;
+        _comparison = endpointCase.Comparison;
+        _tolerances = endpointCase.Tolerances;
 
         Response = response;
         EndpointPath = System.IO.Path.Combine(
@@ -115,7 +129,32 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
         {
             row.PropertyChanged += (_, _) => MarkDirty();
         }
+
+        // A case is the innermost level for comparison rules and tolerances, and no level at all for
+        // snapshot policy - a snapshot belongs to the endpoint. The tab says so rather than offering
+        // a control whose value would be dropped on save.
+        Rules = new RulesViewModel(
+            new RuleLevel
+            {
+                Scope = Core.Comparison.ComparisonScope.Case,
+                LevelName = "this case",
+                GetComparison = () => _comparison,
+                SetComparison = value => _comparison = value,
+                GetTolerances = () => _tolerances,
+                SetTolerances = value => _tolerances = value,
+                Changed = MarkDirty,
+            },
+            workspace,
+            EndpointPath,
+            filePath,
+            comparisonSettings,
+            statusLog);
+
+        _ = Rules.RefreshAsync();
     }
+
+    /// <summary>Every rule that applies to this case, and where each came from.</summary>
+    public RulesViewModel Rules { get; }
 
     public string FilePath { get; private set; }
 
@@ -364,6 +403,8 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
             Body = OverridesBody ? Body.ToModel() : null,
             Assertions = Tests.AssertionsToModel(),
             Captures = Tests.CapturesToModel(),
+            Comparison = _comparison,
+            Tolerances = _tolerances,
         };
 
         foreach (var row in PathParams)

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Fubar.Studio.Core.Comparison;
 
 namespace Fubar.Studio.Core.Models;
@@ -43,6 +44,7 @@ public sealed class BatchOverlay
 
     public List<Tolerance>? Tolerances { get; set; }
 
+    [JsonIgnore]
     public bool IsEmpty => Comparison is null && Tolerances is null;
 }
 

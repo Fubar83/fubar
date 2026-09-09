@@ -95,6 +95,15 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   tolerances all resolve workspace → folders → endpoint → case, with a batch's own rules last. A level
   states what it *changes* (`{ "add": [...], "remove": [...] }`), so one extra rule on one endpoint
   does not mean restating its folder's — and does not silently stop inheriting them.
+- **A Rules tab that shows the fold.** On an endpoint or a case: every rule that applies there, grouped
+  and each carrying the level that set it. Inherited ones are in italics with their origin; removing
+  one stops it *here* and leaves the folder alone, so a click in one endpoint's window cannot change
+  what forty others do. Comparison options are Inherit / On / Off, and Inherit says what it is
+  inheriting (`on · from Folder: orders`) — an option nobody has touched should not look like a choice.
+- **A batch editor.** Steps and cleanup are picked from the endpoints and folders you have, with each
+  endpoint's cases beside it; a step naming something since renamed shows in red as *not in this
+  workspace*, which is what the run will say. A batch's name is its file's name — `@smoke` is the file
+  — so renaming one here renames the file.
 - **Start from nothing.** *New Workspace…* — from the empty state, or the `+` in the title bar — takes
   an empty folder and lays out `fubar.json`, `collections/`, `environments/` and a `.gitignore` for
   the local-only execution history, then opens it. From there you build collections and environments,

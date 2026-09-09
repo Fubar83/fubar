@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Fubar.Studio.Core.Models;
 
 /// <summary>
@@ -55,6 +57,14 @@ public sealed class ComparisonSettings
     /// True when this level overrides nothing at all, so a caller can drop the whole section rather
     /// than persisting an object full of nulls.
     /// </summary>
+    /// <remarks>
+    /// An <see cref="IgnoredPaths"/> that adds and removes nothing counts as nothing, not as
+    /// something. Editing is what makes the difference: adding a path and taking it away again leaves
+    /// the object behind, and treating that as an override wrote
+    /// <c>"comparison": { "ignoredPaths": { "add": [], "remove": [] } }</c> into a file that overrides
+    /// nothing - which then reads, to the next person, as a level that deliberately said something.
+    /// </remarks>
+    [JsonIgnore]
     public bool IsEmpty =>
         IgnoreWhitespace is null
         && IgnoreCase is null
@@ -62,7 +72,7 @@ public sealed class ComparisonSettings
         && ReportPropertyOrder is null
         && MatchArraysByPosition is null
         && IgnoreNullVsMissing is null
-        && IgnoredPaths is null
+        && IgnoredPaths is null or { IsEmpty: true }
         && ArrayKeyOverrides is null;
 
     /// <summary>A detached copy, so editing a draft cannot mutate what is still on disk.</summary>

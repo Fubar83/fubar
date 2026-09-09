@@ -577,7 +577,17 @@ Three entry points, in order of how often they are used:
 2. **The Rules tab** on an endpoint, folder or workspace: every rule that applies here, each with its
    source, grouped `Comparison · Snapshot policy · Tolerances`. Rules inherited from above are shown
    greyed with their origin; local ones are editable.
-3. **The batch editor** (§9.7) for occasion-only rules.
+
+   **Built**, on an endpoint and on a case. A folder or the workspace needs an editor to put it in
+   (§9.3, not built); the tab itself takes any level, which it is given as four delegates over the
+   document its own editor already loads and saves — a Rules tab that loaded and saved the file itself
+   would be a second writer racing that editor over one file.
+
+   A comparison option is three-state, not a checkbox: **Inherit** is a real answer and the commonest
+   one, and it shows what it is inheriting (`off · from Default`, `on · from Folder: orders`) beside
+   the control. A checkbox would make every option this level never mentioned look deliberately set,
+   and turning one off and on again would leave a local override behind that keeps overriding forever.
+3. **The batch editor** (§9.7) for occasion-only rules. Built — see §10.3 step 7.
 
 **Choosing the level is the whole skill**, so the save control never guesses. A rule written from a
 difference offers *this endpoint* (default), *folder: orders*, or *workspace* — the same SplitButton
@@ -658,6 +668,18 @@ the overlay rules — with the overlay marked as *applies to this batch only*, s
 for a permanent rule.
 
 *Add to batch…* on a tree row appends to an existing batch.
+
+**Built**, except the two creation shortcuts: a batch is made from the Batches group's `+` (which opens
+the new one straight away — a row saying "0 steps" with no way in but a text editor is what made this a
+JSON-editing job), and *Save as batch…* / *Add to batch…* are not built. The editor covers name,
+description, steps, cleanup, oracle, environments and options; the overlay is carried through
+untouched rather than shown, because "applies to this batch only" needs the marking above to be worth
+having and the rule editor to write it — both of which the Rules tab now has, so this is the next
+piece rather than a decision.
+
+Cleanup is a second list under its own heading, not a flag on a step: it runs whatever happened above
+and never counts towards the verdict, which is a different KIND of thing rather than a property of one
+step.
 
 ### 9.8 Import
 
@@ -788,6 +810,27 @@ Each step is useful on its own and leaves the app shippable.
    run in the batch's own order, and a step naming something that is no longer there ERRORS rather
    than being skipped.
 
+7. ~~**The batch editor (§9.7).**~~ **Done.** Steps and cleanup are pickers over the endpoints and
+   folders the workspace has, with the endpoint's own cases beside each; a step naming something that
+   is gone keeps its name in a red box saying "not in this workspace", matching what the planner does
+   with it at run time.
+
+   The name is the FILE's, and saving a changed one renames the file (`IBatchStore.RenameBatch`). A
+   selector resolves `@smoke` against the directory listing, not against anything inside the files, so
+   a batch whose two names disagree is one nothing can run by the name it displays - which the left
+   pane was already doing, running the name inside the file.
+
+8. ~~**The Rules tab (§9.4 item 2).**~~ **Done**, on an endpoint and on a case. Every rule that applies
+   there, grouped `Comparison · Tolerances · Snapshot policy`, each carrying the level that set it;
+   inherited ones in italics with their origin, local ones editable. Removing an inherited rule writes
+   a REMOVAL at this level rather than editing the level that wrote it.
+
+   Two things this required, and both were bugs rather than gaps. Snapshot rules were resolved without
+   provenance, so nothing could say where a redaction came from. And **both editors dropped rules on
+   save** - `BuildRequestModel` never copied `Snapshot` or `Tolerances`, and the case editor's
+   `ToModel` never copied `Comparison` or `Tolerances` - so a file carrying any of them lost it the
+   first time anyone pressed Ctrl+S, silently.
+
 Steps 1-4 need no format change and land in every workspace, old or new. That is what makes this
 incremental rather than a rewrite, and it means the two halves of §10.4 differ only from step 5 on.
 
@@ -801,9 +844,17 @@ Named so it is a decision rather than an omission:
   the run window's *Record snapshots* or from `--update-snapshots`. Per-field accept needs the diff
   and the snapshot writer on the same screen, which the comparison window is not yet.
 - **`--force` and the uncommitted-snapshot check** (§6.4). Recording does not ask git anything.
-- **A batch editor.** Batches are listed and run from the left pane; the file is edited by hand.
 - **Case-level auth and snapshot policy.** A case carries comparison rules and tolerances; auth stops
   at the endpoint (§4.4) and so does the snapshot policy, which §3.3's file shape already implied.
+  The Rules tab on a case says this rather than leaving it to be discovered: the endpoint's policy is
+  shown, greyed, with a line saying where it is set.
+- **Folder and workspace editors** (§9.3). `_folder.json` still has no editor, so a folder's headers,
+  auth and rules are edited by hand. The Rules tab exists on an endpoint and on a case; it will take a
+  folder unchanged once there is a folder editor to put it in - the level is four delegates
+  (`RuleLevel`).
+- **Array identity from the Rules tab.** Shown with its origin, not editable there. Array keys are a
+  whole-set replacement rather than an add/remove list, so "remove this one" is not a thing the format
+  can express; they are written from a comparison window, where the array in question is on screen.
 - **`ComparisonScope.Workspace`.** `fubar.json` carries no comparison section, so the value would be
   one nothing could ever produce.
 

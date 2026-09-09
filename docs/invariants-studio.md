@@ -446,3 +446,59 @@ several steps later as a `{{variable}}` that never resolved, by which point noth
 window has always shown "N captures failed" on the row; the CLI, which is where CI reads this, did
 not, so a chained run blamed the step that USED the variable rather than the one that failed to set
 it.
+
+**A batch's name is its FILE's name** (Studio). `@smoke` on the command line resolves through
+`IBatchStore.FindBatchAsync`, which matches against the `batches/` directory listing - never against
+the `name` inside the files. So a batch whose two names disagree is one that nothing can run by the
+name it displays, and the left pane had exactly that bug: `BatchRowViewModel.Name` was the document's
+name and `MainViewModel` passed it to the planner, which looked for a file by it.
+
+The row now carries the file name, and the batch editor's name box renames the FILE - written first,
+renamed second, so a rename that fails leaves the batch where it was with its new contents rather than
+a saved document nobody can find. `IBatchStore.RenameBatch` refuses a name that is not a file name
+(both separators rejected explicitly: `Path.GetInvalidFileNameChars` reports only NUL and `/` on Unix,
+so a backslash would pass there and produce one file on Windows and another on Linux out of one
+workspace) and refuses to replace an existing batch.
+
+**A step whose target is gone keeps its name, and says so** (Studio). `BatchPlanner` turns an
+unresolvable step into one that ERRORS rather than skipping it, because a batch that quietly shrank
+keeps passing while testing one thing fewer. The batch editor says the same thing earlier - a red
+border and "not in this workspace" - and `ToModel` keeps the step. The row builds its OWN target list
+containing whatever it names, because a `ComboBox` renders nothing when its selection is not among its
+items: the first build of this shipped the one row worth looking at as the one blank box on the screen.
+
+**Provenance is carried per rule, not per level, all the way to the UI** (Studio). `ResolvedPath`,
+`ResolvedTolerance` and `ResolvedSnapshotRule` each hold the `ComparisonScope` and source name of the
+level that contributed them, so the Rules tab can say "inherited from Folder: orders" beside a rule the
+endpoint did not write, and its `✕` knows whether removing it means deleting a local addition or
+writing a removal. `ResolvedSnapshotPolicy` documented this and did not do it; the resolver had the
+layer in hand and dropped it.
+
+**An inherited rule is stopped HERE, never edited where it was written** (Studio). Removing one from
+the Rules tab appends the path to this level's `remove` list (§4.3); removing a local one deletes it,
+and does NOT write a removal of something nothing above ever added. Re-adding what this level had
+stopped drops the removal first, so a file never says both `remove $.id` and `add $.id`. A click in
+one endpoint's window must not change what every other endpoint under that folder does.
+
+**A comparison option in the Rules tab is three-state** (Studio). Inherit / On / Off, and Inherit shows
+what it resolves to and who decided. A checkbox would make every option this level never mentioned look
+deliberately set, and toggling one off and on again would leave a local override behind that keeps
+overriding forever. Going back to Inherit drops the level's whole `comparison` section when nothing
+else in it is set - and an `ignoredPaths` that adds and removes nothing counts as nothing, or the file
+records a level that deliberately said something when it said nothing.
+
+**A computed property on a model is written to everybody's repository** (Studio).
+`System.Text.Json` serialises every public getter, and these files are committed and read in diffs. It
+had already happened - saving an endpoint with a snapshot policy wrote `"isEmpty": false` twice, and a
+tolerance would have written the `kind` derived from it beside the rule itself, where a hand edit would
+leave it stale. Every one of them is now `[JsonIgnore]`, pinned by
+`ComputedPropertiesTests`. Round-tripping does not catch this: the extra members deserialise back to
+nothing and every existing test passes. The file's TEXT is what is wrong.
+
+**An editor that rebuilds its model must carry every field it does not show** (Studio).
+`RequestEditorViewModel.BuildRequestModel` never copied `Snapshot` or `Tolerances` and
+`CaseEditorViewModel.ToModel` never copied `Comparison` or `Tolerances`, so a file carrying any of them
+lost it the first time anyone pressed Ctrl+S - silently, and in the rules that keep a token out of a
+committed file. Both build a fresh model rather than mutating the loaded one, which is the right shape
+and is exactly why a new field has to be added in two places. `_original.LocalVariables` and
+`_original.Settings` were already being carried for this reason; the rules were simply forgotten.

@@ -39,6 +39,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Saving a request or a case no longer deletes its rules.** Both editors rebuild their document from
+  the screen, and neither copied the parts it does not show: a request's snapshot policy and
+  tolerances, a case's comparison settings and tolerances. So a file carrying any of them lost it the
+  first time anyone pressed Ctrl+S — silently, and in the rules that keep a token out of a committed
+  file.
+
+- **Workspace files no longer carry the app's own bookkeeping.** `System.Text.Json` serialises every
+  public getter, so convenience properties were being written into everybody's repository: saving an
+  endpoint with a snapshot policy wrote `"isEmpty": false` twice, and a tolerance would have written
+  the `kind` derived from the rule beside the rule. Round-tripping never noticed — the extra members
+  read back as nothing — so the test that pins this reads the file's text.
+
+- **Running a batch from the left pane works when its name has been changed.** `@smoke` resolves
+  against the `batches/` directory listing, but the Run button passed the name from *inside* the file,
+  so the two disagreeing made a batch unrunnable by the name shown next to the button.
+
 - **Switching request no longer discards unsaved edits without asking, and neither does quitting.**
   Only one request is open at a time, so opening another one destroys the outgoing editor's changes;
   that used to write a line to the status log - collapsed by default - and carry on. Closing the
@@ -53,6 +69,25 @@ All notable changes to this project are documented here. The format is based on
   `%AppData%/Fubar/logs/` kept for seven days - so "send us your log" is answerable at all.
 
 ### Added
+
+- **A Rules tab**, on an endpoint and on a case: every rule that applies there — comparison options,
+  ignored paths, array identity, tolerances, snapshot redaction and normalisation — each carrying the
+  level that set it. The settings hierarchy used to be legible only by opening four files and folding
+  them in your head; this is that fold, shown. Inherited rules are in italics with their origin and are
+  never edited in place: removing one writes a removal *here*, because a click in one endpoint's window
+  must not change what forty others do. Tolerances and snapshot policy had no editor at all before this
+  — they were file-only.
+
+  Comparison options are three-state (Inherit / On / Off) and Inherit says what it is inheriting, so an
+  option nobody has touched cannot be mistaken for one this level chose.
+
+- **A batch editor.** Steps and cleanup are pickers over the endpoints and folders the workspace has,
+  with the endpoint's own cases beside each, so a step is chosen rather than typed — and a step naming
+  something that has since been renamed keeps its name in a red box saying "not in this workspace",
+  which is what a run would report. Previously a batch was created from the left pane and then edited
+  as JSON; `+` now opens the new one straight away.
+
+  A batch's name is its file's name, and changing it renames the file — that is what `@smoke` resolves.
 
 - **Endpoints and cases.** An endpoint is a directory holding `endpoint.json` and `cases/`. The
   endpoint states the operation — method, URL, headers, auth, true every time it is called; a case

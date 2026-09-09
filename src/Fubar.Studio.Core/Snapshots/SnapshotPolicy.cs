@@ -55,6 +55,7 @@ public sealed class SnapshotPolicy
     /// <summary>Response headers worth keeping. Absent means keep none.</summary>
     public List<string>? Headers { get; set; }
 
+    [JsonIgnore]
     public bool IsEmpty =>
         (Redact is null || Redact.IsEmpty)
         && (Normalize is null || Normalize.IsEmpty)
@@ -80,16 +81,45 @@ public sealed class InheritedRules
     /// $.id here" should not have to repeat what its ancestor was replacing it with.</summary>
     public List<string> Remove { get; set; } = [];
 
+    [JsonIgnore]
     public bool IsEmpty => Add.Count == 0 && Remove.Count == 0;
 
     public InheritedRules Clone() => new() { Add = [.. Add], Remove = [.. Remove] };
 }
 
+/// <summary>
+/// One snapshot rule in force, and the level that added it.
+/// </summary>
+/// <remarks>
+/// Per rule rather than per policy, which is the point of add/remove: the Rules tab has to say
+/// "inherited from folder: orders" beside a redaction the endpoint did not write, and its ✕ has to
+/// know whether removing it means deleting a local addition or writing a removal at this level.
+/// </remarks>
+public readonly record struct ResolvedSnapshotRule(
+    SnapshotRule Rule,
+    Fubar.Studio.Core.Comparison.ComparisonScope Scope,
+    string SourceName)
+{
+    public string Path => Rule.Path;
+
+    public string As => Rule.As;
+}
+
 /// <summary>Every snapshot rule in force, with the level each came from.</summary>
 public sealed record ResolvedSnapshotPolicy(
-    IReadOnlyList<SnapshotRule> Redact,
-    IReadOnlyList<SnapshotRule> Normalize,
-    IReadOnlyList<string> Headers)
+    IReadOnlyList<ResolvedSnapshotRule> Redact,
+    IReadOnlyList<ResolvedSnapshotRule> Normalize,
+    Fubar.Studio.Core.Comparison.Resolved<IReadOnlyList<string>> Headers)
 {
-    public static readonly ResolvedSnapshotPolicy Empty = new([], [], []);
+    public static readonly ResolvedSnapshotPolicy Empty = new(
+        [],
+        [],
+        new Fubar.Studio.Core.Comparison.Resolved<IReadOnlyList<string>>(
+            [], Fubar.Studio.Core.Comparison.ComparisonScope.Default, "Default"));
+
+    /// <summary>Just the rules, for the recorder, which has no use for where each came from.</summary>
+    public IReadOnlyList<SnapshotRule> RedactRules => [.. Redact.Select(r => r.Rule)];
+
+    /// <inheritdoc cref="RedactRules"/>
+    public IReadOnlyList<SnapshotRule> NormalizeRules => [.. Normalize.Select(r => r.Rule)];
 }

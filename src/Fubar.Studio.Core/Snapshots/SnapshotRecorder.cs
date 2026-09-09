@@ -46,7 +46,7 @@ public static class SnapshotRecorder
             Status = status,
             RequestFingerprint = requestFingerprint,
             RecordedBy = recordedBy,
-            Headers = Keep(headers, policy.Headers),
+            Headers = Keep(headers, policy.Headers.Value),
         };
 
         var unsupported = new List<string>();
@@ -55,8 +55,8 @@ public static class SnapshotRecorder
 
         if (TryParseJson(body, out var node))
         {
-            redactions = ApplyAll(node, policy.Redact, unsupported);
-            normalisations = ApplyAll(node, policy.Normalize, unsupported);
+            redactions = ApplyAll(node, policy.RedactRules, unsupported);
+            normalisations = ApplyAll(node, policy.NormalizeRules, unsupported);
 
             snapshot.BodyFormat = "json";
             snapshot.Body = Sort(node);
@@ -112,8 +112,8 @@ public static class SnapshotRecorder
         }
 
         var ignored = new List<string>();
-        ApplyAll(node, policy.Redact, ignored);
-        ApplyAll(node, policy.Normalize, ignored);
+        ApplyAll(node, policy.RedactRules, ignored);
+        ApplyAll(node, policy.NormalizeRules, ignored);
 
         return node.ToJsonString(SnapshotJson.Options);
     }

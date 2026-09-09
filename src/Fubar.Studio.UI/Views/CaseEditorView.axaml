@@ -158,6 +158,13 @@
             <TabItem Header="Tests">
                 <views:RequestTestsView DataContext="{Binding Tests}" Margin="0,10,0,0" />
             </TabItem>
+
+            <!-- Every rule that applies to this case, and where each came from. A case is the
+                 innermost level for comparison rules and tolerances, and no level at all for snapshot
+                 policy - which the tab says rather than leaving to be discovered. -->
+            <TabItem Header="Rules">
+                <views:RulesView DataContext="{Binding Rules}" />
+            </TabItem>
         </TabControl>
     </DockPanel>
     </DockPanel>

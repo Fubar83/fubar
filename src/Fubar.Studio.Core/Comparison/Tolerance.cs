@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Fubar.Studio.Core.Comparison;
 
 /// <summary>
@@ -31,6 +33,8 @@ public sealed class Tolerance
 
     /// <summary>Both sides are one of these values.</summary>
     public List<string>? OneOf { get; set; }
+
+    [JsonIgnore]
 
     public ToleranceKind Kind
     {
