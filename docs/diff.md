@@ -1,7 +1,7 @@
 # Fubar Diff
 
 [![CI](https://github.com/Fubar83/fubar/actions/workflows/ci.yml/badge.svg)](https://github.com/Fubar83/fubar/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 
 A native, cross-platform desktop **diff tool** built on **Avalonia 12 + .NET 10**. Compare two files
 side by side, with the panes locked in alignment and changes highlighted line by line.
@@ -14,9 +14,10 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
 > end to end. Editing the three-way merge's three INPUT panes, structural comparison for languages other
 > than C#, and the other formats, are not built yet — see [Roadmap](#roadmap).
 
-<!-- Screenshots: see docs/images/README.md for what each shot must show. Uncomment as they land.
-![Fubar Diff](images/diff-side-by-side.png)
--->
+![Two versions of a C# file, side by side](images/diff-side-by-side.png)
+
+<sub>One difference selected, out of eight. The row tints say where; the character spans say what; the
+close-up underneath stacks the two versions of the selected line.</sub>
 
 ## Features
 
@@ -125,7 +126,16 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   someone ran a formatter over, reordered three methods in and rewrapped the comments of produces
   hundreds of changed lines, and looks *exactly* like a file with a bug fixed in it. Today the only
   way to tell them apart is to read every hunk. This says it in one sentence, in the panel and in the
-  status bar. In CI, `--functional` makes it an exit code:
+  status bar.
+
+  ![The structural panel beside the text diff](images/diff-structural-csharp.png)
+
+  <sub>The same two files as the shot at the top. The text diff counts eight changes; the panel names
+  them — a field **added**, a constructor and a method **changed**, one method **reformatted** only,
+  one **changed and moved**. Those last two are the rows that decide whether this diff needs reading
+  or skimming.</sub>
+
+  In CI, `--functional` makes it an exit code:
 
   ```bash
   FubarDiff --functional -q old/Api.cs new/Api.cs   # 0 if only formatting, order and comments changed
@@ -245,6 +255,14 @@ design system, the [`Fubar.Controls`](https://github.com/Fubar83/fubar) package.
   the aligned Text view but built from the change's own location in each side's raw text rather than
   an aligned row range. Set **Compare** to **Text** for the aligned side-by-side view instead — which
   is also the only mode for anything that does not parse as JSON.
+
+  ![Two JSON documents whose properties are in a different order](images/diff-json-semantic.png)
+
+  <sub>Every top-level object here has had its properties shuffled, and the tree says so — `moved`,
+  four times. The one thing that actually changed is `$.fulfilment.expedited`, reported as a value
+  change and marked in both documents. A line differ would have called these two files completely
+  different.</sub>
+
 - **Semantic YAML**, through the same machinery. A `.yaml` or `.yml` file is read as structure, so a
   manifest whose keys were reordered between two branches reports the two things that changed rather
   than the whole file. Multi-document files (`---` separated, as Kubernetes manifests usually are)
@@ -486,10 +504,10 @@ as one.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the setup, the conventions, and the layering the
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for the setup, the conventions, and the layering the
 architecture tests enforce. By participating you agree to the
-[Code of Conduct](CODE_OF_CONDUCT.md). Security issues: see [SECURITY.md](SECURITY.md).
+[Code of Conduct](../CODE_OF_CONDUCT.md). Security issues: see [SECURITY.md](../SECURITY.md).
 
 ## License
 
-[MIT](LICENSE).
+[MIT](../LICENSE).

@@ -39,6 +39,37 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Opening a request no longer erases the workspace's active environment.** The picker is a two-way
+  bound ComboBox, and reloading a workspace empties its list before refilling it — which made the
+  selection model write `null` straight back through the binding, indistinguishable from someone
+  choosing "no environment". That was persisted, so `activeEnvironmentId` was wiped from
+  `fubar.json` on every workspace activation and every time the open request changed workspace. The
+  next open then fell back to whichever environment sorted first: a workspace saved on Staging came
+  back up on Production, with the picker agreeing. Restoring a selection is not a choice, and neither
+  is a collection being refilled underneath one — the suppression now covers the whole reload rather
+  than just the assignment at the end.
+
+- **Running a batch whose teardown repeats one of its steps no longer takes the app down.** The Run
+  window keyed its rows on endpoint + case, which is not unique: "delete it" is routinely both the
+  last step (proving the delete works) and the teardown (cleaning up a run that stopped before
+  reaching it) — the shape the docs recommend. The duplicate threw out of `ToDictionary`, from a
+  command handler, so the process died on the button press. The command line ran the same batch
+  happily, which is how it shipped. Rows are keyed on the step's order now, which every plan
+  guarantees is unique, and the two rows for the same case report separately — the cleanup's 404 sits
+  under the step's 204 instead of overwriting it.
+
+- **A JUnit report no longer reports a comparison run as all-green.** The writer mapped only the step’s
+  status, so a run whose responses DIFFERED from their snapshots — or from the other environment — exited
+  1 while the file beside it said `failures="0"` with every test passing. The exit code and the build
+  page, which is what anyone actually looks at, gave two different answers to the same run. A difference
+  and a missing other side are both failed tests now, named (`3 differences from Production`,
+  `No snapshot recorded for Staging.`); the count in the header comes from the same predicate that
+  writes the elements, so the two cannot drift apart again. Teardown is described rather than judged,
+  matching the rule everywhere else that cleanup never decides the verdict, and a match a tolerance
+  forgave says so. The JSON report gained the same second axis per step — `comparison`,
+  `comparedAgainst`, `differences`, `tolerated` — plus a `teardown` flag, so a reader can tell cleanup
+  apart from what was being tested.
+
 - **Saving a request or a case no longer deletes its rules.** Both editors rebuild their document from
   the screen, and neither copied the parts it does not show: a request's snapshot policy and
   tolerances, a case's comparison settings and tolerances. So a file carrying any of them lost it the
@@ -76,6 +107,16 @@ All notable changes to this project are documented here. The format is based on
   `%AppData%/Fubar/logs/` kept for seven days - so "send us your log" is answerable at all.
 
 ### Added
+
+- **Screenshots, and per-app READMEs that use them.** Nine images under `docs/images/`, every one shot
+  against a throwaway petstore workspace and a local stub: a request with its assertions and its
+  answer, the Rules tab showing what a case inherited from its folder, a chain finishing with its
+  cleanup line, a run judged against another environment reporting one difference rather than five,
+  the structural C# panel beside a text diff, two JSON documents whose properties were only shuffled,
+  and the Gallery. `docs/images/README.md` says what each has to show for a replacement to still be
+  that file, and what is still missing. The three per-app docs and the root README carry them — and
+  the broken links in all three, `docs/LeftPane.md` from inside `docs/` plus `LICENSE`,
+  `CONTRIBUTING.md` and `SECURITY.md` from a directory up, are fixed.
 
 - **Send one request without setting anything up.** The empty state has a *New request* button that
   opens a scratch request — no workspace to create, no folder to choose, no file written. Previously

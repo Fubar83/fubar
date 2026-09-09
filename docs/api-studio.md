@@ -6,16 +6,16 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
 
 [![CI](https://github.com/Fubar83/fubar/actions/workflows/ci.yml/badge.svg)](https://github.com/Fubar83/fubar/actions/workflows/ci.yml)
 [![Release](https://github.com/Fubar83/fubar/actions/workflows/build.yml/badge.svg)](https://github.com/Fubar83/fubar/actions/workflows/build.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)](#download)
 
 > **Status:** pre-1.0 and under active development. Expect rough edges; feedback and PRs welcome.
 
-<!-- Screenshots: see docs/images/README.md for what each shot must show. Uncomment as they land -
-     a missing image renders as a broken icon, which reads worse than no image at all.
-![Fubar API Studio](images/studio-request.png)
--->
+![One endpoint, one of its cases, and the answer](images/studio-request.png)
+
+<sub>`list-pets` has two cases; this is `all`. The URL belongs to the endpoint, the assertions to the
+case, and the response pane says 2/2.</sub>
 
 ## Features
 
@@ -50,6 +50,13 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   orders --oracle env:Production`. Everything is sent twice, interleaved, and the run reports the
   fields where the two answers differ — each side sent through exactly the same code path, so a
   difference is a difference between the systems rather than between two ways of asking.
+
+  ![A run judged against another environment](images/studio-comparison.png)
+
+  <sub>Both servers put a fresh `requestId` and timestamp in every response and disagree about a
+  weight by a gram. **One** difference is reported, because the folder's rules absorbed the rest — and
+  the row says what it was compared against, so a green that came from a tolerance is visible as one.
+  **Open** puts the two bodies side by side in the diff view.</sub>
 - **Tolerances, for the fields that legitimately move.** `{ "path": "$.total", "numeric": 0.01 }`, or
   `withinSeconds`, `matches`, `lengthWithinPercent`, `oneOf`. Ignoring a total because it drifts by a
   cent stops checking the total; a tolerance forgives the cent and still catches the euro. Both sides
@@ -89,6 +96,12 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   the happy path, not a failure. What is reported is cleanup that could not be *sent*, which is the
   actual leak. It does not run after you cancel: you asked it to stop.
 
+  ![A chain of four requests, with cleanup](images/studio-batch-run.png)
+
+  <sub>Four requests where each depends on the one before, and a fifth line that is not part of the
+  verdict: the teardown ran, found the pet already deleted by step 4, and said so. **4/4 passed · Ran
+  5 of 5.**</sub>
+
   **[How to set one up, end to end →](integration-tests.md)** — every file, every assertion operator,
   and how to read the run when it goes red.
 - **Rules inherit, and say what they add and remove.** Ignored paths, redactions, normalisations and
@@ -100,10 +113,33 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   one stops it *here* and leaves the folder alone, so a click in one endpoint's window cannot change
   what forty others do. Comparison options are Inherit / On / Off, and Inherit says what it is
   inheriting (`on · from Folder: orders`) — an option nobody has touched should not look like a choice.
+
+  ![Every rule that applies here, and where each came from](images/studio-rules.png)
+
+  <sub>Nothing on this screen was written on this case: the ignored path and the tolerance both came
+  from `_folder.json` one level up, and each says so on its own row.</sub>
 - **A batch editor.** Steps and cleanup are picked from the endpoints and folders you have, with each
   endpoint's cases beside it; a step naming something since renamed shows in red as *not in this
   workspace*, which is what the run will say. A batch's name is its file's name — `@smoke` is the file
   — so renaming one here renames the file.
+- **Send one request without setting anything up.** The empty state has a *New request* button that
+  opens a scratch request: no workspace to create, no folder to choose, nothing written to disk. The
+  fastest path from launch to a response used to be about six deliberate steps, four of them filing
+  decisions nobody can make sensibly before knowing whether the request was worth keeping. Save it
+  into a workspace later, or don't.
+- **Nothing is written until you save it.** A new endpoint, case or batch is a **draft** — it lives in
+  the tree with an unsaved dot and occupies its future file name, and nothing reaches disk until you
+  press Save. So opening *New case* and changing your mind does not leave a `new-case.json` behind.
+  The same dot marks an edited file, which is why closing a tab or quitting asks rather than
+  discarding.
+- **An endpoint's own batches, beside its cases.** A batch that is about one endpoint lives under it
+  (`get-pet/batches/both-answers.json`, selector `pets/get-pet@both-answers`); a batch that cuts
+  across the tree stays at the workspace root (`@smoke`). Both show in the tree, tagged `case` or
+  `batch` so a row says what it is, and an endpoint carries one chip — the number of cases, or of
+  batches when there are no cases to count.
+- **A folder editor.** Headers, auth and rules for everything under a folder, in one place, saved to
+  `_folder.json`. It is the level most rules actually belong at: one `Accept` header and one
+  tolerance for a service, rather than the same two lines on nineteen endpoints.
 - **Start from nothing.** *New Workspace…* — from the empty state, or the `+` in the title bar — takes
   an empty folder and lays out `fubar.json`, `collections/`, `environments/` and a `.gitignore` for
   the local-only execution history, then opens it. From there you build collections and environments,
@@ -132,6 +168,12 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   Only flags with no meaning on screen switch it into batch mode, so starting the app normally is
   untouched. A run that matches nothing exits `1`, not `0` — "no tests ran, so it passed" is one typo in
   `--filter` away.
+
+  **The report agrees with the exit code.** A response that differed from its snapshot, or from the
+  other environment, is a failed test in the file — named (`3 differences from Production`,
+  `No snapshot recorded for Staging.`) rather than a note beside a green one. A run that found real
+  drift and a build page that stayed green would be the same run answering two ways. Teardown is
+  described and never judged, matching what it means everywhere else.
 - **Request builder** — method + URL bar with live `{{variable}}` highlighting, and tabs for
   Params, Headers, Body, Auth, and per-request History/replay. URL and Params stay in two-way sync.
 - **Environments & variables** — `{{key}}` resolves from the active environment. Values can be marked
@@ -289,8 +331,8 @@ apps share.
 | `src/Fubar.Studio.UI` | The desktop application (Avalonia + MVVM). Ships as `FubarAPIStudio`. |
 | `tests/*` | xUnit projects for Core, Application, and Infrastructure, plus an architecture suite that enforces the layering. |
 
-Deeper design notes live in [`docs/`](docs/): the [Left Pane](docs/LeftPane.md),
-[Request Editor](docs/RequestEditorPane.md), and [Response Pane](docs/ResponsePane.md).
+Deeper design notes live in [`docs/`](.): the [Left Pane](LeftPane.md),
+[Request Editor](RequestEditorPane.md), and [Response Pane](ResponsePane.md).
 
 ## Keyboard
 
@@ -353,13 +395,13 @@ A corrupt or half-written file falls back to defaults rather than blocking start
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, coding
+Contributions are welcome! Please read [CONTRIBUTING.md](../CONTRIBUTING.md) for the workflow, coding
 conventions, and the layering the architecture tests enforce. By participating you
-agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+agree to the [Code of Conduct](../CODE_OF_CONDUCT.md).
 
-Found a security issue? See [SECURITY.md](SECURITY.md) — please report it privately, not as a public
+Found a security issue? See [SECURITY.md](../SECURITY.md) — please report it privately, not as a public
 issue.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](../LICENSE).

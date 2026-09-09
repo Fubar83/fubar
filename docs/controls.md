@@ -1,7 +1,7 @@
 # Fubar.Controls
 
 [![CI](https://github.com/Fubar83/fubar/actions/workflows/ci.yml/badge.svg)](https://github.com/Fubar83/fubar/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 
 A reusable, **app-agnostic** Avalonia **design system + component library**. It is the single source
 of the shared look and feel for every app built on it — colour tokens, typography-neutral styles,
@@ -10,6 +10,12 @@ shared button/tab styles, and a catalog of composable controls. It depends only 
 
 Used by [Fubar API Studio](api-studio.md) and [Fubar Diff](diff.md), both in this repository. It is
 not published as a package - it is consumed by project reference.
+
+![The Gallery, showing the primitives](images/controls-gallery.png)
+
+<sub>The Gallery renders every component against both theme variants. If a control is not on one of
+these pages, it is not in the library — which is the point: a token defined only in Dark throws at
+runtime in Light, and this is where that gets caught.</sub>
 
 ## Using it (two lines)
 
@@ -134,6 +140,11 @@ components can be built and visually locked without launching a full app.
 dotnet run --project src/Fubar.Controls.Gallery
 ```
 
+Six pages: **Primitives** (badges, status dots, validity icons, buttons, chips and search, dividers,
+setting rows, section headers, empty states), **Feedback** (banner, spinner, metric chip, segmented
+control), **Key Value Grid**, **Tab Strip** — including the two-window drag demo — **Tree & Sections**,
+and the **JSON Editor**. The toggle in the corner switches all of them between Dark and Light.
+
 ## What deliberately stays in the host app
 
 Anything that depends on a host app's domain is **not** here, so the library stays app-agnostic. For
@@ -144,9 +155,9 @@ without living in the library.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Develop against the Gallery — it is the fastest loop and the
+See [CONTRIBUTING.md](../CONTRIBUTING.md). Develop against the Gallery — it is the fastest loop and the
 thing that keeps the app-agnostic boundary honest.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](../LICENSE).
