@@ -93,6 +93,18 @@ All notable changes to this project are documented here. The format is based on
   Opening one and changing your mind now leaves nothing behind — previously every *New case* wrote a
   `new-case.json` immediately. Delete on a draft just forgets it.
 
+- **A folder has its own editor** — *Folder settings…* on any folder, with `Headers · Auth · Rules`. A
+  folder is the level almost every shared rule belongs at, and it was the last one you had to edit by
+  hand. Its Rules tab tells the folder's own rules from an ancestor's, so removing one still only ever
+  stops it *here*.
+
+- **A requests-format workspace says what it is missing**, in one line in the Left Pane, with *Convert
+  to endpoints…* beside it. Nothing is converted on open — that decision stands — but the way out was
+  previously a context-menu item you had to already know about.
+
+- **Move a request into another workspace.** Right-click → *Move to workspace*, listing the other open
+  ones. It stops being where it was, whatever is open on it follows, and the format is checked first.
+
 - **A Rules tab**, on an endpoint and on a case: every rule that applies there — comparison options,
   ignored paths, array identity, tolerances, snapshot redaction and normalisation — each carrying the
   level that set it. The settings hierarchy used to be legible only by opening four files and folding

@@ -567,3 +567,22 @@ clearing for them was throwing away the highlight and the selection-gated comman
 overlapping reloads - which switching workspace and re-opening an editor do within milliseconds - both
 cleared and both added, and every batch appeared twice. It builds a local list, checks a generation
 counter, then publishes; a stale read cannot win, and the list no longer blinks empty on the way.
+
+**Everything derived from the workspace FORMAT is re-raised in one place** (Studio). Two things change
+it - switching workspace tabs and converting one - and they had drifted: the conversion re-raised
+three of the derived properties and not the rest, so after converting, the pane still said "REQUESTS"
+and still offered to convert a workspace that already had. `RaiseFormatChanged` is called by both, so
+the next derived property cannot be added to only one of them.
+
+**A folder's chain is anchored on its own `_folder.json`** (Studio). `GetInheritanceChainAsync` walks
+up from a file's PARENT, so naming the file inside the folder is what makes the folder itself the
+innermost level rather than the one above it. And a `RuleLevel` at a folder must carry the source NAME
+as well as the scope: every folder in the chain is `ComparisonScope.Folder`, so matching on scope alone
+made a grandparent's rules look like this folder's own - and then offered to delete them from here,
+which is what "an inherited rule is never edited in place" exists to prevent.
+
+**A test that waits on `Progress<T>` with a sleep is a flake** (Studio).
+`EnvironmentPairRunServiceTests` slept 50ms for the synchronization context to drain and failed about
+once in six runs on a loaded machine. What those tests assert is the ORDER the service reports in, so
+they use an inline `IProgress<T>` that records on the calling thread and wait for nothing. A test that
+fails intermittently teaches people to re-run rather than to look.

@@ -561,9 +561,13 @@ the decision in `decisions.md §A` rather than reopening it: switching case is n
 
 ### 9.3 Folder and workspace settings
 
-`_folder.json` has no editor today; it is written by the diff window's "save to folder" and otherwise
-edited by hand. That does not survive folders carrying auth, headers, variables, rules, snapshot
-policy and tolerances.
+**Built for a folder.** Selecting *Folder settings…* on a folder opens `_folder.json` on the canvas
+with `Headers · Auth · Rules` - the same tab vocabulary an endpoint uses, minus the ones a folder does
+not have (it carries no variables and nothing to send). Before this it was written by the diff
+window's "save to folder" and otherwise edited by hand, which did not survive folders carrying auth,
+headers, rules, snapshot policy and tolerances.
+
+The workspace row itself still has no editor for `fubar.json`'s own fields.
 
 Selecting a **folder** in the tree opens a folder editor on the same canvas, with the same tab
 vocabulary: `Headers · Auth · Variables · Rules`. Selecting the **workspace** row opens the same
@@ -868,10 +872,9 @@ Named so it is a decision rather than an omission:
   at the endpoint (§4.4) and so does the snapshot policy, which §3.3's file shape already implied.
   The Rules tab on a case says this rather than leaving it to be discovered: the endpoint's policy is
   shown, greyed, with a line saying where it is set.
-- **Folder and workspace editors** (§9.3). `_folder.json` still has no editor, so a folder's headers,
-  auth and rules are edited by hand. The Rules tab exists on an endpoint and on a case; it will take a
-  folder unchanged once there is a folder editor to put it in - the level is four delegates
-  (`RuleLevel`).
+- **A workspace-level editor** (§9.3). `fubar.json` has no settings screen; a FOLDER now does
+  (`Headers · Auth · Rules`), and the workspace root is reachable as the outermost folder, but the
+  manifest's own fields are still edited by hand.
 - **Array identity from the Rules tab.** Shown with its origin, not editable there. Array keys are a
   whole-set replacement rather than an add/remove list, so "remove this one" is not a thing the format
   can express; they are written from a comparison window, where the array in question is on screen.
@@ -883,6 +886,12 @@ Named so it is a decision rather than an omission:
 **Decided.** Endpoints, cases, snapshots and batches exist only in workspaces whose `fubar.json`
 declares the new format. An existing workspace keeps today's request files and today's runner, and is
 never converted on open.
+
+**The route out is now visible** - which is the half of this that was missing. A requests-format
+workspace shows a line in the Left Pane naming what it does not have (cases, batches, snapshots,
+per-case rules) with *Convert to endpoints…* beside it. Converting is still a choice and still nothing
+happens on open; what changed is that the choice was previously a context-menu item you had to already
+know about, which is how "closes by choice" becomes "closes never".
 
 This is the lowest-risk option and it has one cost, which is worth stating plainly rather than
 discovering: **the product is in two halves, and nothing closes the split by itself.** Old workspaces

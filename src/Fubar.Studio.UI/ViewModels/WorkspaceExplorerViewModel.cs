@@ -104,13 +104,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
         // Which format this workspace is in decides what the menu offers, so switching tabs has to
         // re-ask - the two workspaces open side by side need not be in the same one.
-        OnPropertyChanged(nameof(ActiveFormat));
-        OnPropertyChanged(nameof(UsesEndpoints));
-        OnPropertyChanged(nameof(UsesRequests));
-        OnPropertyChanged(nameof(CanAddCase));
-        OnPropertyChanged(nameof(CanAddBatch));
-        OnPropertyChanged(nameof(CollectionsTitle));
-        OnPropertyChanged(nameof(NewCollectionItemTooltip));
+        RaiseFormatChanged();
         OnPropertyChanged(nameof(IsScratchActive));
         RefreshMoveTargets();
 
@@ -119,6 +113,27 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
     private void OnActiveRootChildrenChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
         OnPropertyChanged(nameof(HasActiveRootChildren));
+
+    /// <summary>
+    /// Everything that reads the active workspace's FORMAT, in one place.
+    /// </summary>
+    /// <remarks>
+    /// Two things change it - switching tabs, and converting a workspace - and they had drifted: the
+    /// conversion re-raised three of these and not the rest, so after converting, the pane still said
+    /// "REQUESTS" and still offered to convert a workspace that already had. One method, called by
+    /// both, is what stops the next derived property being added to only one of them.
+    /// </remarks>
+    private void RaiseFormatChanged()
+    {
+        OnPropertyChanged(nameof(ActiveFormat));
+        OnPropertyChanged(nameof(UsesEndpoints));
+        OnPropertyChanged(nameof(UsesRequests));
+        OnPropertyChanged(nameof(CanAddCase));
+        OnPropertyChanged(nameof(CanAddBatch));
+        OnPropertyChanged(nameof(CollectionsTitle));
+        OnPropertyChanged(nameof(NewCollectionItemTooltip));
+        OnPropertyChanged(nameof(IsRequestsFormatActive));
+    }
 
     /// <summary>
     /// Saves which workspaces are open and which is active to <see cref="IAppSettingsService"/> so
@@ -590,6 +605,23 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     public string NewCollectionItemTooltip =>
         UsesEndpoints ? "New Endpoint or Folder" : "New Request or Folder";
 
+    /// <summary>
+    /// Whether this workspace is in the older requests format, and so has none of the features built
+    /// on cases.
+    /// </summary>
+    /// <remarks>
+    /// <para>The product is in two halves and nothing closes the split by itself (spec §10.4): an
+    /// existing workspace keeps today's request files and gets no cases, no batches, no snapshots and
+    /// no per-case rules. The decision NOT to convert on open stands - rewriting committed files
+    /// because someone opened a folder is not a thing to spring on anyone - but the way out was a
+    /// context-menu item you had to already know about, which is how "closes by choice" becomes
+    /// "closes never".</para>
+    /// <para>So the pane says which half it is in, and what that costs, with the conversion one click
+    /// away. Said once per workspace in one line rather than as a dialog, because it is information
+    /// rather than a demand.</para>
+    /// </remarks>
+    public bool IsRequestsFormatActive => ActiveRoot is not null && UsesRequests;
+
     /// <summary>"Add case" only inside an endpoint, which is the only place a case can live.</summary>
     public bool CanAddCase => UsesEndpoints && SelectedNode is { Kind: WorkspaceNodeKind.Endpoint or WorkspaceNodeKind.Case };
 
@@ -854,9 +886,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             // which format this workspace is in, and every screen reads it from there.
             var reloaded = await _workspaceStore.LoadWorkspaceAsync(root.FullPath);
             root.UpdateWorkspace(reloaded);
-            OnPropertyChanged(nameof(ActiveFormat));
-            OnPropertyChanged(nameof(UsesEndpoints));
-            OnPropertyChanged(nameof(UsesRequests));
+            RaiseFormatChanged();
             root.Refresh();
             WorkspaceContentImported?.Invoke(reloaded);
         }

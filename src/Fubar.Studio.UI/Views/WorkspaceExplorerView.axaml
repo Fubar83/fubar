@@ -51,6 +51,31 @@
                        Foreground="{DynamicResource TextSecondary}" />
         </Border>
 
+        <!-- Which half of the product this workspace is in, and what that costs. The conversion
+             existed but lived in a right-click menu you had to already know about - which is how
+             "the split closes by choice" turns into "closes never" (spec §10.4). Converting is still
+             a choice: nothing is rewritten on open. -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding IsRequestsFormatActive}"
+                Background="{DynamicResource BgHeader}"
+                Padding="10,7"
+                Margin="0,0,0,4">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Requests format. No cases, batches, snapshots or per-case rules here - those need endpoints."
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondary}" />
+
+                <Button Classes="secondary-btn"
+                        Content="Convert to endpoints…"
+                        FontSize="11"
+                        Padding="8,2"
+                        HorizontalAlignment="Left"
+                        Command="{Binding ConvertToEndpointsCommand}"
+                        ToolTip.Tip="Splits every request into an endpoint and one case, after a preview. Copies the originals to .fubar/backup/ first." />
+            </StackPanel>
+        </Border>
+
         <!-- Only the active workspace tab's own children populate the tree - the root itself isn't
              represented here anymore, since its name is already shown by its title-bar tab. -->
         <!-- Horizontal scrolling off on purpose: it is what let rows overflow rather than ellipse, so
