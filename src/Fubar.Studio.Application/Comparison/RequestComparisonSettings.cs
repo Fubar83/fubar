@@ -115,24 +115,28 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
         tolerances.AddRange(chain.ToleranceLayers ?? []);
         snapshot.AddRange(chain.SnapshotLayers ?? []);
 
-        var request = await _requests.LoadRequestAsync(requestPath, cancellationToken).ConfigureAwait(false);
-        if (request.Comparison is { } own)
+        // A request that has not been saved yet contributes nothing of its own - see TryLoadAsync.
+        var request = await TryLoadAsync(
+            () => _requests.LoadRequestAsync(requestPath, cancellationToken)).ConfigureAwait(false);
+
+        if (request?.Comparison is { } own)
         {
             layers.Add(new ComparisonSettingsLayer(own, ComparisonScope.Request, "Request"));
         }
 
-        if (request.Tolerances is { Count: > 0 } ownTolerances)
+        if (request?.Tolerances is { Count: > 0 } ownTolerances)
         {
             tolerances.Add(new ToleranceLayer(ownTolerances, ComparisonScope.Request, "Request"));
         }
 
-        if (request.Snapshot is { } ownSnapshot)
+        if (request?.Snapshot is { } ownSnapshot)
         {
             snapshot.Add(new SnapshotPolicyLayer(ownSnapshot, ComparisonScope.Request, "Request"));
         }
 
         if (casePath is { Length: > 0 }
-            && await TryLoadCaseAsync(casePath, cancellationToken).ConfigureAwait(false) is { } endpointCase)
+            && await TryLoadAsync(() => _endpoints.LoadCaseAsync(casePath, cancellationToken))
+                .ConfigureAwait(false) is { } endpointCase)
         {
             var sourceName = $"Case: {endpointCase.Name}";
 
@@ -171,20 +175,21 @@ public sealed class RequestComparisonSettings : IRequestComparisonSettings
     }
 
     /// <summary>
-    /// The case at <paramref name="casePath"/>, or null when there is no file there yet.
+    /// The document, or null when there is no file there yet.
     /// </summary>
     /// <remarks>
-    /// A case that has not been saved is a legitimate state - the Rules tab opens on one the moment
-    /// "New case" is chosen - and it simply contributes no rules of its own; everything above it still
-    /// applies. Only "not there" is forgiven: a file that exists and cannot be read still throws,
-    /// because that is a real problem and silently judging with a fraction of the rules is the failure
-    /// this whole type exists to prevent.
+    /// A request or case that has not been saved is a legitimate state - the Rules tab opens on one
+    /// the moment "New endpoint" or "New case" is chosen - and it simply contributes no rules of its
+    /// own; everything above it still applies. Only "not there" is forgiven: a file that exists and
+    /// cannot be read still throws, because that is a real problem and silently judging with a
+    /// fraction of the rules is the failure this whole type exists to prevent.
     /// </remarks>
-    private async Task<EndpointCase?> TryLoadCaseAsync(string casePath, CancellationToken cancellationToken)
+    private static async Task<T?> TryLoadAsync<T>(Func<Task<T>> load)
+        where T : class
     {
         try
         {
-            return await _endpoints.LoadCaseAsync(casePath, cancellationToken).ConfigureAwait(false);
+            return await load().ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {

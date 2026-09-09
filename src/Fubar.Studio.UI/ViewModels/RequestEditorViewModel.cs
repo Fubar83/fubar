@@ -261,8 +261,17 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
     /// canvas when that workspace's tab is closed.</summary>
     public Workspace Workspace => _workspace;
 
-    /// <summary>Absolute path to this request's <c>request.json</c> - used by Save and to detect an already-open request.</summary>
-    public string FilePath { get; }
+    /// <summary>
+    /// Absolute path to this request's <c>request.json</c> - used by Save and to detect an
+    /// already-open request.
+    /// </summary>
+    /// <remarks>
+    /// Settable only so a DRAFT can follow a rename: an unwritten request is renamed in the tree,
+    /// which changes the file it will take, and an editor still pointing at the replaced name would
+    /// save there instead. Nothing renames a request that exists this way - that moves a file, and
+    /// <c>IRequestStore.RenamePath</c> owns it.
+    /// </remarks>
+    public string FilePath { get; internal set; }
 
     public IProtocolProvider Provider { get; }
 

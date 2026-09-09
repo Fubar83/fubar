@@ -123,6 +123,8 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorer.RequestFileActivated += path => _ = OpenRequestAsync(path);
         WorkspaceExplorer.CaseFileActivated += path => _ = OpenCaseAsync(path);
         WorkspaceExplorer.CaseDrafted += path => _ = OpenCaseAsync(path, isDraft: true);
+        WorkspaceExplorer.RequestDrafted += path => _ = OpenRequestAsync(path, isDraft: true);
+        WorkspaceExplorer.DraftRenamed += OnDraftRenamed;
         WorkspaceExplorer.BatchOpened += OpenBatchEditor;
         WorkspaceExplorer.RunRequested += OnRunRequested;
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
@@ -578,7 +580,45 @@ public partial class MainViewModel : ViewModelBase
     /// which is why it now asks. It used to write a line to the status log and carry on, and that log
     /// was collapsed by default, so the only notice of losing work went somewhere invisible.</para>
     /// </summary>
-    public async Task OpenRequestAsync(string filePath)
+    /// <summary>
+    /// A draft was pointed at a different file before it was ever saved, so the editor open on it has
+    /// to follow - otherwise Save writes the name that was replaced.
+    /// </summary>
+    private void OnDraftRenamed(string from, string to)
+    {
+        if (ActiveRequest is { } request
+            && string.Equals(request.FilePath, from, StringComparison.OrdinalIgnoreCase))
+        {
+            request.FilePath = to;
+            return;
+        }
+
+        // An endpoint's node is its DIRECTORY; the editor holds the endpoint.json inside it.
+        var endpointFile = Path.Combine(to, Core.Workspaces.IEndpointStore.EndpointFileName);
+
+        if (ActiveRequest is { } endpoint
+            && string.Equals(
+                endpoint.FilePath,
+                Path.Combine(from, Core.Workspaces.IEndpointStore.EndpointFileName),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            endpoint.FilePath = endpointFile;
+        }
+    }
+
+    /// <summary>The name a drafted document opens under, taken from the path reserved for it.</summary>
+    private static string NameOf(string filePath) =>
+        string.Equals(
+            Path.GetFileName(filePath),
+            Core.Workspaces.IEndpointStore.EndpointFileName,
+            StringComparison.OrdinalIgnoreCase)
+            ? Path.GetFileName(Path.GetDirectoryName(filePath)) ?? "New Endpoint"
+            : Path.GetFileNameWithoutExtension(filePath);
+
+    /// <param name="isDraft">A request or endpoint that has not been written yet. Its file does not
+    /// exist, so the editor starts on a blank one and is dirty from the outset - it IS unsaved, and the
+    /// tree says so beside it until the first Save creates the file.</param>
+    public async Task OpenRequestAsync(string filePath, bool isDraft = false)
     {
         if (ActiveRequest is { } current && string.Equals(current.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
         {
@@ -603,11 +643,15 @@ public partial class MainViewModel : ViewModelBase
             // changed on disk since the last open.
             await ActivateWorkspaceContextAsync(workspace);
 
-            var request = await _workspaceService.LoadRequestAsync(filePath);
+            var request = isDraft
+                ? new RequestModel { Name = NameOf(filePath) }
+                : await _workspaceService.LoadRequestAsync(filePath);
+
             var provider = _protocolRegistry.Resolve(request.Kind);
             var editor = _editorFactory.CreateRequestEditor(request, filePath, provider, workspace);
 
-            editor.Saved += () => WorkspaceExplorer.RefreshRootFor(editor.FilePath);
+            editor.IsDirty = isDraft;
+            editor.Saved += () => WorkspaceExplorer.DraftSaved(editor.FilePath);
             ActiveEditor = editor;
         }
         catch (Exception ex)

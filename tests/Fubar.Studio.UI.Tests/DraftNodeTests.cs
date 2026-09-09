@@ -162,4 +162,43 @@ public class DraftNodeTests
         Assert.Equal(2, endpoint.DisplayChildren.Count());
         Assert.Equal("2 cases", endpoint.ContentsText);
     }
+
+    // ---- Endpoints and requests ------------------------------------------------------------------
+
+    /// <summary>An endpoint is a DIRECTORY holding endpoint.json, so a drafted one is a directory
+    /// that does not exist yet - and it is still never part of a run.</summary>
+    [Fact]
+    public void A_drafted_endpoint_is_a_directory_and_is_not_run()
+    {
+        var root = new Root();
+        root.Load(EndpointNode([Case("default")]));
+
+        root.Children.Add(new WorkspaceNodeViewModel(
+            "New Endpoint", "/w/collections/orders/New Endpoint", isDirectory: true, WorkspaceNodeKind.Endpoint)
+        {
+            IsDraft = true,
+        });
+
+        Assert.Equal(2, root.Children.Count);
+        Assert.Single(root.ToTreeNode().Children);
+    }
+
+    /// <summary>A drafted request survives a rescan the same way, because nothing about the rule is
+    /// specific to cases.</summary>
+    [Fact]
+    public void A_drafted_request_survives_a_rescan()
+    {
+        var root = new Root();
+        root.Load(EndpointNode([Case("default")]));
+
+        root.Children.Add(new WorkspaceNodeViewModel(
+            "New Request.json", "/w/collections/New Request.json", isDirectory: false, WorkspaceNodeKind.Request)
+        {
+            IsDraft = true,
+        });
+
+        root.Load(EndpointNode([Case("default")]));
+
+        Assert.Equal(["get-order", "New Request"], root.Children.Select(c => c.DisplayName));
+    }
 }

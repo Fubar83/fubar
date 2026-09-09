@@ -414,12 +414,80 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // Proposed, not created - the same rule cases and batches follow. An endpoint is a DIRECTORY
+        // holding endpoint.json, so a drafted one is a directory that does not exist yet either;
+        // SaveRequestAsync makes it on the way to writing the file.
         var path = UsesEndpoints
-            ? _endpointStore.CreateEndpoint(parent, "New Endpoint")
-            : _requestStore.CreateRequest(parent, "New Request");
+            ? ProposeDirectory(parent, "New Endpoint")
+            : ProposeFile(parent, "New Request");
 
-        _statusLog.Log($"Created: {path}");
-        RefreshRootFor(parent);
+        var draft = AddRootDraft(
+            parent, path, UsesEndpoints ? WorkspaceNodeKind.Endpoint : WorkspaceNodeKind.Request);
+
+        if (draft is null)
+        {
+            return;
+        }
+
+        RequestDrafted?.Invoke(
+            UsesEndpoints ? Path.Combine(path, IEndpointStore.EndpointFileName) : path);
+    }
+
+    /// <summary>Raised when a new, unwritten request or endpoint is made - the shell opens an editor
+    /// on a blank one rather than reading a file that is not there yet.</summary>
+    public event Action<string>? RequestDrafted;
+
+    /// <summary>A free file path under <paramref name="parent"/>, writing nothing.</summary>
+    private static string ProposeFile(string parent, string name)
+    {
+        var candidate = Path.Combine(parent, name + ".json");
+        var n = 2;
+        while (File.Exists(candidate))
+        {
+            candidate = Path.Combine(parent, $"{name} {n++}.json");
+        }
+
+        return candidate;
+    }
+
+    private static string ProposeDirectory(string parent, string name)
+    {
+        var candidate = Path.Combine(parent, name);
+        var n = 2;
+        while (Directory.Exists(candidate))
+        {
+            candidate = Path.Combine(parent, $"{name} {n++}");
+        }
+
+        return candidate;
+    }
+
+    /// <summary>Puts an unwritten request or endpoint into the tree under the folder that will hold
+    /// it. Unlike a case or a batch, its parent may be the workspace root itself.</summary>
+    private WorkspaceNodeViewModel? AddRootDraft(string parentDirectory, string path, WorkspaceNodeKind kind)
+    {
+        var parent = FindNodeByPath(parentDirectory)
+                     ?? Roots.FirstOrDefault(r => string.Equals(
+                         Path.Combine(r.FullPath, "collections"), parentDirectory, StringComparison.OrdinalIgnoreCase));
+
+        if (parent is null)
+        {
+            _statusLog.LogError($"\"{parentDirectory}\" is not in the tree.");
+            return null;
+        }
+
+        var draft = new WorkspaceNodeViewModel(
+            Path.GetFileName(path), path, isDirectory: kind == WorkspaceNodeKind.Endpoint, kind)
+        {
+            IsDraft = true,
+            Method = "GET",
+        };
+
+        parent.Children.Add(draft);
+        parent.IsExpanded = true;
+        SelectedNode = draft;
+
+        return draft;
     }
 
     [RelayCommand]
@@ -795,6 +863,14 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // A draft has no file to move - renaming one only changes which file it will take. Going
+        // through RenamePath would throw about a path that was never meant to exist yet.
+        if (node.IsDraft)
+        {
+            RenameDraft(node, newName);
+            return;
+        }
+
         try
         {
             var newPath = _requestStore.RenamePath(node.FullPath, newName);
@@ -869,6 +945,38 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
 
         RefreshRootFor(draftPath);
     }
+
+    /// <summary>
+    /// Points an unwritten node at a different file. Nothing moves, because nothing was written.
+    /// </summary>
+    /// <remarks>
+    /// The editor holding this draft was opened on the OLD path and will still save there, so it is
+    /// told to follow - otherwise renaming a draft before saving it would write the file under the
+    /// name you replaced.
+    /// </remarks>
+    private void RenameDraft(WorkspaceNodeViewModel draft, string newName)
+    {
+        if (!DocumentName.IsValid(newName))
+        {
+            _statusLog.LogError($"\"{newName}\" cannot be a name: it has to work as a file name.");
+            return;
+        }
+
+        var parent = Path.GetDirectoryName(draft.FullPath)!;
+        var from = draft.FullPath;
+
+        draft.FullPath = draft.IsDirectory
+            ? Path.Combine(parent, newName)
+            : Path.Combine(parent, newName + ".json");
+
+        draft.Name = Path.GetFileName(draft.FullPath);
+
+        DraftRenamed?.Invoke(from, draft.FullPath);
+    }
+
+    /// <summary>Raised when an unwritten node is renamed, with where it was and where it now points -
+    /// so an editor already open on it saves to the new file rather than the old one.</summary>
+    public event Action<string, string>? DraftRenamed;
 
     /// <summary>Takes an unwritten node back out of the tree. Nothing on disk is touched, because
     /// nothing on disk was ever made.</summary>
