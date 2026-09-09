@@ -38,3 +38,10 @@ icon on the repository front page, which reads as neglect.
 | `studio-oauth.png` | **Shoot this one carefully too.** The token-request editor after a successful Test: the "what this profile will send" line, the `{{variables}}` list, and the **token response with its Capture buttons**. Use a throwaway client against a test tenant — and check the masking really is masking before the shutter, since this is the one screen that has a live credential on it. | `docs/api-studio.md` |
 | `studio-environments.png` | The environment editor with a **secret** value masked and a **session-only** variable, so the two kinds are visibly different things. | `docs/api-studio.md` |
 | `studio-new-workspace.png` | The empty state with *New Workspace…*, or the freshly created workspace showing `collections/` and `environments/` in the tree. This is the first thing a new user sees, and until recently there was no route through it at all. | `docs/api-studio.md` |
+
+### Already shot
+
+| File | What is on screen | Used by |
+| --- | --- | --- |
+| `studio-capture.png` | A case's Tests tab with one capture rule — `catId` ← `JsonBody $.id`, Session scope — which is how a value gets from one step of a chain to the next. Shot against a throwaway cats workspace and a local stub. | `docs/integration-tests.md` |
+| `studio-assertions.png` | The same tab on a later case, with one assertion of each shape: a status, a JSONPath equality, an `Exists`, a header `Contains`, and a response-time `LessThan`. The point is that the whole grid is legible without a script engine. | `docs/integration-tests.md` |

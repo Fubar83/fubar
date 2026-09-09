@@ -168,6 +168,48 @@ public class TeardownTests
         Assert.All(report.Judged, s => Assert.Equal(ComparisonVerdict.Unavailable, s.Comparison));
     }
 
+    /// <summary>
+    /// Symmetry with the oracle, and a bug that was live until it was written down: a batch reusing
+    /// "delete-cat#created" as teardown reuses the case a STEP also ran, so recording both wrote the
+    /// cleanup's 404 over the step's 204 - and every later comparison run then reported that step as
+    /// a regression against a snapshot of the cleanup.
+    /// </summary>
+    [Fact]
+    public async Task Cleanup_is_never_recorded_as_a_snapshot()
+    {
+        var store = new RecordingSnapshotStore();
+
+        await new SnapshotRecordingService(
+                Sut(new FakeExecution().Body("""{"a":1}""")), store, new FakeComparisonSettings())
+            .RecordAsync(new SnapshotRecording(
+                Plan(), Ws, null, Core.Snapshots.SnapshotScope.Environment,
+                RunOptions.Default with { CaptureResponseBodies = true }));
+
+        Assert.Equal(3, store.Saved.Count);
+        Assert.DoesNotContain(store.Saved, p => p.Contains("r4", StringComparison.Ordinal));
+    }
+
+    private sealed class RecordingSnapshotStore : Core.Snapshots.ISnapshotStore
+    {
+        public List<string> Saved { get; } = [];
+
+        public Task<Core.Snapshots.SnapshotLookup> FindAsync(
+            string workspaceRoot, string requestPath, string? environmentName, CancellationToken ct = default) =>
+            Task.FromResult(Core.Snapshots.SnapshotLookup.None);
+
+        public Task SaveAsync(
+            string workspaceRoot, string requestPath, Core.Snapshots.ResponseSnapshot snapshot,
+            CancellationToken ct = default)
+        {
+            Saved.Add(requestPath);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<string>> ScopesAsync(
+            string workspaceRoot, string requestPath, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<string>>([]);
+    }
+
     private sealed class AlwaysMissingOracle : IOracle
     {
         public OracleKind Kind => OracleKind.Snapshot;

@@ -88,6 +88,9 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   assertions are dropped and it is not compared, because a delete that finds nothing left to delete is
   the happy path, not a failure. What is reported is cleanup that could not be *sent*, which is the
   actual leak. It does not run after you cancel: you asked it to stop.
+
+  **[How to set one up, end to end →](integration-tests.md)** — every file, every assertion operator,
+  and how to read the run when it goes red.
 - **Rules inherit, and say what they add and remove.** Ignored paths, redactions, normalisations and
   tolerances all resolve workspace → folders → endpoint → case, with a batch's own rules last. A level
   states what it *changes* (`{ "add": [...], "remove": [...] }`), so one extra rule on one endpoint

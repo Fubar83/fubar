@@ -24,7 +24,9 @@ Per-app detail lives in [`docs/api-studio.md`](docs/api-studio.md), [`docs/diff.
 **[`docs/spec-endpoints.md`](docs/spec-endpoints.md) is the canonical design for endpoints, cases,
 snapshots, oracles, tolerances and batches** — what is on disk, how the hierarchy resolves, what the
 CLI accepts, and §10.3, which says what is built and what deliberately is not.
-[`docs/endpoints-and-oracles.md`](docs/endpoints-and-oracles.md) is the shorter reasoning behind it.
+[`docs/endpoints-and-oracles.md`](docs/endpoints-and-oracles.md) is the shorter reasoning behind it,
+and [`docs/integration-tests.md`](docs/integration-tests.md) is the user-facing how-to: one chained
+flow built from nothing, with every assertion operator and how to read a red run.
 
 ## Build / run / test
 
