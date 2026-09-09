@@ -49,14 +49,25 @@ public class EndpointBatchScanTests : IDisposable
     private WorkspaceTreeNode Scan() =>
         _service.BuildCollectionsTree(_root).Single().Children.Single();
 
+    /// <summary>A batch already on disk under <paramref name="owner"/>. Written here rather than
+    /// through the store: a fixture should not lean on a production method it is not testing, and the
+    /// store no longer has one - creating is what SAVING a draft does now.</summary>
+    private static string ExistingBatch(string owner, string name)
+    {
+        var path = Path.Combine(owner, IBatchStore.BatchesDirName, name + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{\"name\":\"" + name + "\"}");
+        return path;
+    }
+
     // ---- Scanning ---------------------------------------------------------------------------------
 
     [Fact]
     public void An_endpoints_batches_are_scanned_into_their_own_list()
     {
         WriteCase("default");
-        _batches.CreateBatch(Endpoint, "happy");
-        _batches.CreateBatch(Endpoint, "regression");
+        ExistingBatch(Endpoint, "happy");
+        ExistingBatch(Endpoint, "regression");
 
         var endpoint = Scan();
 
@@ -70,7 +81,7 @@ public class EndpointBatchScanTests : IDisposable
     public void Batches_are_not_among_the_endpoints_children()
     {
         WriteCase("default");
-        _batches.CreateBatch(Endpoint, "happy");
+        ExistingBatch(Endpoint, "happy");
 
         var endpoint = Scan();
 
@@ -82,7 +93,7 @@ public class EndpointBatchScanTests : IDisposable
     [Fact]
     public void An_endpoint_with_only_batches_has_no_cases()
     {
-        _batches.CreateBatch(Endpoint, "happy");
+        ExistingBatch(Endpoint, "happy");
 
         var endpoint = Scan();
 
@@ -103,7 +114,7 @@ public class EndpointBatchScanTests : IDisposable
     [Fact]
     public void The_batches_directory_is_not_a_folder_in_the_tree()
     {
-        _batches.CreateBatch(Endpoint, "happy");
+        ExistingBatch(Endpoint, "happy");
 
         Assert.DoesNotContain(Scan().Children, c => c.Name == "batches");
     }
@@ -114,8 +125,8 @@ public class EndpointBatchScanTests : IDisposable
     [Fact]
     public async Task A_name_is_unique_only_within_one_home()
     {
-        _batches.CreateBatch(_root, "happy");
-        _batches.CreateBatch(Endpoint, "happy");
+        ExistingBatch(_root, "happy");
+        ExistingBatch(Endpoint, "happy");
 
         var workspaceOwned = await _batches.FindBatchAsync(_root, "happy");
         var endpointOwned = await _batches.FindBatchAsync(Endpoint, "happy");
@@ -129,7 +140,7 @@ public class EndpointBatchScanTests : IDisposable
     [Fact]
     public async Task An_endpoints_batch_is_not_found_from_the_workspace()
     {
-        _batches.CreateBatch(Endpoint, "happy");
+        ExistingBatch(Endpoint, "happy");
 
         Assert.Null(await _batches.FindBatchAsync(_root, "happy"));
     }
@@ -139,7 +150,7 @@ public class EndpointBatchScanTests : IDisposable
     [Fact]
     public void An_endpoint_batch_knows_which_endpoint_it_belongs_to()
     {
-        var path = _batches.CreateBatch(Endpoint, "happy");
+        var path = ExistingBatch(Endpoint, "happy");
 
         Assert.Equal(Endpoint, _endpoints.EndpointDirectoryOf(path));
     }
@@ -147,7 +158,7 @@ public class EndpointBatchScanTests : IDisposable
     [Fact]
     public void A_workspace_batch_belongs_to_no_endpoint()
     {
-        var path = _batches.CreateBatch(_root, "smoke");
+        var path = ExistingBatch(_root, "smoke");
 
         Assert.Null(_endpoints.EndpointDirectoryOf(path));
     }

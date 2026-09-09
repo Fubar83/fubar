@@ -53,10 +53,10 @@
                 <!-- Sending one case is how anyone actually iterates on it. It goes through the
                      ordinary run pipeline, so what happens here and what CI does cannot drift - and
                      that pipeline reads from disk, hence the save first. -->
-                <Button Content="Send" Classes="primary-btn"
+                <Button Content="{Binding SendLabel}" Classes="primary-btn"
                         Command="{Binding SendCommand}"
                         IsVisible="{Binding !IsSending}"
-                        ToolTip.Tip="Saves, then sends this case with the endpoint's method, URL and auth" />
+                        ToolTip.Tip="{Binding SendTooltip}" />
                 <Button Content="Cancel" Classes="secondary-btn"
                         Command="{Binding CancelSendCommand}"
                         IsVisible="{Binding IsSending}" />

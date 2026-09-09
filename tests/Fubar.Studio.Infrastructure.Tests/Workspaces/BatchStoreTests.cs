@@ -27,10 +27,21 @@ public class BatchStoreTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>A batch already on disk under <paramref name="owner"/>. Written here rather than
+    /// through the store: a fixture should not lean on a production method it is not testing, and the
+    /// store no longer has one - creating is what SAVING a draft does now.</summary>
+    private static string ExistingBatch(string owner, string name)
+    {
+        var path = Path.Combine(owner, IBatchStore.BatchesDirName, name + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{\"name\":\"" + name + "\"}");
+        return path;
+    }
+
     [Fact]
     public async Task A_rename_moves_the_file_and_the_batch_is_found_by_its_new_name()
     {
-        var path = _store.CreateBatch(_root, "smoke");
+        var path = ExistingBatch(_root, "smoke");
 
         var moved = _store.RenameBatch(path, "nightly");
 
@@ -44,8 +55,8 @@ public class BatchStoreTests : IDisposable
     [Fact]
     public void Renaming_onto_an_existing_batch_is_refused()
     {
-        var smoke = _store.CreateBatch(_root, "smoke");
-        _store.CreateBatch(_root, "nightly");
+        var smoke = ExistingBatch(_root, "smoke");
+        ExistingBatch(_root, "nightly");
 
         var failure = Assert.Throws<IOException>(() => _store.RenameBatch(smoke, "nightly"));
 
@@ -64,7 +75,7 @@ public class BatchStoreTests : IDisposable
     [InlineData("nested\\name")]
     public void A_name_that_is_not_a_file_name_is_refused(string name)
     {
-        var path = _store.CreateBatch(_root, "smoke");
+        var path = ExistingBatch(_root, "smoke");
 
         Assert.Throws<ArgumentException>(() => _store.RenameBatch(path, name));
         Assert.True(File.Exists(path));
@@ -76,7 +87,7 @@ public class BatchStoreTests : IDisposable
     [Fact]
     public void A_case_only_rename_is_still_done()
     {
-        var path = _store.CreateBatch(_root, "smoke");
+        var path = ExistingBatch(_root, "smoke");
 
         var moved = _store.RenameBatch(path, "Smoke");
 
@@ -87,7 +98,7 @@ public class BatchStoreTests : IDisposable
     [Fact]
     public async Task Saving_writes_what_was_given()
     {
-        var path = _store.CreateBatch(_root, "smoke");
+        var path = ExistingBatch(_root, "smoke");
 
         await _store.SaveBatchAsync(path, new Batch
         {

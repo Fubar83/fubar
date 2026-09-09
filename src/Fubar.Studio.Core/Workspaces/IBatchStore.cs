@@ -39,10 +39,6 @@ public interface IBatchStore
 
     Task SaveBatchAsync(string batchFilePath, Batch batch, CancellationToken cancellationToken = default);
 
-    /// <summary>Creates an empty batch named <paramref name="name"/> under <paramref name="owner"/>
-    /// and returns its full path.</summary>
-    string CreateBatch(string owner, string name);
-
     /// <inheritdoc cref="IEndpointStore.ProposeCasePath"/>
     string ProposeBatchPath(string owner, string name);
 

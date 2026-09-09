@@ -42,9 +42,6 @@ public interface IEndpointStore
 
     Task SaveCaseAsync(string caseFilePath, EndpointCase endpointCase, CancellationToken cancellationToken = default);
 
-    /// <summary>Creates an empty case named <paramref name="caseName"/> and returns its full path.</summary>
-    string CreateCase(string endpointDirectory, string caseName);
-
     /// <summary>
     /// A free path for a case named <paramref name="caseName"/>, writing NOTHING.
     /// </summary>
@@ -65,8 +62,4 @@ public interface IEndpointStore
     /// <see cref="IBatchStore.RenameBatch"/>. Throws when a case by that name already exists.
     /// </remarks>
     string RenameCase(string caseFilePath, string newName);
-
-    /// <summary>Creates an endpoint directory with an <c>endpoint.json</c> in it, and returns the
-    /// directory.</summary>
-    string CreateEndpoint(string parentDirectory, string endpointName);
 }

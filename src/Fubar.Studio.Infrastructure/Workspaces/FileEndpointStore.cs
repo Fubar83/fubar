@@ -84,19 +84,6 @@ public sealed class FileEndpointStore : IEndpointStore
         return JsonFile.WriteAtomicAsync(caseFilePath, endpointCase, FubarJson.Options, cancellationToken);
     }
 
-    public string CreateCase(string endpointDirectory, string caseName)
-    {
-        var casesPath = Path.Combine(endpointDirectory, IEndpointStore.CasesDirName);
-        Directory.CreateDirectory(casesPath);
-
-        var path = Unique(casesPath, caseName);
-
-        var created = new EndpointCase { Name = Path.GetFileNameWithoutExtension(path) };
-        File.WriteAllText(path, JsonSerializer.Serialize(created, FubarJson.Options));
-
-        return path;
-    }
-
     public string ProposeCasePath(string endpointDirectory, string caseName) =>
         Unique(Path.Combine(endpointDirectory, IEndpointStore.CasesDirName), caseName);
 
@@ -127,19 +114,6 @@ public sealed class FileEndpointStore : IEndpointStore
         return destination;
     }
 
-    public string CreateEndpoint(string parentDirectory, string endpointName)
-    {
-        var directory = UniqueDirectory(parentDirectory, endpointName);
-        Directory.CreateDirectory(directory);
-
-        var endpoint = new RequestModel { Name = Path.GetFileName(directory) };
-        File.WriteAllText(
-            Path.Combine(directory, IEndpointStore.EndpointFileName),
-            JsonSerializer.Serialize(endpoint, FubarJson.Options));
-
-        return directory;
-    }
-
     /// <summary>A free file name, so creating twice makes two cases rather than overwriting the
     /// first - the same rule the request store already follows.</summary>
     private static string Unique(string directory, string name)
@@ -149,18 +123,6 @@ public sealed class FileEndpointStore : IEndpointStore
         while (File.Exists(candidate))
         {
             candidate = Path.Combine(directory, $"{name} {n++}{Extension}");
-        }
-
-        return candidate;
-    }
-
-    private static string UniqueDirectory(string parent, string name)
-    {
-        var candidate = Path.Combine(parent, name);
-        var n = 2;
-        while (Directory.Exists(candidate))
-        {
-            candidate = Path.Combine(parent, $"{name} {n++}");
         }
 
         return candidate;

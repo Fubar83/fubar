@@ -214,8 +214,6 @@ public class BatchPlannerTests
         public Task SaveBatchAsync(string batchFilePath, Batch value, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public string CreateBatch(string owner, string name) => throw new NotSupportedException();
-
         public string ProposeBatchPath(string owner, string name) => throw new NotSupportedException();
 
         public string RenameBatch(string batchFilePath, string newName) => throw new NotSupportedException();

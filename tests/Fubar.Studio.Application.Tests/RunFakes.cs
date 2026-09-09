@@ -125,14 +125,10 @@ internal sealed class FakeEndpoints : IEndpointStore
         return Task.CompletedTask;
     }
 
-    public string CreateCase(string endpointDirectory, string caseName) => throw new NotSupportedException();
-
     public string ProposeCasePath(string endpointDirectory, string caseName) =>
         throw new NotSupportedException();
 
     public string RenameCase(string caseFilePath, string newName) => throw new NotSupportedException();
-
-    public string CreateEndpoint(string parentDirectory, string endpointName) => throw new NotSupportedException();
 }
 
 /// <summary>No rules at any level, which is what most runner tests want to say.</summary>

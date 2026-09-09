@@ -65,19 +65,6 @@ public sealed class FileBatchStore : IBatchStore
         return JsonFile.WriteAtomicAsync(batchFilePath, batch, FubarJson.Options, cancellationToken);
     }
 
-    public string CreateBatch(string owner, string name)
-    {
-        var directory = Path.Combine(owner, IBatchStore.BatchesDirName);
-        Directory.CreateDirectory(directory);
-
-        var path = Unique(directory, name);
-
-        var batch = new Batch { Name = Path.GetFileNameWithoutExtension(path) };
-        File.WriteAllText(path, JsonSerializer.Serialize(batch, FubarJson.Options));
-
-        return path;
-    }
-
     public string ProposeBatchPath(string owner, string name) =>
         Unique(Path.Combine(owner, IBatchStore.BatchesDirName), name);
 

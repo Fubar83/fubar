@@ -215,7 +215,27 @@ public partial class CaseEditorViewModel : ViewModelBase, ISaveableEditor
     public partial bool IsSending { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SendLabel))]
+    [NotifyPropertyChangedFor(nameof(SendTooltip))]
     public partial bool IsDirty { get; set; }
+
+    /// <summary>
+    /// What Send is about to do, on the button rather than only in a tooltip.
+    /// </summary>
+    /// <remarks>
+    /// <para>Sending a case goes through the ORDINARY run pipeline, which reads from disk (spec §2:
+    /// "there is no separate run-a-single-request path, which is what stops the two from drifting"),
+    /// so it has to save first. The request editor's Send sends what is on screen and commits
+    /// nothing - the same word for two different bargains, and the case one quietly writes your edit
+    /// to a file you may have been experimenting in.</para>
+    /// <para>Both behaviours are right for what they do, so the button says which one it is instead of
+    /// pretending they are the same.</para>
+    /// </remarks>
+    public string SendLabel => IsDirty ? "Save & Send" : "Send";
+
+    public string SendTooltip => IsDirty
+        ? "Saves this case first - the runner reads from disk - then sends it with the endpoint's method, URL and auth"
+        : "Sends this case with the endpoint's method, URL and auth";
 
     partial void OnNameChanged(string value) => MarkDirty();
 

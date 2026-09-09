@@ -32,6 +32,17 @@ public class DraftPathTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>A case already on disk. Written here rather than through the store: a fixture should
+    /// not lean on a production method it is not testing, and the store no longer has one - creating
+    /// is what SAVING a draft does now.</summary>
+    private string ExistingCase(string name)
+    {
+        var path = Path.Combine(Endpoint, IEndpointStore.CasesDirName, name + ".json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{\"name\":\"" + name + "\"}");
+        return path;
+    }
+
     // ---- Proposing -------------------------------------------------------------------------------
 
     /// <summary>The point of it: "New case" must not leave a file behind when you change your mind.</summary>
@@ -60,7 +71,7 @@ public class DraftPathTests : IDisposable
     [Fact]
     public void A_proposal_avoids_a_name_that_is_taken()
     {
-        _endpoints.CreateCase(Endpoint, "new-case");
+        ExistingCase("new-case");
 
         Assert.EndsWith("new-case 2.json", _endpoints.ProposeCasePath(Endpoint, "new-case"));
     }
@@ -70,7 +81,7 @@ public class DraftPathTests : IDisposable
     [Fact]
     public void Renaming_a_case_moves_the_file()
     {
-        var path = _endpoints.CreateCase(Endpoint, "new-case");
+        var path = ExistingCase("new-case");
 
         var moved = _endpoints.RenameCase(path, "not-found");
 
@@ -82,8 +93,8 @@ public class DraftPathTests : IDisposable
     [Fact]
     public void Renaming_a_case_onto_an_existing_one_is_refused()
     {
-        var first = _endpoints.CreateCase(Endpoint, "created");
-        _endpoints.CreateCase(Endpoint, "missing");
+        var first = ExistingCase("created");
+        ExistingCase("missing");
 
         Assert.Throws<IOException>(() => _endpoints.RenameCase(first, "missing"));
         Assert.True(File.Exists(first));
@@ -97,7 +108,7 @@ public class DraftPathTests : IDisposable
     [InlineData("nested\name")]
     public void A_case_name_that_is_not_a_file_name_is_refused(string name)
     {
-        var path = _endpoints.CreateCase(Endpoint, "created");
+        var path = ExistingCase("created");
 
         Assert.Throws<ArgumentException>(() => _endpoints.RenameCase(path, name));
         Assert.True(File.Exists(path));
@@ -106,7 +117,7 @@ public class DraftPathTests : IDisposable
     [Fact]
     public void A_case_takes_its_own_capitalisation()
     {
-        var path = _endpoints.CreateCase(Endpoint, "created");
+        var path = ExistingCase("created");
 
         _endpoints.RenameCase(path, "Created");
 
