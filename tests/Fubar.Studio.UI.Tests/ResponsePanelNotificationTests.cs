@@ -91,6 +91,7 @@ public class ResponsePanelNotificationTests
     {
         public Task ShowAsync(
             string leftText, string rightText, string leftLabel, string rightLabel, string title,
-            Fubar.Studio.UI.Services.DiffSettingsContext? settings = null) => Task.CompletedTask;
+            Fubar.Studio.UI.Services.DiffSettingsContext? settings = null,
+            Fubar.Studio.UI.Services.SnapshotAcceptContext? accept = null) => Task.CompletedTask;
     }
 }

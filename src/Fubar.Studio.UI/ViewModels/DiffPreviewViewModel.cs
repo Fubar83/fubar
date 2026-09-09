@@ -183,6 +183,48 @@ public partial class DiffPreviewViewModel : ViewModelBase
     /// rule is session-only until saved - ignoring is often exploratory, and silently rewriting
     /// request.json on a click inside a diff window is a side effect nobody asked for.
     /// </summary>
+    /// <summary>How to write a difference into the recorded answer, or null when the left side is not
+    /// something that can be rewritten. Drives the accept affordances.</summary>
+    public Services.SnapshotAcceptContext? Accept { get; private set; }
+
+    public bool CanAccept => Accept is not null;
+
+    /// <summary>"Accept into staging.json" - the file is NAMED, because accepting into a shared
+    /// snapshot changes what every environment compares against.</summary>
+    public string AcceptAllLabel => $"Accept all into {Accept?.Description}";
+
+    /// <summary>
+    /// Writes one field, or everything, into the recorded answer, then re-compares against what was
+    /// written.
+    /// </summary>
+    /// <remarks>
+    /// Re-comparing rather than closing: accepting three of forty differences leaves thirty-seven,
+    /// and those thirty-seven are the point. Closing the pane would hide the thing being worked on.
+    /// </remarks>
+    [RelayCommand]
+    private async Task AcceptAsync(string? path)
+    {
+        if (Accept is not { } accept)
+        {
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            if (await accept.AcceptAsync(path).ConfigureAwait(true) is { } written)
+            {
+                _leftText = written;
+                await RecompareAsync().ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     [RelayCommand]
     private async Task IgnorePathAsync(string? path)
     {
@@ -285,7 +327,8 @@ public partial class DiffPreviewViewModel : ViewModelBase
         string leftLabel,
         string rightLabel,
         string title,
-        DiffSettingsContext? settings = null)
+        DiffSettingsContext? settings = null,
+        Services.SnapshotAcceptContext? accept = null)
     {
         Title = title;
         LeftLabel = leftLabel;
@@ -294,6 +337,7 @@ public partial class DiffPreviewViewModel : ViewModelBase
         _leftText = leftText;
         _rightText = rightText;
         _settingsContext = settings;
+        Accept = accept;
         _draft = settings?.RequestOverrides?.Clone() ?? new ComparisonSettings();
 
         SettingsDirty = false;
@@ -303,6 +347,8 @@ public partial class DiffPreviewViewModel : ViewModelBase
             ? null
             : new RelayCommand<string>(path => _ = IgnorePathCommand.ExecuteAsync(path));
 
+        OnPropertyChanged(nameof(CanAccept));
+        OnPropertyChanged(nameof(AcceptAllLabel));
         OnPropertyChanged(nameof(ShowSettings));
         OnPropertyChanged(nameof(CanSaveSettings));
         OnPropertyChanged(nameof(CanSaveToFolder));
