@@ -35,7 +35,21 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid>
+    <DockPanel>
+
+        <!-- Said, not left to be discovered: a scratch request is saved somewhere the user did not
+             choose, which is the whole point of it and also the thing they need to know before
+             relying on it. -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding IsScratchActive}"
+                Background="{DynamicResource BgHeader}"
+                Padding="10,6"
+                Margin="0,0,0,4">
+            <TextBlock Text="Scratch. Anything saved here lives with the app, not in a folder you chose - move it into a workspace when it is worth keeping."
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondary}" />
+        </Border>
 
         <!-- Only the active workspace tab's own children populate the tree - the root itself isn't
              represented here anymore, since its name is already shown by its title-bar tab. -->
@@ -240,6 +254,6 @@
 
         </fc:TreeView>
 
-    </Grid>
+    </DockPanel>
 
 </UserControl>

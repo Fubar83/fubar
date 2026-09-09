@@ -502,3 +502,48 @@ lost it the first time anyone pressed Ctrl+S - silently, and in the rules that k
 committed file. Both build a fresh model rather than mutating the loaded one, which is the right shape
 and is exactly why a new field has to be added in two places. `_original.LocalVariables` and
 `_original.Settings` were already being carried for this reason; the rules were simply forgotten.
+
+**An endpoint's Children are what a run of it SENDS - nothing else may live there** (Studio).
+`RunPlan.Walk` expands an endpoint into its children and treats an endpoint with NONE as one to send
+as it stands. Two things therefore stay out: an endpoint's own batches, which hang off
+`WorkspaceTreeNode.Batches`, and drafts, which `ToTreeNode` filters. Either in `Children` produces the
+same silent failure - an endpoint whose only child was a batch would send nothing at all, and a case
+that has not been saved would go into a run as a step whose file does not exist. An empty run reported
+as a pass is what this whole area exists to refuse. `EndpointBatchPlanTests` and `DraftNodeTests` pin
+both.
+
+**A batch has two homes, and a name is unique only within one** (Studio). The workspace's `batches/`
+holds the occasions that cut across the tree; an endpoint's holds the ways of running that endpoint.
+So the selector grammar has `@smoke` and `orders/get-order@happy`, and a bare name NEVER searches the
+endpoints: two endpoints may each have a `happy`, and resolving a bare name across both would make it
+mean whichever was scanned first. `BatchPlanner.OwnerDirectory` refuses an owner that is not an
+endpoint, because only an endpoint and the workspace hold batches.
+
+**A draft is the one thing in the tree that disk does not account for** (Studio). New cases, batches,
+endpoints and requests are held in memory until the first Save, so opening one and changing your mind
+leaves nothing behind. The tree is reconciled against a fresh scan on every watcher event, so
+`SyncChildren` exempts a draft twice: never removed for being absent from a scan, and no longer a
+draft the moment the scan does report it. They sort last, because reconciliation moves the real rows
+into scan order around whatever position a draft holds. Deleting one only forgets it, and renaming one
+moves no file - it points the reservation at a different name and tells the open editor to follow, or
+Save writes the name that was just replaced.
+
+**A case, a batch and a request are addressed by their FILE name** (Studio). `get-order#not-found`,
+`@smoke` and `orders/get-order` all resolve against a directory listing, never against a `name` field
+inside a file. So an editor with a name box has to rename the FILE - `IEndpointStore.RenameCase` and
+`IBatchStore.RenameBatch`, written first and renamed second so a failed rename leaves the contents
+saved rather than a document nobody can find. The request editor has no name box, and renaming a
+request stays the tree's inline rename. One `DocumentName.IsValid` for all of them: the rule is about
+file names, and the second copy of it started life as a batch-shaped predicate being asked about cases.
+
+**Resolving rules forgives a file that is not there, and nothing else** (Studio).
+`RequestComparisonSettings` opens on drafted requests and cases whose files do not exist yet; those
+levels simply contribute nothing. A file that EXISTS and cannot be read still throws, because judging
+with a fraction of the rules is precisely the failure that type exists to prevent.
+
+**The tree row has no width for a second count chip** (Studio). The pane is 260px and every row
+already carries a method badge and an auth badge. Adding a batch count beside the case count pushed
+the auth badge off the right edge; disabling the tree's horizontal scrolling then ellipsed the NAME to
+"ge..." instead, which is the worse trade. The counts take turns (`ContentsText`) - cases when there
+are several, batches when there is no case count - and the horizontal scrollbar stays off, which is
+also what finally made a long request name ellipse instead of pushing its badges out of sight.

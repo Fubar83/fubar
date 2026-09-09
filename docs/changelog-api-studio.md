@@ -55,6 +55,13 @@ All notable changes to this project are documented here. The format is based on
   against the `batches/` directory listing, but the Run button passed the name from *inside* the file,
   so the two disagreeing made a batch unrunnable by the name shown next to the button.
 
+- **A case's name now takes.** Typing a new one in the case editor wrote it inside the file and left
+  the file itself alone, so `get-order#the-name-you-typed` selected nothing — the same divergence as
+  the batch above, and it renames the file now for the same reason.
+
+- **A long name in the tree ellipses instead of pushing its badges off the edge.** The tree scrolled
+  sideways rather than fitting, so a long request name quietly hid its own auth badge.
+
 - **Switching request no longer discards unsaved edits without asking, and neither does quitting.**
   Only one request is open at a time, so opening another one destroys the outgoing editor's changes;
   that used to write a line to the status log - collapsed by default - and carry on. Closing the
@@ -69,6 +76,22 @@ All notable changes to this project are documented here. The format is based on
   `%AppData%/Fubar/logs/` kept for seven days - so "send us your log" is answerable at all.
 
 ### Added
+
+- **Send one request without setting anything up.** The empty state has a *New request* button that
+  opens a scratch request — no workspace to create, no folder to choose, no file written. Previously
+  the fastest path from launch to a response was about six deliberate steps, four of them filing
+  decisions you cannot make sensibly before knowing whether the request was worth keeping. The scratch
+  workspace lives with the app rather than in a folder you picked, and the pane says so.
+
+- **An endpoint has its own batches**, in `<endpoint>/batches/`, shown in the tree beside its cases and
+  tagged `case` / `batch` so the two kinds of child are told apart. The workspace's `batches/` stays
+  for the occasions that cut across the tree; on the command line they are `@smoke` and
+  `orders/get-order@happy`, because a batch name is unique only within one home.
+
+- **Nothing is written until you save it.** New cases, batches, endpoints and requests are drafts: they
+  appear in the tree with the unsaved dot, open in their editor, and hit disk on the first Save.
+  Opening one and changing your mind now leaves nothing behind — previously every *New case* wrote a
+  `new-case.json` immediately. Delete on a draft just forgets it.
 
 - **A Rules tab**, on an endpoint and on a case: every rule that applies there — comparison options,
   ignored paths, array identity, tolerances, snapshot redaction and normalisation — each carrying the

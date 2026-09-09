@@ -36,7 +36,8 @@ dotnet test  Fubar.slnx                # every suite
 
 dotnet run --project src/Fubar.Studio.UI                   # API Studio
 dotnet run --project src/Fubar.Studio.UI -- run --report results.xml         # run a collection; 0 pass, 1 fail, 2 could not
-dotnet run --project src/Fubar.Studio.UI -- run @smoke --oracle snapshot     # a batch, against its recorded answers
+dotnet run --project src/Fubar.Studio.UI -- run @smoke --oracle snapshot     # a workspace batch, against its recorded answers
+dotnet run --project src/Fubar.Studio.UI -- run orders/get-order@happy       # one endpoint's own batch
 dotnet run --project src/Fubar.Diff.UI -- left.json right.json
 dotnet run --project src/Fubar.Diff.UI -- --check left.json right.json   # headless; 0 same, 1 differ, 2 failed
 dotnet run --project src/Fubar.Diff.UI -- --functional -q a.cs b.cs      # 0 unless the C# behaviour changed

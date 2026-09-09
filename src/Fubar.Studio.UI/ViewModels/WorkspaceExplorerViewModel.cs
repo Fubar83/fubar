@@ -106,6 +106,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(UsesRequests));
         OnPropertyChanged(nameof(CanAddCase));
         OnPropertyChanged(nameof(CanAddBatch));
+        OnPropertyChanged(nameof(IsScratchActive));
 
         PersistOpenWorkspaces();
     }
@@ -370,6 +371,58 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         ActiveRoot = root;
         _statusLog.Log($"Opened workspace \"{workspace.Manifest.Name}\" at {path}.");
     }
+
+    /// <summary>
+    /// Where a request goes when you have not chosen anywhere to put it.
+    /// </summary>
+    /// <remarks>
+    /// Under the app's own data directory, never in a folder the user picked - the point is that
+    /// trying something out costs no decisions and litters nothing. It is an ordinary workspace in
+    /// every other respect, so environments, auth, history and rules all work in it without a second
+    /// code path, and a request that turns out to be worth keeping can be moved into a real one.
+    /// </remarks>
+    public static string ScratchWorkspacePath { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Fubar", "scratch");
+
+    /// <summary>
+    /// Opens the scratch workspace (creating it the first time) and drafts a request in it.
+    /// </summary>
+    /// <remarks>
+    /// The answer to "I just want to send one request". Everything else here needs a workspace on
+    /// disk before it will do anything at all, which put four filing decisions between launching the
+    /// app and seeing a response - and none of them can be made sensibly before you know whether the
+    /// request was worth keeping. The request is a DRAFT, so even here nothing is written until Save.
+    /// </remarks>
+    [RelayCommand]
+    public async Task NewScratchRequestAsync()
+    {
+        try
+        {
+            var root = Roots.FirstOrDefault(r => string.Equals(
+                r.FullPath, ScratchWorkspacePath, StringComparison.OrdinalIgnoreCase));
+
+            if (root is null)
+            {
+                var workspace = await _workspaceStore.CreateWorkspaceAsync(ScratchWorkspacePath);
+                root = new WorkspaceRootViewModel(workspace, _requestStore);
+                Roots.Add(root);
+            }
+
+            ActiveRoot = root;
+            SelectedNode = null;
+
+            NewRequestCommand.Execute(null);
+        }
+        catch (Exception ex)
+        {
+            _statusLog.LogError($"Could not open the scratch workspace: {ex.Message}");
+        }
+    }
+
+    /// <summary>Whether the active workspace is the scratch one - the shell says so, because a request
+    /// saved somewhere you did not choose is worth knowing about.</summary>
+    public bool IsScratchActive => ActiveRoot is not null && string.Equals(
+        ActiveRoot.FullPath, ScratchWorkspacePath, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Which shape the active workspace's collections are in. Read from the manifest, never sniffed

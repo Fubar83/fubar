@@ -65,7 +65,15 @@ public sealed class BatchOptions
 /// <para>A batch is an OCCASION - "the smoke test", "the nightly drift check" - and that is why it is
 /// stored beside the collection rather than inside it. The tree says what exists; a batch says what to
 /// do on a particular occasion, and the two are different lists that change for different reasons.</para>
-/// <para>Batches do not nest. A batch of batches is a scheduler, and that is a different tool.</para>
+/// <para>
+/// <b>Two homes, and they mean different things.</b> The workspace's <c>batches/</c> holds the
+/// occasions that cut across the tree - a smoke test spanning five endpoints. An endpoint's own
+/// <c>&lt;endpoint&gt;/batches/</c> holds the ways of running THAT endpoint, and shows in the tree
+/// beside its cases. A name is unique only within one home, which is why a selector says either
+/// <c>@smoke</c> or <c>orders/get-order@happy</c> and a bare name never searches the endpoints.
+/// </para>
+/// <para>Batches still do not nest, in either home: a batch names steps, it does not contain batches.
+/// A batch of batches is a scheduler, and that is a different tool.</para>
 /// </remarks>
 public sealed class Batch
 {

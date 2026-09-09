@@ -17,7 +17,7 @@ Status: **built** — see §10.3 for the build order as it actually landed, and 
 | **Case** | one concrete invocation of an endpoint: params, body, overrides | a recorded response | 0..n per endpoint |
 | **Snapshot** | a recorded response for a case, scoped to one environment or shared by all | an input | 0..1 shared + 0..1 per environment, per case |
 | **Environment** | a named set of variables + transport + credentials | a deployment | 0..n per workspace |
-| **Batch** | a named, ordered selection of cases + oracle + overlay | a folder | 0..n per workspace |
+| **Batch** | a named, ordered selection of cases + oracle + overlay | a folder | 0..n per workspace, plus 0..n per endpoint |
 | **Oracle** | what judges a response | a comparison implementation | 1 per run |
 | **Run** | one execution of a selection under one oracle | a batch | transient |
 
@@ -79,7 +79,9 @@ workspace/
         snapshots/
           _shared.json             used by every environment that has no file of its own
           staging.json             this environment only, and it wins for it
-  batches/
+        batches/
+          happy.json               ways of running THIS endpoint - orders/get-order@happy
+  batches/                         occasions that cut across the tree - @smoke
     smoke.json
     nightly-drift.json
   .fubar/                          never committed (already git-ignored)
@@ -91,7 +93,7 @@ Rules:
 
 - A directory containing `endpoint.json` **is** an endpoint. Its subdirectories are not folders.
 - A directory containing neither `endpoint.json` nor `fubar.json` is a folder.
-- `cases/` and `snapshots/` are reserved names inside an endpoint directory.
+- `cases/`, `snapshots/` and `batches/` are reserved names inside an endpoint directory.
 - One case per file, one snapshot per file. Both are for git: a case gets its own history, and a
   snapshot diff is reviewable on its own.
 
@@ -478,7 +480,8 @@ Two flags this section used to list are gone, and neither is an omission:
 orders                    a folder, depth-first
 orders/get-order          an endpoint, all its cases
 orders/get-order#default  one case
-@smoke                    a batch (its own oracle/environments unless overridden)
+@smoke                    a batch of the workspace's own (its oracle/environments unless overridden)
+orders/get-order@happy    a batch belonging to that endpoint
 ```
 
 Examples:
@@ -487,6 +490,7 @@ Examples:
 fubar run --env staging --oracle snapshot                 # regression, whole workspace
 fubar run orders --env staging --oracle env:production    # compare two environments
 fubar run @smoke --report junit=out.xml                   # a batch, for CI
+fubar run orders/get-order@happy --env staging            # one endpoint's own batch
 fubar run orders/get-order#not-found --env staging --oracle snapshot --update-snapshots
 ```
 
@@ -669,9 +673,19 @@ for a permanent rule.
 
 *Add to batch…* on a tree row appends to an existing batch.
 
-**Built**, except the two creation shortcuts: a batch is made from the Batches group's `+` (which opens
-the new one straight away — a row saying "0 steps" with no way in but a text editor is what made this a
-JSON-editing job), and *Save as batch…* / *Add to batch…* are not built. The editor covers name,
+**A batch has two homes.** `batches/` at the workspace root holds the occasions that cut across the
+tree; `<endpoint>/batches/` holds the ways of running one endpoint, and those show in the tree beside
+its cases, tagged. This reverses the "stored beside the collection rather than inside it" wording
+above for the endpoint-scoped case, deliberately: an endpoint's cases-in-an-order is a thing that
+belongs to the endpoint, and putting it anywhere else meant a workspace-level list of names like
+`get-cat-happy`. A batch name is unique only within one home, so a selector says either `@smoke` or
+`orders/get-order@happy`; a bare name never searches the endpoints, because two of them may each have
+a `happy` and resolving across both would mean whichever was scanned first.
+
+**Built**, except the two creation shortcuts: a batch is made from the Batches group's `+` or from an
+endpoint's *New Batch* (both open the new one straight away — a row saying "0 steps" with no way in
+but a text editor is what made this a JSON-editing job), and *Save as batch…* / *Add to batch…* are
+not built. The editor covers name,
 description, steps, cleanup, oracle, environments and options; the overlay is carried through
 untouched rather than shown, because "applies to this batch only" needs the marking above to be worth
 having and the rule editor to write it — both of which the Rules tab now has, so this is the next
@@ -830,6 +844,12 @@ Each step is useful on its own and leaves the app shippable.
    save** - `BuildRequestModel` never copied `Snapshot` or `Tolerances`, and the case editor's
    `ToModel` never copied `Comparison` or `Tolerances` - so a file carrying any of them lost it the
    first time anyone pressed Ctrl+S, silently.
+
+9. ~~**Endpoint-scoped batches, tags in the tree, and drafts.**~~ **Done.** An endpoint holds batches
+   beside its cases; both are tagged in the tree. New cases, batches, endpoints and requests are DRAFTS
+   - held in memory, shown with the unsaved dot, written on the first Save - so making one and changing
+   your mind leaves nothing behind. And the empty state can open a scratch request with no workspace at
+   all, which is the shortest path this app has ever had from launch to a response.
 
 Steps 1-4 need no format change and land in every workspace, old or new. That is what makes this
 incremental rather than a rewrite, and it means the two halves of §10.4 differ only from step 5 on.
