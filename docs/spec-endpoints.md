@@ -3,7 +3,7 @@
 The design and reasoning are in [endpoints-and-oracles.md](endpoints-and-oracles.md). This is the
 specification: what it does, how the pieces fit, what is on disk, how it is used, and how to build it.
 
-Status: **steps 1-2 built** (§10.3); the rest written to be built from.
+Status: **built** — see §10.3 for the build order as it actually landed, and §10.3.1 for what is deliberately not built.
 
 ---
 
@@ -187,7 +187,7 @@ Both may exist for the same case, and the per-environment one wins for its envir
   ],
   "oracle": { "kind": "snapshot" },
   "environments": ["staging"],
-  "options": { "stopOnFailure": false, "delayMs": 0, "parallel": false },
+  "options": { "stopOnFailure": false, "delayMs": 0 },
   "overlay": {
     "comparison": { "ignoredPaths": { "add": ["$.version"] } },
     "tolerances": [{ "path": "$..elapsedMs", "numeric": 500 }]
@@ -455,11 +455,21 @@ loses the ability to say which one started failing.
 ## 8 · CLI
 
 ```
-fubar run <selector> [--env NAME] [--oracle none|snapshot|env:NAME|run:ID]
-                     [--case NAME] [--update-snapshots] [--force]
+fubar run <selector> [--env NAME] [--oracle none|snapshot|env:NAME]
+                     [--update-snapshots] [--shared-snapshots]
                      [--report PATH] [--report-format junit|json]
-                     [--stop-on-failure] [--delay MS] [--parallel]
+                     [--stop-on-failure] [--delay MS] [--filter TEXT]
 ```
+
+Two flags this section used to list are gone, and neither is an omission:
+
+- **`--case NAME`** is `orders/get-order#default` in the selector instead. A flag would have had to
+  mean something for `--case` against a folder, and there is no good answer.
+- **`--parallel`** is not offered at any level, including in a batch's options. Captures chain, so two
+  requests in flight is a race on the session store whose winner depends on which response came back
+  first - it would silently break exactly the collections worth running.
+
+`run:<id>` is not built either; see §10.3.1.
 
 `<selector>` is one of:
 

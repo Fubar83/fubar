@@ -9,6 +9,20 @@ namespace Fubar.Studio.Infrastructure.Workspaces;
 
 public sealed class WorkspaceService : IWorkspaceService
 {
+    /// <summary>
+    /// What makes a directory an endpoint. ONE definition, shared with the scanner below.
+    /// </summary>
+    /// <remarks>
+    /// The scanner used to test for <c>endpoint.json</c> itself, which meant two implementations of
+    /// "is this an endpoint" that nothing kept in step - and the tree deciding one way while the store
+    /// decided the other is a workspace that renders as one shape and behaves as another.
+    /// </remarks>
+    private readonly IEndpointStore _endpoints;
+
+    /// <summary>Defaulted so the importers' tests and the Gallery can still <c>new</c> this up; the
+    /// app supplies the registered instance.</summary>
+    public WorkspaceService(IEndpointStore? endpoints = null) => _endpoints = endpoints ?? new FileEndpointStore();
+
     private const string AppManifestFileName = "fubar.json";
     private const string AuthFileName = "auth.json";
     private const string CollectionsDirName = "collections";
@@ -234,7 +248,7 @@ public sealed class WorkspaceService : IWorkspaceService
 
         foreach (var dir in Directory.EnumerateDirectories(directoryPath).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
         {
-            nodes.Add(File.Exists(Path.Combine(dir, Core.Workspaces.IEndpointStore.EndpointFileName))
+            nodes.Add(_endpoints.IsEndpoint(dir)
                 ? ScanEndpoint(dir)
                 : new WorkspaceTreeNode(Path.GetFileName(dir), dir, true, ScanDirectory(dir)));
         }
