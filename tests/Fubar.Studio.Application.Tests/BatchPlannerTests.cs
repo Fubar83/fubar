@@ -63,6 +63,34 @@ public class BatchPlannerTests
         Assert.Equal("not-found", Assert.Single(plan.Steps).CaseName);
     }
 
+    // ---- Teardown --------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Teardown_steps_come_after_the_tested_ones_and_are_flagged()
+    {
+        var batch = Batch(new BatchStep("auth/login"));
+        batch.Teardown = [new BatchStep("orders/get-order", "default")];
+
+        var plan = (await Sut(batch).ExpandAsync(Ws, "smoke")).Plan;
+
+        Assert.Equal([false, true], plan.Steps.Select(s => s.IsTeardown));
+        Assert.Equal(["login#default", "get-order#default"], plan.Steps.Select(s => s.QualifiedName));
+    }
+
+    /// <summary>Cleanup naming something that is not there is still reported, for the same reason a
+    /// tested step is: a teardown that quietly stopped running would leak on every run.</summary>
+    [Fact]
+    public async Task A_teardown_step_naming_nothing_still_errors()
+    {
+        var batch = Batch(new BatchStep("auth/login"));
+        batch.Teardown = [new BatchStep("orders/renamed-away")];
+
+        var plan = (await Sut(batch).ExpandAsync(Ws, "smoke")).Plan;
+
+        var cleanup = plan.Steps.Single(s => s.IsTeardown);
+        Assert.Contains("renamed-away", cleanup.Unresolved!, StringComparison.Ordinal);
+    }
+
     // ---- Missing pieces --------------------------------------------------------------------------
 
     [Fact]

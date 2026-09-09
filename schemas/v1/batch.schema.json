@@ -21,6 +21,18 @@
         }
       }
     },
+    "teardown": {
+      "type": "array",
+      "description": "Cleanup, run after the steps whatever happened to them, and never counted towards the verdict. Where the delete goes when it is housekeeping rather than a test - stopOnFailure, the right setting for a chain, otherwise guarantees a failing step in the middle skips it. If deleting is one of the things you are testing, it belongs in steps.",
+      "items": {
+        "type": "object",
+        "required": ["endpoint"],
+        "properties": {
+          "endpoint": { "type": "string" },
+          "case": { "type": ["string", "null"] }
+        }
+      }
+    },
     "oracle": {
       "type": ["object", "null"],
       "properties": {

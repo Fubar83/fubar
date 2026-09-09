@@ -182,6 +182,9 @@ Both may exist for the same case, and the per-environment one wins for its envir
     { "endpoint": "orders/get-order", "case": "default" },
     { "endpoint": "orders/get-order", "case": "not-found" }
   ],
+  "teardown": [
+    { "endpoint": "orders/delete-order", "case": "created" }
+  ],
   "oracle": { "kind": "snapshot" },
   "environments": ["staging"],
   "options": { "stopOnFailure": false, "delayMs": 0, "parallel": false },
@@ -197,6 +200,26 @@ Both may exist for the same case, and the per-environment one wins for its envir
   missing is reported as `Errored`, never skipped silently.
 - `environments` holds one name for most oracles and two for `environment:X`.
 - `overlay` is the occasion's settings (§4.2).
+- `teardown` is **cleanup, not test.** It runs after `steps` whatever happened to them, and never
+  changes the verdict.
+
+  It exists because a chain that creates something has to remove it again, and `stopOnFailure` — the
+  right setting for a chain — guarantees a failure in the middle skips the delete. Every red run then
+  leaves a row behind, which over a week of failing CI is a lot of rows nobody deletes.
+
+  Three rules follow from "not test", and each one is there to stop cleanup crying wolf:
+
+  - **Its assertions are dropped and its oracle is skipped.** A batch that reuses
+    `delete-order#created` as teardown reuses a case expecting `204`, and on a run where the delete
+    already happened as a step the cleanup finds `404`. That is the happy path.
+  - **Only "could not be sent at all" counts** — reported as `N cleanup steps did not finish`, beside
+    the verdict and never inside it. That is the actual leak signal.
+  - **It does not run after a cancellation.** Sending four more requests after Ctrl-C is the opposite
+    of stopping. That leaks, and it is the lesser surprise of the two.
+
+  If deleting is one of the things you are *testing*, it belongs in `steps`, where it is judged like
+  anything else. Putting it in both is reasonable and is what the worked example does: the step proves
+  delete works, and the teardown cleans up the runs where the step was never reached.
 
 ### 3.6 `_folder.json`
 

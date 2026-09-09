@@ -83,6 +83,15 @@
             <Setter Property="Foreground" Value="{DynamicResource StatusServerErrorFg}" />
         </Style>
 
+        <!-- Cleanup that did not do its job. Amber, not red: it cannot fail the run, and a red row in
+             a report that says "passed" is a report arguing with itself. -->
+        <Style Selector="Border.pill.cleanup">
+            <Setter Property="Background" Value="{DynamicResource StatusClientErrorBg}" />
+        </Style>
+        <Style Selector="Border.pill.cleanup TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusClientErrorFg}" />
+        </Style>
+
         <Style Selector="Border.summary">
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="Padding" Value="10,6" />
@@ -221,6 +230,7 @@
                                         Classes.errored="{Binding IsErrored}"
                                         Classes.skipped="{Binding IsSkipped}"
                                         Classes.unexpected="{Binding IsUnexpectedStatus}"
+                                        Classes.cleanup="{Binding IsCleanupProblem}"
                                         Classes.differing="{Binding IsDiffering}"
                                         Classes.uncomparable="{Binding IsUncomparable}"
                                         VerticalAlignment="Center">
@@ -232,9 +242,20 @@
                                 </Border>
 
                                 <StackPanel Grid.Column="2" Spacing="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}"
-                                               Foreground="{DynamicResource TextPrimary}"
-                                               FontSize="13" TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Name}"
+                                                   Foreground="{DynamicResource TextPrimary}"
+                                                   FontSize="13" TextTrimming="CharacterEllipsis" />
+
+                                        <!-- A failing cleanup row is not a failing test, and a reader
+                                             scanning a red run has to tell the two apart. -->
+                                        <TextBlock Text="cleanup"
+                                                   IsVisible="{Binding IsTeardown}"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextSecondary}"
+                                                   ToolTip.Tip="Runs after the tested steps whatever happened to them, and never changes the verdict" />
+                                    </StackPanel>
 
                                     <TextBlock Text="{Binding Error}"
                                                IsVisible="{Binding Error, Converter={x:Static avc:ObjectConverters.IsNotNull}}"

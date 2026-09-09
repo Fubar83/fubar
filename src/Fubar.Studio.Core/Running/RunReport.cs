@@ -143,24 +143,43 @@ public sealed record RunReport(
 {
     public static readonly RunReport Empty = new([], 0, false, false);
 
-    public int Total => Steps.Count;
+    /// <summary>
+    /// The steps the verdict is about - everything except cleanup.
+    /// </summary>
+    /// <remarks>
+    /// Every count below is over these rather than over <see cref="Steps"/>, because a teardown step
+    /// is not part of what was being tested (see <see cref="RunStep.IsTeardown"/>). It is still in
+    /// <see cref="Steps"/>, so it appears in the report and on the console like anything else - it
+    /// just cannot turn a passing run red or a failing one green.
+    /// </remarks>
+    public IReadOnlyList<StepReport> Judged { get; } = [.. Steps.Where(s => !s.Step.IsTeardown)];
 
-    public int Passed => Steps.Count(s => s.Status == StepStatus.Passed);
+    /// <summary>The cleanup steps, in the order they ran.</summary>
+    public IReadOnlyList<StepReport> Cleanup { get; } = [.. Steps.Where(s => s.Step.IsTeardown)];
 
-    public int Failed => Steps.Count(s => s.Status == StepStatus.Failed);
+    public int Total => Judged.Count;
 
-    public int Errored => Steps.Count(s => s.Status == StepStatus.Errored);
+    public int Passed => Judged.Count(s => s.Status == StepStatus.Passed);
 
-    public int Skipped => Steps.Count(s => s.Status == StepStatus.Skipped);
+    public int Failed => Judged.Count(s => s.Status == StepStatus.Failed);
 
-    public int AssertionsPassed => Steps.Sum(s => s.AssertionsPassed);
+    public int Errored => Judged.Count(s => s.Status == StepStatus.Errored);
 
-    public int AssertionsFailed => Steps.Sum(s => s.AssertionsFailed);
+    public int Skipped => Judged.Count(s => s.Status == StepStatus.Skipped);
+
+    /// <summary>Cleanup that did not do its job. Never part of the verdict, and never silent either -
+    /// a leak nobody hears about is the thing teardown exists to prevent.</summary>
+    public int CleanupFailed =>
+        Cleanup.Count(s => s.Status is StepStatus.Failed or StepStatus.Errored or StepStatus.Skipped);
+
+    public int AssertionsPassed => Judged.Sum(s => s.AssertionsPassed);
+
+    public int AssertionsFailed => Judged.Sum(s => s.AssertionsFailed);
 
     /// <summary>Requests that answered with a non-2xx and had no assertion to judge it. Reported, never
     /// counted against the verdict - see the type remarks.</summary>
     public IReadOnlyList<StepReport> UnexpectedStatuses =>
-        [.. Steps.Where(s => s.IsUnexpectedStatus && s.Assertions.Count == 0)];
+        [.. Judged.Where(s => s.IsUnexpectedStatus && s.Assertions.Count == 0)];
 
     /// <summary>
     /// True when something ran, nothing failed, nothing errored, and the run actually finished.
@@ -181,14 +200,14 @@ public sealed record RunReport(
         && Differing == 0 && Uncomparable == 0;
 
     /// <summary>Steps whose response did not match what it was compared against.</summary>
-    public int Differing => Steps.Count(s => s.Comparison == ComparisonVerdict.Differs);
+    public int Differing => Judged.Count(s => s.Comparison == ComparisonVerdict.Differs);
 
     /// <summary>Steps that were meant to be compared and had nothing to compare against.</summary>
-    public int Uncomparable => Steps.Count(s => s.Comparison == ComparisonVerdict.Unavailable);
+    public int Uncomparable => Judged.Count(s => s.Comparison == ComparisonVerdict.Unavailable);
 
     /// <summary>Steps that matched only because a tolerance forgave something. Said out loud, so a
     /// rule that turned out to be too generous is visible in the green rather than only in the file.</summary>
-    public int Tolerated => Steps.Count(s => s.ToleratedCount > 0);
+    public int Tolerated => Judged.Count(s => s.ToleratedCount > 0);
 
     /// <summary>One line for a status bar or a CI log.</summary>
     public string Summary()
@@ -206,6 +225,10 @@ public sealed record RunReport(
         if (Errored > 0) parts.Add($"{Errored} errored");
         if (Skipped > 0) parts.Add($"{Skipped} skipped");
         if (AssertionsFailed > 0) parts.Add($"{AssertionsFailed} assertion{(AssertionsFailed == 1 ? "" : "s")} failed");
+
+        // Never folded into the verdict, and never left out either: cleanup that did not run is a
+        // leak, and a leak nobody hears about is exactly what teardown exists to prevent.
+        if (CleanupFailed > 0) parts.Add($"{CleanupFailed} cleanup step{(CleanupFailed == 1 ? "" : "s")} did not finish");
 
         var suffix = WasCancelled ? " (cancelled)" : "";
         return $"{string.Join(", ", parts)} in {ElapsedMilliseconds:N0} ms{suffix}";

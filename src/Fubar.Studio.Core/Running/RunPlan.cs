@@ -54,6 +54,22 @@ public sealed record RunStep(
     /// would not say so. This way the run reports it as Errored, which is what it is.
     /// </remarks>
     public string? Unresolved { get; init; }
+
+    /// <summary>
+    /// Cleanup rather than test: this step runs after the others whatever happened to them, and its
+    /// result never changes the run's verdict.
+    /// </summary>
+    /// <remarks>
+    /// <para>A chain that creates something needs to remove it again, and <c>stopOnFailure</c> - which
+    /// is the right setting for a chain - guarantees it will not: a failing step two calls in skips
+    /// the delete, so every red run leaves a row behind. Over a week of failing CI that is a lot of
+    /// rows nobody deletes.</para>
+    /// <para>It does not count towards the verdict because it is almost always a CONSEQUENCE of the
+    /// failure above it - deleting what was never created - and a cleanup that cried wolf on every
+    /// already-red run would train people to ignore the one that matters. If deleting is part of what
+    /// you are testing, it belongs in <c>steps</c>, where it is judged like anything else.</para>
+    /// </remarks>
+    public bool IsTeardown { get; init; }
 }
 
 /// <summary>

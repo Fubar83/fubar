@@ -60,6 +60,34 @@ secrets, import OpenAPI/Swagger specs, and handle real OAuth 2.0 flows — all f
   sits beside the collection rather than inside it — the tree says what your API has, a batch says
   what to call this time. A step naming something that has since been renamed **errors**; a batch that
   quietly shrank would keep passing while testing one thing fewer.
+- **Integration tests that chain: create it, read it, change it, delete it.** A capture on one step
+  feeds the next — `$.id` into `{{catId}}`, held in memory for the run and never written to a
+  committed file — and the endpoint's `{catId}` placeholder is filled from there:
+
+  ```json
+  // create-cat/cases/default.json
+  "captures": [{ "variableName": "catId", "source": "jsonBody",
+                 "expression": "$.id", "scope": "session" }]
+
+  // get-cat/cases/created.json      endpoint URL: {{baseUrl}}/cats/{catId}
+  "pathParams": { "catId": "{{catId}}" }
+  ```
+
+  ```
+  ok   1. create-cat#default  (201 · 63 ms)
+  ok   2. get-cat#created  (200 · 1 ms)
+  ok   3. update-cat#rename  (200 · 0 ms)
+  ok   4. delete-cat#created  (204 · 0 ms)
+  ```
+
+  Snapshots work on a chain too: the generated id is different every run, so one `normalize` rule at
+  the folder level (`$.id → <cat-id>`) makes all four steps comparable.
+
+  A batch's **`teardown`** list runs after the steps whatever happened to them, so the cat is deleted
+  even when the run stopped at a failure three calls earlier. Cleanup never changes the verdict — its
+  assertions are dropped and it is not compared, because a delete that finds nothing left to delete is
+  the happy path, not a failure. What is reported is cleanup that could not be *sent*, which is the
+  actual leak. It does not run after you cancel: you asked it to stop.
 - **Rules inherit, and say what they add and remove.** Ignored paths, redactions, normalisations and
   tolerances all resolve workspace → folders → endpoint → case, with a batch's own rules last. A level
   states what it *changes* (`{ "add": [...], "remove": [...] }`), so one extra rule on one endpoint

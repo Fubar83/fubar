@@ -65,7 +65,12 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
         var cancelled = false;
         var stoppedEarly = false;
 
-        foreach (var step in run.Plan.Steps)
+        // Cleanup is held back and run at the end, whatever happens above - see the teardown block
+        // below and RunStep.IsTeardown.
+        var tested = run.Plan.Steps.Where(s => !s.IsTeardown).ToList();
+        var teardown = run.Plan.Steps.Where(s => s.IsTeardown).ToList();
+
+        foreach (var step in tested)
         {
             if (cancellationToken.IsCancellationRequested)
             {
@@ -118,14 +123,58 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
             }
         }
 
-        stopwatch.Stop();
-
         // Everything the run never reached is reported explicitly rather than left out. A report listing
         // 3 of 20 with no sign of the other 17 reads as a run of three.
-        foreach (var step in run.Plan.Steps.Skip(reports.Count))
+        foreach (var step in tested.Skip(reports.Count))
         {
             reports.Add(StepReport.SkippedStep(step));
         }
+
+        // Cleanup, after everything else and whatever happened to it. A chain that creates something
+        // has to remove it again, and stopOnFailure - the right setting for a chain - guarantees the
+        // delete is skipped exactly when it is most needed.
+        //
+        // NOT after a cancellation: the user asked it to stop, and sending four more requests after
+        // Ctrl-C is the opposite of stopping. That leaks, and it is the lesser surprise of the two.
+        if (!cancelled)
+        {
+            foreach (var step in teardown)
+            {
+                progress?.Report(RunProgress.Starting(step, total));
+
+                StepReport report;
+                try
+                {
+                    report = await RunStepAsync(step, run, profiles, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Everything left is reported below rather than abandoned, so a half-done cleanup
+                    // still says which parts did not happen.
+                    cancelled = true;
+                    break;
+                }
+
+                // No JudgeAsync: comparing cleanup against a snapshot would be comparing something
+                // nobody is testing, and a missing snapshot for it would fail the run.
+                reports.Add(report);
+                progress?.Report(RunProgress.Finished(report, total));
+            }
+
+            foreach (var step in teardown.Skip(reports.Count - tested.Count))
+            {
+                reports.Add(StepReport.SkippedStep(step));
+            }
+        }
+        else
+        {
+            foreach (var step in teardown)
+            {
+                reports.Add(StepReport.SkippedStep(step));
+            }
+        }
+
+        stopwatch.Stop();
 
         return new RunReport(reports, stopwatch.ElapsedMilliseconds, cancelled, stoppedEarly);
     }
@@ -390,9 +439,18 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
                 new RequestRun(request, run.Workspace, run.Environment, effectiveAuth, run.Options.RecordHistory),
                 cancellationToken);
 
+            // Cleanup is not being tested, so its case's assertions are dropped rather than judged -
+            // the same reason the oracle skips it. A batch reusing "delete-cat#created" as teardown
+            // reuses a case that expects 204, and on a run where the delete already happened as a
+            // STEP the cleanup finds a 404: expected, and reporting it as a failed cleanup on every
+            // successful run is exactly the crying wolf teardown exists to avoid.
+            //
+            // What still counts is whether it could be SENT at all, which is the real leak signal.
+            var assertions = step.IsTeardown ? [] : result.Assertions;
+
             var status = !result.Result.IsSuccess
                 ? StepStatus.Errored
-                : result.Assertions.Any(a => !a.Passed)
+                : assertions.Any(a => !a.Passed)
                     ? StepStatus.Failed
                     : StepStatus.Passed;
 
@@ -409,7 +467,7 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
                 result.Result.ReasonPhrase,
                 result.Result.ElapsedMilliseconds,
                 result.Result.SizeBytes,
-                result.Assertions,
+                assertions,
                 result.Captures,
                 result.Result.IsSuccess ? null : result.Result.ErrorMessage)
             {

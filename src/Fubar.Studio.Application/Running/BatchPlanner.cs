@@ -43,7 +43,13 @@ public sealed class BatchPlanner : IBatchPlanner
         var collections = Path.Combine(workspace.RootPath, "collections");
         var steps = new List<RunStep>();
 
-        foreach (var step in batch.Steps)
+        // Teardown after the tested steps, in one list, flagged - the runner holds them back and runs
+        // them whatever happened above (see RunStep.IsTeardown).
+        var wanted = batch.Steps
+            .Select(s => (Step: s, IsTeardown: false))
+            .Concat(batch.Teardown.Select(s => (Step: s, IsTeardown: true)));
+
+        foreach (var (step, isTeardown) in wanted)
         {
             var node = TreeLookup.Find(tree, (step.Endpoint ?? "").Replace('\\', '/').Trim('/'));
 
@@ -60,18 +66,19 @@ public sealed class BatchPlanner : IBatchPlanner
                     step.Case)
                 {
                     Unresolved = $"This batch names \"{step.Endpoint}\", which is not in this workspace.",
+                    IsTeardown = isTeardown,
                 });
 
                 continue;
             }
 
-            var expanded = step.Case is { Length: > 0 } wanted
-                ? Expand(node, wanted, collections)
+            var expanded = step.Case is { Length: > 0 } named
+                ? Expand(node, named, collections)
                 : RunPlan.From(node).Steps;
 
             foreach (var expandedStep in expanded)
             {
-                steps.Add(expandedStep with { Order = steps.Count + 1 });
+                steps.Add(expandedStep with { Order = steps.Count + 1, IsTeardown = isTeardown });
             }
         }
 

@@ -417,3 +417,32 @@ by name, so a selector can only name something the tree shows - which is also wh
 empty plan, for the same reason an empty filtered run exits 1: a typo in a CI script must not pass.
 `#` and `@` rather than more path segments, because `orders/get-order/default` cannot be told from a
 folder called `default`.
+
+
+**Teardown is cleanup, not test, and every rule about it follows from that** (Studio). A chain that
+creates something has to remove it again, and `stopOnFailure` - the right setting for a chain -
+guarantees a failure in the middle skips the delete, so every red run leaks a row. `Batch.Teardown`
+steps are held back by `CollectionRunService` and run after everything else.
+
+They are excluded from the verdict (`RunReport.Judged` is what every count is over), their case's
+assertions are DROPPED and the oracle skips them. That last pair is not tidiness: a batch reusing
+`delete-cat#created` as teardown reuses a case expecting 204, and on a successful run - where the
+delete already happened as a step - the cleanup finds 404. Judged, that would report a failed cleanup
+on every green run, which is precisely the crying wolf teardown exists to avoid. What still counts is
+whether it could be SENT (`RunReport.CleanupFailed`), which is the real leak signal, and it is always
+said in the summary because a leak nobody hears about is the whole problem.
+
+Cleanup does NOT run after a cancellation. Sending four more requests after Ctrl-C is the opposite of
+stopping; that leaks, and it is the lesser surprise of the two.
+
+Nothing about a cleanup row may render as a failure - `CliRunner` prints `WARN`, not `FAIL`, and
+`RunStepRowViewModel.IsFailed`/`IsErrored` are false for one so the row is amber rather than red. A
+red row inside a run reported as passed is a report arguing with itself.
+
+**A capture that found nothing is printed on the step that could not capture it** (Studio). It
+deliberately does not fail that step - the request answered, and whether a missing field matters is
+what an assertion is for - so the line is the only thing that can point back at it. The failure lands
+several steps later as a `{{variable}}` that never resolved, by which point nothing else does. The run
+window has always shown "N captures failed" on the row; the CLI, which is where CI reads this, did
+not, so a chained run blamed the step that USED the variable rather than the one that failed to set
+it.

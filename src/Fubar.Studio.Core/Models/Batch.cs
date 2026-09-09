@@ -78,6 +78,20 @@ public sealed class Batch
     /// would break exactly the batches worth having.</summary>
     public List<BatchStep> Steps { get; set; } = [];
 
+    /// <summary>
+    /// Cleanup, run after <see cref="Steps"/> whatever happened to them, and never counted towards
+    /// the verdict.
+    /// </summary>
+    /// <remarks>
+    /// <para>Where the delete goes when it is housekeeping rather than a test. A chain that creates
+    /// something needs to remove it again, and <c>stopOnFailure</c> - the right setting for a chain -
+    /// guarantees a step in the middle skips the delete, so every red run leaves a row behind.</para>
+    /// <para>If deleting is one of the things you are TESTING, it belongs in <see cref="Steps"/>,
+    /// where it is judged like anything else. Putting it in both is reasonable: the step proves delete
+    /// works, and this one cleans up the runs where the step never got there.</para>
+    /// </remarks>
+    public List<BatchStep> Teardown { get; set; } = [];
+
     public BatchOracle? Oracle { get; set; }
 
     /// <summary>One name for most oracles, two for an environment comparison. Empty means "whatever

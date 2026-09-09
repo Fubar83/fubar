@@ -467,6 +467,11 @@ public static class CliRunner
     {
         var mark = step switch
         {
+            // Cleanup never fails a run, so it never prints as a failure - "FAIL" on a row of a run
+            // reported as passed is a report arguing with itself. What went wrong is still printed
+            // underneath; only the word changes.
+            { Step.IsTeardown: true, Status: StepStatus.Failed or StepStatus.Errored } => "WARN",
+
             { Status: StepStatus.Errored } => "ERROR",
             { Status: StepStatus.Failed } => "FAIL",
             { Comparison: ComparisonVerdict.Differs } => "DIFF",
@@ -495,7 +500,13 @@ public static class CliRunner
             _ => $"{step.StatusCode} · {step.ElapsedMilliseconds:N0} ms",
         };
 
-        var line = $"{mark,-5} {step.Step.Order,3}. {step.Step.QualifiedName}  ({detail})";
+        // Marked, because a cleanup row that failed is not a failing test and a reader scanning a red
+        // run has to be able to tell the two apart at a glance.
+        var name = step.Step.IsTeardown
+            ? $"{step.Step.QualifiedName}  [cleanup]"
+            : step.Step.QualifiedName;
+
+        var line = $"{mark,-5} {step.Step.Order,3}. {name}  ({detail})";
 
         var notes = new List<string>();
 

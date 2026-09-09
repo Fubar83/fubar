@@ -107,6 +107,20 @@ All notable changes to this project are documented here. The format is based on
   or case that is no longer there **errors rather than being skipped**: a batch that quietly shrank
   when something was renamed would keep passing while testing one thing fewer.
 
+- **Chained integration tests, with cleanup that actually runs.** A capture on one step feeds the
+  next — create a cat, read it back, rename it, delete it — through a session variable that is never
+  written to a committed file. The endpoint's `{catId}` placeholder is filled from `{{catId}}`, so the
+  chain reads as four ordinary endpoints rather than one special one.
+
+  A batch's new **`teardown`** list runs after the steps whatever happened to them. `stopOnFailure` is
+  the right setting for a chain and is exactly what skips the delete, so without this every red run
+  left a row behind. Cleanup never changes the verdict, its assertions are dropped and it is not
+  compared — a delete that finds nothing left to delete is the happy path — and what *is* reported is
+  cleanup that could not be sent at all. It does not run after a cancellation.
+
+  A capture that found nothing is now printed on the step that could not capture it. It does not fail
+  that step, so previously the run blamed the step that *used* the variable, several calls later.
+
 - **`fubar run <selector>`.**
 
   ```

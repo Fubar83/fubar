@@ -26,6 +26,10 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
 
     public string Name { get; }
 
+    /// <summary>Cleanup rather than test. Marked on the row because a failing cleanup step is not a
+    /// failing test, and a reader scanning a red run has to tell the two apart at a glance.</summary>
+    public bool IsTeardown => Step.IsTeardown;
+
     [ObservableProperty]
     public partial StepStatus? Status { get; set; }
 
@@ -57,9 +61,16 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
     /// green while the summary said "1 differ" would be a report that contradicts itself.</summary>
     public bool IsPassed => Status == StepStatus.Passed && !IsUnexpectedStatus && !IsDiffering && !IsUncomparable;
 
-    public bool IsFailed => Status == StepStatus.Failed;
+    /// <summary>Red is for a failing TEST. Cleanup cannot fail the run, so painting it red would put
+    /// a red row in a green report - see <see cref="IsCleanupProblem"/>, which is amber.</summary>
+    public bool IsFailed => Status == StepStatus.Failed && !IsTeardown;
 
-    public bool IsErrored => Status == StepStatus.Errored;
+    public bool IsErrored => Status == StepStatus.Errored && !IsTeardown;
+
+    /// <summary>Cleanup that did not do its job: worth seeing, never a failure. A skipped one keeps
+    /// the faded skipped style - it was not reached, which is a different thing from not working.</summary>
+    public bool IsCleanupProblem =>
+        IsTeardown && Status is StepStatus.Failed or StepStatus.Errored;
 
     public bool IsSkipped => Status == StepStatus.Skipped;
 
@@ -195,6 +206,7 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsErrored));
         OnPropertyChanged(nameof(IsSkipped));
         OnPropertyChanged(nameof(IsPending));
+        OnPropertyChanged(nameof(IsCleanupProblem));
     }
 
     partial void OnIsRunningChanged(bool value) => RaiseClassFlags();
