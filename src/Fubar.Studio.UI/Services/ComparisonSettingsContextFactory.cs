@@ -23,6 +23,13 @@ namespace Fubar.Studio.UI.Services;
 /// </remarks>
 public interface IComparisonSettingsContext
 {
+    /// <summary>
+    /// Builds what the embedded diff view needs to show a comparison the way this request would be
+    /// judged: the rules that apply at <paramref name="requestPath"/>, and a way to save an
+    /// adjustment back to whichever level the user picks.
+    /// </summary>
+    /// <param name="workspace">The workspace whose hierarchy the rules resolve through.</param>
+    /// <param name="requestPath">The request the rules are resolved FOR - the innermost level.</param>
     /// <param name="onSaved">Run after a successful write, so a caller can re-judge what it is
     /// showing. A saved rule changes what "the same" means, and a list that did not react would be
     /// showing verdicts from before the rule existed.</param>

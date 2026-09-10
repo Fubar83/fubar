@@ -687,6 +687,12 @@ public partial class MainViewModel : ViewModelBase
             ? Path.GetFileName(Path.GetDirectoryName(filePath)) ?? "New Endpoint"
             : Path.GetFileNameWithoutExtension(filePath);
 
+    /// <summary>
+    /// Opens a request, endpoint or case in the editor, or brings it forward when it is already the
+    /// one open. Only one is open at a time, so this is also where the outgoing editor is asked about
+    /// unsaved changes.
+    /// </summary>
+    /// <param name="filePath">The file to open. It need not exist yet - see <paramref name="isDraft"/>.</param>
     /// <param name="isDraft">A request or endpoint that has not been written yet. Its file does not
     /// exist, so the editor starts on a blank one and is dirty from the outset - it IS unsaved, and the
     /// tree says so beside it until the first Save creates the file.</param>

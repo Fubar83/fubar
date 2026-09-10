@@ -1588,6 +1588,21 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
             ErrorMessage = ex.Message;
             StatusMessage = "Comparison failed.";
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Everything the readers did NOT get to wrap. They turn IOException,
+            // UnauthorizedAccessException and NotSupportedException into the phrased exception above,
+            // but they only reach that code once `new FileInfo(path)` has succeeded - and a path
+            // holding a character the platform rejects throws ArgumentException before that, from a
+            // constructor nobody thinks of as throwing.
+            //
+            // This method is awaited by an `async void` click handler and by a fire-and-forget task at
+            // startup, so an escaping exception is either a dead process or a window that opens empty
+            // and says nothing. `FubarDiff "a|b.txt" c.txt` was the second of those.
+            Reset();
+            ErrorMessage = $"Could not compare these files: {ex.Message}";
+            StatusMessage = "Comparison failed.";
+        }
         finally
         {
             IsBusy = false;
@@ -2253,6 +2268,16 @@ public partial class ComparisonViewModel : ViewModelBase, IDisposable
         catch (OperationCanceledException)
         {
             // Superseded by a newer toggle - nothing to report.
+        }
+        catch (Exception ex)
+        {
+            // The three other paths that re-run a comparison all report into ErrorMessage; this one
+            // reported nowhere, and its caller is `async void Recompare()`, so anything the engine
+            // threw while re-diffing documents already in memory would have taken the process down on
+            // a checkbox toggle. Two crashes of exactly that shape shipped in this repository before
+            // either was noticed (see CLAUDE.md), which is enough to stop leaving the door open.
+            ErrorMessage = $"Could not apply that option: {ex.Message}";
+            StatusMessage = "Comparison failed.";
         }
     }
 

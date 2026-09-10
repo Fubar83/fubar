@@ -902,3 +902,16 @@ thing a diff must never make anyone do; a reassuring wrong label is worse than a
 property that already carries a change is skipped. An object that moved still says so when its own
 CONTENTS changed - a child's path is not its parent's, and "this object is somewhere else now" stays
 true and worth saying.
+
+**A catch at an `async void` boundary is as wide as the boundary** (Diff). `CompareAsync` and
+`RecompareAsync` are both awaited by something that cannot propagate - an `async void` click handler, a
+property setter that fires and forgets, `_ = shell.InitializeAsync(startup)` at launch - so an
+exception either kills the process or vanishes into an unobserved task, depending on which of the
+three it came through. Both used to catch exactly one type: `TextFileReadException`, which is only
+raised once `new FileInfo(path)` has succeeded (an invalid character throws `ArgumentException` before
+it), and `OperationCanceledException`, which says nothing about the engine failing mid-diff. Both now
+catch the rest and report into `ErrorMessage`, the banner every other failure in the tab already uses.
+The narrow catch stays FIRST and unchanged: the domain phrases those messages for a user, and wrapping
+"Could not compare these files" around "it appears to be a binary file" would be a step backwards. The
+same reasoning applies to any new `async void` in this codebase - the two process-killers CLAUDE.md
+closes on were both this shape.

@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A failure nobody phrased for the app is reported instead of ending it.** Two paths were catching
+  one exception type each and letting everything else past, and both are awaited by an `async void` -
+  a click handler, a property setter, a fire-and-forget task at startup - where an escaping exception
+  is a dead process or a window that opens empty and says nothing. Opening a comparison caught only
+  `TextFileReadException`, which the readers raise once `new FileInfo(path)` has succeeded; a path
+  holding a character the platform rejects throws `ArgumentException` before that, so
+  `FubarDiff "a|b.txt" c.txt` opened an empty window in silence. Re-running a comparison after an
+  option changed caught only cancellation, so anything the engine threw while re-diffing documents
+  already in memory went straight out to the dispatcher on a checkbox toggle. Both now report into the
+  same banner every other failure uses, and a phrased read failure is still shown exactly as the
+  domain wrote it.
+
 - **A JSON property that moved AND changed value is reported as changed, not as moved.** It was
   reported twice - once as the value change, once as a reorder - and the change tree showed the softer
   of the two. Reading `expedited  moved` where `false` had become `true`, you take the value on

@@ -88,7 +88,7 @@ Behaviour that looks like a detail, is not, and has usually already been broken 
 lines in this file, of which roughly 85% described the diff engine — which an API Studio contributor
 no longer depends on at all. Split per app:
 
-- **[docs/invariants-diff.md](docs/invariants-diff.md)** — 67 entries. Alignment and filler
+- **[docs/invariants-diff.md](docs/invariants-diff.md)** — 68 entries. Alignment and filler
   discipline, semantic JSON, three-way merge, the location map, folder and binary comparison,
   scrolling and highlighting.
 - **[docs/invariants-studio.md](docs/invariants-studio.md)** — 65 entries. The CLI/window split,
