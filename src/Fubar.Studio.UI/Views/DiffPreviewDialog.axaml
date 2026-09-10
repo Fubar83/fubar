@@ -7,6 +7,7 @@
         xmlns:dvm="using:Fubar.Diff.Controls.ViewModels"
         xmlns:vm="using:Fubar.Studio.UI.ViewModels"
         xmlns:cmp="using:Fubar.Studio.Core.Comparison"
+        xmlns:dc="using:Fubar.Diff.Core.Comparison"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
         x:Class="Fubar.Studio.UI.Views.DiffPreviewDialog"
         x:DataType="vm:DiffPreviewViewModel"
@@ -117,18 +118,67 @@
 
                     <fc:Divider Orientation="Vertical" Margin="8,0" />
 
-                    <CheckBox Content="Diff pane"
-                              ToolTip.Tip="Show the current difference close up, below the panes"
-                              IsChecked="{Binding Pane.IsDetailVisible}"
-                              VerticalAlignment="Center" />
+                    <!-- The one option reached for constantly while reading a comparison gets a
+                         permanent button, as it does in Fubar Diff; everything else stays a click
+                         away in Settings or View. -->
+                    <ToggleButton Classes="toolbar-btn" Content="Whitespace"
+                                  ToolTip.Tip="{Binding IgnoreWhitespaceSource, StringFormat='Ignore spaces and tabs at the start and end of a line ({0})'}"
+                                  IsChecked="{Binding IgnoreWhitespace}" />
 
-                    <fc:Divider Orientation="Vertical" Margin="8,0" />
+                    <!-- How this comparison is read, in Fubar Diff's own shape. The layout switch was
+                         a segmented control bound the wrong way round - shown only when IsSemantic,
+                         which is exactly when side-by-side/unified does nothing. -->
+                    <Button Classes="toolbar-btn" Content="View ▾"
+                            ToolTip.Tip="How these two are compared, and how they are shown">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="Compare as">
+                                    <MenuItem Header="Auto"
+                                              ToggleType="Radio" GroupName="StudioPreviewCompareMode"
+                                              IsChecked="{Binding IsModeAuto, Mode=OneWay}"
+                                              Command="{Binding SetCompareModeCommand}"
+                                              CommandParameter="{x:Static dc:ComparisonMode.Auto}"
+                                              ToolTip.Tip="Anything that parses as JSON is compared as structure, everything else as text" />
+                                    <MenuItem Header="Text"
+                                              ToggleType="Radio" GroupName="StudioPreviewCompareMode"
+                                              IsChecked="{Binding IsModeText, Mode=OneWay}"
+                                              Command="{Binding SetCompareModeCommand}"
+                                              CommandParameter="{x:Static dc:ComparisonMode.Text}"
+                                              ToolTip.Tip="Line by line, whatever it is - for when you want to see the bytes" />
+                                    <MenuItem Header="Json"
+                                              ToggleType="Radio" GroupName="StudioPreviewCompareMode"
+                                              IsChecked="{Binding IsModeJson, Mode=OneWay}"
+                                              Command="{Binding SetCompareModeCommand}"
+                                              CommandParameter="{x:Static dc:ComparisonMode.Json}"
+                                              ToolTip.Tip="Compare structure, ignoring formatting and key order. Falls back to text for a body that does not parse" />
+                                </MenuItem>
 
-                    <!-- Only offered when the semantic pass ran; the tree has nothing to show for
-                         anything that is not JSON. -->
-                    <fc:SegmentedControl ItemsSource="{x:Static dvm:DiffPaneViewModel.ViewModeOptions}"
-                                         SelectedItem="{Binding Pane.ViewMode}"
-                                         IsVisible="{Binding Pane.IsSemantic}" />
+                                <MenuItem Header="Layout" IsVisible="{Binding !Pane.IsJsonViewVisible}">
+                                    <MenuItem Header="Side by side"
+                                              ToggleType="Radio" GroupName="StudioPreviewLayout"
+                                              IsChecked="{Binding Pane.IsSideBySideViewVisible, Mode=OneWay}"
+                                              Command="{Binding SetSideBySideCommand}" />
+                                    <MenuItem Header="Unified"
+                                              ToggleType="Radio" GroupName="StudioPreviewLayout"
+                                              IsChecked="{Binding Pane.IsUnifiedViewVisible, Mode=OneWay}"
+                                              Command="{Binding SetUnifiedCommand}"
+                                              ToolTip.Tip="One patch-style document - removals, then additions" />
+                                </MenuItem>
+
+                                <Separator />
+
+                                <MenuItem Header="Diff pane"
+                                          ToggleType="CheckBox"
+                                          IsChecked="{Binding Pane.IsDetailVisible, Mode=TwoWay}"
+                                          ToolTip.Tip="Show the current difference close up, below the panes" />
+
+                                <MenuItem Header="Wrap long lines"
+                                          ToggleType="CheckBox"
+                                          IsVisible="{Binding Pane.IsUnifiedViewVisible}"
+                                          IsChecked="{Binding Pane.WordWrap, Mode=TwoWay}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
 
                     <fc:Spinner IsVisible="{Binding IsBusy}" Margin="8,0,0,0" />
                 </fc:Toolbar>
@@ -143,18 +193,59 @@
                 BorderThickness="0,0,0,1"
                 Padding="10,6"
                 IsVisible="{Binding ShowSettings}">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <TextBlock Grid.Column="0" Text="Ignoring" VerticalAlignment="Center"
+            <!-- Two rows: what is not being compared, and how a list is being matched. -->
+            <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Ignoring" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0" />
 
-                <TextBlock Grid.Column="1"
+                <TextBlock Grid.Row="0" Grid.Column="1"
                            Text="nothing yet — select a difference and use “Ignore this field”, or “ignore” in the Tree view"
                            Foreground="{DynamicResource TextSecondary}"
                            FontStyle="Italic"
                            VerticalAlignment="Center"
                            IsVisible="{Binding !IgnoredPaths.Count}" />
 
-                <ItemsControl Grid.Column="1" ItemsSource="{Binding IgnoredPaths}"
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Lists" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondary}" Margin="0,4,8,0"
+                           IsVisible="{Binding !!ArrayRules.Count}" />
+
+                <!-- How each array is matched, set from the tree's "Compare this list" menu. A chip
+                     rather than only that menu, because choosing "Ignore order" usually removes every
+                     row that array had from the tree - so the menu that set the rule goes with it. -->
+                <ItemsControl Grid.Row="1" Grid.Column="1" ItemsSource="{Binding ArrayRules}"
+                              Margin="0,4,0,0"
+                              IsVisible="{Binding !!ArrayRules.Count}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ArrayRuleViewModel">
+                            <Border Background="{DynamicResource BgSelected}"
+                                    CornerRadius="3" Padding="6,2" Margin="0,0,6,2">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding Path}"
+                                               FontFamily="Cascadia Mono,Consolas,monospace"
+                                               FontSize="11" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding How}"
+                                               FontSize="10" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondary}" />
+                                    <TextBlock Text="{Binding Source}"
+                                               FontSize="10" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondary}"
+                                               IsVisible="{Binding IsInherited}" />
+                                    <Button Classes="toolbar-btn" Content="✕" Padding="3,0"
+                                            ToolTip.Tip="{Binding RemoveTooltip}"
+                                            Command="{Binding $parent[Window].((vm:DiffPreviewViewModel)DataContext).ResetArrayMatchCommand}"
+                                            CommandParameter="{Binding Path}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <ItemsControl Grid.Row="0" Grid.Column="1" ItemsSource="{Binding IgnoredPaths}"
                               IsVisible="{Binding !!IgnoredPaths.Count}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -192,7 +283,8 @@
                      settings are read from are the three they can be written back to - a rule about
                      one endpoint belongs on the request, one about a whole service on its folder, and
                      a personal reading preference globally. -->
-                <SplitButton Grid.Column="2" Content="Save to request"
+                <SplitButton Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" Content="Save to request"
+                             VerticalAlignment="Center"
                              ToolTip.Tip="Remember these settings on the request, so they always apply"
                              IsVisible="{Binding CanSaveSettings}"
                              IsEnabled="{Binding SettingsDirty}"

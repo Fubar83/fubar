@@ -37,7 +37,40 @@ All notable changes to this project are documented here. The format is based on
 > [SECURITY.md](../SECURITY.md). Anything found must be **rotated at the provider**, not just
 > deleted: a fix cannot un-commit a credential.
 
+### Added
+
+- **Choosing how a list is matched now works in API Studio.** The change tree's right-click **Compare
+  this list ▸ Ignore order / Match by `id` / By position** has always been drawn here — it is part of
+  the same view Fubar Diff uses — and it did nothing. The view raises an event and the host owns the
+  options; Fubar Diff listened and API Studio never had. So the menu recorded a choice, the check mark
+  never moved, and the comparison came back the same.
+
+  It is now wired, and the choice is a comparison setting like any other: it inherits from your global
+  defaults, then any folder, then the request, and **Save to request / folder / global** writes it
+  where you say. Two new fields carry it — `unorderedArrays` and `positionalArrays`, beside the
+  `arrayKeyOverrides` that was already there — and the three are kept mutually exclusive, because a
+  list can only be matched one way.
+
+  Each rule also appears as a chip in the strip under the toolbar, with a ✕. That is not decoration:
+  ignoring a list's order usually removes every row that list had from the tree — that is the point —
+  and the menu that set the rule lives on those rows, so without the chip the instruction would become
+  unreachable the moment it worked.
+
+- **A Whitespace toggle and a View menu, matching Fubar Diff's toolbar.** *Ignore leading/trailing
+  whitespace* was buried in the Settings flyout; it is the option reached for constantly while reading
+  a particular comparison, so it gets a permanent button, as it does in the other app. **View ▾** holds
+  the rest: *Compare as* Auto/Text/Json (Text is how you look at the bytes when you do not trust the
+  parse — it is a way of reading, so it is never saved onto the request), the side-by-side/unified
+  layout, the Diff pane, and wrap-long-lines. Both windows have them — the environment comparison and
+  the request editor's own compare dialog.
+
 ### Fixed
+
+- **The layout switch was shown exactly when it did nothing.** The side-by-side/unified control was
+  bound `IsVisible="{Binding Pane.IsSemantic}"` — visible only for the JSON view, which has one layout
+  of its own, and hidden for the text comparison, which is the only place the switch has any effect.
+  It now lives under **View ▾ ▸ Layout**, hidden in JSON mode, which is the way round Fubar Diff has
+  it.
 
 - **A run sends the same request the editor's Send does — folder headers included.** A folder's
   `_folder.json` hands two things down: an auth profile and headers. The runner resolved the

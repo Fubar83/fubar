@@ -14,8 +14,15 @@ namespace Fubar.Studio.UI.Services;
 public sealed class DiffPreviewService : IDiffPreviewService
 {
     private readonly IFileComparisonService _comparison;
+    private readonly Fubar.Controls.IConfirmationService? _confirmation;
 
-    public DiffPreviewService(IFileComparisonService comparison) => _comparison = comparison;
+    public DiffPreviewService(
+        IFileComparisonService comparison,
+        Fubar.Controls.IConfirmationService? confirmation = null)
+    {
+        _comparison = comparison;
+        _confirmation = confirmation;
+    }
 
     public async Task ShowAsync(
         string leftText,
@@ -37,7 +44,7 @@ public sealed class DiffPreviewService : IDiffPreviewService
             return;
         }
 
-        var viewModel = new DiffPreviewViewModel(_comparison);
+        var viewModel = new DiffPreviewViewModel(_comparison, _confirmation);
         var dialog = new DiffPreviewDialog(viewModel);
 
         // Load before showing so the window opens with content rather than flashing empty - the

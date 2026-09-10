@@ -5,6 +5,7 @@
         xmlns:dv="using:Fubar.Diff.Controls.Views"
         xmlns:dvm="using:Fubar.Diff.Controls.ViewModels"
         xmlns:cmp="using:Fubar.Studio.Core.Comparison"
+        xmlns:dc="using:Fubar.Diff.Core.Comparison"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1180" d:DesignHeight="720"
@@ -268,13 +269,78 @@
 
                                 <fc:Divider Orientation="Vertical" Margin="8,0" />
 
-                                <CheckBox Content="Diff pane"
-                                          ToolTip.Tip="Show the current difference close up, below the panes"
-                                          IsChecked="{Binding Pane.IsDetailVisible}"
-                                          VerticalAlignment="Center" />
-                                <fc:SegmentedControl ItemsSource="{x:Static dvm:DiffPaneViewModel.ViewModeOptions}"
-                                                     SelectedItem="{Binding Pane.ViewMode}"
-                                                     IsVisible="{Binding Pane.IsSemantic}" />
+                                <!-- A permanent button rather than a line in the Settings flyout, for
+                                     the reason Fubar Diff keeps one: it is reached for while reading a
+                                     particular comparison, not set once and forgotten. It is still the
+                                     same inherited setting, so the tooltip says where it came from. -->
+                                <ToggleButton Classes="toolbar-btn" Content="Whitespace"
+                                              ToolTip.Tip="{Binding IgnoreWhitespaceSource, StringFormat='Ignore spaces and tabs at the start and end of a line ({0})'}"
+                                              IsChecked="{Binding IgnoreWhitespace}" />
+
+                                <!-- Everything about WHAT IS ON SCREEN in one menu, laid out as Fubar
+                                     Diff's: how the two answers are compared, then how they are shown.
+                                     The layout switch used to be a segmented control bound the wrong
+                                     way round - visible only when IsSemantic, which is exactly when
+                                     side-by-side/unified has no effect, and hidden for the text
+                                     comparison where it is the only thing that does. -->
+                                <Button Classes="toolbar-btn" Content="View ▾"
+                                        ToolTip.Tip="How these two answers are compared, and how they are shown">
+                                    <Button.Flyout>
+                                        <MenuFlyout>
+                                            <MenuItem Header="Compare as">
+                                                <MenuItem Header="Auto"
+                                                          ToggleType="Radio" GroupName="StudioCompareMode"
+                                                          IsChecked="{Binding IsModeAuto, Mode=OneWay}"
+                                                          Command="{Binding SetCompareModeCommand}"
+                                                          CommandParameter="{x:Static dc:ComparisonMode.Auto}"
+                                                          ToolTip.Tip="A body that parses as JSON is compared as structure, anything else as text" />
+                                                <MenuItem Header="Text"
+                                                          ToggleType="Radio" GroupName="StudioCompareMode"
+                                                          IsChecked="{Binding IsModeText, Mode=OneWay}"
+                                                          Command="{Binding SetCompareModeCommand}"
+                                                          CommandParameter="{x:Static dc:ComparisonMode.Text}"
+                                                          ToolTip.Tip="Line by line, whatever the body is - for when you want to see the bytes" />
+                                                <MenuItem Header="Json"
+                                                          ToggleType="Radio" GroupName="StudioCompareMode"
+                                                          IsChecked="{Binding IsModeJson, Mode=OneWay}"
+                                                          Command="{Binding SetCompareModeCommand}"
+                                                          CommandParameter="{x:Static dc:ComparisonMode.Json}"
+                                                          ToolTip.Tip="Compare structure, ignoring formatting and key order. Falls back to text for a body that does not parse" />
+                                            </MenuItem>
+
+                                            <!-- Two LAYOUTS of a text comparison, and nothing more.
+                                                 Hidden in Json mode, which has one layout of its own. -->
+                                            <MenuItem Header="Layout" IsVisible="{Binding !Pane.IsJsonViewVisible}">
+                                                <MenuItem Header="Side by side"
+                                                          ToggleType="Radio" GroupName="StudioLayout"
+                                                          IsChecked="{Binding Pane.IsSideBySideViewVisible, Mode=OneWay}"
+                                                          Command="{Binding SetSideBySideCommand}" />
+                                                <MenuItem Header="Unified"
+                                                          ToggleType="Radio" GroupName="StudioLayout"
+                                                          IsChecked="{Binding Pane.IsUnifiedViewVisible, Mode=OneWay}"
+                                                          Command="{Binding SetUnifiedCommand}"
+                                                          ToolTip.Tip="One patch-style document - removals, then additions" />
+                                            </MenuItem>
+
+                                            <Separator />
+
+                                            <MenuItem Header="Diff pane"
+                                                      ToggleType="CheckBox"
+                                                      IsChecked="{Binding Pane.IsDetailVisible, Mode=TwoWay}"
+                                                      ToolTip.Tip="Show the current difference close up, below the panes" />
+
+                                            <!-- Only the unified view CAN wrap: the two side-by-side
+                                                 panes are aligned by having the same number of visual
+                                                 lines, and a line that wraps on one side alone pulls
+                                                 them apart. -->
+                                            <MenuItem Header="Wrap long lines"
+                                                      ToggleType="CheckBox"
+                                                      IsVisible="{Binding Pane.IsUnifiedViewVisible}"
+                                                      IsChecked="{Binding Pane.WordWrap, Mode=TwoWay}" />
+                                        </MenuFlyout>
+                                    </Button.Flyout>
+                                </Button>
+
                                 <fc:Spinner IsVisible="{Binding IsBusy}" />
                             </fc:Toolbar>
                         </Grid>
@@ -288,17 +354,24 @@
                             BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,0,1"
                             Padding="10,6"
                             IsVisible="{Binding ShowSettings}">
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                            <TextBlock Grid.Column="0" Text="Ignoring" VerticalAlignment="Center"
+                        <!-- Two rows, because there are two kinds of rule and they read differently:
+                             what is not being compared, and how a list is being matched. Both stay
+                             beside the Save button, which writes them to the same place. -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Ignoring" VerticalAlignment="Center"
                                        Foreground="{DynamicResource TextSecondary}" Margin="0,0,8,0" />
 
-                            <TextBlock Grid.Column="1"
+                            <TextBlock Grid.Row="0" Grid.Column="1"
                                        Text="nothing yet — select a difference and press “Ignore this field”"
                                        Foreground="{DynamicResource TextSecondary}"
                                        FontStyle="Italic" VerticalAlignment="Center"
                                        IsVisible="{Binding !IgnoredPaths.Count}" />
 
-                            <ItemsControl Grid.Column="1" ItemsSource="{Binding IgnoredPaths}"
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Lists" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondary}" Margin="0,4,8,0"
+                                       IsVisible="{Binding !!ArrayRules.Count}" />
+
+                            <ItemsControl Grid.Row="0" Grid.Column="1" ItemsSource="{Binding IgnoredPaths}"
                                           IsVisible="{Binding !!IgnoredPaths.Count}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -327,7 +400,46 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <SplitButton Grid.Column="2" Content="Save to request"
+                            <!-- How each array is matched, beside the ignore rules. Not decoration:
+                                 choosing "Ignore order" on an array usually removes every row that
+                                 array had from the tree - that is the point - and the menu that set
+                                 the rule lives on those rows, so without a chip the instruction
+                                 becomes unreachable the moment it works. -->
+                            <ItemsControl Grid.Row="1" Grid.Column="1" ItemsSource="{Binding ArrayRules}"
+                                          Margin="0,4,0,0"
+                                          IsVisible="{Binding !!ArrayRules.Count}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ArrayRuleViewModel">
+                                        <Border Background="{DynamicResource BgSelected}"
+                                                CornerRadius="3" Padding="6,2" Margin="0,0,6,2">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding Path}"
+                                                           FontFamily="Cascadia Mono,Consolas,monospace"
+                                                           FontSize="11" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding How}"
+                                                           FontSize="10" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondary}" />
+                                                <TextBlock Text="{Binding Source}"
+                                                           FontSize="10" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondary}"
+                                                           IsVisible="{Binding IsInherited}" />
+                                                <Button Classes="toolbar-btn" Content="✕" Padding="3,0"
+                                                        ToolTip.Tip="{Binding RemoveTooltip}"
+                                                        Command="{Binding $parent[Window].((vm:EnvironmentComparisonViewModel)DataContext).Diff.ResetArrayMatchCommand}"
+                                                        CommandParameter="{Binding Path}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <SplitButton Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" Content="Save to request"
+                                         VerticalAlignment="Center"
                                          ToolTip.Tip="Remember these settings on the request, so every run applies them"
                                          IsVisible="{Binding CanSaveSettings}"
                                          IsEnabled="{Binding SettingsDirty}"

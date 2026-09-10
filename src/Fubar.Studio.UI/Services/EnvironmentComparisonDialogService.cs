@@ -34,17 +34,20 @@ public sealed class EnvironmentComparisonDialogService : IEnvironmentComparisonD
     private readonly IFileComparisonService _comparison;
     private readonly IResponseComparer _comparer;
     private readonly RequestEditorServices _services;
+    private readonly Fubar.Controls.IConfirmationService? _confirmation;
 
     public EnvironmentComparisonDialogService(
         IEnvironmentPairRunService pairRun,
         IFileComparisonService comparison,
         IResponseComparer comparer,
-        RequestEditorServices services)
+        RequestEditorServices services,
+        Fubar.Controls.IConfirmationService? confirmation = null)
     {
         _pairRun = pairRun;
         _comparison = comparison;
         _comparer = comparer;
         _services = services;
+        _confirmation = confirmation;
     }
 
     public void Show(
@@ -67,7 +70,7 @@ public sealed class EnvironmentComparisonDialogService : IEnvironmentComparisonD
 
         var window = new EnvironmentComparisonWindow(
             new EnvironmentComparisonViewModel(
-                _pairRun, _comparison, _comparer, _services, plan, workspace, environments, target));
+                _pairRun, _comparison, _comparer, _services, plan, workspace, environments, target, _confirmation));
 
         window.Show(owner);
     }

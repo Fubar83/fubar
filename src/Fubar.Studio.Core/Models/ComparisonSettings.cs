@@ -54,6 +54,23 @@ public sealed class ComparisonSettings
     public Dictionary<string, string>? ArrayKeyOverrides { get; set; }
 
     /// <summary>
+    /// Arrays whose order does not matter, by JSON path (e.g. <c>$.tags</c>): elements are matched by
+    /// their whole value, so <c>["A","B"]</c> equals <c>["B","A"]</c>.
+    ///
+    /// <para>The answer for an array of STRINGS, which has no field to be keyed on -
+    /// <see cref="ArrayKeyOverrides"/> can only speak for arrays of objects. Replaces, not merges,
+    /// like <see cref="ArrayKeyOverrides"/> and for the same reason: these three say how ONE array is
+    /// matched, and an array can only be matched one way.</para>
+    /// </summary>
+    public List<string>? UnorderedArrays { get; set; }
+
+    /// <summary>
+    /// Arrays compared element 0 against element 0, by JSON path - the per-array form of
+    /// <see cref="MatchArraysByPosition"/>, for a list whose order IS its content.
+    /// </summary>
+    public List<string>? PositionalArrays { get; set; }
+
+    /// <summary>
     /// True when this level overrides nothing at all, so a caller can drop the whole section rather
     /// than persisting an object full of nulls.
     /// </summary>
@@ -73,7 +90,9 @@ public sealed class ComparisonSettings
         && MatchArraysByPosition is null
         && IgnoreNullVsMissing is null
         && IgnoredPaths is null or { IsEmpty: true }
-        && ArrayKeyOverrides is null;
+        && ArrayKeyOverrides is null
+        && UnorderedArrays is null
+        && PositionalArrays is null;
 
     /// <summary>A detached copy, so editing a draft cannot mutate what is still on disk.</summary>
     public ComparisonSettings Clone() => new()
@@ -86,5 +105,7 @@ public sealed class ComparisonSettings
         IgnoreNullVsMissing = IgnoreNullVsMissing,
         IgnoredPaths = IgnoredPaths?.Clone(),
         ArrayKeyOverrides = ArrayKeyOverrides is null ? null : new Dictionary<string, string>(ArrayKeyOverrides),
+        UnorderedArrays = UnorderedArrays is null ? null : [.. UnorderedArrays],
+        PositionalArrays = PositionalArrays is null ? null : [.. PositionalArrays],
     };
 }

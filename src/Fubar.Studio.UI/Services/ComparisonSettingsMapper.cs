@@ -16,13 +16,22 @@ namespace Fubar.Studio.UI.Services;
 public static class ComparisonSettingsMapper
 {
     /// <summary>
-    /// Builds the engine options for a comparison. <see cref="ComparisonMode.Auto"/> always, so
-    /// anything that parses as JSON - which most of what API Studio compares does - is compared
-    /// semantically; the resolved settings decide only how strict that comparison is.
+    /// Builds the engine options for a comparison. <see cref="ComparisonMode.Auto"/> unless a reader
+    /// asked for something else, so anything that parses as JSON - which most of what API Studio
+    /// compares does - is compared semantically; the resolved settings decide only how strict that
+    /// comparison is.
     /// </summary>
-    public static ComparisonOptions ToOptions(ResolvedComparisonSettings resolved) => new()
+    /// <param name="mode">
+    /// How to read this comparison. A parameter rather than a member of
+    /// <c>ResolvedComparisonSettings</c> because it is not a property of the REQUEST: the settings say
+    /// what counts as a difference for everyone who clones the repository, while this says how the
+    /// person at the window wants to look at one response, once.
+    /// </param>
+    public static ComparisonOptions ToOptions(
+        ResolvedComparisonSettings resolved,
+        ComparisonMode mode = ComparisonMode.Auto) => new()
     {
-        Mode = ComparisonMode.Auto,
+        Mode = mode,
         IgnoreWhitespace = resolved.IgnoreWhitespace.Value,
         IgnoreCase = resolved.IgnoreCase.Value,
         NormalizeStructure = resolved.NormalizeStructure.Value,
@@ -33,6 +42,8 @@ public static class ComparisonSettingsMapper
             IgnoreNullVsMissing = resolved.IgnoreNullVsMissing.Value,
             IgnoredPaths = [.. resolved.IgnoredPathValues],
             ArrayKeyOverrides = new Dictionary<string, string>(resolved.ArrayKeyOverrides.Value),
+            UnorderedArrays = [.. resolved.UnorderedArrays.Value],
+            PositionalArrays = [.. resolved.PositionalArrays.Value],
         },
     };
 }

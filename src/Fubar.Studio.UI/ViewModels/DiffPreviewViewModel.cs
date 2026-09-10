@@ -6,6 +6,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fubar.Diff.Application.Comparison;
 using Fubar.Diff.Controls.ViewModels;
+using Fubar.Diff.Core.Comparison;
+using Fubar.Diff.Core.Json;
 using Fubar.Studio.Core.Comparison;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.UI.Services;
@@ -45,10 +47,25 @@ public partial class DiffPreviewViewModel : ViewModelBase
     /// <summary>Suppresses re-comparing while the toggles are being seeded from a resolve.</summary>
     private bool _applyingResolved;
 
-    public DiffPreviewViewModel(IFileComparisonService comparison)
+    /// <summary>Asks for an array key the menu could not offer. Null in tests and wherever no window
+    /// is available, which simply leaves "Match by another field…" doing nothing.</summary>
+    private readonly Fubar.Controls.IConfirmationService? _confirmation;
+
+    public DiffPreviewViewModel(
+        IFileComparisonService comparison,
+        Fubar.Controls.IConfirmationService? confirmation = null)
     {
         _comparison = comparison;
+        _confirmation = confirmation;
+
+        // The tree's "Compare this list" menu is part of the shared widget and renders in API Studio
+        // exactly as it does in Fubar Diff - but the widget only ASKS, because the host owns the
+        // options. Nothing here listened, so the menu recorded a choice nobody applied: the check mark
+        // never moved and the comparison never changed.
+        Pane.ArrayKeyChosen += (_, option) => _ = ApplyArrayMatchAsync(option.Path, option.Mode, option.Key);
+        Pane.CustomArrayKeyRequested += (_, path) => _ = AskForArrayKeyAsync(path);
     }
+
 
     /// <summary>The diff widget itself.</summary>
     public DiffPaneViewModel Pane { get; } = new();
@@ -97,16 +114,23 @@ public partial class DiffPreviewViewModel : ViewModelBase
     /// <see cref="ApplyResolved"/> is seeding the toggles, which would otherwise turn every inherited
     /// value into an explicit override the moment the dialog opened.
     /// </summary>
-    private void Override(System.Action<ComparisonSettings> set)
+    private void Override(System.Action<ComparisonSettings> set) => _ = OverrideAsync(set);
+
+    /// <summary>
+    /// The same thing, awaitable. A toggle is fire-and-forget - nobody is waiting on a checkbox - but
+    /// a menu click that the user is watching for a result has something to wait for, and so does a
+    /// test.
+    /// </summary>
+    private Task OverrideAsync(System.Action<ComparisonSettings> set)
     {
         if (_applyingResolved)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         set(_draft);
         SettingsDirty = true;
-        _ = RecompareAsync();
+        return RecompareAsync();
     }
 
     /// <summary>Human-readable origin for each setting, e.g. "Folder: users" - bound as a hint.</summary>
@@ -139,6 +163,49 @@ public partial class DiffPreviewViewModel : ViewModelBase
         await RecompareAsync().ConfigureAwait(true);
     }
 
+    // ---- How this comparison is read ------------------------------------------------------------
+
+    /// <summary>
+    /// Text or structure. <see cref="ComparisonMode.Auto"/> compares anything that parses as JSON
+    /// semantically, which is most of what API Studio compares.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately NOT part of <see cref="ComparisonSettings"/> and never saved. The settings say
+    /// what COUNTS as a difference and belong to the request for everyone who clones the repository;
+    /// this says how the person in front of the window wants to read this response right now - usually
+    /// "show me the raw text, I do not trust the parse". Persisting it would make one reader's glance
+    /// at the bytes everybody's default.
+    /// </remarks>
+    [ObservableProperty]
+    public partial ComparisonMode CompareMode { get; set; } = ComparisonMode.Auto;
+
+    partial void OnCompareModeChanged(ComparisonMode value)
+    {
+        OnPropertyChanged(nameof(IsModeAuto));
+        OnPropertyChanged(nameof(IsModeText));
+        OnPropertyChanged(nameof(IsModeJson));
+
+        if (!_applyingResolved)
+        {
+            _ = RecompareAsync();
+        }
+    }
+
+    public bool IsModeAuto => CompareMode == ComparisonMode.Auto;
+
+    public bool IsModeText => CompareMode == ComparisonMode.Text;
+
+    public bool IsModeJson => CompareMode == ComparisonMode.Json;
+
+    [RelayCommand]
+    private void SetCompareMode(ComparisonMode mode) => CompareMode = mode;
+
+    [RelayCommand]
+    private void SetSideBySide() => Pane.ViewMode = DiffViewMode.SideBySide;
+
+    [RelayCommand]
+    private void SetUnified() => Pane.ViewMode = DiffViewMode.Unified;
+
     /// <summary>True while this request overrides anything, so "Reset" can be offered only when it does.</summary>
     public bool HasOverrides => !_draft.IsEmpty;
 
@@ -159,6 +226,109 @@ public partial class DiffPreviewViewModel : ViewModelBase
     /// remember on its own.</para>
     /// </summary>
     public ObservableCollection<IgnoredPathViewModel> IgnoredPaths { get; } = [];
+
+    // ---- How each array is matched --------------------------------------------------------------
+
+    /// <summary>
+    /// The arrays this comparison has been told how to match, each with where the instruction came
+    /// from. Bound as removable chips beside the ignore rules.
+    /// </summary>
+    /// <remarks>
+    /// Not decoration. Choosing "Ignore order" on an array usually removes every row that array had
+    /// from the tree - that is the point - and the menu that set the rule lives on those rows, so
+    /// without a chip the instruction becomes unreachable the moment it works. Seeded from the resolve
+    /// like <see cref="IgnoredPaths"/>, for the same reason.
+    /// </remarks>
+    public ObservableCollection<ArrayRuleViewModel> ArrayRules { get; } = [];
+
+    /// <summary>
+    /// Records how one array is matched and re-compares.
+    /// </summary>
+    /// <remarks>
+    /// <para>The three lists are written TOGETHER, seeded from what is currently in force. They
+    /// replace rather than merge what they inherit, so writing only the array just chosen would
+    /// silently drop every rule an ancestor folder states about the others.</para>
+    /// <para>And they are kept mutually exclusive: an array can only be matched one way, so a stale
+    /// entry in another list would make the menu's check mark lie and hand the differ a contradiction
+    /// it has to break with a precedence rule the user never saw.</para>
+    /// </remarks>
+    public Task ApplyArrayMatchAsync(string path, ArrayMatchMode mode, string? key = null)
+    {
+        var keys = new Dictionary<string, string>(Resolved.ArrayKeyOverrides.Value, System.StringComparer.Ordinal);
+        var unordered = Resolved.UnorderedArrays.Value.Where(NotThisPath).ToList();
+        var positional = Resolved.PositionalArrays.Value.Where(NotThisPath).ToList();
+        keys.Remove(path);
+
+        switch (mode)
+        {
+            case ArrayMatchMode.Key when key is { Length: > 0 }:
+                keys[path] = key;
+                break;
+
+            case ArrayMatchMode.Unordered:
+                unordered.Add(path);
+                break;
+
+            default:
+                positional.Add(path);
+                break;
+        }
+
+        // Written even when empty. An empty non-null list is a real override meaning "nothing here",
+        // which is what stops a folder's rule coming back to contradict the choice just made - the
+        // same reading the ignore lists already have.
+        return OverrideAsync(s =>
+        {
+            s.ArrayKeyOverrides = keys;
+            s.UnorderedArrays = unordered;
+            s.PositionalArrays = positional;
+        });
+
+        bool NotThisPath(string p) => !string.Equals(p, path, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>Puts one array back to whatever it inherits - the ✕ on its chip.</summary>
+    [RelayCommand]
+    private async Task ResetArrayMatchAsync(string? path)
+    {
+        if (path is not { Length: > 0 })
+        {
+            return;
+        }
+
+        var keys = new Dictionary<string, string>(Resolved.ArrayKeyOverrides.Value, System.StringComparer.Ordinal);
+        keys.Remove(path);
+
+        await OverrideAsync(s =>
+        {
+            s.ArrayKeyOverrides = keys;
+            s.UnorderedArrays = [.. Resolved.UnorderedArrays.Value.Where(p => !string.Equals(p, path, System.StringComparison.Ordinal))];
+            s.PositionalArrays = [.. Resolved.PositionalArrays.Value.Where(p => !string.Equals(p, path, System.StringComparison.Ordinal))];
+        }).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Asks for a field the menu did not offer - one only some elements carry today, or nested deeper
+    /// than the scanner looks. A dotted path works, so <c>meta.id</c> is as valid as <c>id</c>.
+    /// </summary>
+    private async Task AskForArrayKeyAsync(string path)
+    {
+        if (_confirmation is null)
+        {
+            return;
+        }
+
+        var key = await _confirmation
+            .AskForTextAsync(
+                "Match elements by",
+                $"Which field identifies the elements of {path}?\n\nA name, or a dotted path into each element - for example meta.id.")
+            .ConfigureAwait(true);
+
+        if (key is { Length: > 0 })
+        {
+            await ApplyArrayMatchAsync(path, ArrayMatchMode.Key, key).ConfigureAwait(true);
+        }
+    }
 
     /// <summary>True once anything differs from what was persisted, which is what enables Save.</summary>
     [ObservableProperty]
@@ -377,7 +547,7 @@ public partial class DiffPreviewViewModel : ViewModelBase
             ApplyResolved();
 
             var result = await _comparison
-                .CompareTextAsync(_leftText, _rightText, ComparisonSettingsMapper.ToOptions(Resolved), LeftLabel, RightLabel)
+                .CompareTextAsync(_leftText, _rightText, ComparisonSettingsMapper.ToOptions(Resolved, CompareMode), LeftLabel, RightLabel)
                 .ConfigureAwait(true);
 
             Pane.Show(
@@ -424,6 +594,12 @@ public partial class DiffPreviewViewModel : ViewModelBase
                     Describe(entry.Scope, entry.SourceName),
                     entry.Scope != ComparisonScope.Request));
             }
+
+            ArrayRules.Clear();
+            foreach (var rule in ResolvedArrayRules())
+            {
+                ArrayRules.Add(rule);
+            }
         }
         finally
         {
@@ -438,6 +614,31 @@ public partial class DiffPreviewViewModel : ViewModelBase
         OnPropertyChanged(nameof(ReportPropertyOrderSource));
         OnPropertyChanged(nameof(MatchArraysByPositionSource));
         OnPropertyChanged(nameof(IgnoreNullVsMissingSource));
+    }
+
+    /// <summary>
+    /// One chip per array that has been spoken about, keyed rules first, in path order within each
+    /// kind - stable, so a re-compare does not shuffle the strip under the pointer.
+    /// </summary>
+    private IEnumerable<ArrayRuleViewModel> ResolvedArrayRules()
+    {
+        foreach (var (path, key) in Resolved.ArrayKeyOverrides.Value.OrderBy(o => o.Key, System.StringComparer.Ordinal))
+        {
+            yield return Rule(path, $"by {key}", Resolved.ArrayKeyOverrides.Scope, Resolved.ArrayKeyOverrides.SourceName);
+        }
+
+        foreach (var path in Resolved.UnorderedArrays.Value.OrderBy(p => p, System.StringComparer.Ordinal))
+        {
+            yield return Rule(path, "order ignored", Resolved.UnorderedArrays.Scope, Resolved.UnorderedArrays.SourceName);
+        }
+
+        foreach (var path in Resolved.PositionalArrays.Value.OrderBy(p => p, System.StringComparer.Ordinal))
+        {
+            yield return Rule(path, "by position", Resolved.PositionalArrays.Scope, Resolved.PositionalArrays.SourceName);
+        }
+
+        static ArrayRuleViewModel Rule(string path, string how, ComparisonScope scope, string sourceName) =>
+            new(path, how, Describe(scope, sourceName), scope != ComparisonScope.Request);
     }
 
     private static string Describe(FileComparison comparison)
@@ -481,4 +682,17 @@ public sealed record IgnoredPathViewModel(string Path, string Source, bool IsInh
     public string RemoveTooltip => IsInherited
         ? $"Stop ignoring {Path} here (it stays ignored where it was set - {Source})"
         : $"Stop ignoring {Path}";
+}
+
+/// <summary>
+/// How one array is being matched, as a chip: the path, the rule in three words, and where it came
+/// from.
+/// </summary>
+/// <param name="How">"order ignored", "by position", "by id" - what the differ is doing with it.</param>
+public sealed record ArrayRuleViewModel(string Path, string How, string Source, bool IsInherited)
+{
+    /// <summary>What the ✕ will do, said before it is clicked.</summary>
+    public string RemoveTooltip => IsInherited
+        ? $"Match {Path} however it is inherited again (this rule is {Source})"
+        : $"Stop matching {Path} this way";
 }

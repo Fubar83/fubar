@@ -221,6 +221,54 @@ public class ComparisonSettingsResolverTests
     }
 
     /// <summary>
+    /// The other two thirds of how one array is matched. They replace rather than merge, like the key
+    /// overrides beside them: these three lists answer ONE question per array - how is it matched -
+    /// and an array can only be matched one way, so building them up across levels would produce
+    /// contradictions no level wrote.
+    /// </summary>
+    [Fact]
+    public void The_order_lists_resolve_like_the_key_overrides()
+    {
+        var resolved = ComparisonSettingsResolver.Resolve([
+            Folder(new ComparisonSettings { UnorderedArrays = ["$.tags"], PositionalArrays = ["$.steps"] }),
+            Request(new ComparisonSettings { UnorderedArrays = ["$.tags", "$.roles"] }),
+        ]);
+
+        Assert.Equal(["$.tags", "$.roles"], resolved.UnorderedArrays.Value);
+        Assert.Equal(ComparisonScope.Request, resolved.UnorderedArrays.Scope);
+
+        // Untouched by the request, so still the folder's - per-setting inheritance, as everywhere else.
+        Assert.Equal(["$.steps"], resolved.PositionalArrays.Value);
+        Assert.Equal(ComparisonScope.Folder, resolved.PositionalArrays.Scope);
+    }
+
+    /// <summary>
+    /// An EMPTY non-null list is a real override meaning "nothing here", not silence. It is what stops
+    /// a folder's rule coming back to contradict a request that has just chosen something else for the
+    /// same array.
+    /// </summary>
+    [Fact]
+    public void An_empty_list_at_a_closer_level_overrides_an_inherited_one()
+    {
+        var resolved = ComparisonSettingsResolver.Resolve([
+            Folder(new ComparisonSettings { UnorderedArrays = ["$.tags"] }),
+            Request(new ComparisonSettings { UnorderedArrays = [] }),
+        ]);
+
+        Assert.Empty(resolved.UnorderedArrays.Value);
+        Assert.Equal(ComparisonScope.Request, resolved.UnorderedArrays.Scope);
+    }
+
+    [Fact]
+    public void With_no_layers_no_array_is_spoken_about()
+    {
+        var resolved = ComparisonSettingsResolver.Resolve([]);
+
+        Assert.Empty(resolved.UnorderedArrays.Value);
+        Assert.Empty(resolved.PositionalArrays.Value);
+    }
+
+    /// <summary>
     /// The resolved collections must be copies: handing back the caller's own list would let a later
     /// edit of the settings object silently change what a running comparison thinks it resolved.
     /// </summary>

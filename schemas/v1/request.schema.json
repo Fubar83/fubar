@@ -138,7 +138,9 @@
         "matchArraysByPosition": { "type": ["boolean", "null"] },
         "ignoreNullVsMissing": { "type": ["boolean", "null"] },
         "ignoredPaths": { "$ref": "#/$defs/inheritedPaths" },
-        "arrayKeyOverrides": { "type": ["object", "null"], "additionalProperties": { "type": "string" } }
+        "arrayKeyOverrides": { "type": ["object", "null"], "additionalProperties": { "type": "string" } },
+        "unorderedArrays": { "type": ["array", "null"], "items": { "type": "string" }, "description": "Arrays whose order does not matter, by JSON path - elements are matched by their whole value. Replaces rather than merges what it inherits, like arrayKeyOverrides: these three say how ONE array is matched, and an array can only be matched one way." },
+        "positionalArrays": { "type": ["array", "null"], "items": { "type": "string" }, "description": "Arrays compared element 0 against element 0, by JSON path - for a list whose order IS its content." }
       }
     },
     "inheritedPaths": {

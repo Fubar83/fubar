@@ -62,7 +62,9 @@ public sealed record ResolvedComparisonSettings(
     Resolved<bool> MatchArraysByPosition,
     Resolved<bool> IgnoreNullVsMissing,
     IReadOnlyList<ResolvedPath> IgnoredPaths,
-    Resolved<IReadOnlyDictionary<string, string>> ArrayKeyOverrides)
+    Resolved<IReadOnlyDictionary<string, string>> ArrayKeyOverrides,
+    Resolved<IReadOnlyList<string>> UnorderedArrays,
+    Resolved<IReadOnlyList<string>> PositionalArrays)
 {
     /// <summary>Just the paths, for the engine, which has no use for where each came from.</summary>
     public IReadOnlyList<string> IgnoredPathValues => [.. IgnoredPaths.Select(p => p.Path)];
@@ -102,7 +104,9 @@ public static class ComparisonSettingsResolver
         PickReference<IReadOnlyDictionary<string, string>>(
             layers,
             s => s.ArrayKeyOverrides is { } o ? new Dictionary<string, string>(o) : null,
-            new Dictionary<string, string>()));
+            new Dictionary<string, string>()),
+        PickReference<IReadOnlyList<string>>(layers, s => s.UnorderedArrays is { } u ? [.. u] : null, []),
+        PickReference<IReadOnlyList<string>>(layers, s => s.PositionalArrays is { } p ? [.. p] : null, []));
 
     /// <summary>
     /// Folds an inherited list down the chain: each level's removals, then its additions, keeping the

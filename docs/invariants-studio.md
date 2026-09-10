@@ -132,7 +132,24 @@ nothing here", which is what keeps a request's rules readable as the complete tr
 (2) `Studio.Core` must NOT reference `Fubar.Diff.*` (the architecture tests enforce it), which is why
 `ComparisonSettings` is a parallel shape rather than a reuse of `ComparisonOptions` -
 `ComparisonSettingsMapper` in `Studio.UI` is the single place the two vocabularies meet, and adding a
-setting to one side should break its compile until the other side has it too.
+setting to one side should break its compile until the other side has it too. And `request.schema.json`
+is a third place: `WorkspaceValidatorTests.Every_model_property_appears_in_its_schema` fails until a new
+member is described there, so the schema cannot quietly stop describing the format.
+
+
+**How a list is matched is THREE lists that must stay mutually exclusive, and they are written
+together** (Studio). `arrayKeyOverrides`, `unorderedArrays` and `positionalArrays` answer one question
+per array - how is it matched - and an array can only be matched one way, so
+`DiffPreviewViewModel.ApplyArrayMatchAsync` removes the path from all three before adding it to one. A
+stale entry in another list would make the tree menu's check mark lie and hand the differ a
+contradiction it has to break with a precedence rule the user never saw. It also seeds all three from
+the RESOLVED values and writes all three every time, empty ones included: they replace rather than
+merge what they inherit, so writing only the array just chosen would silently drop a folder's rules
+about the others, and a null (rather than empty) list would let a folder's rule come back to contradict
+the choice just made. The chips in the rule strip are load-bearing, not decoration - ignoring a list's
+order removes that list's rows from the tree, taking the menu that set the rule with them, so the chip
+is the only way back. `DiffPaneViewModel` only RAISES `ArrayKeyChosen`; both hosts have to listen, and
+for a long time only Fubar Diff did.
 
 
 

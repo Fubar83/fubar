@@ -52,7 +52,8 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
         RunPlan plan,
         Workspace workspace,
         IReadOnlyList<WorkspaceEnvironment> environments,
-        string target)
+        string target,
+        Fubar.Controls.IConfirmationService? confirmation = null)
     {
         _pairRun = pairRun;
         _comparison = comparison;
@@ -62,7 +63,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
         _workspace = workspace;
 
         Target = target;
-        Diff = new DiffPreviewViewModel(comparison);
+        Diff = new DiffPreviewViewModel(comparison, confirmation);
 
         foreach (var environment in environments)
         {
