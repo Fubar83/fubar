@@ -31,6 +31,9 @@ public class WiringTests
         // button plus a flyout for a single action on the row where space is worth most.
         ["RequestEditorViewModel.CopyAsCurlCommand"] =
             "Invoked from MainViewModel.PaletteEntries, not from markup.",
+
+        ["RequestEditorViewModel.CopyAsCurlForPowerShellCommand"] =
+            "Invoked from MainViewModel.PaletteEntries, not from markup - beside the POSIX one.",
     };
 
     /// <summary>

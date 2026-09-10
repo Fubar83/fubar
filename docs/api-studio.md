@@ -247,6 +247,18 @@ case, and the response pane says 2/2.</sub>
 - **JSON schema intelligence** — when a body schema is known (e.g. from an import), you get validation,
   inline autocomplete, and a readable schema view. Header and query-parameter **names** are suggested
   too (schema-declared names plus common HTTP headers).
+- **Copy the request as curl, for the shell you are pasting into.** The command palette
+  (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) offers *Copy as cURL* and *Copy as cURL
+  (PowerShell)*, with variables resolved and the real auth credential injected the way Send does, so
+  what you paste is what the app sends. Two entries rather than one that guesses: the POSIX form is
+  multi-line with backslash continuations, which PowerShell does not have — it stops at the first one
+  with *Missing expression after unary operator '--'*, having sent nothing — and the host OS says
+  nothing about which shell is meant, since a Windows user pastes into PowerShell, Git Bash and WSL on
+  the same afternoon. The PowerShell form is one line, doubles an apostrophe instead of escaping it,
+  and calls `curl.exe` so Windows PowerShell 5.1 does not answer with its `Invoke-WebRequest` alias.
+  Neither form works in `cmd.exe`, where single quotes are not quoting characters at all; and on 5.1 a
+  body containing double quotes loses them, which is that shell's own argument handling rather than
+  something an exporter can escape around.
 - **Workspace tabs** — Chrome-style tab strip: drag to reorder, drag between windows, or tear a tab off
   into its own window.
 - **Cross-platform** — Windows, macOS, and Linux, from a single codebase.

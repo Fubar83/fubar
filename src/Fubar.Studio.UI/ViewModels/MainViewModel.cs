@@ -486,6 +486,12 @@ public partial class MainViewModel : ViewModelBase
         {
             yield return new PaletteEntry("Copy as cURL", "Command", null,
                 () => copyable.CopyAsCurlCommand.ExecuteAsync(null));
+
+            // Both, rather than one that guesses. The POSIX form fails outright in PowerShell -  is
+            // not a line continuation there - and a Windows user pastes into PowerShell, Git Bash and
+            // WSL on the same afternoon, so the host OS says nothing about which is wanted.
+            yield return new PaletteEntry("Copy as cURL (PowerShell)", "Command", null,
+                () => copyable.CopyAsCurlForPowerShellCommand.ExecuteAsync(null));
         }
 
         yield return new PaletteEntry("Find in response", "Command", "Ctrl+F",

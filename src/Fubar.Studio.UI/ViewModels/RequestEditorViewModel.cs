@@ -381,7 +381,21 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
     /// <summary>Copies the current request as a runnable curl command (variables resolved against the
     /// active environment, all enabled headers incl. auth included) to the clipboard.</summary>
     [RelayCommand]
-    private async Task CopyAsCurlAsync()
+    private Task CopyAsCurlAsync() => CopyCurlAsync(CurlShell.Posix);
+
+    /// <summary>
+    /// The same command, shaped for PowerShell.
+    /// </summary>
+    /// <remarks>
+    /// A separate command rather than a setting or a guess at the host OS. Which shell this is going
+    /// to is something only the person pasting knows - a Windows user pastes into PowerShell, into Git
+    /// Bash and into WSL on the same afternoon, and picking for them by <c>RuntimeInformation</c> gets
+    /// it wrong two times in three.
+    /// </remarks>
+    [RelayCommand]
+    private Task CopyAsCurlForPowerShellAsync() => CopyCurlAsync(CurlShell.PowerShell);
+
+    private async Task CopyCurlAsync(CurlShell shell)
     {
         try
         {
@@ -395,9 +409,14 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
                 model = AuthRequestMerge.Inject(model, _authProvider.Apply(effectiveAuth, _workspace, environment));
             }
 
-            var curl = _curlExport.ToCurl(model, s => _variableResolver.Substitute(s, _workspace, environment));
+            var curl = _curlExport.ToCurl(model, s => _variableResolver.Substitute(s, _workspace, environment), shell);
             await _clipboardService.SetTextAsync(curl);
-            _statusLog.Log("Copied request as curl.");
+
+            // Says which one, because both entries are in the palette and the difference is not
+            // obvious once the text is on the clipboard.
+            _statusLog.Log(shell == CurlShell.PowerShell
+                ? "Copied request as curl, for PowerShell."
+                : "Copied request as curl.");
         }
         catch (Exception ex)
         {

@@ -152,6 +152,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Copy as cURL (PowerShell).** A second palette entry beside the existing one. The command this app
+  has always produced is POSIX - multi-line with backslash continuations - and PowerShell has no such
+  continuation, so it stopped at the first one with *Missing expression after unary operator '--'* and
+  sent nothing: the export worked everywhere except the platform the app is mostly developed on. The
+  new form is one line, doubles an apostrophe rather than escaping it the POSIX way, and calls
+  `curl.exe` so Windows PowerShell 5.1 does not answer with its `Invoke-WebRequest` alias. Both
+  entries carry exactly the same request; only the quoting and the line breaks differ, and there is a
+  test holding that. Neither works in `cmd.exe` - single quotes are not quoting characters there - and
+  on PowerShell 5.1 a body containing double quotes still loses them, which is that shell's own
+  argument passing: escaping around it fixes 5.1 and breaks 7, measured both ways.
+
 - **Screenshots, and per-app READMEs that use them.** Nine images under `docs/images/`, every one shot
   against a throwaway petstore workspace and a local stub: a request with its assertions and its
   answer, the Rules tab showing what a case inherited from its folder, a chain finishing with its
