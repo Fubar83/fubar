@@ -151,9 +151,9 @@ public class UnorderedArrayMenuTests
     public async Task Choosing_ignore_order_from_the_row_changes_what_the_diff_says()
     {
         // The whole point, and the thing that was reported as not working: the reordered strings must
-        // stop COUNTING as differences, while the two real changes stay - and the reorder must still
-        // leave a faint, ignored trace rather than vanishing, so the reader can tell "these agree here"
-        // from "these disagree here and I asked you not to mention it".
+        // stop being differences, while the two real changes stay. Nothing is left behind for them -
+        // order is not part of an unordered array's content, so there is no suppressed difference to
+        // hint at, and the hint washed a whole array whenever one element was inserted near the front.
         var tab = Build();
         await tab.CompareAsync();
 
@@ -168,10 +168,8 @@ public class UnorderedArrayMenuTests
         Assert.Equal(2, reported.Count);
         Assert.DoesNotContain(reported, c => c.Path.ToString().Contains("GlossSeeAlso"));
 
-        // Still there, still visible, just not counted.
-        var trace = tab.Pane.SemanticChanges.Where(c => c.IsIgnored).ToList();
-        Assert.NotEmpty(trace);
-        Assert.All(trace, c => Assert.Contains("GlossSeeAlso", c.Path.ToString()));
+        Assert.DoesNotContain(
+            tab.Pane.SemanticChanges, c => c.Path.ToString().Contains("GlossSeeAlso"));
     }
 
     [AvaloniaFact]

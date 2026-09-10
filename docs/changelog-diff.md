@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Ignoring an array's order no longer marks the elements that did not move.** With order ignored,
+  `["one","two"]` against `["three","one","two"]` washed the whole array: `"one"` and `"two"` were each
+  drawn as a moved element and listed in the tree, beside the one thing that had actually happened —
+  `"three"` was added. An index is not a position anyone moved. Prepend one element and every element
+  after it has a new index, so the hint was loudest in exactly the case where the answer was simplest.
+
+  It was there so that silence could not be mistaken for agreement — "these disagree here and I asked
+  you not to mention it". But ignoring order is not hiding a difference: order is not part of an
+  unordered array's content, so there is nothing there to suppress, which is the whole meaning of
+  marking the array unordered. Matching by an identity key has always read it that way and said nothing
+  about a moved element, so the trace also had the two order-insensitive modes disagreeing about the
+  same document. A moved element now produces nothing, in both. Reordered object *properties* are
+  unaffected — that is still reported, still only when you ask for it with **Report key order**.
+
 - **A failure nobody phrased for the app is reported instead of ending it.** Two paths were catching
   one exception type each and letting everything else past, and both are awaited by an `async void` -
   a click handler, a property setter, a fire-and-forget task at startup - where an escaping exception

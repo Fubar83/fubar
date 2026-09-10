@@ -348,17 +348,18 @@ full-width row, which is the same reason `SpanBackground` sits well above `LineB
 nobody notices is the same as no mark.
 
 
-**An ignored REORDER leaves a trace; reporting nothing is the wrong kind of silence** (Diff). When
-unordered matching pairs two elements that merely moved, it emits a `JsonChange` flagged `IsReorder`
-AND `IsIgnored` rather than emitting nothing. The user asked for order to be ignored, not for the fact
-of a reorder to be erased - and given silence they cannot tell "these agree here" from "these disagree
-here and I asked you not to mention it", which is worth a glance before trusting the diff. `IsIgnored`
-buys the whole behaviour off the existing machinery: out of the counts, out of the hunks, out of
-next/previous, and drawn at the same faint 7% wash `DiffLineColors.IgnoredBackground` already gives an
-ignored path, in both Text mode (`ChangeLineBackgroundRenderer`) and the Json view
-(`JsonChangeSpanColorizer`). Only elements whose index actually CHANGED are marked - marking every
-element of a reordered list would turn a hint into a wash over the whole array. Tests assert on what is
-REPORTED (non-ignored) for this reason; a bare `Assert.Empty(changes)` on a reordered list is now wrong.
+**In an unordered array a move is NOT a difference, and leaves nothing at all** (Diff).
+`CompareArraysUnordered` emits no `JsonChange` for an element whose index changed. This once left a
+faint `IsReorder`+`IsIgnored` trace, on the argument that silence leaves the reader unable to tell
+"these agree here" from "these disagree here and I asked you not to mention it". Two things sink that
+argument. **An index is not a position anyone moved**: prepend one element and every element after it
+has a new index, so `["one","two"]` → `["three","one","two"]` washed the entire array to report an
+addition of `"three"` - loudest in exactly the case where the answer is simplest. And **ignoring order
+is not hiding a difference**: order is not part of an unordered array's content, so there is nothing
+there to suppress, which is the whole meaning of marking the path unordered. `CompareArraysByKey` has
+always read it that way and emits nothing for a moved element, so the trace also had the two
+order-insensitive modes disagreeing about the same document. `IsReorder` still exists and is still
+reported for object PROPERTIES under `ReportPropertyOrder`, where it is opt-in and means what it says.
 
 
 **Array matching is per-array, and only fields that WOULD work are offered** (Diff).

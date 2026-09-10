@@ -41,10 +41,9 @@ public class UnorderedArrayTests
     /// <summary>
     /// The changes that COUNT: hunks, navigation and the counts all skip ignored ones.
     ///
-    /// An element that merely moved is reported as ignored rather than not at all, so the reader gets a
-    /// faint mark saying "these disagree here and you asked me not to mention it" instead of silence
-    /// they cannot tell from agreement. These assertions are about what is REPORTED, and the trace has
-    /// its own tests below.
+    /// Kept as a helper even though a moved element now produces nothing at all, because an
+    /// <c>IgnoredPaths</c> rule can still cover an element of an unordered array - and because the
+    /// assertions below are about what is REPORTED either way.
     /// </summary>
     private static IReadOnlyList<JsonChange> Reported(IReadOnlyList<JsonChange> changes) =>
         [.. changes.Where(c => !c.IsIgnored)];
@@ -423,53 +422,66 @@ public class UnorderedArrayTests
             JsonSemanticDiffer.ModeFor("$.steps", JsonComparisonOptions.Default));
     }
 
-    // ---- A reorder leaves a faint trace ---------------------------------------------------------
+    // ---- A move is not a difference, and leaves nothing behind ----------------------------------
 
     [Fact]
-    public void A_moved_element_is_marked_ignored_rather_than_erased()
+    public void A_moved_element_produces_no_change_at_all()
     {
-        // What the reader asked for: order ignored, not the FACT of a reorder erased. Told nothing at
-        // all, they cannot tell "these agree here" from "these disagree here and I said not to mention
-        // it" - and the second is worth a glance before trusting the diff.
+        // Order is not part of an unordered array's content, so a reorder is not a difference being
+        // suppressed - there is nothing there to report. This once left a faint IsReorder+IsIgnored
+        // trace so silence could not be mistaken for agreement; the case below is why that read worse
+        // than the silence it replaced.
         var changes = Compare(
             Obj(("tags", Strs("A", "B"))),
             Obj(("tags", Strs("B", "A"))),
             Unordered("$.tags"));
 
-        Assert.NotEmpty(changes);
-        Assert.All(changes, c => Assert.True(c.IsIgnored));
-        Assert.All(changes, c => Assert.True(c.IsReorder));
+        Assert.Empty(changes);
     }
 
+    /// <summary>
+    /// The case the trace was removed for. An index is not a position anyone moved: prepend one element
+    /// and every element after it has a new one, so the whole array was washed to say that "three" had
+    /// been added.
+    /// </summary>
     [Fact]
-    public void The_trace_does_not_count_as_a_difference()
+    public void Prepending_an_element_reports_the_addition_and_nothing_else()
     {
-        // IsIgnored is what keeps it out of the hunks, the counts and next/previous, while still letting
-        // a renderer draw it at the faint wash ignored rows already use.
         var changes = Compare(
-            Obj(("tags", Strs("A", "B"))),
-            Obj(("tags", Strs("B", "A"))),
-            Unordered("$.tags"));
+            Obj(("somearray", Strs("one", "two"))),
+            Obj(("somearray", Strs("three", "one", "two"))),
+            Unordered("$.somearray"));
 
-        Assert.Empty(Reported(changes));
+        var change = Assert.Single(changes);
+        Assert.Equal(ChangeKind.Inserted, change.Kind);
+        Assert.Equal("three", ((JsonAstScalar)change.Right!).Value);
+        Assert.False(change.IsIgnored);
     }
 
+    /// <summary>
+    /// Key matching has always emitted nothing for an element that only moved. Both modes mean "order
+    /// is not the content", so they must not disagree about the same document - which the trace made
+    /// them do, since only one of the two left it.
+    /// </summary>
     [Fact]
-    public void An_element_that_did_NOT_move_leaves_no_trace()
+    public void Unordered_and_key_matching_agree_that_a_move_is_not_a_difference()
     {
-        // Only the ones that actually moved. Marking every element of a reordered list would turn the
-        // faint hint into a wash over the whole array.
-        var changes = Compare(
-            Obj(("tags", Strs("A", "B", "C"))),
-            Obj(("tags", Strs("A", "C", "B"))),
-            Unordered("$.tags"));
+        var left = Obj(("items", Arr(Obj(("id", Str("a"))), Obj(("id", Str("b"))))));
+        var right = Obj(("items", Arr(Obj(("id", Str("b"))), Obj(("id", Str("a"))))));
 
-        Assert.Equal(2, changes.Count);
-        Assert.DoesNotContain(changes, c => c.Path.ToString().EndsWith("[0]", StringComparison.Ordinal));
+        // Key matching has to be CHOSEN - an array nobody has spoken about is positional, whatever
+        // fields it happens to carry.
+        var byKey = JsonComparisonOptions.Default with
+        {
+            ArrayKeyOverrides = new Dictionary<string, string> { ["$.items"] = "id" },
+        };
+
+        Assert.Empty(Compare(left, right, Unordered("$.items")));
+        Assert.Empty(Compare(left, right, byKey));
     }
 
     [Fact]
-    public void A_list_in_the_same_order_leaves_no_trace_at_all()
+    public void A_list_in_the_same_order_leaves_nothing_either()
     {
         var changes = Compare(
             Obj(("tags", Strs("A", "B"))),

@@ -302,6 +302,10 @@ public static class JsonSemanticDiffer
     /// rules still apply to it - matching purely by value would report a whole element as replaced
     /// because a timestamp inside it moved, and the rule covering that timestamp would never get to
     /// speak.</para>
+    ///
+    /// <para>An element that only MOVED produces nothing at all. In an unordered array order is not
+    /// part of the content, so a reorder is not a difference being suppressed - there is nothing there
+    /// to report. See the note at the match itself for what this replaced and why.</para>
     /// </summary>
     private static void CompareArraysUnordered(
         JsonAstArray left,
@@ -335,28 +339,23 @@ public static class JsonSemanticDiffer
                 var rightIndex = queue.Dequeue();
                 matchedRight.Add(rightIndex);
 
-                // Identical by value - but if it MOVED, leave a faint trace rather than nothing at all.
+                // Identical by value, and nothing is emitted even when the index changed.
                 //
-                // Reporting nothing was the first behaviour and it is the wrong kind of silence: the
-                // reader asked for order to be ignored, not for the fact that something was reordered to
-                // be erased. Told nothing, they cannot tell "these files agree here" from "these files
-                // disagree here and I asked you not to mention it" - and the second is worth a glance
-                // before trusting the diff.
+                // This once left a faint IsReorder+IsIgnored trace, on the argument that silence leaves
+                // the reader unable to tell "these agree here" from "these disagree here and I said not
+                // to mention it". The argument was wrong, for two reasons that only show up on real
+                // documents.
                 //
-                // Marked exactly as an ignored row is, which is what buys the whole behaviour for free:
-                // IsIgnored keeps it out of the counts, out of the hunks and out of next/previous, while
-                // still letting the renderers draw it at the faint 7% wash they already use. IsReorder
-                // is what the tree reads to label it "moved" rather than showing a value change that did
-                // not happen.
-                if (rightIndex != i)
-                {
-                    changes.Add(new JsonChange(path.Index(i), ChangeKind.Modified, left.Items[i], right.Items[rightIndex])
-                    {
-                        IsReorder = true,
-                        IsIgnored = true,
-                    });
-                }
-
+                // An index is not a position anyone moved. Prepend one element and EVERY element after
+                // it has a new index, so ["one","two"] -> ["three","one","two"] washed the whole array
+                // and reported a "move" of one and two that nobody performed - loudest in exactly the
+                // case where the array is easiest to read and the answer is simply "three was added".
+                //
+                // And in an unordered array a reorder is not a difference being hidden; order is not
+                // part of the content, so there is nothing there to hide. That is the whole meaning of
+                // marking the path unordered. Key matching has always taken this reading -
+                // CompareArraysByKey emits nothing for an element that moved - so the trace also made
+                // the two order-insensitive modes disagree about the same document.
                 continue;
             }
 
