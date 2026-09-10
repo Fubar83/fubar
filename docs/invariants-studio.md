@@ -586,3 +586,54 @@ which is what "an inherited rule is never edited in place" exists to prevent.
 once in six runs on a loaded machine. What those tests assert is the ORDER the service reports in, so
 they use an inline `IProgress<T>` that records on the calling thread and wait for nothing. A test that
 fails intermittently teaches people to re-run rather than to look.
+
+**A bound collection being refilled is not a user making a choice** (Studio). The active-environment
+picker is a two-way bound `ComboBox`, and `EnvironmentManagerViewModel.LoadForWorkspaceAsync` empties
+`Environments` before refilling it - so the selection model writes `null` back through the binding
+mid-reload, and that arrived at `OnActiveEnvironmentChanged` indistinguishable from someone picking
+"no environment". It was persisted, so `activeEnvironmentId` was erased from `fubar.json` on every
+workspace activation and every time the open request changed workspace. The next open then fell back
+to `Environments.FirstOrDefault()`: a workspace saved on Staging came back up on Production with the
+picker agreeing, which is a run sent somewhere nobody chose. `_suppressPersist` therefore covers the
+WHOLE reload in a `try/finally`, not just the assignment at the end - and `ClearWorkspace` raises it
+before touching the collection for the same reason, even though nulling `ActiveWorkspace` first
+happens to make its own write-back harmless today. Any other two-way bound collection in this app has
+the same trap waiting in it.
+
+**Run rows are keyed on `RunStep.Order`, because nothing else about a step is unique** (Studio).
+`CollectionRunViewModel.Begin` used endpoint + case, which two steps of an ordinary batch routinely
+share: a teardown step is usually the SAME case as one of the steps above it, since "delete it" both
+proves the delete works and cleans up a run that stopped before reaching it - the shape
+`docs/integration-tests.md` recommends. `ToDictionary` threw on the duplicate from inside an async
+command handler and took the process down on the button press, while `fubar run` ran the same batch
+happily. Last-wins would stop the throw and be wrong: the two rows are the same case and each has to
+show what IT did, so the cleanup's 404 sits under the step's 204 instead of overwriting it. `RunPlan`
+renumbers every plan 1..n including teardown, which is what makes `Order` safe to key on.
+
+**Anything a batch STATES has to reach both entry points** (Studio). `CliRunner` honoured a batch's
+`stopOnFailure` and `delayMs` from the day batches existed; `CollectionRunViewModel` read its oracle
+and its environment and stopped there. So the same batch ran differently depending on whether it was
+started from the button or from `fubar run`, and the window's checkbox showed the wrong state while
+doing it - worse than showing no checkbox at all, because it looks like an answer. The window opens on
+what the batch asked for and stays editable, so changing your mind for one run does not mean editing
+the file. When a field is added to `BatchOptions`, both places need it.
+
+**The window reads its arguments too, and opens what they name BESIDE the session** (Studio).
+`FubarAPIStudio path/to/workspace` did nothing at all for several releases: everything with a meaning
+on the command line is handled by `CommandLine.IsHeadless` before Avalonia is configured, and the
+window that started afterwards restored its last session and ignored `args`. `StartupWorkspace` is the
+counterpart of Fubar Diff's `StartupFiles`, injected for the same reason - so the shell receives it
+like any other dependency instead of reading `Environment.GetCommandLineArgs()` somewhere untestable.
+Only the first argument counts, and only when it is not a flag: by that point an argument is a path or
+a mistake, and guessing among several is how a stray argument becomes a tab. What it names opens
+alongside the restored tabs rather than instead of them - closing someone's tabs because they typed a
+path is a second, unasked-for action - and it accepts `fubar.json` as readily as the directory,
+because that is what a file manager passes.
+
+**A report file must not contradict the exit code beside it** (Studio). `RunReport.Ok` counts
+`Differing` and `Uncomparable`; `JUnitRunReport` mapped only `StepStatus`, so a run that found real
+drift between two environments exited 1 while its report said `failures="0"` with every testcase
+green - and the build page, which is the thing anyone actually looks at, went green with it. The
+`failures` attribute is now counted with the same predicate that decides whether to write a
+`<failure>`, so the header and the body cannot drift apart. Teardown is described in a `system-out`
+and never judged, matching the rule everywhere else; a match a tolerance forgave says so.

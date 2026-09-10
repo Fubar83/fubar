@@ -873,3 +873,32 @@ has filled in the section array - which crashed the process on first open until 
 nullable and every use guarded. And a section counts as a search hit only when it still holds a visible
 `SettingRow`; counting any content would make a section whose rows all filtered out look like a match
 while containing nothing you can change.
+
+**Two directories on the command line are a folder comparison, and `--merge` outranks that** (Diff).
+`FubarDiff old new` over two checkouts fell through to the FILE comparison and reported "the file does
+not exist" about directories that plainly did - the one shape of argument where the app knew the answer
+and gave the wrong one, since folder comparison was reachable only from the Open dialog, which is not
+where anyone types two paths. `StartupFiles.IsFolderComparison` takes the probe as a parameter rather
+than calling `Directory.Exists` itself, matching `OpenComparisonViewModel`: what it decides is testable,
+touching the disk to find out is not. It is guarded on `!IsMerge`, because a merge names three files by
+git's convention and a repository that happened to have directories at those paths must not silently
+become a folder comparison. The window is opened from the main window's `Opened` event, not from
+`OnFrameworkInitializationCompleted`, for the reason the merge window already is: an owned window
+cannot be shown before its owner is.
+
+**A folder handed to a file comparison is named as a folder, not called missing** (Diff).
+`FileInfo.Exists` is false for a directory, so both readers landed on "the file does not exist" - which
+tells someone they typed a bad path when what they actually did was give a file comparison something
+that is not a file. "It is a folder, not a file" is the difference between hunting for a typo and
+looking at the other box. Both `TextFileReader` and `BinaryFileReader` say it; they are separate classes
+and a message fixed in one of them is fixed in half the cases.
+
+**A JSON property that MOVED and CHANGED is reported as changed, once** (Diff).
+`ReportReorderedProperties` flags every shared property outside the longest common subsequence, and it
+used to flag them whether or not they already had a real change - so a property that both moved and
+changed value appeared twice, and the change tree showed the softer of the two. Reading
+`expedited  moved` where `false` had become `true`, a reader takes the value on trust, which is the one
+thing a diff must never make anyone do; a reassuring wrong label is worse than a missing one. A
+property that already carries a change is skipped. An object that moved still says so when its own
+CONTENTS changed - a child's path is not its parent's, and "this object is somewhere else now" stays
+true and worth saying.
