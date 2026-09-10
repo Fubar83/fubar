@@ -5,6 +5,11 @@ namespace Fubar.Studio.Core.Workspaces;
 /// <summary>Workspace discovery and the root <c>fubar.json</c> manifest.</summary>
 public interface IWorkspaceStore
 {
+    /// <summary>The file whose presence makes a directory a workspace. Named here rather than in the
+    /// adapter because it is a fact about the format, and callers outside Infrastructure need it - the
+    /// Open dialog picks this file by name, and so does a path handed in on the command line.</summary>
+    public const string ManifestFileName = "fubar.json";
+
     /// <summary>True if <paramref name="directoryPath"/> contains a <c>fubar.json</c>.</summary>
     bool IsWorkspaceRoot(string directoryPath);
 

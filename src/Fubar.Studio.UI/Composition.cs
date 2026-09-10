@@ -44,6 +44,10 @@ internal static class Composition
                 services.AddSingleton<ICollectionRunService>(s => s.GetRequiredService<CollectionRunService>());
                 services.AddSingleton<IEnvironmentPairRunService>(s => s.GetRequiredService<CollectionRunService>());
 
+                // A workspace named on the command line, read once and injected - never fished out of
+                // Environment.GetCommandLineArgs() somewhere untestable.
+                services.AddSingleton(StartupWorkspace.FromArgs(args));
+
                 services.AddSingleton<IFolderPickerService, FolderPickerService>();
                 services.AddSingleton<IFilePickerService, FilePickerService>();
                 services.AddSingleton<IClipboardService, ClipboardService>();
