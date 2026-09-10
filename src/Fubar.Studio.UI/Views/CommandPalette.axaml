@@ -12,6 +12,16 @@
         Background="{DynamicResource BgEditorCanvas}"
         Title="Commands">
 
+    <Window.Styles>
+        <!-- The characters the query actually matched. Weight as well as colour: the accent alone is
+             hard to follow across a list, and on a selected row the highlight sits on a filled
+             background where colour contrast is at its weakest. -->
+        <Style Selector="TextBlock.matched">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        </Style>
+    </Window.Styles>
+
     <!-- Deliberately plain, and deliberately keyboard-only. A palette is used with the hands already
          on the keyboard; anything that needs a pointer belongs on a toolbar instead. -->
     <Grid RowDefinitions="Auto,*" Margin="12">
@@ -29,13 +39,30 @@
                  SelectedItem="{Binding Selected}"
                  Background="Transparent">
             <ListBox.ItemTemplate>
-                <DataTemplate DataType="vm:PaletteEntry">
+                <DataTemplate DataType="vm:PaletteRow">
                     <Grid ColumnDefinitions="*,Auto,Auto" MinHeight="24">
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding Title}"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
-                                   Foreground="{DynamicResource TextPrimary}" />
+                        <!-- The title in pieces, so the matched characters can be drawn differently -
+                             Avalonia has no bindable inline collection, so a strip of TextBlocks it
+                             is. Clipped rather than ellipsed: a long request name would otherwise push
+                             the category and the gesture off the right edge, and those are what tell
+                             two similarly named entries apart. -->
+                        <ItemsControl Grid.Column="0"
+                                      ItemsSource="{Binding Runs}"
+                                      ClipToBounds="True"
+                                      VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:PaletteRun">
+                                    <TextBlock Text="{Binding Text}"
+                                               Classes.matched="{Binding IsMatch}"
+                                               Foreground="{DynamicResource TextPrimary}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <TextBlock Grid.Column="1"
                                    Text="{Binding Category}"
                                    VerticalAlignment="Center"

@@ -356,7 +356,7 @@ There is no menu bar, so this list is the only place these are written down.
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save — the request, environment or auth profile that is open |
 | <kbd>Ctrl</kbd>+<kbd>O</kbd> | Open a workspace |
 | <kbd>Ctrl</kbd>+<kbd>W</kbd> | Close the active workspace |
-| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Command palette — every command and every open request, each showing its own shortcut |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Command palette — every command and every open request, each showing its own shortcut. Matches on initials (`hj` finds *Henrik Johansson*), and highlights the characters it matched |
 | <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Filter the request tree — matches name, URL and method |
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Find in the response |

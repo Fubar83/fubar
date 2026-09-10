@@ -1,5 +1,8 @@
+using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Fubar.Studio.UI.Services;
 using Fubar.Studio.UI.ViewModels;
+using Fubar.Studio.UI.Views;
 
 namespace Fubar.Studio.UI.Tests;
 
@@ -180,5 +183,138 @@ public class CommandPaletteTests
         var midWord = FuzzyMatch.Score("Environment", "r");
 
         Assert.True(boundary > midWord, $"boundary {boundary} should beat mid-word {midWord}");
+    }
+
+    // --- initials, best alignment, and where it matched ------------------------------------------
+
+    [Fact]
+    public void Initials_of_separate_words_outrank_the_same_letters_mid_word()
+    {
+        // "hj" is Henrik Johansson, and it is the initials that make it so - both letters land on a
+        // word start, which is worth more than the same two letters found in the middle of words.
+        var initials = FuzzyMatch.Score("Henrik Johansson", "hj");
+        var scattered = FuzzyMatch.Score("The high jump", "hj");
+
+        Assert.NotNull(initials);
+        Assert.True(initials > scattered, $"initials {initials} should beat scattered {scattered}");
+    }
+
+    [Fact]
+    public void The_BEST_alignment_wins_not_the_first_one()
+    {
+        // The old matcher walked greedily and took the p of "Copy", then scored the scattered thing it
+        // had just chosen to make. Every alignment is considered now, so "posh" lands on PowerShell -
+        // which is also what makes the highlight honest.
+        var match = FuzzyMatch.Match("Copy as cURL (PowerShell)", "posh");
+
+        Assert.NotNull(match);
+        Assert.Equal("PoSh", string.Concat(match!.Value.Positions.Select(i => "Copy as cURL (PowerShell)"[i])));
+    }
+
+    [Fact]
+    public void A_run_of_characters_beats_the_same_letters_spread_out()
+    {
+        var contiguous = FuzzyMatch.Score("Import from curl...", "impo");
+        var spread = FuzzyMatch.Score("Inspect my post office", "impo");
+
+        Assert.True(contiguous > spread, $"contiguous {contiguous} should beat spread {spread}");
+    }
+
+    [Fact]
+    public void Positions_are_ascending_and_inside_the_candidate()
+    {
+        var match = FuzzyMatch.Match("orders/create-order", "ocr");
+
+        Assert.NotNull(match);
+        var positions = match!.Value.Positions;
+        Assert.Equal(3, positions.Count);
+        Assert.Equal(positions.OrderBy(p => p), positions);
+        Assert.All(positions, p => Assert.InRange(p, 0, "orders/create-order".Length - 1));
+    }
+
+    // --- the highlight the row draws --------------------------------------------------------------
+
+    private static PaletteRow Row(string title, string query) =>
+        PaletteRow.For(
+            new PaletteEntry(title, "Command", null, () => Task.CompletedTask),
+            FuzzyMatch.Match(title, query)!.Value.Positions);
+
+    [Fact]
+    public void The_runs_reassemble_into_the_title()
+    {
+        // The one property that must hold whatever the query: the row draws the runs and nothing else,
+        // so a splitter that dropped or doubled a character would rewrite what the entry says.
+        foreach (var query in new[] { "hj", "h", "hjohansson", "nk", "" })
+        {
+            var row = Row("Henrik Johansson", query);
+
+            Assert.Equal("Henrik Johansson", string.Concat(row.Runs.Select(r => r.Text)));
+        }
+    }
+
+    [Fact]
+    public void Matched_characters_are_the_ones_the_matcher_found()
+    {
+        var row = Row("Henrik Johansson", "hj");
+
+        Assert.Equal("HJ", string.Concat(row.Runs.Where(r => r.IsMatch).Select(r => r.Text)));
+    }
+
+    [Fact]
+    public void Adjacent_matches_become_one_run_rather_than_four()
+    {
+        // Four bold TextBlocks in a row draw differently from one: the spacing between them is where
+        // the letters of "Impo" would visibly come apart.
+        var row = Row("Import from curl...", "impo");
+
+        Assert.Equal(["Impo", "rt from curl..."], row.Runs.Select(r => r.Text));
+        Assert.Equal([true, false], row.Runs.Select(r => r.IsMatch));
+    }
+
+    [Fact]
+    public void With_no_query_the_whole_title_is_one_unmatched_run()
+    {
+        var row = Row("New Request", "");
+
+        var run = Assert.Single(row.Runs);
+        Assert.Equal("New Request", run.Text);
+        Assert.False(run.IsMatch);
+    }
+
+    [Fact]
+    public void Filtering_highlights_what_it_matched()
+    {
+        var palette = Palette("Copy as cURL", "Copy as cURL (PowerShell)");
+        palette.Query = "cacp";
+
+        var row = palette.Results.First();
+
+        Assert.Equal("Copy as cURL (PowerShell)", row.Title);
+        Assert.Equal("CacP", string.Concat(row.Runs.Where(r => r.IsMatch).Select(r => r.Text)));
+    }
+
+    /// <summary>
+    /// The window, not the view model: the runs reach the screen as separate TextBlocks carrying a
+    /// style class, and a class name is a string in markup that no compiler checks. Renaming the style
+    /// or the class would leave every character drawn in the same colour, with every test above still
+    /// green.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_matched_characters_are_drawn_in_their_own_style()
+    {
+        var palette = Palette("Henrik Johansson", "New Request");
+        palette.Query = "hj";
+
+        var window = new CommandPalette(palette);
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var highlighted = window.GetVisualDescendants()
+            .OfType<Avalonia.Controls.TextBlock>()
+            .Where(t => t.Classes.Contains("matched"))
+            .Select(t => t.Text)
+            .ToList();
+
+        Assert.Equal(["H", "J"], highlighted);
     }
 }

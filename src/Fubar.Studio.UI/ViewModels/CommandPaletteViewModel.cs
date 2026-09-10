@@ -19,6 +19,65 @@ namespace Fubar.Studio.UI.ViewModels;
 /// <param name="Invoke">What running it does.</param>
 public sealed record PaletteEntry(string Title, string Category, string? Gesture, Func<Task> Invoke);
 
+/// <summary>One stretch of a title, and whether the query matched it.</summary>
+/// <remarks>
+/// The title is split rather than marked up because Avalonia has no bindable inline collection: the
+/// row draws these as a strip of <c>TextBlock</c>s, and the matched ones carry a style class.
+/// </remarks>
+public sealed record PaletteRun(string Text, bool IsMatch);
+
+/// <summary>
+/// One entry as the palette is currently showing it: the entry itself, plus its title cut into matched
+/// and unmatched runs for the query that found it.
+/// </summary>
+/// <remarks>
+/// <para>A row rather than the bare entry, because what is drawn depends on the QUERY and an entry
+/// does not: the same "New Request" is highlighted differently under "nr" and under "req". Building
+/// the runs while filtering also means the highlight is the matcher's own answer rather than a second
+/// search done by the view - the characters in bold are the ones the score was earned on.</para>
+/// <para><see cref="Title"/>, <see cref="Category"/> and <see cref="Gesture"/> pass straight through,
+/// so a row reads like the entry it stands for.</para>
+/// </remarks>
+public sealed record PaletteRow(PaletteEntry Entry, IReadOnlyList<PaletteRun> Runs)
+{
+    public string Title => Entry.Title;
+
+    public string Category => Entry.Category;
+
+    public string? Gesture => Entry.Gesture;
+
+    /// <summary>Cuts <paramref name="title"/> at <paramref name="positions"/>, merging neighbours so a
+    /// run of matched characters is one bold stretch rather than four adjacent ones.</summary>
+    public static PaletteRow For(PaletteEntry entry, IReadOnlyList<int> positions)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(positions);
+
+        var title = entry.Title;
+        if (positions.Count == 0 || title.Length == 0)
+        {
+            return new PaletteRow(entry, [new PaletteRun(title, false)]);
+        }
+
+        var matched = new HashSet<int>(positions);
+        var runs = new List<PaletteRun>();
+        var start = 0;
+
+        for (var i = 1; i <= title.Length; i++)
+        {
+            if (i < title.Length && matched.Contains(i) == matched.Contains(start))
+            {
+                continue;
+            }
+
+            runs.Add(new PaletteRun(title[start..i], matched.Contains(start)));
+            start = i;
+        }
+
+        return new PaletteRow(entry, runs);
+    }
+}
+
 /// <summary>
 /// The command palette.
 ///
@@ -35,17 +94,17 @@ public partial class CommandPaletteViewModel : ViewModelBase
     public CommandPaletteViewModel(IEnumerable<PaletteEntry> entries)
     {
         _entries = [.. entries];
-        Results = [.. _entries];
+        Results = [.. _entries.Select(e => PaletteRow.For(e, []))];
         Selected = Results.FirstOrDefault();
     }
 
     [ObservableProperty]
     public partial string Query { get; set; } = "";
 
-    public ObservableCollection<PaletteEntry> Results { get; }
+    public ObservableCollection<PaletteRow> Results { get; }
 
     [ObservableProperty]
-    public partial PaletteEntry? Selected { get; set; }
+    public partial PaletteRow? Selected { get; set; }
 
     /// <summary>Raised when an entry has been chosen, so the host can close the window.</summary>
     public event Action? Accepted;
@@ -53,13 +112,13 @@ public partial class CommandPaletteViewModel : ViewModelBase
     partial void OnQueryChanged(string value)
     {
         var ranked = _entries
-            .Select(entry => (Entry: entry, Score: FuzzyMatch.Score(entry.Title, value)))
-            .Where(x => x.Score is not null)
+            .Select(entry => (Entry: entry, Match: FuzzyMatch.Match(entry.Title, value)))
+            .Where(x => x.Match is not null)
             // Descending by score, then by title so the order is stable rather than dependent on the
             // order the entries happened to be built in.
-            .OrderByDescending(x => x.Score!.Value)
+            .OrderByDescending(x => x.Match!.Value.Score)
             .ThenBy(x => x.Entry.Title, StringComparer.OrdinalIgnoreCase)
-            .Select(x => x.Entry)
+            .Select(x => PaletteRow.For(x.Entry, x.Match!.Value.Positions))
             .ToList();
 
         Results.Clear();
@@ -95,7 +154,7 @@ public partial class CommandPaletteViewModel : ViewModelBase
     [RelayCommand]
     private async Task AcceptAsync()
     {
-        if (Selected is not { } entry)
+        if (Selected is not { Entry: { } entry })
         {
             return;
         }

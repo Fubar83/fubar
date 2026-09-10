@@ -152,6 +152,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **The command palette matches on initials, and shows you where it matched.** Typing `hj` finds
+  *Henrik Johansson*, `cacp` finds *Copy as cURL (PowerShell)*, `ocr` finds *orders/create-order* - and
+  the characters that were matched are drawn in the accent colour, so the reason an entry is in the
+  list is visible rather than inferred. The matcher used to walk the title greedily, taking the first
+  occurrence of each character and then scoring the scattered thing it had just chosen to make: `posh`
+  landed on the `p` of "Copy" rather than on "PowerShell". Every alignment is considered now and the
+  best-scoring one wins, which is also what makes the highlight honest - the characters in bold are the
+  ones the score was earned on. A word start counts for more than a letter mid-word (that is what makes
+  an initials query work), a run of adjacent characters counts for more still, and camelCase and
+  `/`, `-`, `_`, `(` all begin a word.
+
 - **Copy as cURL (PowerShell).** A second palette entry beside the existing one. The command this app
   has always produced is POSIX - multi-line with backslash continuations - and PowerShell has no such
   continuation, so it stopped at the first one with *Missing expression after unary operator '--'* and

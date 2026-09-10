@@ -664,3 +664,14 @@ publishing a versioned media type, with the pane showing a header that had never
 and `Copy as curl` disagreeing with the app, because it emitted no content type at all and curl
 defaults `--data` to form encoding. The two must agree: the copy button exists to be trusted at
 exactly the moment someone is deciding which of the two is lying.
+
+**The palette highlights what the MATCHER found, not what a second search finds** (Studio).
+`FuzzyMatch.Match` returns the positions it scored on, and `PaletteRow.For` cuts the title at exactly
+those - so the characters in bold are the ones that earned the entry its place in the list. Anything
+else drifts: a view that re-scanned the title for the query's letters would bold the FIRST occurrence
+of each while the ranking had been decided by a different set, and the entry at the top would look
+like the worst match in the list. That is also why the matcher considers every alignment rather than
+walking greedily as it used to: `posh` against "Copy as cURL (PowerShell)" took the `p` of "Copy",
+scored the scattered result it had just chosen to make, and would now have drawn that choice on
+screen. Runs of adjacent matches are merged into one before they are drawn, because four bold
+`TextBlock`s in a row do not look like one bold word.
