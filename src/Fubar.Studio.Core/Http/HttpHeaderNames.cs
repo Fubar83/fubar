@@ -8,11 +8,16 @@ namespace Fubar.Studio.Core.Http;
 /// </summary>
 public static class HttpHeaderNames
 {
+    /// <summary>Named rather than spelled out, because it is no longer only a hint: the executor has
+    /// to recognise it to know that what the user typed replaces what the body type chose, and that a
+    /// multipart boundary has to survive being replaced.</summary>
+    public const string ContentType = "Content-Type";
+
     public static readonly string[] Common =
     [
         "Accept",
         "Authorization",
-        "Content-Type",
+        ContentType,
         "Accept-Encoding",
         "Accept-Language",
         "Cache-Control",

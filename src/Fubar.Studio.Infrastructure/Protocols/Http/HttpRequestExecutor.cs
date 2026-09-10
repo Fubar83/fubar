@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text;
+using Fubar.Studio.Core.Http;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Protocols;
 using Fubar.Studio.Core.Settings;
@@ -154,6 +155,10 @@ public sealed class HttpRequestExecutor : IRequestExecutor
         for (var hop = 0; ; hop++)
         {
             using var httpRequest = new HttpRequestMessage(method, uri);
+
+            // Headers that belong on the CONTENT, held back until there is content to put them on.
+            List<(string Key, string Value)>? contentHeaders = null;
+
             foreach (var header in request.Headers.Where(h => h.Enabled && !string.IsNullOrWhiteSpace(h.Key)))
             {
                 // Once we've left the original origin, never send the credential headers again.
@@ -162,12 +167,22 @@ public sealed class HttpRequestExecutor : IRequestExecutor
                     continue;
                 }
 
-                httpRequest.Headers.TryAddWithoutValidation(header.Key, Resolve(header.Value, context));
+                var value = Resolve(header.Value, context);
+
+                // TryAddWithoutValidation returns FALSE for a content header and adds nothing. Nobody
+                // was reading that bool, so a typed Content-Type went nowhere - silently, while the
+                // body's own hard-coded one went out instead. An API publishing a versioned media type
+                // answered 415 while the request pane showed the header the user had set.
+                if (!httpRequest.Headers.TryAddWithoutValidation(header.Key, value))
+                {
+                    (contentHeaders ??= []).Add((header.Key, value));
+                }
             }
 
             if (!IsBodyless(method))
             {
                 httpRequest.Content = await BuildContentAsync(request.Body, context, cancellationToken);
+                ApplyContentHeaders(httpRequest.Content, contentHeaders);
             }
 
             var response = await client.SendAsync(httpRequest, cancellationToken);
@@ -264,6 +279,48 @@ public sealed class HttpRequestExecutor : IRequestExecutor
         string.Equals(a.Scheme, b.Scheme, StringComparison.OrdinalIgnoreCase)
         && string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
         && a.Port == b.Port;
+
+    /// <summary>
+    /// Puts the headers that belong on the content onto the content, replacing whatever the body type
+    /// chose for itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>REPLACES rather than adds. A content header is a list, so adding a second
+    /// <c>Content-Type</c> sends <c>application/json, application/vnd.acme.order+json</c> - not a
+    /// media type at all, and a failure that looks nothing like its cause.</para>
+    /// <para>The user's value wins outright, charset included: <c>StringContent</c> writes UTF-8 and
+    /// says so, and someone who states <c>charset=iso-8859-1</c> means it. Added without validation,
+    /// because a media type this app has never heard of is exactly the case this exists for.</para>
+    /// <para>The one thing carried over is a multipart <b>boundary</b>. It is generated per request and
+    /// nobody types it, so a <c>Content-Type</c> stated for a form body would otherwise leave the
+    /// server unable to find where the parts begin.</para>
+    /// </remarks>
+    private static void ApplyContentHeaders(HttpContent? content, List<(string Key, string Value)>? headers)
+    {
+        if (content is null || headers is null)
+        {
+            return;
+        }
+
+        foreach (var (key, value) in headers)
+        {
+            var isContentType = string.Equals(key, HttpHeaderNames.ContentType, StringComparison.OrdinalIgnoreCase);
+            var boundary = isContentType
+                ? content.Headers.ContentType?.Parameters.FirstOrDefault(
+                    p => string.Equals(p.Name, "boundary", StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            content.Headers.Remove(key);
+            content.Headers.TryAddWithoutValidation(key, value);
+
+            if (boundary is not null
+                && content.Headers.ContentType is { } replacement
+                && !replacement.Parameters.Any(p => string.Equals(p.Name, "boundary", StringComparison.OrdinalIgnoreCase)))
+            {
+                replacement.Parameters.Add(boundary);
+            }
+        }
+    }
 
     private static bool IsBodyless(HttpMethod method) =>
         string.Equals(method.Method, "GET", StringComparison.OrdinalIgnoreCase)

@@ -649,3 +649,18 @@ Linux CI runner is what caught it - the suite agreed with itself on Windows beca
 to reject what the code had forgotten. Every place that derives a file name from text somebody else
 wrote (both importers, the snapshot store, new workspace files) goes through `Sanitize` for the same
 reason; `IsValid` is for names a person types, who can be told.
+
+**A header goes where it BELONGS, and `TryAddWithoutValidation` returns a bool for a reason** (Studio).
+`Content-Type` is a content header; `HttpRequestMessage.Headers` is the request collection and refuses
+it, silently, by returning false. Reading that bool is the whole fix: anything the request collection
+will not take is held until `BuildContentAsync` has produced content and then applied to
+`content.Headers`. Three details are load-bearing. It REPLACES rather than adds, because content
+headers are lists and a second `Content-Type` goes out as `application/json, application/vnd...`, which
+is not a media type and fails in a way that looks nothing like its cause. A charset the user states
+survives, because `StringContent` writes UTF-8 and says so, and someone typing `iso-8859-1` means it.
+And a multipart **boundary** is carried across, because it is generated per request, nobody types it,
+and losing it turns a 415 into a 400. The symptom that found this was a 415 from an endpoint
+publishing a versioned media type, with the pane showing a header that had never left the process -
+and `Copy as curl` disagreeing with the app, because it emitted no content type at all and curl
+defaults `--data` to form encoding. The two must agree: the copy button exists to be trusted at
+exactly the moment someone is deciding which of the two is lying.

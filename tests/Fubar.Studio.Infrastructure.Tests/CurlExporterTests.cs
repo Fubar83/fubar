@@ -79,5 +79,75 @@ public class CurlExporterTests
         var curl = _sut.ToCurl(request, Resolve);
 
         Assert.Contains("--data-urlencode 'user=ada'", curl);
+
+        // curl already sends application/x-www-form-urlencoded for these, so saying it again is noise.
+        Assert.DoesNotContain("Content-Type", curl, StringComparison.Ordinal);
+    }
+
+    // ---- The copied command has to BE the request ------------------------------------------------
+
+    private static RequestModel Body(BodyType type, string raw, params KeyValueItem[] headers) => new()
+    {
+        Name = "r",
+        Method = "POST",
+        Url = "https://x.test/orders",
+        Headers = [.. headers],
+        Body = new RequestBody { Type = type, Raw = raw },
+    };
+
+    [Fact]
+    public void A_json_body_states_its_content_type()
+    {
+        // `--data` makes curl send application/x-www-form-urlencoded. Without this the copied command
+        // was a DIFFERENT request from the one the app sends - so "it works in curl" and "it fails in
+        // the app" were comparing two things, which is the worst thing this button could be for.
+        var curl = _sut.ToCurl(Body(BodyType.Json, "{\"name\":\"Ada\"}"), Resolve);
+
+        Assert.Contains("-H 'Content-Type: application/json'", curl, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Raw_text_and_a_binary_file_state_theirs_too()
+    {
+        Assert.Contains(
+            "-H 'Content-Type: text/plain'",
+            _sut.ToCurl(Body(BodyType.RawText, "hello"), Resolve),
+            StringComparison.Ordinal);
+
+        var binary = new RequestModel
+        {
+            Name = "r",
+            Method = "POST",
+            Url = "https://x.test/blob",
+            Body = new RequestBody { Type = BodyType.BinaryFile, BinaryFilePath = "/tmp/x.bin" },
+        };
+
+        Assert.Contains(
+            "-H 'Content-Type: application/octet-stream'",
+            _sut.ToCurl(binary, Resolve),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_stated_content_type_is_not_doubled()
+    {
+        // The whole point of typing one is that it is the one that goes out - here and on the wire.
+        var curl = _sut.ToCurl(
+            Body(
+                BodyType.Json,
+                "{}",
+                new KeyValueItem { Key = "Content-Type", Value = "application/vnd.acme.order+json", Enabled = true }),
+            Resolve);
+
+        Assert.Contains("-H 'Content-Type: application/vnd.acme.order+json'", curl, StringComparison.Ordinal);
+        Assert.DoesNotContain("application/json'", curl, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_empty_body_states_nothing()
+    {
+        var curl = _sut.ToCurl(Body(BodyType.Json, ""), Resolve);
+
+        Assert.DoesNotContain("Content-Type", curl, StringComparison.Ordinal);
     }
 }

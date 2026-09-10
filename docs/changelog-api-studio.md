@@ -39,6 +39,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A `Content-Type` you type is the one that gets sent.** It was being dropped in silence and the body
+  type's own was sent instead - `application/json` for a Json body, whatever the header said - so an
+  API that publishes its own media type answered **415 Unsupported Media Type** while the request pane
+  showed the header that was set. `Content-Type` is a CONTENT header and
+  `HttpRequestMessage.Headers` is the request collection: `TryAddWithoutValidation` returns false
+  for it and adds nothing, and the bool nobody was reading was the only sign. Every content header now
+  goes where it belongs - `Content-Language`, `Content-Disposition` and the rest were being lost the
+  same way - replacing rather than joining what the body chose, keeping a charset you state, and
+  keeping the generated boundary when the body is multipart. `Accept` was never affected: it is a
+  request header and was always sent.
+
+  **Copy as curl** had the mirror-image bug: it emitted no content type at all, so `--data` made curl
+  send `application/x-www-form-urlencoded` and the copied command was a different request from the one
+  the app sends. That is the worst thing a copy button can be, since it is reached for exactly when
+  someone is trying to work out which of the two is lying. It now states what the body implies, unless
+  you have stated one yourself.
+
 - **A workspace written on Linux can be opened on Windows.** What may name a case, a batch, an
   imported folder or a snapshot was decided by `Path.GetInvalidFileNameChars()`, which answers a
   question about the HOST: on Windows it rejects ` / : * ? " < > |` and the control characters, on
