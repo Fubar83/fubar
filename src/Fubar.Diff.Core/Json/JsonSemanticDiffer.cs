@@ -140,6 +140,11 @@ public static class JsonSemanticDiffer
     /// Compares the sequence of shared names on each side and reports the ones that are not in the
     /// longest common subsequence - i.e. the minimum set that actually had to move, rather than every
     /// property after the first displaced one.
+    ///
+    /// <para>A property that ALSO changed value is left alone: the change list already carries that,
+    /// and adding a second entry labelled "moved" put the softer word on top of the harder fact.
+    /// Reading a tree that said <c>expedited moved</c> where <c>false</c> had become <c>true</c>, you
+    /// would take the value on trust - which is the one thing a diff must never make you do.</para>
     /// </summary>
     private static void ReportReorderedProperties(
         JsonAstObject left,
@@ -147,6 +152,12 @@ public static class JsonSemanticDiffer
         JsonPath path,
         List<JsonChange> changes)
     {
+        // This level's own changes only: a child's path is not its parent's, so an object whose
+        // CONTENTS changed is still reported as moved when the object itself moved.
+        var alreadyChanged = new HashSet<string>(
+            changes.Select(c => c.Path.ToString()),
+            System.StringComparer.Ordinal);
+
         var rightNames = right.Properties.Select(p => p.Name).ToList();
         var rightSet = new HashSet<string>(rightNames, System.StringComparer.Ordinal);
 
@@ -165,9 +176,16 @@ public static class JsonSemanticDiffer
                 continue;
             }
 
+            var propertyPath = path.Property(leftProperty.Name);
+
+            if (alreadyChanged.Contains(propertyPath.ToString()))
+            {
+                continue;
+            }
+
             var rightProperty = right.Find(leftProperty.Name)!;
 
-            changes.Add(new JsonChange(path.Property(leftProperty.Name), ChangeKind.Modified, leftProperty.Value, rightProperty.Value)
+            changes.Add(new JsonChange(propertyPath, ChangeKind.Modified, leftProperty.Value, rightProperty.Value)
             {
                 LeftNameSpan = leftProperty.NameSpan,
                 RightNameSpan = rightProperty.NameSpan,
