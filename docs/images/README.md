@@ -35,6 +35,8 @@ every other app in their category until they are showing real work.
 | `diff-side-by-side.png` | The hero. Two versions of a real C# file with one difference selected — row tints, character-level spans, the location map, and the Diff pane close-up stacking the two versions of the selected line. Status bar: `Difference 1 of 8`. | `diff.md` |
 | `diff-structural-csharp.png` | **The differentiator.** The same pair with the Structure panel open: `1 added, 3 changed, 1 reformatted and 1 moved`, listing each member by name and kind, beside a text diff that just says eight changes. The contrast between the two panels IS the feature. | `README.md`, `diff.md` |
 | `diff-json-semantic.png` | Two JSON documents whose properties are in a different order, reported as `moved` four times over — with the one genuine value change, `$.fulfilment.expedited`, marked in both documents and shown in the close-up. A line differ would call these files completely different. | `diff.md` |
+| `diff-folder.png` | Two checkouts walked together: `differs`, `left only`, `right only`, sizes on both sides, and the status line counting the identical files it is hiding. Opened from the command line, which is the shortest way to re-shoot it. | `diff.md` |
+| `diff-three-way.png` | Three columns with the ancestor in the middle, one conflict banded in all three, the Result pane below carrying the two changes that merged themselves, the close-up stacking the three versions of the conflicted line, and the warning that saving now keeps the ancestor's version. | `diff.md` |
 
 ## Fubar.Controls
 
@@ -51,5 +53,4 @@ renders as a broken icon on the repository front page, which reads as neglect.
 | --- | --- | --- |
 | `studio-oauth.png` | **Shoot this one carefully.** The token-request editor after a successful Test: the "what this profile will send" line, the `{{variables}}` list, and the token response with its Capture buttons. Use a throwaway client against a test tenant — and check the masking really is masking before the shutter, since this is the one screen that has a live credential on it. | `api-studio.md` |
 | `studio-environments.png` | The environment editor with a **secret** value masked and a **session-only** variable, so the two kinds are visibly different things. The petstore demo has neither, so this needs its own workspace. | `api-studio.md` |
-| `diff-three-way.png` | Three columns, a conflict region banded, and the **Result pane hand-edited** to something that is neither side — that is the thing other merge tools do not let you do. | `diff.md` |
-| `diff-folder.png` | Folder comparison over two checkouts — added / removed / changed / identical rows, and the filter. Note that it is opened from *Open ▾*: two directories on the command line are not a folder comparison. | `diff.md` |
+| `diff-three-way-edited.png` | The merge above with the **Result pane hand-edited** to something that is neither side — the thing other merge tools do not let you do. Needs a person to type it; the shot that exists shows the pane and its placeholder, not an edit. | `diff.md` |
