@@ -1,4 +1,5 @@
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Fubar.Studio.Application.Running;
 using Fubar.Studio.Core.Models;
 using Fubar.Studio.Core.Running;
@@ -123,6 +124,46 @@ public class CollectionRunTests
         var window = new CollectionRunWindow(Vm(new FakeRunService()));
 
         Assert.Equal("Run — Orders", window.Title);
+    }
+
+    // ---- What a batch brings with it -------------------------------------------------------------
+
+    private CollectionRunViewModel VmFor(Batch batch, FakeRunService? service = null) =>
+        new(service ?? new FakeRunService(), new FakeRecording(), new FakeSnapshotStore(), Plan(3), Ws,
+            null, [], batch.Name, RecordingDiffPreview, new FakeSettingsContext(), batch);
+
+    private static Batch BatchWith(BatchOptions? options) =>
+        new() { Name = "pet-lifecycle", Options = options };
+
+    [AvaloniaFact]
+    public void The_window_opens_with_the_options_the_batch_states()
+    {
+        // The command line has always honoured these; the window ignored them, so the same batch ran
+        // differently depending on which one started it - and the checkbox showed the wrong state
+        // while it did, which is worse than showing none.
+        var vm = VmFor(BatchWith(new BatchOptions { StopOnFailure = true, DelayMs = 250 }));
+
+        Assert.True(vm.StopOnFailure);
+        Assert.Equal(250, vm.DelayMilliseconds);
+    }
+
+    [AvaloniaFact]
+    public async Task A_batchs_stopOnFailure_reaches_the_run()
+    {
+        var service = new FakeRunService();
+
+        await VmFor(BatchWith(new BatchOptions { StopOnFailure = true }), service).RunCommand.ExecuteAsync(null);
+
+        Assert.True(service.LastRun!.Options.StopOnFailure);
+    }
+
+    [AvaloniaFact]
+    public void A_batch_that_states_no_options_leaves_them_off()
+    {
+        // They are still controls, not a read-out: the batch says what it asked for and you can change
+        // your mind for one run without editing the file.
+        Assert.False(VmFor(BatchWith(null)).StopOnFailure);
+        Assert.False(Vm(new FakeRunService()).StopOnFailure);
     }
 
     // ---- A step that appears twice --------------------------------------------------------------
@@ -408,6 +449,43 @@ public class CollectionRunTests
     }
 
     // ---- Opening a difference --------------------------------------------------------------------
+
+    /// <summary>
+    /// The BUTTON, not the command behind it.
+    /// </summary>
+    /// <remarks>
+    /// Every other test here calls <c>ShowDifferencesCommand</c> directly, which proves the view model
+    /// and proves nothing about the row it is reached from: the binding walks out of the row's template
+    /// to the <c>ItemsControl</c>'s data context (<c>$parent[ItemsControl]</c>), and a template that
+    /// grew a nested ItemsControl - this one contains one, for failed assertions - is exactly how that
+    /// walk starts landing somewhere else. A binding that resolves to nothing leaves a button that
+    /// looks enabled and does nothing when clicked, with no error anywhere.
+    /// </remarks>
+    [AvaloniaFact]
+    public async Task The_Open_button_on_a_differing_row_is_bound_to_the_command()
+    {
+        var vm = Vm(new FakeRunService().DifferingOn(2, """{"a":1}""", """{"a":2}"""));
+        var window = new CollectionRunWindow(vm);
+        window.Show();
+
+        await vm.RunCommand.ExecuteAsync(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var open = window.GetVisualDescendants()
+            .OfType<Avalonia.Controls.Button>()
+            .Where(b => b.IsVisible && Equals(b.Content, "Open"))
+            .ToList();
+
+        var button = Assert.Single(open);
+        Assert.NotNull(button.Command);
+        Assert.True(button.Command!.CanExecute(button.CommandParameter));
+
+        // And it reaches the same place the command test does.
+        button.Command.Execute(button.CommandParameter);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("""{"a":1}""", RecordingDiffPreview.Shown!.Value.Left);
+    }
 
     /// <summary>"2 differences from Staging.json" is where the question starts, not where it ends.
     /// The two bodies opened are the ones the VERDICT was reached from - normalised, as compared -
