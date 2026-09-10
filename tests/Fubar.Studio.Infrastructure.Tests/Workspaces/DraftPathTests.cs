@@ -105,7 +105,14 @@ public class DraftPathTests : IDisposable
     [InlineData("   ")]
     [InlineData("../escaped")]
     [InlineData("nested/name")]
-    [InlineData("nested\name")]
+    [InlineData(@"nested\name")]
+    // Was written "nested\name" without the verbatim @, which is nested + a NEWLINE - a control
+    // character, invalid on Windows and legal on Linux, so the suite agreed with itself on one
+    // machine and disagreed on the other. Both cases are worth having; they are spelled apart now.
+    [InlineData("nested\nname")]
+    [InlineData("what?")]
+    [InlineData("CON")]
+    [InlineData("trailing.")]
     public void A_case_name_that_is_not_a_file_name_is_refused(string name)
     {
         var path = ExistingCase("created");

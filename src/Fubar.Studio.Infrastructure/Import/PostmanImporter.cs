@@ -471,11 +471,8 @@ public sealed class PostmanImporter : IPostmanImportService
         return path;
     }
 
-    private static string SanitizeFolderName(string name)
-    {
-        var cleaned = new string(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray()).Trim();
-        return cleaned.Length == 0 ? "Imported" : cleaned;
-    }
+    private static string SanitizeFolderName(string name) =>
+        Core.Workspaces.DocumentName.Sanitize(name, "Imported");
 
     private static string? Str(JsonNode? node) => node is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 }

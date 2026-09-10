@@ -637,3 +637,15 @@ green - and the build page, which is the thing anyone actually looks at, went gr
 `failures` attribute is now counted with the same predicate that decides whether to write a
 `<failure>`, so the header and the body cannot drift apart. Teardown is described in a `system-out`
 and never judged, matching the rule everywhere else; a match a tolerance forgave says so.
+
+**What may name a file is a fact about the FORMAT, not about the host** (Studio).
+`DocumentName.IsValid` and `DocumentName.Sanitize` spell the invalid set out - `/ \ : * ? " < > |`,
+the control characters, a trailing dot or space, `.`/`..`, and the reserved device names - rather than
+calling `Path.GetInvalidFileNameChars()`, which returns those on Windows and only `/` and NUL on Unix.
+A workspace is committed and shared, so a name has to survive every platform it can be checked out on:
+a case named `smoke?` on Linux is a repository nobody on Windows can clone, and the machine that
+created it is the one machine where nothing looks wrong. This shipped the wrong way round and the
+Linux CI runner is what caught it - the suite agreed with itself on Windows because Windows happened
+to reject what the code had forgotten. Every place that derives a file name from text somebody else
+wrote (both importers, the snapshot store, new workspace files) goes through `Sanitize` for the same
+reason; `IsValid` is for names a person types, who can be told.

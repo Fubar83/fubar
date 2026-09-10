@@ -562,12 +562,8 @@ public sealed class WorkspaceService : IWorkspaceService
         }
     }
 
-    private static string SanitizeFileName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sanitized = new string(name.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray());
-        return string.IsNullOrWhiteSpace(sanitized) ? "Untitled" : sanitized;
-    }
+    private static string SanitizeFileName(string name) =>
+        Core.Workspaces.DocumentName.Sanitize(name);
 
     public async Task<IReadOnlyList<WorkspaceEnvironment>> LoadEnvironmentsAsync(string rootPath, CancellationToken cancellationToken = default)
     {

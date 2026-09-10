@@ -39,6 +39,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A workspace written on Linux can be opened on Windows.** What may name a case, a batch, an
+  imported folder or a snapshot was decided by `Path.GetInvalidFileNameChars()`, which answers a
+  question about the HOST: on Windows it rejects ` / : * ? " < > |` and the control characters, on
+  Unix only `/`. So a case named `smoke?` on Linux was accepted, committed, and could not be checked
+  out by anyone on Windows - and the machine that created it is the one machine where nothing looks
+  wrong. The rule is now the format's rather than the host's: one strict set, plus the reserved device
+  names (`CON`, `NUL`, `COM1`…, which are not files on Windows whatever the extension), trailing
+  dots and spaces (Windows strips them, so two names would become one file), and `.`/`..`. The four
+  places that derive a file name from imported text - the OpenAPI and Postman importers, the snapshot
+  store, new workspace files - share that rule instead of each calling the platform.
+
 - **The Run window honours the options the batch states.** `CliRunner` has always applied a batch's
   `stopOnFailure` and `delayMs`; the window never read them, so the same batch ran differently
   depending on whether it was started from the button or from `fubar run` - and the checkbox showed

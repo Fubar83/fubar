@@ -149,12 +149,9 @@ public sealed class FileSnapshotStore : ISnapshotStore
     private static string FileName(string scope) => Sanitize(scope) + ".json";
 
     /// <summary>An environment name is user text and can hold anything a person can type; a file name
-    /// cannot.</summary>
-    private static string Sanitize(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        return new string([.. name.Select(c => invalid.Contains(c) ? '_' : c)]);
-    }
+    /// cannot - and this one is committed, so the rule is the format's rather than the host's.</summary>
+    private static string Sanitize(string name) =>
+        Core.Workspaces.DocumentName.Sanitize(name, "Unnamed");
 
     private static async Task<ResponseSnapshot?> ReadAsync(string path, CancellationToken cancellationToken)
     {

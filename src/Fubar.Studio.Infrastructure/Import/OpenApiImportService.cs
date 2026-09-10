@@ -350,12 +350,8 @@ public sealed partial class OpenApiImportService : IOpenApiImportService
         return path;
     }
 
-    private static string SanitizeFolderName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sanitized = new string(name.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray());
-        return string.IsNullOrWhiteSpace(sanitized) ? "Imported" : sanitized;
-    }
+    private static string SanitizeFolderName(string name) =>
+        Core.Workspaces.DocumentName.Sanitize(name, "Imported");
 
     // --- diff --------------------------------------------------------------------------------------
 
