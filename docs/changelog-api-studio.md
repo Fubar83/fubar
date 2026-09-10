@@ -39,6 +39,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A run sends the same request the editor's Send does — folder headers included.** A folder's
+  `_folder.json` hands two things down: an auth profile and headers. The runner resolved the
+  inheritance chain for the auth half and dropped the headers, so a folder-wide `X-Api-Key` or
+  `Accept` went out from the request editor and was missing from every collection run, every
+  `fubar run` in CI, every recorded snapshot, and **both sides of an environment comparison** — where
+  it is worst, because the two systems then disagree about a request neither of them is ever actually
+  sent, and the differences reported are real and about nothing. What a request puts on the wire is
+  now one rule (`EffectiveHeaders`) that the editor and the runner both go through: inherited headers
+  first in chain order, then the request's own, with a header the folder switched off or the request
+  suppressed left out. Suppression now matches case-insensitively, as header names do.
+
+  Two smaller halves of the same disagreement: a folder header whose own box is unchecked is no longer
+  listed as inherited on a request (it was shown enabled, and sent), and the **Tests** tab's per-request
+  timeout is sent again — it was dropped when the editor assembled the request, so a request with a
+  60-second timeout was sent on the default and lost the setting from its file on the next save.
+
 - **A `Content-Type` you type is the one that gets sent.** It was being dropped in silence and the body
   type's own was sent instead - `application/json` for a Json body, whatever the header said - so an
   API that publishes its own media type answered **415 Unsupported Media Type** while the request pane

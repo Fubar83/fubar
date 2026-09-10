@@ -104,6 +104,24 @@ matters is what an assertion is for). History is OFF by default for runs, the op
 history is capped per request, so a scheduled run would evict the sends people actually go back for.
 
 
+**Reusing the send pipeline is not enough — the runner has to ASSEMBLE the same request** (Studio). A
+request as stored is not a request as sent: `_folder.json` hands down an auth profile *and* headers, and
+the inheritance chain carries both. The runner resolved the chain and used only the auth half, so a
+folder's `X-Api-Key` went out from the editor's Send and was missing from every run, every snapshot and
+both sides of an environment comparison — the last being the worst place for it, since a comparison is
+the one feature whose entire claim is that both sides were asked the same question. `EffectiveHeaders`
+in `Core` is now the single rule, and `CollectionRunService` applies it right where it resolves auth:
+inherited first in chain order (root-most first), then the request's own, dropping anything disabled at
+either level or named in `suppressedInheritedHeaderKeys` — matched case-insensitively, because header
+names are and the folder and the request are edited in two different windows. Three things it
+deliberately does not do: fold auth in (the pipeline injects the real credential, and a copy here would
+also make `AuthRequestMerge` skip it), deduplicate by key (a repeated header is legal, and the executor
+adds them in order, so "closest wins" happens on the wire), or mutate the loaded model — it returns a
+clone, so an ancestor's headers can never be saved into the request's own file. **Anything else a folder
+comes to hand down belongs in the same place**; adding a level and wiring it into only one of the two
+callers is exactly how this broke.
+
+
 **Comparison settings inherit PER SETTING, not per level** (Studio). `ComparisonSettings` has every
 member nullable precisely so a request overriding one option keeps inheriting the rest;
 `ComparisonSettingsResolver.Resolve` folds global → folder(s) → request and reports, for each setting,

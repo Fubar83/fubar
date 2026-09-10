@@ -22,7 +22,10 @@ public partial class HeadersTabViewModel : ViewModelBase
 
     public HeadersTabViewModel(IEnumerable<KeyValueItem> direct, IReadOnlyCollection<string> suppressedInheritedKeys)
     {
-        _suppressedInheritedKeys = [.. suppressedInheritedKeys];
+        // Case-insensitively, because header names are: the folder and the request are edited in two
+        // different windows, and an ordinal match would leave a header toggled off as "accept" going
+        // out as the folder's "Accept". <see cref="EffectiveHeaders"/> matches the same way.
+        _suppressedInheritedKeys = new HashSet<string>(suppressedInheritedKeys, StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in direct)
         {
@@ -36,12 +39,23 @@ public partial class HeadersTabViewModel : ViewModelBase
     /// same-key header visually wins by appearing later/closer to the direct rows) ahead of the
     /// direct rows already loaded from the constructor. Called once, right after construction -
     /// unlike <see cref="RefreshAuthHeaders"/>, a request's folder chain can't change while its
-    /// editor is open.</summary>
+    /// editor is open.
+    ///
+    /// <para>A folder header whose own box is unchecked is not shown at all. Showing it as a row
+    /// would send it (the row's Enabled tracked suppression only), and unchecking it here to stop
+    /// that would write the folder's decision into this request's
+    /// <c>suppressedInheritedHeaderKeys</c>, where it would outlive the folder re-enabling it.</para>
+    /// </summary>
     public void LoadInherited(InheritanceChain chain)
     {
         for (var i = chain.Headers.Count - 1; i >= 0; i--)
         {
             var h = chain.Headers[i];
+            if (!h.Item.Enabled)
+            {
+                continue;
+            }
+
             var row = new HeaderRowViewModel
             {
                 IsInherited = true,

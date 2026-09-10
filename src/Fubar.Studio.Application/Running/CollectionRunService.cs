@@ -426,6 +426,12 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
             var chain = await _inheritance.GetInheritanceChainAsync(
                 run.Workspace.RootPath, step.FilePath, cancellationToken);
 
+            // The chain is BOTH halves of what a folder hands down, not just the auth half. A run
+            // that resolved the profile and dropped the headers sent a different request from the one
+            // the editor's Send sends - and an environment comparison then reported two systems
+            // disagreeing about a request neither of them was actually asked.
+            request = EffectiveHeaders.Apply(request, chain);
+
             var selectedProfile = request.AuthProfileId is { } id
                 ? profiles.FirstOrDefault(p => p.Id == id)
                 : null;
@@ -436,7 +442,7 @@ public sealed class CollectionRunService : ICollectionRunService, IEnvironmentPa
         }
         catch (Exception ex)
         {
-            return Errored(step, $"Could not resolve auth: {ex.Message}");
+            return Errored(step, $"Could not resolve what the folders hand down: {ex.Message}");
         }
 
         try

@@ -31,8 +31,9 @@ public class CollectionRunServiceTests
     private static CollectionRunService Sut(
         FakeExecution execution,
         FakeStore? store = null,
-        FakeProfiles? profiles = null) =>
-        new(execution, store ?? new FakeStore(), new FakeInheritance(), profiles ?? new FakeProfiles(),
+        FakeProfiles? profiles = null,
+        FakeInheritance? inheritance = null) =>
+        new(execution, store ?? new FakeStore(), inheritance ?? new FakeInheritance(), profiles ?? new FakeProfiles(),
             new FakeComparer(), new FakeComparisonSettings(), new FakeEndpoints());
 
     // ---- Order and completeness ----------------------------------------------------------------
@@ -220,6 +221,53 @@ public class CollectionRunServiceTests
             Assert.Same(Ws, r.Workspace);
             Assert.Same(environment, r.Environment);
         });
+    }
+
+    // ---- What a folder hands down --------------------------------------------------------------
+
+    /// <summary>
+    /// The whole point of faking at the execution seam: a run has to hand the pipeline the same
+    /// request a Send does. It did not - the chain was resolved for its auth half and its headers
+    /// were dropped, so every run, every snapshot and both sides of an environment comparison went
+    /// out without the folder's headers.
+    /// </summary>
+    [Fact]
+    public async Task Folder_headers_are_sent_ahead_of_the_requests_own()
+    {
+        var execution = new FakeExecution();
+        var store = new FakeStore().Where(r => r.Headers = [new KeyValueItem { Key = "X-Own", Value = "own" }]);
+
+        await Sut(execution, store, inheritance: new FakeInheritance().HandingDown("X-Api-Key", "k"))
+            .RunAsync(Run(Plan(1)));
+
+        Assert.Equal(["X-Api-Key", "X-Own"], execution.Runs[0].Request.Headers.Select(h => h.Key));
+    }
+
+    [Fact]
+    public async Task A_header_the_request_suppressed_is_not_sent()
+    {
+        var execution = new FakeExecution();
+        var store = new FakeStore().Where(r => r.SuppressedInheritedHeaderKeys = ["X-Api-Key"]);
+
+        await Sut(execution, store, inheritance: new FakeInheritance().HandingDown("X-Api-Key", "k"))
+            .RunAsync(Run(Plan(1)));
+
+        Assert.Empty(execution.Runs[0].Request.Headers);
+    }
+
+    /// <summary>The loaded model is what would be written back if anything saved it, so an ancestor's
+    /// headers must never end up folded into the request's own file.</summary>
+    [Fact]
+    public async Task The_folders_headers_are_not_folded_into_the_stored_request()
+    {
+        var stored = new List<RequestModel>();
+        var execution = new FakeExecution();
+        var store = new FakeStore().Where(stored.Add);
+
+        await Sut(execution, store, inheritance: new FakeInheritance().HandingDown("X-Api-Key", "k"))
+            .RunAsync(Run(Plan(1)));
+
+        Assert.Empty(stored[0].Headers);
     }
 
     // ---- Progress ------------------------------------------------------------------------------

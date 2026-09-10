@@ -36,8 +36,9 @@ public class EnvironmentPairRunServiceTests
     private static EnvironmentPairRun Run(RunPlan plan, RunOptions? options = null) =>
         new(plan, Ws, Staging, Prod, options ?? RunOptions.Default);
 
-    private static CollectionRunService Sut(FakeExecution execution) =>
-        new(execution, new FakeStore(), new FakeInheritance(), new FakeProfiles(),
+    private static CollectionRunService Sut(
+        FakeExecution execution, FakeStore? store = null, FakeInheritance? inheritance = null) =>
+        new(execution, store ?? new FakeStore(), inheritance ?? new FakeInheritance(), new FakeProfiles(),
             new FakeComparer(), new FakeComparisonSettings(), new FakeEndpoints());
 
     // ---- Interleaving ---------------------------------------------------------------------------
@@ -167,6 +168,24 @@ public class EnvironmentPairRunServiceTests
 
         Assert.True(report.Pairs[0].NotComparable);
         Assert.False(report.Pairs[0].Left.BodyTooLargeToCompare);
+    }
+
+    /// <summary>
+    /// Both sides are asked the SAME question, and it is the question a Send asks. A comparison that
+    /// dropped the folder's headers would be a comparison of two systems answering a request neither
+    /// of them is ever actually sent - and the differences it reported would be real, and about
+    /// nothing.
+    /// </summary>
+    [Fact]
+    public async Task Both_sides_carry_what_the_folder_hands_down()
+    {
+        var execution = new FakeExecution();
+        var store = new FakeStore().Where(r => r.Headers = [new KeyValueItem { Key = "X-Own", Value = "own" }]);
+
+        await Sut(execution, store, new FakeInheritance().HandingDown("X-Api-Key", "k")).RunAsync(Run(Plan(1)));
+
+        Assert.All(execution.Runs, r => Assert.Equal(["X-Api-Key", "X-Own"], r.Request.Headers.Select(h => h.Key)));
+        Assert.Equal(2, execution.Runs.Count);
     }
 
     // ---- Stopping -------------------------------------------------------------------------------

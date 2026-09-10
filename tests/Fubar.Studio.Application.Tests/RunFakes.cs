@@ -18,8 +18,13 @@ internal sealed class FakeStore : IRequestStore
     /// <summary>No migration happens in a fake store, so nothing ever raises this.</summary>
     public event Action<string, IReadOnlyList<string>>? RequestMigrated { add { } remove { } }
     private readonly HashSet<string> _failing = new(StringComparer.OrdinalIgnoreCase);
+    private Action<RequestModel>? _configure;
 
     public FakeStore FailOn(string path) { _failing.Add(path); return this; }
+
+    /// <summary>What every request in the plan says about itself, for the tests that are about what
+    /// the runner does to it on the way out.</summary>
+    public FakeStore Where(Action<RequestModel> configure) { _configure = configure; return this; }
 
     public Task<RequestModel> LoadRequestAsync(string path, CancellationToken ct = default)
     {
@@ -30,7 +35,9 @@ internal sealed class FakeStore : IRequestStore
 
         // The folder name is the request name: /w/collections/r2/request.json -> r2
         var name = Path.GetFileName(Path.GetDirectoryName(path))!;
-        return Task.FromResult(new RequestModel { Name = name, Url = "https://example.test/" });
+        var request = new RequestModel { Name = name, Url = "https://example.test/" };
+        _configure?.Invoke(request);
+        return Task.FromResult(request);
     }
 
     // The rest of the role. A run only ever READS a request, so anything the runner calls here is a
@@ -54,8 +61,18 @@ internal sealed class FakeStore : IRequestStore
 
 internal sealed class FakeInheritance : IInheritanceResolver
 {
+    private readonly List<InheritedHeader> _headers = [];
+
+    /// <summary>A folder above every request in the plan, handing this header down.</summary>
+    public FakeInheritance HandingDown(string key, string value, bool enabled = true)
+    {
+        _headers.Add(new InheritedHeader(
+            new KeyValueItem { Key = key, Value = value, Enabled = enabled }, "Folder: api"));
+        return this;
+    }
+
     public Task<InheritanceChain> GetInheritanceChainAsync(string root, string requestFilePath, CancellationToken ct = default) =>
-        Task.FromResult(new InheritanceChain([], null, null, Array.Empty<ComparisonSettingsLayer>()));
+        Task.FromResult(new InheritanceChain(_headers, null, null, Array.Empty<ComparisonSettingsLayer>()));
 }
 
 internal sealed class FakeProfiles : IAuthProfileStore
@@ -171,6 +188,10 @@ internal sealed class FakeExecution : IRequestExecutionService
 
     public List<string> Sent { get; } = [];
 
+    /// <summary>Every request as the pipeline received it - what an assertion about the request the
+    /// runner ASSEMBLED has to look at, since the store's copy is deliberately left alone.</summary>
+    public List<RequestRun> Runs { get; } = [];
+
     public List<WorkspaceEnvironment?> Environments { get; } = [];
 
     public FakeExecution Body(string body) { _body = body; return this; }
@@ -208,6 +229,7 @@ internal sealed class FakeExecution : IRequestExecutionService
         var env = run.Environment?.Id ?? "none";
         var key = $"{run.Request.Name}@{env}";
         Sent.Add(key);
+        Runs.Add(run);
         Environments.Add(run.Environment);
 
         if (_cancelOn is { } cancel && cancel.Key == key)

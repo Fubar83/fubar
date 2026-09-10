@@ -907,6 +907,9 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
             Body = Body.ToModel(),
             Auth = auth,
             AuthProfileId = auth.Type == AuthType.Profile ? Auth.SelectedProfile?.Id : null,
+            // The Tests tab edits this, so leaving it out sent every request on the default timeout
+            // and dropped the setting from the file on the next save.
+            TimeoutSeconds = Tests.TimeoutSeconds,
             Comparison = _comparisonOverrides,
             Snapshot = _snapshotPolicy,
             Tolerances = _tolerances,
