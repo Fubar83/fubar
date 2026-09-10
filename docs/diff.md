@@ -215,6 +215,12 @@ close-up underneath stacks the two versions of the selected line.</sub>
   against each other, for a file that was renamed and so appears once on each side. **Copy** a file, or
   everything under a folder, to the other side — the button says what it would do and a confirmation
   names the paths and how many files would be replaced first. It copies and never deletes.
+
+  ![Two checkouts walked together](images/diff-folder.png)
+
+  <sub>Opened straight from the command line - `FubarDiff old new` - which until recently reported
+  "the file does not exist" about two directories that plainly did.</sub>
+
 - **Snapshot review** — tick *One folder, linked by name* and it pairs files against each other inside a
   single folder: `Thing.verified.json` against `Thing.received.json`, which is what
   [Verify](https://github.com/VerifyTests/Verify) and ApprovalTests leave behind. New snapshots and
@@ -233,6 +239,13 @@ close-up underneath stacks the two versions of the selected line.</sub>
   writes the merged file to whichever of the three you choose, in that file's own encoding and line
   endings. An unresolved conflict keeps the ancestor's text and says so in the status bar, both before
   saving and after.
+
+  ![Three-way merge with one conflict left](images/diff-three-way.png)
+
+  <sub>Two of the three changes were settled without asking - the status bar says `1 conflict(s) · 2
+  merged automatically` - and the one that is left is banded in all three columns, stacked in the
+  close-up below, and named in the warning: saving now would keep the ancestor's version of it. The
+  Result pane in the middle is a text editor, not a preview.</sub>
 - **The merged result is editable, not a preview.** A **Result** pane sits under the three columns
   showing the merged file as it currently stands, updated on every decision — and you can type into it.
   That matters because the answer to a real conflict is regularly *neither* side: two people edited the

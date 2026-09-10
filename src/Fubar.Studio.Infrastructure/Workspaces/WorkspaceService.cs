@@ -23,7 +23,7 @@ public sealed class WorkspaceService : IWorkspaceService
     /// app supplies the registered instance.</summary>
     public WorkspaceService(IEndpointStore? endpoints = null) => _endpoints = endpoints ?? new FileEndpointStore();
 
-    private const string AppManifestFileName = "fubar.json";
+    private const string AppManifestFileName = Core.Workspaces.IWorkspaceStore.ManifestFileName;
     private const string AuthFileName = "auth.json";
     private const string CollectionsDirName = "collections";
     private const string RequestFileExtension = ".json";

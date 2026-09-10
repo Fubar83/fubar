@@ -39,6 +39,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The Run window honours the options the batch states.** `CliRunner` has always applied a batch's
+  `stopOnFailure` and `delayMs`; the window never read them, so the same batch ran differently
+  depending on whether it was started from the button or from `fubar run` - and the checkbox showed
+  the wrong state while it did, which is worse than showing none. A chain that carries on past a failed
+  step just repeats the same failure for every step after it. They are still controls: the window opens
+  on what the batch asked for, and you can change your mind for one run without editing the file.
+
+- **A workspace named on the command line opens.** `FubarAPIStudio path/to/workspace` did nothing at
+  all - the window restored its last session and ignored its arguments - so the obvious thing to type,
+  and what a file manager does when you open a workspace with this app, both silently failed. It opens
+  beside the restored tabs and becomes the active one; the manifest file counts as readily as the
+  directory holding it, since that is what a file manager passes. A path that is not a workspace says
+  so in the status strip rather than starting empty and leaving someone wondering. Fubar Diff has taken
+  file paths since its first release, and the two apps should not disagree about whether arguments mean
+  anything.
+
 - **Opening a request no longer erases the workspace's active environment.** The picker is a two-way
   bound ComboBox, and reloading a workspace empties its list before refilling it — which made the
   selection model write `null` straight back through the binding, indistinguishable from someone

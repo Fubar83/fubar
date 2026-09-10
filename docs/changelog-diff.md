@@ -8,6 +8,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A JSON property that moved AND changed value is reported as changed, not as moved.** It was
+  reported twice - once as the value change, once as a reorder - and the change tree showed the softer
+  of the two. Reading `expedited  moved` where `false` had become `true`, you take the value on
+  trust, which is the one thing a diff must never let you do. A property that already has a real change
+  no longer gets a second, reorder entry; an object that moved still says so when its own contents
+  changed, because a child's path is not its parent's.
+
+- **Two directories on the command line are a folder comparison.** `FubarDiff old new` over two
+  checkouts fell through to the FILE comparison and reported "the file does not exist" about
+  directories that plainly did - the one shape of argument where the app knew the answer and gave the
+  wrong one. It opens the same folder window the Open dialog produces, already walked. `--merge` is
+  unaffected: it names three files by git's convention and is settled before this is asked.
+
+- **A folder handed to a file comparison is named as one.** `FileInfo.Exists` is false for a
+  directory, so both readers said "the file does not exist" - telling someone they typed a bad path
+  when what they actually did was give a file comparison something that is not a file. It now says
+  "it is a folder, not a file", which is the difference between looking for a typo and looking at the
+  other box.
+
 - **Navigating to a difference inside a folded node left it folded**, once that node had been folded by
   hand. The change tree bound `TreeViewItem.IsExpanded` from a style setter, and the expander writes a
   fold as a *local* value — which outranks a style setter permanently, so the first fold by hand severed
@@ -16,6 +35,10 @@ All notable changes to this project are documented here. The format is based on
   itself at the priority the expander writes at.
 
 ### Added
+
+- **Screenshots in the README.** The folder comparison over two checkouts and a three-way merge with one
+  conflict left, beside the side-by-side, structural C# and semantic JSON shots. `docs/images/README.md`
+  says what each one has to show for a replacement to still be that file.
 
 - **A location map worth reading, where there was a strip of ticks.** The map between the panes now
   shows *how much* changed at each point, not just where. **One mark per difference**, at that

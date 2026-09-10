@@ -340,26 +340,81 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task OpenWorkspaceDirectoryAsync()
     {
-        var manifestPath = await _folderPicker.PickFileAsync("Open Workspace", "fubar.json");
+        var manifestPath = await _folderPicker.PickFileAsync("Open Workspace", IWorkspaceStore.ManifestFileName);
         if (manifestPath is null)
         {
             return;
         }
 
-        var path = Path.GetDirectoryName(manifestPath)!;
+        await OpenWorkspaceAtAsync(Path.GetDirectoryName(manifestPath)!);
+    }
 
-        var existing = Roots.FirstOrDefault(r => string.Equals(r.FullPath, path, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// Opens the workspace at <paramref name="path"/>, or brings it forward when it is already open.
+    /// Returns false when there is no workspace there, so a caller that cannot show a picker - the
+    /// command line - can say so instead of starting empty and leaving someone wondering.
+    /// </summary>
+    /// <remarks>
+    /// Takes the manifest file as readily as the directory holding it: the Open dialog picks
+    /// <c>fubar.json</c> precisely because a folder picker cannot show files, and a file manager
+    /// handing this app a workspace will hand it the same file.
+    /// </remarks>
+    public async Task<bool> OpenWorkspaceAtAsync(string path)
+    {
+        var full = StartupWorkspace.Directory(path);
+
+        var existing = Roots.FirstOrDefault(r => string.Equals(r.FullPath, full, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
             ActiveRoot = existing;
-            return;
+            return true;
         }
 
-        var workspace = await _workspaceStore.LoadWorkspaceAsync(path);
+        if (!_workspaceStore.IsWorkspaceRoot(full))
+        {
+            return false;
+        }
+
+        var workspace = await _workspaceStore.LoadWorkspaceAsync(full);
         var root = new WorkspaceRootViewModel(workspace, _requestStore);
         Roots.Add(root);
         ActiveRoot = root;
-        _statusLog.Log($"Opened workspace \"{workspace.Manifest.Name}\" at {path}.");
+        _statusLog.Log($"Opened workspace \"{workspace.Manifest.Name}\" at {full}.");
+        return true;
+    }
+
+    /// <summary>
+    /// Everything the app does to its tabs at startup: last session first, then whatever was named on
+    /// the command line — which ends up active, because it is the thing that was actually asked for.
+    /// </summary>
+    /// <remarks>
+    /// A named workspace is opened BESIDE the restored ones rather than instead of them. Closing
+    /// someone's tabs because they typed a path would be a second, unasked-for action, and the tab
+    /// strip is where the session lives.
+    /// </remarks>
+    public async Task StartAsync(StartupWorkspace startup)
+    {
+        await RestoreLastSessionAsync();
+
+        if (startup is not { Path: { Length: > 0 } path })
+        {
+            return;
+        }
+
+        try
+        {
+            if (!await OpenWorkspaceAtAsync(path))
+            {
+                _statusLog.LogError($"\"{path}\" is not a workspace - there is no {IWorkspaceStore.ManifestFileName} there.");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Anything a shell can hand over: a path with a character the OS rejects, a directory that
+            // vanished between typing and starting, a manifest that will not parse. None of them is a
+            // reason to refuse to start - the window opens, and the strip says what went wrong.
+            _statusLog.LogError($"Could not open \"{path}\": {ex.Message}");
+        }
     }
 
     /// <summary>

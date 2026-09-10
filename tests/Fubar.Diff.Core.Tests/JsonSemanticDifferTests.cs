@@ -90,6 +90,36 @@ public class JsonSemanticDifferTests
     }
 
     [Fact]
+    public void A_property_that_moved_AND_changed_is_reported_as_changed()
+    {
+        // It was reported twice - once as the value change, once as a move - and the tree showed the
+        // softer of the two. Reading "expedited moved" where false had become true, you take the value
+        // on trust, which is the one thing a diff must never make you do.
+        var left = Obj(("a", Num("1")), ("b", Num("2")));
+        var right = Obj(("b", Num("99")), ("a", Num("1")));
+
+        var changes = Compare(left, right, new JsonComparisonOptions { ReportPropertyOrder = true });
+
+        var change = Assert.Single(changes, c => c.Path.ToString() == "$.b");
+        Assert.False(change.IsReorder);
+        Assert.Equal(ChangeKind.Modified, change.Kind);
+    }
+
+    [Fact]
+    public void An_object_that_moved_still_says_so_when_its_contents_changed()
+    {
+        // The other half: a child's path is not its parent's. The object itself really did move, and
+        // saying so is not a claim about what is inside it.
+        var left = Obj(("a", Num("1")), ("outer", Obj(("inner", Num("2")))));
+        var right = Obj(("outer", Obj(("inner", Num("99")))), ("a", Num("1")));
+
+        var changes = Compare(left, right, new JsonComparisonOptions { ReportPropertyOrder = true });
+
+        Assert.True(Assert.Single(changes, c => c.Path.ToString() == "$.outer").IsReorder);
+        Assert.False(Assert.Single(changes, c => c.Path.ToString() == "$.outer.inner").IsReorder);
+    }
+
+    [Fact]
     public void A_changed_value_is_reported_at_its_path()
     {
         var changes = Compare(Obj(("a", Num("1"))), Obj(("a", Num("2"))));

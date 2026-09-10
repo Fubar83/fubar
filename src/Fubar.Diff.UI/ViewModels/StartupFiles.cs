@@ -57,4 +57,24 @@ public sealed record StartupFiles(string? Left, string? Right, string? Base = nu
 
     /// <summary>True when all three were supplied, so a merge can run at startup instead.</summary>
     public bool IsMerge => HasBoth && !string.IsNullOrWhiteSpace(Base);
+
+    /// <summary>
+    /// True when both sides name DIRECTORIES, so the pair is a folder comparison rather than a file
+    /// one.
+    /// </summary>
+    /// <remarks>
+    /// <para><c>FubarDiff dir dir</c> used to fall through to the file comparison and report "the file
+    /// does not exist" about a directory that plainly did - the one shape of argument where the app
+    /// knew the answer and gave the wrong one. Folder comparison was reachable only from the Open
+    /// dialog, which is not where anyone types two paths.</para>
+    /// <para>The probe is a parameter for the same reason <c>OpenComparisonViewModel</c> takes one:
+    /// what this decides is testable, and touching the disk to find out is not.</para>
+    /// </remarks>
+    public bool IsFolderComparison(Func<string, bool> folderExists)
+    {
+        ArgumentNullException.ThrowIfNull(folderExists);
+
+        // A merge names three files and is settled by git's convention; nothing about it is a folder.
+        return HasBoth && !IsMerge && folderExists(Left!) && folderExists(Right!);
+    }
 }

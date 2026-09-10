@@ -90,6 +90,15 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
         // and it is still a picker, because the first thing anyone does when a snapshot run starts
         // failing is run it once with no oracle to see what it actually returns.
         SelectedOracle = FromBatch(batch) ?? Oracles[0];
+
+        // ...and the same for the options it states. The command line has always honoured these
+        // (CliRunner), so a batch with stopOnFailure ran differently depending on whether it was
+        // started from the button or from `fubar run` - and the checkbox showed the wrong state while
+        // it did, which is worse than not showing one. Both are still controls: they say what the
+        // batch asked for, and you can change your mind for this run without editing the file.
+        StopOnFailure = batch?.Options?.StopOnFailure ?? false;
+        DelayMilliseconds = batch?.Options?.DelayMs ?? 0;
+
         RebuildRows();
     }
 

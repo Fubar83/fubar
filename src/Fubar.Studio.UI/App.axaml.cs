@@ -37,12 +37,13 @@ public partial class App : Avalonia.Application
             var mainWindow = windowManager.CreateWindow(isPrimary: true);
             desktop.MainWindow = mainWindow;
 
-            // Fire-and-forget: reopens whichever workspace tabs were open last session (see
-            // WorkspaceExplorerViewModel.RestoreLastSessionAsync). Deliberately async/non-blocking -
-            // unlike the theme, showing the window a moment before the tabs populate is fine, and
-            // the dispatcher is already pumping by this point so awaiting here isn't even needed.
+            // Fire-and-forget: reopens whichever workspace tabs were open last session, then opens
+            // whatever was named on the command line (see WorkspaceExplorerViewModel.StartAsync).
+            // Deliberately async/non-blocking - unlike the theme, showing the window a moment before
+            // the tabs populate is fine, and the dispatcher is already pumping by this point so
+            // awaiting here isn't even needed.
             var mainViewModel = (MainViewModel)mainWindow.DataContext!;
-            _ = mainViewModel.WorkspaceExplorer.RestoreLastSessionAsync();
+            _ = mainViewModel.WorkspaceExplorer.StartAsync(Services.GetRequiredService<StartupWorkspace>());
         }
 
         base.OnFrameworkInitializationCompleted();

@@ -28,12 +28,17 @@ public partial class App : Avalonia.Application
             desktop.MainWindow = new MainWindow { DataContext = shell };
 
             var startup = Services.GetRequiredService<StartupFiles>();
+            var folders = startup.IsFolderComparison(System.IO.Directory.Exists);
 
-            // Fire-and-forget: opens the first tab and, if two files were named on the command line,
+            // Fire-and-forget: opens the first tab and, if two FILES were named on the command line,
             // compares them once the dispatcher is pumping. Deliberately not awaited - showing the
             // window a moment before the rows populate is correct, and errors surface in the tab's
             // own error banner.
-            _ = shell.InitializeAsync(startup);
+            //
+            // A folder pair leaves that tab empty and opens its own window below instead: handing two
+            // directories to the file comparison is what used to report "the file does not exist"
+            // about a directory that plainly does.
+            _ = shell.InitializeAsync(folders ? StartupFiles.None : startup);
 
             if (startup.IsMerge)
             {
@@ -50,6 +55,20 @@ public partial class App : Avalonia.Application
                 {
                     main.Opened -= OnOpened;
                     OpenMerge(shell, main, startup);
+                }
+
+                main.Opened += OnOpened;
+            }
+            else if (folders)
+            {
+                // Deferred for the same reason as the merge window above: an owned window cannot be
+                // shown before its owner is.
+                var main = desktop.MainWindow;
+
+                void OnOpened(object? sender, EventArgs args)
+                {
+                    main.Opened -= OnOpened;
+                    OpenFolders(shell, main, startup);
                 }
 
                 main.Opened += OnOpened;
@@ -76,5 +95,23 @@ public partial class App : Avalonia.Application
         new MergeWindow { DataContext = merge }.Show(owner);
 
         _ = merge.MergeAsync();
+    }
+
+    /// <summary>
+    /// Opens a folder comparison for the two directories named on the command line.
+    ///
+    /// The same window the Open dialog produces, wired the same way - a folder comparison exists to
+    /// lead somewhere, and opening a pair from it has to land in a tab of the shell behind it.
+    /// </summary>
+    private static void OpenFolders(ShellViewModel shell, Avalonia.Controls.Window owner, StartupFiles startup)
+    {
+        var folders = shell.CreateFolderComparison();
+
+        folders.LeftPath = startup.Left!;
+        folders.RightPath = startup.Right!;
+
+        new FolderWindow { DataContext = folders }.Show(owner);
+
+        _ = folders.CompareCommand.ExecuteAsync(null);
     }
 }

@@ -100,6 +100,29 @@ public class TextFileReaderTests : IDisposable
     }
 
     [Fact]
+    public async Task A_folder_is_named_as_a_folder_rather_than_called_missing()
+    {
+        // FileInfo.Exists is false for a directory, so this landed on "the file does not exist" -
+        // which tells someone they typed a bad path when what they actually did was hand a file
+        // comparison something that is not a file. (Two directories are a folder comparison now; one
+        // of each is still a mistake, and this is how it reads.)
+        var path = Path.Combine(Path.GetTempPath(), $"folder-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+
+        try
+        {
+            var ex = await Assert.ThrowsAsync<TextFileReadException>(() => _reader.ReadAsync(path, Token));
+
+            Assert.Contains("folder", ex.Reason, StringComparison.Ordinal);
+            Assert.DoesNotContain("does not exist", ex.Reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task A_binary_file_is_rejected_rather_than_rendered_as_mojibake()
     {
         var path = WriteFile([0x50, 0x4B, 0x03, 0x04, 0x00, 0x00, 0xFF, 0x01]);

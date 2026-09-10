@@ -107,4 +107,56 @@ public class StartupFilesTests
         Assert.Equal("-weird.txt", files.Left);
         Assert.False(files.IsMerge);
     }
+
+    // ---- Two directories -------------------------------------------------------------------------
+
+    /// <summary>Stands in for the disk: every named path is a directory, nothing else is.</summary>
+    private static Func<string, bool> Directories(params string[] paths) =>
+        p => paths.Contains(p, StringComparer.Ordinal);
+
+    [Fact]
+    public void Two_directories_are_a_folder_comparison()
+    {
+        // "FubarDiff old new" over two checkouts used to fall through to the FILE comparison and
+        // report "the file does not exist" about a directory that plainly did.
+        var files = StartupFiles.FromArgs(["/src/old", "/src/new"]);
+
+        Assert.True(files.IsFolderComparison(Directories("/src/old", "/src/new")));
+    }
+
+    [Fact]
+    public void Two_files_are_not()
+    {
+        var files = StartupFiles.FromArgs(["a.cs", "b.cs"]);
+
+        Assert.False(files.IsFolderComparison(Directories()));
+    }
+
+    [Fact]
+    public void One_of_each_is_not_a_folder_comparison_either()
+    {
+        // Pairing a directory with a file is a mistake, not a mode - and it is one the file
+        // comparison now names properly ("it is a folder, not a file") rather than claiming the
+        // directory does not exist.
+        var files = StartupFiles.FromArgs(["/src/old", "b.cs"]);
+
+        Assert.False(files.IsFolderComparison(Directories("/src/old")));
+    }
+
+    [Fact]
+    public void A_merge_is_never_a_folder_comparison()
+    {
+        // git mergetool names three files by a settled convention; nothing about it is a folder, and
+        // a repository that happened to have directories at those paths must not silently become one.
+        var files = StartupFiles.FromArgs(["--merge", "/b", "/l", "/r"]);
+
+        Assert.True(files.IsMerge);
+        Assert.False(files.IsFolderComparison(Directories("/b", "/l", "/r")));
+    }
+
+    [Fact]
+    public void One_path_on_its_own_is_not_a_folder_comparison()
+    {
+        Assert.False(StartupFiles.FromArgs(["/src/old"]).IsFolderComparison(Directories("/src/old")));
+    }
 }

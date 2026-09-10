@@ -27,7 +27,12 @@ public sealed class TextFileReader : ITextFileReader
 
         if (!info.Exists)
         {
-            throw new TextFileReadException(path, "the file does not exist.");
+            // A directory is not an existing FILE, so it lands here - and "the file does not exist"
+            // about a folder that plainly does is the app telling a reader they typed a bad path when
+            // what they actually did was hand a file comparison something that is not a file.
+            throw new TextFileReadException(
+                path,
+                Directory.Exists(path) ? "it is a folder, not a file." : "the file does not exist.");
         }
 
         if (info.Length > MaxBytes)
