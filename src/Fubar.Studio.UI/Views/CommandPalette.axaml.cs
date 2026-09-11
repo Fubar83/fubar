@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Fubar.Studio.UI.ViewModels;
 
 namespace Fubar.Studio.UI.Views;

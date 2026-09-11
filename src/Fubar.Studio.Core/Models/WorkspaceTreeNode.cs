@@ -50,6 +50,24 @@ public sealed record WorkspaceTreeNode(
     /// can choose to run HERE.</para>
     /// </remarks>
     public IReadOnlyList<WorkspaceTreeNode> Batches { get; init; } = [];
+
+    /// <summary>
+    /// Endpoints and folders nested INSIDE this one - <c>orders/</c> holding <c>orders/by-id/</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>An endpoint is a directory, and a directory that happens to be an endpoint is still a
+    /// place other endpoints can live: REST paths nest, so the folders people already write nest too,
+    /// and a layout that forbade it made the disk stop matching the tree.</para>
+    /// <para><b>Deliberately NOT in <see cref="Children"/></b>, for the reason <see cref="Batches"/>
+    /// is not: Children is what a run of this node SENDS. Put a nested endpoint there and clicking Run
+    /// on <c>orders</c> would fire everything beneath it - and an endpoint whose only child was
+    /// another endpoint would stop being sent at all, because <c>RunPlan.Walk</c> only sends an
+    /// endpoint "as it stands" when it has no children.</para>
+    /// <para>So there are three lists, and they answer three different questions.
+    /// <see cref="Children"/>: what running THIS sends. <see cref="Batches"/>: what you can choose to
+    /// run here. <see cref="Nested"/>: what lives under here.</para>
+    /// </remarks>
+    public IReadOnlyList<WorkspaceTreeNode> Nested { get; init; } = [];
 }
 
 /// <summary>

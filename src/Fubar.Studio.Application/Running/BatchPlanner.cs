@@ -11,10 +11,7 @@ public sealed record ResolvedBatch(Batch Batch, RunPlan Plan);
 public interface IBatchPlanner
 {
     /// <summary>Finds a batch by name and expands it.</summary>
-    /// <param name="ownerPath">The endpoint whose batch this is, relative to <c>collections/</c> -
-    /// null for one of the workspace's own. Null is not "look everywhere": a name is unique only
-    /// within one home, and searching both would make <c>@happy</c> mean whichever endpoint happened
-    /// to be scanned first.</param>
+    /// <param name="ownerPath">The endpoint whose batch this is, relative to <c>collections/</c>.</param>
     /// <exception cref="InvalidOperationException">There is no batch by that name. Reported rather
     /// than run as nothing: a typo in a CI script must not pass.</exception>
     Task<ResolvedBatch> ExpandAsync(
@@ -24,7 +21,18 @@ public interface IBatchPlanner
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
 /// <inheritdoc cref="IBatchPlanner"/>
+/// </summary>
+/// <remarks>
+/// <para>A batch is a DIRECTORY of items, and expanding it is listing them. There is nothing to
+/// resolve any more: a step used to be a PATH into the tree, which is how a batch came to name an
+/// endpoint that had since been renamed and had to be reported as an error rather than skipped. An
+/// item cannot point at anything that is not in the batch, because it IS in the batch.</para>
+/// <para>The order is the file names', naturally sorted - see <see cref="NaturalOrder"/>. Renaming a
+/// file is how a batch is reordered, so there is no index anywhere to fall out of step with what the
+/// directory holds.</para>
+/// </remarks>
 public sealed class BatchPlanner : IBatchPlanner
 {
     private readonly IBatchStore _batches;
@@ -49,81 +57,28 @@ public sealed class BatchPlanner : IBatchPlanner
 
         var owner = OwnerDirectory(tree, workspace, ownerPath);
 
-        var batch = await _batches.FindBatchAsync(owner, batchName, cancellationToken).ConfigureAwait(false)
+        var directory = _batches.FindBatchDirectory(owner, batchName)
             ?? throw new InvalidOperationException(Missing(owner, batchName, ownerPath));
-        var steps = new List<RunStep>();
 
-        // Teardown after the tested steps, in one list, flagged - the runner holds them back and runs
-        // them whatever happened above (see RunStep.IsTeardown).
-        var wanted = batch.Steps
-            .Select(s => (Step: s, IsTeardown: false))
-            .Concat(batch.Teardown.Select(s => (Step: s, IsTeardown: true)));
+        var batch = await _batches.LoadBatchAsync(directory, cancellationToken).ConfigureAwait(false);
 
-        foreach (var (step, isTeardown) in wanted)
-        {
-            var node = TreeLookup.Find(tree, (step.Endpoint ?? "").Replace('\\', '/').Trim('/'));
+        // The endpoint this batch belongs to: <endpoint>/batches/<name>, so two levels up.
+        var endpointDirectory = Path.GetDirectoryName(Path.GetDirectoryName(directory)) ?? owner;
+        var endpointFile = Path.Combine(endpointDirectory, IEndpointStore.EndpointFileName);
+        var endpointName = Path.GetFileName(endpointDirectory);
+        var folder = Path.GetDirectoryName(endpointDirectory) ?? collections;
 
-            if (node is null)
-            {
-                // Reported as a step that ERRORS, never skipped. A batch that quietly shrank when
-                // someone renamed an endpoint would keep passing while testing one thing fewer, which
-                // is the failure this whole feature exists to refuse.
-                steps.Add(new RunStep(
-                    steps.Count + 1,
-                    step.Endpoint ?? "(unnamed)",
-                    collections,
-                    collections,
-                    step.Case)
-                {
-                    Unresolved = $"This batch names \"{step.Endpoint}\", which is not in this workspace.",
-                    IsTeardown = isTeardown,
-                });
-
-                continue;
-            }
-
-            var expanded = step.Case is { Length: > 0 } named
-                ? Expand(node, named, collections)
-                : RunPlan.From(node).Steps;
-
-            foreach (var expandedStep in expanded)
-            {
-                steps.Add(expandedStep with { Order = steps.Count + 1, IsTeardown = isTeardown });
-            }
-        }
+        var steps = _batches.ListItems(directory)
+            .Select((item, index) => new RunStep(
+                index + 1, endpointName, endpointFile, folder, item.Name, item.FilePath))
+            .ToList();
 
         return new ResolvedBatch(batch, new RunPlan(steps));
     }
 
-    /// <summary>One named case of an endpoint - or a step that errors saying which cases there are,
-    /// for the same reason a missing endpoint does.</summary>
-    private static IReadOnlyList<RunStep> Expand(WorkspaceTreeNode node, string wanted, string collections)
-    {
-        var caseNode = node.Kind == WorkspaceNodeKind.Endpoint
-            ? node.Children.FirstOrDefault(c => string.Equals(c.Name, wanted, StringComparison.OrdinalIgnoreCase))
-            : null;
-
-        if (caseNode is not null)
-        {
-            return RunPlan.From(caseNode).Steps;
-        }
-
-        var known = node.Children.Count == 0
-            ? "it has none"
-            : "it has: " + string.Join(", ", node.Children.Select(c => c.Name));
-
-        return
-        [
-            new RunStep(1, node.Name, node.FullPath, collections, wanted)
-            {
-                Unresolved = $"This batch names case \"{wanted}\" of \"{node.Name}\", and {known}.",
-            },
-        ];
-    }
-
     /// <summary>
-    /// The directory that HOLDS the <c>batches/</c> a name is looked up in - the workspace root, or
-    /// one endpoint's directory.
+    /// The directory that HOLDS the <c>batches/</c> a name is looked up in - one endpoint's directory,
+    /// or the workspace root for a batch of the workspace's own.
     /// </summary>
     private static string OwnerDirectory(
         IReadOnlyList<WorkspaceTreeNode> tree, Workspace workspace, string? ownerPath)
@@ -137,20 +92,21 @@ public sealed class BatchPlanner : IBatchPlanner
             ?? throw new InvalidOperationException(
                 $"\"{ownerPath}\" is not in this workspace, so it has no batches.");
 
-        return node.Kind == WorkspaceNodeKind.Endpoint
-            ? node.FullPath
-            : throw new InvalidOperationException(
-                $"\"{ownerPath}\" is not an endpoint. Only an endpoint and the workspace hold batches.");
+        return node.FullPath;
     }
 
-    private string Missing(string owner, string batchName, string? ownerPath)
+    /// <summary>
+    /// Says what there IS, because the commonest reason to reach here is a typo and the answer is
+    /// usually on the list.
+    /// </summary>
+    private string Missing(string owner, string name, string? ownerPath)
     {
-        var available = _batches.ListBatches(owner);
-        var where = ownerPath is { Length: > 0 } ? $"\"{ownerPath}\"" : "This workspace";
+        var known = _batches.ListBatches(owner);
+        var where = ownerPath is { Length: > 0 } ? $"\"{ownerPath}\"" : "this workspace";
 
-        return available.Count == 0
-            ? $"{where} has no batches. Create one under {IBatchStore.BatchesDirName}/."
-            : $"There is no batch called \"{batchName}\" in {where.ToLowerInvariant()}. There is: "
-              + string.Join(", ", available.Select(b => b.Name)) + ".";
+        return known.Count == 0
+            ? $"{where} has no batches, so there is no \"{name}\"."
+            : $"{where} has no batch called \"{name}\". It has: "
+              + string.Join(", ", known.Select(b => b.Name)) + ".";
     }
 }

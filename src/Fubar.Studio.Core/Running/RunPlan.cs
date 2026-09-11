@@ -102,7 +102,11 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
         ArgumentNullException.ThrowIfNull(root);
 
         var steps = new List<RunStep>();
-        Walk(root, root.IsDirectory ? root.FullPath : ParentOf(root.FullPath), steps);
+        Walk(
+            root,
+            root.IsDirectory ? root.FullPath : ParentOf(root.FullPath),
+            steps,
+            includeNested: root.Kind != WorkspaceNodeKind.Endpoint);
         return new RunPlan(steps);
     }
 
@@ -150,7 +154,12 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
         return new RunPlan(Renumbered(kept));
     }
 
-    private static void Walk(WorkspaceTreeNode node, string folderPath, List<RunStep> into)
+    /// <param name="includeNested">
+    /// Whether endpoints nested inside an endpoint are sent too. True everywhere except at the ROOT of
+    /// a plan built from an endpoint - see the endpoint case below.
+    /// </param>
+    private static void Walk(
+        WorkspaceTreeNode node, string folderPath, List<RunStep> into, bool includeNested = true)
     {
         switch (node.Kind)
         {
@@ -166,18 +175,34 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
                 {
                     into.Add(new RunStep(
                         into.Count + 1, node.Name, EndpointFile(node.FullPath), ParentOf(node.FullPath)));
-                    return;
+                }
+                else
+                {
+                    foreach (var child in node.Children)
+                    {
+                        Walk(child, folderPath, into);
+                    }
                 }
 
-                foreach (var child in node.Children)
+                // An endpoint can hold other endpoints - REST paths nest, so the directories named
+                // after them do. Whether they are sent depends on WHY we are here.
+                //
+                // Running a FOLDER means everything underneath it, so an endpoint reached on the way
+                // down passes its nested ones on. Running an ENDPOINT means that call: clicking Run on
+                // `orders` and getting the twelve endpoints beneath it is the surprising reading, and
+                // the folder above is still there for anyone who wants them all.
+                if (includeNested)
                 {
-                    Walk(child, folderPath, into);
+                    foreach (var nested in node.Nested)
+                    {
+                        Walk(nested, nested.IsDirectory ? node.FullPath : folderPath, into, includeNested: true);
+                    }
                 }
 
                 return;
 
             case WorkspaceNodeKind.Case:
-                var endpointDirectory = EndpointDirectoryOfCase(node.FullPath);
+                var endpointDirectory = EndpointDirectoryOfItem(node.FullPath);
                 into.Add(new RunStep(
                     into.Count + 1,
                     Path.GetFileName(endpointDirectory),
@@ -200,11 +225,17 @@ public sealed record RunPlan(IReadOnlyList<RunStep> Steps)
     private static string EndpointFile(string endpointDirectory) =>
         Path.Combine(endpointDirectory, "endpoint.json");
 
-    /// <summary>A case lives at <c>&lt;endpoint&gt;/cases/&lt;name&gt;.json</c>, so its endpoint is two
-    /// levels up. Derived rather than carried: the tree already says where the file is, and a second
-    /// copy of that fact is a second thing to keep in step.</summary>
-    private static string EndpointDirectoryOfCase(string caseFilePath) =>
-        ParentOf(ParentOf(caseFilePath));
+    /// <summary>
+    /// The endpoint a batch item belongs to.
+    /// </summary>
+    /// <remarks>
+    /// An item lives at <c>&lt;endpoint&gt;/batches/&lt;batch&gt;/&lt;item&gt;.json</c>, so its endpoint
+    /// is THREE levels up - the item, its batch, and the batches directory. Derived rather than
+    /// carried: the tree already says where the file is, and a second copy of that fact is a second
+    /// thing to keep in step.
+    /// </remarks>
+    private static string EndpointDirectoryOfItem(string itemFilePath) =>
+        ParentOf(ParentOf(ParentOf(itemFilePath)));
 
     private static List<RunStep> Renumbered(List<RunStep> steps) =>
         [.. steps.Select((s, i) => s with { Order = i + 1 })];

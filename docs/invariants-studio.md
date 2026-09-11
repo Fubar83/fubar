@@ -768,3 +768,33 @@ with "Finished." moments later. And the automatic selection of the first answere
 `Progress<T>` stream, which posts to the captured context and can therefore not have run by the time
 the run returns - so `RunAsync` selects again after the sweep. A finished list beside an empty pane
 reads as a failure to load.
+
+
+**A batch is one endpoint's cases in the UI, and the general shape in the FILE** (Studio). The editor
+only ever builds an ordered subset of the owning endpoint's cases - derived from where the file is,
+`<endpoint>/batches/<name>.json` - because running the endpoint already sends every case, so a batch
+earns its place by being a subset, an order and a remembered oracle. `Batch.Steps` is unchanged:
+`BatchStep(endpoint, case)` already says exactly that, so `BatchPlanner`, `fubar run @smoke` and every
+batch written before this keep working, and the cross-endpoint form is still resolvable even though
+nothing builds one. `Teardown` and `Overlay` are hidden and CARRIED THROUGH on save - dropping what the
+editor does not show would be a silent deletion. One asymmetry that is deliberate: a STEP naming
+something the workspace lacks is kept and errors, because a step can name anything and a typo is
+otherwise invisible; a CASE the endpoint no longer has is dropped from the checklist, because the list
+IS the endpoint's cases and claiming one that is gone would be a lie.
+
+
+**The Run window keeps response bodies whatever is judging** (Studio). `CaptureResponseBodies` used to
+be `oracle.Kind != OracleKind.None`, so the commonest run - judged by assertions - threw every answer
+away as it arrived and a row could say 200 with no way to see what it returned. The window always asks
+for them now; `StepReport.MaxComparableBodyChars` bounds the cost and a body over it is dropped rather
+than truncated. `CliRunner` still decides for itself - it has nobody to show them to. Hence two buttons
+per row: Diff needs both sides and is correctly absent without an oracle, Response needs only one.
+
+
+**An event handler no markup names is as dead as an unbound command** (Studio).
+`WiringTests.Every_view_event_handler_is_referenced_by_markup` exists because `CommandPalette` carried
+an `OnDoubleTapped` that ran the selected entry and nothing referenced it, so clicking a palette row -
+once or twice - did nothing and the only way to run a command was Enter. Reported as "Copy as cURL does
+not work". The command test could not see it: the command was bound, the GESTURE was not. Matched by
+name, like its sibling, and only for the `private void On*(object? sender, …)` shape the XAML compiler
+wires - handlers attached from C# are lambdas and do not match.

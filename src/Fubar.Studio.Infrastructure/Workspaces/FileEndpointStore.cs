@@ -20,31 +20,46 @@ public sealed class FileEndpointStore : IEndpointStore
     public bool IsEndpoint(string directory) =>
         File.Exists(Path.Combine(directory, IEndpointStore.EndpointFileName));
 
+    /// <summary>
+    /// The endpoint a path belongs to, or null.
+    /// </summary>
+    /// <remarks>
+    /// Climbs out of the directories an endpoint OWNS and stops at anything else. An item is three
+    /// levels down - <c>&lt;endpoint&gt;/batches/&lt;batch&gt;/&lt;item&gt;.json</c> - and a batch two,
+    /// so this walks rather than stepping a fixed number of times. A plain folder is not owned by the
+    /// endpoint above it, so it resolves to nothing rather than to its grandparent.
+    /// </remarks>
     public string? EndpointDirectoryOf(string path)
     {
-        if (Directory.Exists(path))
+        var current = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
+
+        // Three, because that is as deep as an endpoint's own directories go.
+        for (var i = 0; i <= 3 && current is { Length: > 0 }; i++)
         {
-            return IsEndpoint(path) ? path : null;
+            if (IsEndpoint(current))
+            {
+                return current;
+            }
+
+            var parent = Path.GetDirectoryName(current);
+
+            // Owned when this IS one of the reserved directories, or when it is a batch - which is a
+            // directory sitting inside batches/ and named by its author.
+            var owned = IEndpointStore.IsReservedEndpointChild(Path.GetFileName(current))
+                || (parent is not null && string.Equals(
+                    Path.GetFileName(parent), IBatchStore.BatchesDirName, StringComparison.OrdinalIgnoreCase));
+
+            if (!owned)
+            {
+                return null;
+            }
+
+            current = parent;
         }
 
-        var parent = Path.GetDirectoryName(path);
-        if (parent is null)
-        {
-            return null;
-        }
-
-        // A case file is one level deeper, inside cases/ - and so is a batch of this endpoint's own,
-        // inside batches/. Both are reserved names an endpoint owns rather than folders in the tree.
-        var directoryName = Path.GetFileName(parent);
-
-        if (string.Equals(directoryName, IEndpointStore.CasesDirName, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(directoryName, IBatchStore.BatchesDirName, StringComparison.OrdinalIgnoreCase))
-        {
-            parent = Path.GetDirectoryName(parent);
-        }
-
-        return parent is not null && IsEndpoint(parent) ? parent : null;
+        return null;
     }
+
 
     public IReadOnlyList<CaseSummary> ListCases(string endpointDirectory)
     {

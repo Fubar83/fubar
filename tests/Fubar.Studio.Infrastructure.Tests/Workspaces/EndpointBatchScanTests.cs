@@ -23,7 +23,7 @@ public class EndpointBatchScanTests : IDisposable
 
     public EndpointBatchScanTests()
     {
-        Directory.CreateDirectory(Path.Combine(Endpoint, "cases"));
+        Directory.CreateDirectory(Endpoint);
         Write(Path.Combine(Endpoint, "endpoint.json"), new RequestModel { Name = "Get order" });
     }
 
@@ -43,8 +43,9 @@ public class EndpointBatchScanTests : IDisposable
         File.WriteAllText(path, JsonSerializer.Serialize(value, FubarJson.Options));
     }
 
-    private void WriteCase(string name) =>
-        Write(Path.Combine(Endpoint, "cases", name + ".json"), new EndpointCase { Name = name });
+    /// <summary>An ITEM of a batch - the endpoint's variants live in its batches now.</summary>
+    private void WriteCase(string name, string batch = "smoke") =>
+        Write(Path.Combine(Endpoint, "batches", batch, name + ".json"), new EndpointCase { Name = name });
 
     private WorkspaceTreeNode Scan() =>
         _service.BuildCollectionsTree(_root).Single().Children.Single();
@@ -54,18 +55,15 @@ public class EndpointBatchScanTests : IDisposable
     /// store no longer has one - creating is what SAVING a draft does now.</summary>
     private static string ExistingBatch(string owner, string name)
     {
-        var path = Path.Combine(owner, IBatchStore.BatchesDirName, name + ".json");
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, "{\"name\":\"" + name + "\"}");
+        var path = Path.Combine(owner, IBatchStore.BatchesDirName, name);
+        Directory.CreateDirectory(path);
         return path;
     }
-
     // ---- Scanning ---------------------------------------------------------------------------------
 
     [Fact]
     public void An_endpoints_batches_are_scanned_into_their_own_list()
     {
-        WriteCase("default");
         ExistingBatch(Endpoint, "happy");
         ExistingBatch(Endpoint, "regression");
 
@@ -75,48 +73,51 @@ public class EndpointBatchScanTests : IDisposable
         Assert.All(endpoint.Batches, b => Assert.Equal(WorkspaceNodeKind.Batch, b.Kind));
     }
 
-    /// <summary>The one that keeps a run honest: batches are never children, so a run of the endpoint
-    /// still sends its cases and nothing else.</summary>
+    /// <summary>A batch's items are its children, and the order is their file names', naturally
+    /// sorted - request-2 before request-10.</summary>
     [Fact]
-    public void Batches_are_not_among_the_endpoints_children()
+    public void A_batchs_items_are_its_children_in_natural_order()
     {
-        WriteCase("default");
-        ExistingBatch(Endpoint, "happy");
+        WriteCase("request-10", "happy");
+        WriteCase("request-2", "happy");
+        WriteCase("request-1", "happy");
 
-        var endpoint = Scan();
+        var batch = Assert.Single(Scan().Batches);
 
-        Assert.Equal(["default"], endpoint.Children.Select(c => c.Name));
+        Assert.Equal(["request-1", "request-2", "request-10"], batch.Children.Select(c => c.Name));
+        Assert.All(batch.Children, c => Assert.Equal(WorkspaceNodeKind.Case, c.Kind));
     }
 
-    /// <summary>An endpoint that only has batches still has no cases - it is sent as it stands, and
-    /// the batches are things you can choose to run instead.</summary>
+    /// <summary>
+    /// The one that keeps a run honest: an endpoint's Children is what running IT sends, and running
+    /// an endpoint sends the call itself. Its items belong to a batch, and are sent by running that.
+    /// </summary>
     [Fact]
-    public void An_endpoint_with_only_batches_has_no_cases()
+    public void An_endpoints_own_children_are_empty()
     {
+        WriteCase("request-1");
         ExistingBatch(Endpoint, "happy");
 
-        var endpoint = Scan();
-
-        Assert.Empty(endpoint.Children);
-        Assert.Single(endpoint.Batches);
+        Assert.Empty(Scan().Children);
     }
 
     [Fact]
     public void An_endpoint_with_no_batches_directory_has_none()
     {
-        WriteCase("default");
-
         Assert.Empty(Scan().Batches);
     }
 
-    /// <summary><c>batches/</c> is a reserved name an endpoint owns, like <c>cases/</c> and
-    /// <c>snapshots/</c> - never a folder in the tree.</summary>
+    /// <summary><c>batches/</c> is a reserved name an endpoint owns, like <c>snapshots/</c> - never a
+    /// folder in the tree, and never something nested under the endpoint either.</summary>
     [Fact]
     public void The_batches_directory_is_not_a_folder_in_the_tree()
     {
         ExistingBatch(Endpoint, "happy");
 
-        Assert.DoesNotContain(Scan().Children, c => c.Name == "batches");
+        var endpoint = Scan();
+
+        Assert.DoesNotContain(endpoint.Children, c => c.Name == "batches");
+        Assert.DoesNotContain(endpoint.Nested, c => c.Name == "batches");
     }
 
     // ---- Two homes --------------------------------------------------------------------------------
@@ -128,11 +129,8 @@ public class EndpointBatchScanTests : IDisposable
         ExistingBatch(_root, "happy");
         ExistingBatch(Endpoint, "happy");
 
-        var workspaceOwned = await _batches.FindBatchAsync(_root, "happy");
-        var endpointOwned = await _batches.FindBatchAsync(Endpoint, "happy");
-
-        Assert.NotNull(workspaceOwned);
-        Assert.NotNull(endpointOwned);
+        Assert.NotNull(await _batches.FindBatchAsync(_root, "happy"));
+        Assert.NotNull(await _batches.FindBatchAsync(Endpoint, "happy"));
         Assert.Single(_batches.ListBatches(_root));
         Assert.Single(_batches.ListBatches(Endpoint));
     }
@@ -145,14 +143,16 @@ public class EndpointBatchScanTests : IDisposable
         Assert.Null(await _batches.FindBatchAsync(_root, "happy"));
     }
 
-    /// <summary>A batch file is two levels down inside its endpoint, exactly like a case, so the
-    /// endpoint it belongs to is found the same way.</summary>
+    /// <summary>A batch directory is two levels down inside its endpoint, and an ITEM is three - so
+    /// both have to climb out to the same place.</summary>
     [Fact]
-    public void An_endpoint_batch_knows_which_endpoint_it_belongs_to()
+    public void A_batch_and_its_items_know_which_endpoint_they_belong_to()
     {
         var path = ExistingBatch(Endpoint, "happy");
+        WriteCase("request-1", "happy");
 
         Assert.Equal(Endpoint, _endpoints.EndpointDirectoryOf(path));
+        Assert.Equal(Endpoint, _endpoints.EndpointDirectoryOf(Path.Combine(path, "request-1.json")));
     }
 
     [Fact]

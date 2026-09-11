@@ -21,7 +21,7 @@ public class SnapshotStateTests : IDisposable
 
     public SnapshotStateTests()
     {
-        Directory.CreateDirectory(Path.Combine(Endpoint, "cases"));
+        Directory.CreateDirectory(Endpoint);
         Write(Path.Combine(Endpoint, "endpoint.json"), new RequestModel { Name = "Get order" });
     }
 
@@ -41,8 +41,10 @@ public class SnapshotStateTests : IDisposable
         File.WriteAllText(path, JsonSerializer.Serialize(value, FubarJson.Options));
     }
 
-    private void WriteCase(string name) =>
-        Write(Path.Combine(Endpoint, "cases", name + ".json"), new EndpointCase { Name = name });
+    /// <summary>An ITEM of a batch - an endpoint's variants live in its batches now, and a snapshot is
+    /// keyed on the item's own file.</summary>
+    private void WriteCase(string name, string batch = "smoke") =>
+        Write(Path.Combine(Endpoint, "batches", batch, name + ".json"), new EndpointCase { Name = name });
 
     /// <summary>Written with an explicit timestamp, because "before" and "after" is the whole
     /// question and a test that writes both files in the same millisecond asks nothing.</summary>
@@ -57,12 +59,15 @@ public class SnapshotStateTests : IDisposable
     private WorkspaceTreeNode Scan() =>
         _service.BuildCollectionsTree(_root).Single().Children.Single();
 
+    /// <summary>The one item of the one batch - an endpoint's variants are its batches' items now.</summary>
+    private WorkspaceTreeNode Item() => Scan().Batches.Single().Children.Single();
+
     [Fact]
     public void Nothing_recorded_reads_as_none()
     {
         WriteCase("default");
 
-        Assert.Equal(SnapshotState.None, Scan().Children.Single().Snapshots);
+        Assert.Equal(SnapshotState.None, Item().Snapshots);
         Assert.Equal(SnapshotState.None, Scan().Snapshots);
     }
 
@@ -72,7 +77,7 @@ public class SnapshotStateTests : IDisposable
         WriteCase("default");
         WriteSnapshot("default", "Staging", DateTime.UtcNow.AddMinutes(5));
 
-        Assert.Equal(SnapshotState.Recorded, Scan().Children.Single().Snapshots);
+        Assert.Equal(SnapshotState.Recorded, Item().Snapshots);
     }
 
     /// <summary>The one that matters.</summary>
@@ -82,7 +87,7 @@ public class SnapshotStateTests : IDisposable
         WriteCase("default");
         WriteSnapshot("default", "Staging", DateTime.UtcNow.AddDays(-1));
 
-        Assert.Equal(SnapshotState.Stale, Scan().Children.Single().Snapshots);
+        Assert.Equal(SnapshotState.Stale, Item().Snapshots);
     }
 
     /// <summary>The ENDPOINT's URL decides what was sent just as much as the case's parameters do, so
@@ -95,7 +100,7 @@ public class SnapshotStateTests : IDisposable
 
         File.SetLastWriteTimeUtc(Path.Combine(Endpoint, "endpoint.json"), DateTime.UtcNow.AddMinutes(10));
 
-        Assert.Equal(SnapshotState.Stale, Scan().Children.Single().Snapshots);
+        Assert.Equal(SnapshotState.Stale, Item().Snapshots);
     }
 
     /// <summary>Worst-first, because the stale one is what a reader has to go and look at.</summary>

@@ -39,6 +39,16 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
     public bool CanShowDifferences =>
         Report is { ResponseBody: not null, ComparedBody: not null };
 
+    /// <summary>
+    /// Whether there is an answer to show on its own.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="CanShowDifferences"/>, and true more often: a run judged by assertions
+    /// has no other side, so there is nothing to diff and the response was previously unreachable from
+    /// this window. False for a step that never answered, and for a body dropped for being too large.
+    /// </remarks>
+    public bool CanShowResponse => Report is { ResponseBody: not null };
+
     [ObservableProperty]
     public partial StepStatus? Status { get; set; }
 
@@ -219,6 +229,7 @@ public sealed partial class RunStepRowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsPending));
         OnPropertyChanged(nameof(IsCleanupProblem));
         OnPropertyChanged(nameof(CanShowDifferences));
+        OnPropertyChanged(nameof(CanShowResponse));
     }
 
     partial void OnIsRunningChanged(bool value) => RaiseClassFlags();

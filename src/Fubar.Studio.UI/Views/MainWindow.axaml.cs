@@ -27,9 +27,6 @@ public partial class MainWindow : Window
                 return;
             }
 
-            viewModel.FilterFocusRequested += () =>
-                this.FindControl<Fubar.Controls.SearchBox>("RequestFilterBox")?.Focus();
-
             viewModel.FindRequested += () =>
                 this.GetVisualDescendants().OfType<Fubar.Controls.JsonEditor>().FirstOrDefault()?.OpenFind();
 

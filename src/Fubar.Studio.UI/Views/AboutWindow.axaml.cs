@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Fubar.Studio.UI.ViewModels;
 
@@ -18,4 +19,19 @@ public partial class AboutWindow : Window
     }
 
     private void Close_OnClick(object? sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// Escape leaves a text field first and closes the window second - see
+    /// <see cref="Fubar.Controls.WindowEscape"/>.
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (Fubar.Controls.WindowEscape.Handle(this, e))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
 }

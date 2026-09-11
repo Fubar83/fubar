@@ -186,7 +186,11 @@ public sealed class WorkspaceFormatConverter : IWorkspaceFormatConverter
 
         await JsonFile
             .WriteAtomicAsync(
-                Path.Combine(step.EndpointDirectory, IEndpointStore.CasesDirName, step.CaseName + ".json"),
+                Path.Combine(
+                    step.EndpointDirectory,
+                    IBatchStore.BatchesDirName,
+                    CaseMerge.ImplicitCaseName,
+                    "request-1.json"),
                 endpointCase,
                 FubarJson.Options,
                 cancellationToken)
@@ -202,7 +206,7 @@ public sealed class WorkspaceFormatConverter : IWorkspaceFormatConverter
                 Path.GetFileNameWithoutExtension(step.RequestPath) + SnapshotDirectorySuffix);
 
             var to = Path.Combine(
-                step.EndpointDirectory, IEndpointStore.SnapshotsDirName, step.CaseName);
+                step.EndpointDirectory, IEndpointStore.SnapshotsDirName, "request-1");
 
             Directory.CreateDirectory(Path.GetDirectoryName(to)!);
             Directory.Move(from, to);
@@ -243,9 +247,11 @@ public sealed class WorkspaceFormatConverter : IWorkspaceFormatConverter
         {
             var segment = Path.GetFileName(directory);
 
+            // Everything an endpoint OWNS is already converted, including the items inside a batch -
+            // which are request-shaped files and would otherwise be converted again, into endpoints
+            // nested inside a batch.
             if (segment.EndsWith(SnapshotDirectorySuffix, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(segment, IEndpointStore.SnapshotsDirName, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(segment, IEndpointStore.CasesDirName, StringComparison.OrdinalIgnoreCase))
+                || IEndpointStore.IsReservedEndpointChild(segment))
             {
                 return false;
             }

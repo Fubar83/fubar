@@ -282,9 +282,25 @@
                                     <!-- "2 differences from Staging.json" is where the question
                                          starts, not where it ends. Only on rows that kept both
                                          bodies, so it never offers to open nothing. -->
+                                    <!-- What it actually said, on its own. Beside the diff rather than
+                                         instead of it: a run judged by assertions has no other side,
+                                         so Diff is correctly absent and the response was previously
+                                         unreachable from this window. -->
                                     <Button DockPanel.Dock="Right"
                                             Classes="secondary-btn"
-                                            Content="Open"
+                                            Content="Response"
+                                            FontSize="11"
+                                            Padding="8,1"
+                                            Margin="6,0,0,0"
+                                            VerticalAlignment="Center"
+                                            IsVisible="{Binding CanShowResponse}"
+                                            ToolTip.Tip="Show what came back, in a window over this one"
+                                            Command="{Binding $parent[ItemsControl].((vm:CollectionRunViewModel)DataContext).ShowResponseCommand}"
+                                            CommandParameter="{Binding}" />
+
+                                    <Button DockPanel.Dock="Right"
+                                            Classes="secondary-btn"
+                                            Content="Diff"
                                             FontSize="11"
                                             Padding="8,1"
                                             Margin="8,0,0,0"

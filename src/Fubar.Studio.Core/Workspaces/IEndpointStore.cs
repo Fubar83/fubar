@@ -22,10 +22,25 @@ public interface IEndpointStore
     /// <summary>The file name an endpoint directory is recognised by.</summary>
     const string EndpointFileName = "endpoint.json";
 
-    /// <summary>Reserved directory names inside an endpoint. Neither is a folder.</summary>
+    /// <summary>Reserved directory names inside an endpoint. None of them is a folder.</summary>
     const string CasesDirName = "cases";
 
     const string SnapshotsDirName = "snapshots";
+
+    /// <summary>
+    /// Whether a directory name inside an endpoint is one of its own PARTS rather than something
+    /// nested under it.
+    /// </summary>
+    /// <remarks>
+    /// An endpoint can now hold other endpoints, so the scanner has to tell "this is the cases
+    /// directory" from "this is a child endpoint called cases". These three names are the layout's,
+    /// which is why creating a child by one of them is refused at the point of creation rather than
+    /// left to be discovered as a directory that never appears in the tree.
+    /// </remarks>
+    static bool IsReservedEndpointChild(string? name) =>
+        string.Equals(name, CasesDirName, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, SnapshotsDirName, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, IBatchStore.BatchesDirName, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Whether this directory is an endpoint - i.e. holds an <c>endpoint.json</c>.</summary>
     bool IsEndpoint(string directory);

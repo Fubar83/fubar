@@ -72,6 +72,53 @@ public class WiringTests
             + $"to {nameof(Exempt)} with the reason.");
     }
 
+    /// <summary>
+    /// Event handlers in a view's code-behind that no markup references.
+    /// </summary>
+    /// <remarks>
+    /// <para>The same failure as an orphaned command, one layer down, and the command test could not
+    /// see it. <c>CommandPalette</c> had an <c>OnDoubleTapped</c> handler that ran the selected entry
+    /// and no <c>.axaml</c> mentioned it - so clicking a palette row, with one click or two, did
+    /// nothing at all. The only way to run a command was Enter, and picking "Copy as cURL" with the
+    /// mouse read as the command being broken.</para>
+    /// <para>Matched by NAME, like the command test, and for the same reason: it cannot prove the
+    /// handler is attached to the right event, only that it is not orphaned.</para>
+    /// </remarks>
+    [Fact]
+    public void Every_view_event_handler_is_referenced_by_markup()
+    {
+        var project = FindUiProjectDirectory();
+        var views = Path.Combine(project, "Views");
+
+        var markup = string.Join(
+            "\n",
+            Directory.EnumerateFiles(project, "*.axaml", SearchOption.AllDirectories)
+                .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                .Select(File.ReadAllText));
+
+        // "private void OnFoo(object? sender, ...)" - the shape the XAML compiler wires up. Handlers
+        // attached in C# are lambdas or framework methods and do not match, which is what keeps this
+        // to the ones markup is supposed to name.
+        var handler = new System.Text.RegularExpressions.Regex(
+            @"private\s+void\s+(On\w+)\s*\(\s*object\?\s+sender",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        var orphaned = Directory
+            .EnumerateFiles(views, "*.axaml.cs", SearchOption.AllDirectories)
+            .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .SelectMany(path => handler.Matches(File.ReadAllText(path))
+                .Select(m => (File: Path.GetFileName(path), Name: m.Groups[1].Value)))
+            .Where(h => !markup.Contains(h.Name, StringComparison.Ordinal))
+            .Select(h => $"{h.File}.{h.Name}")
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            orphaned.Length == 0,
+            "These event handlers are written and referenced by no markup, so the gesture they exist "
+            + $"for does nothing: {string.Join(", ", orphaned)}. Wire them or delete them.");
+    }
+
     // A second test asserting "one public constructor per view model" was written here and removed the
     // same day. It flagged two types: StatusLogViewModel, where the ambiguity was real (it IS resolved
     // from DI, and a container picking the greediest resolvable constructor is a silent hazard - fixed

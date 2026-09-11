@@ -37,7 +37,35 @@ All notable changes to this project are documented here. The format is based on
 > [SECURITY.md](../SECURITY.md). Anything found must be **rotated at the provider**, not just
 > deleted: a fix cannot un-commit a credential.
 
+### Changed
+
+- **A batch is now an ordered subset of one endpoint's cases.** It lives under its endpoint in the
+  tree, and the editor is a checklist: tick the cases, reorder them, and each row says whether it has
+  a recorded answer (`snapshot: Staging` / `no snapshot`) — which is what decides whether "compare
+  against recorded snapshots" means anything for it. Running the endpoint already sends every case, so
+  a batch earns its place by being a *subset*, an *order*, and a remembered way of judging.
+
+  The workspace-level Batches group and its cross-endpoint step builder are gone from the UI. The
+  **format is unchanged** — `BatchStep(endpoint, case)` already says exactly this — so `BatchPlanner`,
+  `fubar run @smoke` and anything already written keep working. Cleanup and the comparison overlay are
+  no longer shown, and are **carried through on save** rather than deleted.
+
+- **Ctrl+P opens the command palette; the request tree's filter box is gone.** The palette does that
+  job better — it searches commands as well as requests, ranks fuzzily, and shows where it matched.
+
 ### Added
+
+- **Escape closes a window, after leaving the field you are in.** Two stages, because Escape means two
+  things and the inner one comes first: in a text field it leaves the field, anywhere else it closes
+  the window. Applied to the Run, Compare, Diff, About and Settings windows — not the main one, where
+  Escape closing the app is never what anybody meant. Only the diff dialog handled Escape before, so
+  the two windows you leave open longest had no keyboard way out.
+
+- **Every answered row in the Run window can show its response.** Beside the comparison, not instead
+  of it: a run judged by assertions has no other side, so there is nothing to diff and the response
+  was unreachable from that window. The Run window now keeps response bodies whatever is judging —
+  they are capped, and one over the cap is dropped rather than truncated — so a row that says 200 can
+  always show what came back. The old **Open** button is now **Diff**, since there are two.
 
 - **Make a batch from the tree, and compare one across two environments.** A batch is how you call one
   endpoint several ways — different bodies, different parameters — in order. Two things stood between
@@ -94,6 +122,13 @@ All notable changes to this project are documented here. The format is based on
   the request editor's own compare dialog.
 
 ### Fixed
+
+- **Clicking a command in the palette runs it.** `CommandPalette` had an `OnDoubleTapped` handler that
+  no markup referenced, so neither a single nor a double click did anything at all — the only way to
+  run an entry was Enter, and picking **Copy as cURL** with the mouse read as the command being broken.
+  A single click now runs it and closes the palette. `WiringTests` gained a second guard: an event
+  handler in a view's code-behind that no markup names is the same failure as an orphaned command, one
+  layer down, and the command test could not see it.
 
 - **Comparing an endpoint with more than one case no longer fails before it sends anything.** The
   comparison window keyed its rows by file path, and every case of an endpoint lives in the same

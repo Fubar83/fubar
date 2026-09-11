@@ -462,7 +462,7 @@ public class CollectionRunTests
     /// looks enabled and does nothing when clicked, with no error anywhere.
     /// </remarks>
     [AvaloniaFact]
-    public async Task The_Open_button_on_a_differing_row_is_bound_to_the_command()
+    public async Task The_Diff_button_on_a_differing_row_is_bound_to_the_command()
     {
         var vm = Vm(new FakeRunService().DifferingOn(2, """{"a":1}""", """{"a":2}"""));
         var window = new CollectionRunWindow(vm);
@@ -471,12 +471,12 @@ public class CollectionRunTests
         await vm.RunCommand.ExecuteAsync(null);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        var open = window.GetVisualDescendants()
+        var diff = window.GetVisualDescendants()
             .OfType<Avalonia.Controls.Button>()
-            .Where(b => b.IsVisible && Equals(b.Content, "Open"))
+            .Where(b => b.IsVisible && Equals(b.Content, "Diff"))
             .ToList();
 
-        var button = Assert.Single(open);
+        var button = Assert.Single(diff);
         Assert.NotNull(button.Command);
         Assert.True(button.Command!.CanExecute(button.CommandParameter));
 
@@ -485,6 +485,35 @@ public class CollectionRunTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.Equal("""{"a":1}""", RecordingDiffPreview.Shown!.Value.Left);
+    }
+
+    /// <summary>
+    /// Beside the diff, not instead of it: a run judged by assertions has no other side, so Diff is
+    /// correctly absent and the response was previously unreachable from this window.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Every_answered_row_can_show_its_response_even_with_nothing_to_diff()
+    {
+        var vm = Vm(new FakeRunService());
+        var window = new CollectionRunWindow(vm);
+        window.Show();
+
+        await vm.RunCommand.ExecuteAsync(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // Nothing was compared, so there is no Diff button anywhere...
+        Assert.Empty(window.GetVisualDescendants()
+            .OfType<Avalonia.Controls.Button>()
+            .Where(b => b.IsVisible && Equals(b.Content, "Diff")));
+
+        // ...and a Response button on every row that answered.
+        var responses = window.GetVisualDescendants()
+            .OfType<Avalonia.Controls.Button>()
+            .Where(b => b.IsVisible && Equals(b.Content, "Response"))
+            .ToList();
+
+        Assert.NotEmpty(responses);
+        Assert.All(responses, b => Assert.NotNull(b.Command));
     }
 
     /// <summary>"2 differences from Staging.json" is where the question starts, not where it ends.
@@ -759,7 +788,12 @@ public class CollectionRunTests
             var status = assertions.Any(a => !a.Passed) ? StepStatus.Failed : StepStatus.Passed;
             var code = _statuses.TryGetValue(n, out var c) ? c : 200;
 
-            return new StepReport(step, status, code, "OK", 12, 340, assertions, [], null);
+            // Every answered step carries a body: the Run WINDOW captures them whatever is judging,
+            // so a fake that only produced one for a comparison would be modelling the old behaviour.
+            return new StepReport(step, status, code, "OK", 12, 340, assertions, [], null)
+            {
+                ResponseBody = $$"""{"step":{{step.Order}}}""",
+            };
         }
     }
 }

@@ -36,7 +36,10 @@
         <KeyBinding Gesture="Ctrl+OemTilde" Command="{Binding ToggleLogCommand}" />
         <KeyBinding Gesture="Ctrl+N" Command="{Binding WorkspaceExplorer.NewRequestCommand}" />
         <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding WorkspaceExplorer.NewFolderCommand}" />
-        <KeyBinding Gesture="Ctrl+P" Command="{Binding FocusFilterCommand}" />
+        <!-- Ctrl+P focused a filter box in the request tree. The palette does that job better - it
+             searches commands as well as requests, ranks fuzzily and shows where it matched - so the
+             gesture people already press for "find a thing" opens it, and Ctrl+Shift+P still does too. -->
+        <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenPaletteCommand}" />
         <KeyBinding Gesture="Ctrl+F" Command="{Binding FindInResponseCommand}" />
         <KeyBinding Gesture="Ctrl+Shift+P" Command="{Binding OpenPaletteCommand}" />
         <KeyBinding Gesture="Ctrl+OemComma" Command="{Binding OpenSettingsCommand}" />

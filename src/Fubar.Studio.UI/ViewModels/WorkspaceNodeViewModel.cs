@@ -34,6 +34,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
         // follows them rather than each caller remembering to say so.
         Children.CollectionChanged += (_, _) => RaiseShapeChanged();
         Batches.CollectionChanged += (_, _) => RaiseShapeChanged();
+        Nested.CollectionChanged += (_, _) => RaiseShapeChanged();
     }
 
     [ObservableProperty]
@@ -100,14 +101,21 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
     /// <summary>
     /// Cases first, then batches: a case is what the endpoint IS called with, a batch is a way of
-    /// running several of them, so the parts come before the arrangements. An endpoint with exactly
-    /// one case and no batches stays a leaf - "1 case" under an expander is a row that costs a click
-    /// to learn nothing.
+    /// running several of them, so the parts come before the arrangements.
     /// </summary>
+    /// <remarks>
+    /// <para>An endpoint with exactly one case and no batches stays a leaf - "1 case" under an
+    /// expander is a row that costs a click to learn nothing.</para>
+    /// <para>A BATCH is never hidden that way, whatever else is there. The rule used to be "fewer than
+    /// two children in total", which is right about cases and wrong about batches: an endpoint with one
+    /// batch and no cases collapsed to a leaf, so the batch someone had just made was nowhere in the
+    /// tree. A lone case says nothing the endpoint row does not; a lone batch is a named thing to
+    /// click.</para>
+    /// </remarks>
     private IReadOnlyList<WorkspaceNodeViewModel> DesiredDisplayChildren =>
         Kind != WorkspaceNodeKind.Endpoint ? [.. Children]
-        : Children.Count + Batches.Count < 2 ? []
-        : [.. Children, .. Batches];
+        : Batches.Count == 0 && Nested.Count == 0 && Children.Count < 2 ? []
+        : [.. Children, .. Batches, .. Nested];
 
     /// <summary>Aligns <see cref="DisplayChildren"/> with what should be shown, touching only the rows
     /// that actually changed - anything else would rebuild containers that are holding a selection.</summary>
@@ -147,6 +155,17 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     /// would make an endpoint whose only child was a batch send nothing at all.
     /// </remarks>
     public ObservableCollection<WorkspaceNodeViewModel> Batches { get; } = [];
+
+    /// <summary>
+    /// Endpoints and folders nested inside this endpoint - <c>orders/</c> holding <c>orders/by-id/</c>.
+    /// </summary>
+    /// <remarks>
+    /// Its own collection for the reason <see cref="Batches"/> is: <c>ToTreeNode</c> feeds
+    /// <c>RunPlan</c>, and an endpoint's children are the cases a run of it SENDS. A nested endpoint
+    /// in there would make Run on <c>orders</c> fire everything beneath it, and would stop an endpoint
+    /// whose only child was another endpoint from being sent at all.
+    /// </remarks>
+    public ObservableCollection<WorkspaceNodeViewModel> Nested { get; } = [];
 
     /// <summary>How many ways this endpoint is called, shown as a badge only when there is more than
     /// one - "1 case" on every row would be noise standing in for the ordinary.</summary>
@@ -248,6 +267,10 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
             // its descendants, and getting that from the directory flag alone would send a case file
             // as if it were a request.
             Kind = Kind,
+
+            // Carried too, so "run everything below this" can reach them. They stay OUT of Children,
+            // which is what a run of this node itself sends - see the property.
+            Nested = [.. Nested.Where(n => !n.IsDraft).Select(n => n.ToTreeNode())],
         };
 
     /// <summary>Inline-rename state: when true, the TreeView shows an editable TextBox instead of the label.</summary>
@@ -302,59 +325,6 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasContents))]
     public partial bool IsExpanded { get; set; } = true;
 
-    /// <summary>
-    /// Applies <paramref name="filter"/> to this node and its descendants, returning whether anything
-    /// here survived.
-    ///
-    /// <para>A folder matches when ANY descendant does, and unfolds itself so the match is on screen -
-    /// a filter that finds a request inside a folded folder and leaves it folded has shown you nothing.
-    /// This is live again now that folding is: it was written once before, against an
-    /// <see cref="IsExpanded"/> that was bound to no container, and did nothing at all. A folder that
-    /// matches by its own name keeps all its children, because "show me the Orders folder" means the
-    /// folder, not an empty one.</para>
-    ///
-    /// <para>Clearing the filter leaves everything it opened open. Re-folding would undo the folding
-    /// the person did by hand, and there is no way to tell the two apart afterwards.</para>
-    /// </summary>
-    public bool ApplyFilter(string? filter)
-    {
-        if (string.IsNullOrWhiteSpace(filter))
-        {
-            IsVisible = true;
-
-            foreach (var child in Children)
-            {
-                child.ApplyFilter(null);
-            }
-
-            return true;
-        }
-
-        var selfMatches = Matches(filter);
-
-        var anyChildMatches = false;
-        foreach (var child in Children)
-        {
-            // Not short-circuited: every child needs its own visibility set, so this must not stop at
-            // the first match.
-            anyChildMatches |= child.ApplyFilter(selfMatches ? null : filter);
-        }
-
-        IsVisible = selfMatches || anyChildMatches;
-
-        if (anyChildMatches)
-        {
-            IsExpanded = true;
-        }
-
-        return IsVisible;
-    }
-
-    private bool Matches(string filter) =>
-        Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
-        || (Url?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false)
-        || (Method?.StartsWith(filter, StringComparison.OrdinalIgnoreCase) ?? false);
-
     /// <summary>Reconciles <see cref="Children"/> against a freshly scanned snapshot, by path identity.</summary>
     protected void SyncChildren(IReadOnlyList<WorkspaceTreeNode> incoming)
     {
@@ -394,6 +364,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
                 };
                 child.SyncChildren(node.Children);
                 child.SyncBatches(node.Batches);
+                child.SyncNested(node.Nested);
                 Children.Insert(Math.Min(i, Children.Count), child);
             }
             else
@@ -417,6 +388,7 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
 
                 existing.SyncChildren(node.Children);
                 existing.SyncBatches(node.Batches);
+                existing.SyncNested(node.Nested);
             }
         }
 
@@ -471,6 +443,71 @@ public partial class WorkspaceNodeViewModel : ViewModelBase
         MoveDraftsLast(Batches);
         RaiseShapeChanged();
     }
+
+    /// <summary>
+    /// Reconciles the endpoints and folders nested inside this endpoint.
+    /// </summary>
+    /// <remarks>
+    /// Recurses, unlike <see cref="SyncBatches"/>: a nested endpoint is an endpoint like any other and
+    /// has its own cases, batches and nesting. It is reconciled in place for the reason everything here
+    /// is - rebuilding the subtree would drop the selection off whatever row is being worked on.
+    /// </remarks>
+    protected void SyncNested(IReadOnlyList<WorkspaceTreeNode> incoming)
+    {
+        for (var i = Nested.Count - 1; i >= 0; i--)
+        {
+            if (!Nested[i].IsDraft && !incoming.Any(n => n.FullPath == Nested[i].FullPath))
+            {
+                Nested.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < incoming.Count; i++)
+        {
+            var node = incoming[i];
+            var existing = Nested.FirstOrDefault(n => n.FullPath == node.FullPath);
+
+            if (existing is null)
+            {
+                var child = new WorkspaceNodeViewModel(node.Name, node.FullPath, node.IsDirectory, node.Kind)
+                {
+                    Method = node.RequestSummary?.Method,
+                    HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false,
+                    SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false,
+                    Url = node.RequestSummary?.Url,
+                    Snapshots = node.Snapshots,
+                };
+
+                child.SyncChildren(node.Children);
+                child.SyncBatches(node.Batches);
+                child.SyncNested(node.Nested);
+                Nested.Insert(Math.Min(i, Nested.Count), child);
+                continue;
+            }
+
+            var currentIndex = Nested.IndexOf(existing);
+            if (currentIndex != i)
+            {
+                Nested.Move(currentIndex, i);
+            }
+
+            existing.Name = node.Name;
+            existing.Method = node.RequestSummary?.Method;
+            existing.Url = node.RequestSummary?.Url;
+            existing.HasAuthOverride = node.RequestSummary?.HasAuthOverride ?? false;
+            existing.SendsNoAuth = node.RequestSummary?.SendsNoAuth ?? false;
+            existing.Snapshots = node.Snapshots;
+            existing.IsDraft = false;
+
+            existing.SyncChildren(node.Children);
+            existing.SyncBatches(node.Batches);
+            existing.SyncNested(node.Nested);
+        }
+
+        MoveDraftsLast(Nested);
+        RaiseShapeChanged();
+    }
+
 
     /// <summary>
     /// Drafts sit at the end, in the order they were made.

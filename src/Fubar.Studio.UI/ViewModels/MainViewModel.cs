@@ -135,8 +135,6 @@ public partial class MainViewModel : ViewModelBase
         WorkspaceExplorer.CompareEnvironmentsRequested += OnCompareEnvironmentsRequested;
         LeftPane.EnvironmentsSection.EditRequested += OpenEnvironmentEditor;
         LeftPane.AuthProfilesSection.EditRequested += OpenAuthProfileEditor;
-        LeftPane.BatchesSection.RunRequested += row => _ = OnRunBatchRequestedAsync(row);
-        LeftPane.BatchesSection.EditRequested += OpenBatchEditor;
 
         // A failure reported into a collapsed panel is not reported. The strip opens itself the first
         // time something actually goes wrong; the badge on the shell covers everything after that.
@@ -205,9 +203,6 @@ public partial class MainViewModel : ViewModelBase
     /// same rule the command line follows - a batch written for staging has to be runnable against a
     /// branch deployment without editing the file.
     /// </remarks>
-    private Task OnRunBatchRequestedAsync(BatchRowViewModel row) =>
-        OnRunBatchRequestedAsync(row.Name, null, WorkspaceExplorer.ActiveRoot);
-
     /// <param name="ownerPath">The endpoint this batch belongs to, relative to <c>collections/</c>, or
     /// null for one of the workspace's own. It is also what the window is titled with, since
     /// <c>@happy</c> and <c>orders/get-order@happy</c> are different batches.</param>
@@ -344,9 +339,6 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand]
     private void ToggleLog() => IsLogVisible = !IsLogVisible;
-
-    /// <summary>Raised by Ctrl+P; the shell puts the caret in the left pane's filter box.</summary>
-    public event Action? FilterFocusRequested;
 
     /// <summary>Raised by Ctrl+Shift+P; the shell opens the palette over the window.</summary>
     public event Action<CommandPaletteViewModel>? PaletteRequested;
@@ -490,12 +482,6 @@ public partial class MainViewModel : ViewModelBase
                 () => { WorkspaceExplorer.NewBatchCommand.Execute(null); return Task.CompletedTask; });
         }
 
-        if (WorkspaceExplorer.CanCreateWorkspaceBatch)
-        {
-            yield return new PaletteEntry("New Batch from here...", "Command", null,
-                () => { WorkspaceExplorer.NewWorkspaceBatchCommand.Execute(null); return Task.CompletedTask; });
-        }
-
         if (WorkspaceExplorer.CanMove)
         {
             foreach (var target in WorkspaceExplorer.MoveTargets)
@@ -552,9 +538,6 @@ public partial class MainViewModel : ViewModelBase
         yield return new PaletteEntry("Find in response", "Command", "Ctrl+F",
             () => { FindInResponseCommand.Execute(null); return Task.CompletedTask; });
 
-        yield return new PaletteEntry("Filter requests", "Command", "Ctrl+P",
-            () => { FocusFilterCommand.Execute(null); return Task.CompletedTask; });
-
         yield return new PaletteEntry("Toggle Status & Log", "Command", "Ctrl+`",
             () => { ToggleLogCommand.Execute(null); return Task.CompletedTask; });
 
@@ -592,9 +575,6 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Raised by Ctrl+F; the shell opens the response editor's find bar.</summary>
     public event Action? FindRequested;
-
-    [RelayCommand]
-    private void FocusFilter() => FilterFocusRequested?.Invoke();
 
     /// <summary>
     /// Ctrl+F. An event rather than something the view model does itself, because the find bar belongs
@@ -641,7 +621,6 @@ public partial class MainViewModel : ViewModelBase
             EnvironmentManager.ClearWorkspace();
             LeftPane.EnvironmentsSection.SetWorkspace(null);
             _ = LeftPane.AuthProfilesSection.SetWorkspaceAsync(null);
-            _ = LeftPane.BatchesSection.SetWorkspaceAsync(null);
         }
     }
 
@@ -671,7 +650,6 @@ public partial class MainViewModel : ViewModelBase
         await EnvironmentManager.LoadForWorkspaceAsync(workspace);
         LeftPane.EnvironmentsSection.SetWorkspace(workspace);
         await LeftPane.AuthProfilesSection.SetWorkspaceAsync(workspace);
-        await LeftPane.BatchesSection.SetWorkspaceAsync(workspace);
     }
 
     /// <summary>
@@ -941,7 +919,6 @@ public partial class MainViewModel : ViewModelBase
         {
             // Both homes: the Left Pane lists the workspace's own, the tree holds an endpoint's - and
             // a rename moves the file, so each is rebuilt rather than relabelled.
-            _ = LeftPane.BatchesSection.ReloadAsync();
             WorkspaceExplorer.DraftSaved(filePath);
         };
 

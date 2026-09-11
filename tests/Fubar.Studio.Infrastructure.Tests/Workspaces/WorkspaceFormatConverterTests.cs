@@ -78,7 +78,7 @@ public class WorkspaceFormatConverterTests : IDisposable
         Assert.False(File.Exists(Path.Combine(Collections, "orders", "Get order.json")));
 
         var endpointJson = Path.Combine(Collections, "orders", "Get order", "endpoint.json");
-        var caseJson = Path.Combine(Collections, "orders", "Get order", "cases", "default.json");
+        var caseJson = Path.Combine(Collections, "orders", "Get order", "batches", "default", "request-1.json");
         Assert.True(File.Exists(endpointJson));
         Assert.True(File.Exists(caseJson));
 
@@ -158,7 +158,7 @@ public class WorkspaceFormatConverterTests : IDisposable
         await _converter.ConvertAsync(Workspace());
 
         Assert.True(File.Exists(
-            Path.Combine(Collections, "Ping", "snapshots", "default", "staging.json")));
+            Path.Combine(Collections, "Ping", "snapshots", "request-1", "staging.json")));
         Assert.False(Directory.Exists(snapshots));
     }
 
@@ -215,7 +215,7 @@ public class WorkspaceFormatConverterTests : IDisposable
     /// <summary>An endpoint is a directory and is not a folder; its cases are its children, and
     /// snapshots/ is not one of them.</summary>
     [Fact]
-    public async Task The_tree_reads_the_converted_workspace_as_endpoints_and_cases()
+    public async Task The_tree_reads_the_converted_workspace_as_endpoints_and_batches()
     {
         WriteRequest("orders/Get order.json");
         await _converter.ConvertAsync(Workspace());
@@ -227,8 +227,15 @@ public class WorkspaceFormatConverterTests : IDisposable
         Assert.Equal(WorkspaceNodeKind.Endpoint, endpoint.Kind);
         Assert.Equal("Get order", endpoint.Name);
 
-        var only = Assert.Single(endpoint.Children);
-        Assert.Equal(WorkspaceNodeKind.Case, only.Kind);
-        Assert.Equal("default", only.Name);
+        // Running the ENDPOINT sends the call itself, so it has no children of its own; the converted
+        // request becomes the one item of the one batch.
+        Assert.Empty(endpoint.Children);
+
+        var batch = Assert.Single(endpoint.Batches);
+        Assert.Equal("default", batch.Name);
+
+        var item = Assert.Single(batch.Children);
+        Assert.Equal(WorkspaceNodeKind.Case, item.Kind);
+        Assert.Equal("request-1", item.Name);
     }
 }

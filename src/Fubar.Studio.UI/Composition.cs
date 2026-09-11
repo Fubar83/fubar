@@ -104,7 +104,6 @@ internal static class Composition
                 services.AddTransient<ResponsePanelViewModel>();
                 services.AddSingleton<IComparisonSettingsContext, ComparisonSettingsContextFactory>();
                 services.AddScoped<EnvironmentsSectionViewModel>();
-                services.AddScoped<BatchesSectionViewModel>();
                 services.AddScoped<AuthProfilesSectionViewModel>();
                 services.AddScoped<LeftPaneViewModel>();
                 services.AddScoped<IEditorViewModelFactory, EditorViewModelFactory>();

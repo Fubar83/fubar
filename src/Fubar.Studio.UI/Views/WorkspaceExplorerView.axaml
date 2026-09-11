@@ -110,14 +110,7 @@
                     <MenuItem Header="New Batch"
                               Command="{Binding NewBatchCommand}"
                               IsVisible="{Binding CanAddBatch}"
-                              ToolTip.Tip="A named list of calls belonging to this endpoint - its cases in an order, with cleanup" />
-                    <!-- The workspace's own, as opposed to one endpoint's. Offered in BOTH formats:
-                         only a case needs endpoints, and a step may name none - see
-                         WorkspaceExplorerViewModel.CanCreateWorkspaceBatch. -->
-                    <MenuItem Header="New Batch from here…"
-                              Command="{Binding NewWorkspaceBatchCommand}"
-                              IsVisible="{Binding CanCreateWorkspaceBatch}"
-                              ToolTip.Tip="A batch of the workspace's own, starting with whatever is selected. Run it in order against one environment, or two." />
+                              ToolTip.Tip="Which of this endpoint&apos;s cases to send, in what order, and what should judge them" />
                     <MenuItem Header="New Folder" Command="{Binding NewFolderCommand}" />
                     <Separator />
                     <!-- A plain left-click on a folder row does not select it in this tree, so the

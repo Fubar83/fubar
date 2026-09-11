@@ -13,54 +13,6 @@
          from the Left Pane and then edited as JSON, which meant its one real hazard - a step naming
          an endpoint path that is not there - could only be found by running it. -->
 
-    <UserControl.Resources>
-        <!-- One template for both lists. A cleanup step is the same KIND of thing as a step - what
-             differs is when it runs and that it cannot fail the batch - so it is edited the same way
-             and the difference is said by the heading it sits under. -->
-        <DataTemplate x:Key="StepRow" DataType="vm:BatchStepRowViewModel">
-            <Border BorderBrush="{DynamicResource BorderEditor}" BorderThickness="0,0,0,1" Padding="6,5">
-                <Grid ColumnDefinitions="*,10,230,Auto,Auto,Auto">
-
-                    <ComboBox Grid.Column="0"
-                              ItemsSource="{Binding Targets}"
-                              SelectedItem="{Binding Target}"
-                              HorizontalAlignment="Stretch"
-                              Classes.unresolved="{Binding IsUnresolved}"
-                              ToolTip.Tip="An endpoint, or a folder to run everything under it" />
-
-                    <ComboBox Grid.Column="2"
-                              ItemsSource="{Binding Cases}"
-                              SelectedItem="{Binding SelectedCase}"
-                              HorizontalAlignment="Stretch"
-                              IsVisible="{Binding CanChooseCase}" />
-
-                    <!-- A folder, or an endpoint with no cases, has nothing to choose between. It says
-                         what it will do instead of showing a picker with one entry. -->
-                    <TextBlock Grid.Column="2"
-                               Classes="hint"
-                               VerticalAlignment="Center"
-                               Margin="8,0"
-                               IsVisible="{Binding !CanChooseCase}"
-                               Text="{Binding WholeTargetDescription}" />
-
-                    <Button Grid.Column="3" Classes="icon-btn" Content="&#x25B2;" FontSize="9"
-                            ToolTip.Tip="Move up"
-                            Command="{Binding $parent[ItemsControl].((vm:BatchEditorViewModel)DataContext).MoveUpCommand}"
-                            CommandParameter="{Binding}" />
-
-                    <Button Grid.Column="4" Classes="icon-btn" Content="&#x25BC;" FontSize="9"
-                            ToolTip.Tip="Move down"
-                            Command="{Binding $parent[ItemsControl].((vm:BatchEditorViewModel)DataContext).MoveDownCommand}"
-                            CommandParameter="{Binding}" />
-
-                    <Button Grid.Column="5" Classes="icon-btn icon-btn-danger" Content="&#x2715;" FontSize="11"
-                            ToolTip.Tip="Remove this step"
-                            Command="{Binding $parent[ItemsControl].((vm:BatchEditorViewModel)DataContext).RemoveCommand}"
-                            CommandParameter="{Binding}" />
-                </Grid>
-            </Border>
-        </DataTemplate>
-    </UserControl.Resources>
 
     <UserControl.Styles>
         <!-- A step whose target the workspace no longer has. It is not removed and not hidden: the
@@ -160,43 +112,54 @@
         <ScrollViewer>
             <StackPanel Spacing="6">
 
-                <!-- Steps -->
+                <!-- The items. Each is a FILE in this batch's directory, and the order is their file
+                     names', naturally sorted - request-2 before request-10 - so reordering a batch is
+                     renaming a file and there is no index anywhere to disagree with the disk. -->
 
-                <TextBlock Text="STEPS" Classes="columnhead" Margin="6,4,0,0" />
+                <TextBlock Text="ITEMS" Classes="columnhead" Margin="6,4,0,0" />
                 <TextBlock Classes="hint" Margin="6,0,0,4"
-                           Text="In the order they are sent. The order is the batch's own and is never sorted - a batch that starts with a login is stating a dependency." />
+                           Text="One way of calling this endpoint each, with its own body. Sent in file-name order." />
 
                 <TextBlock Classes="hint" Margin="6,4"
-                           IsVisible="{Binding !HasSteps}"
-                           Text="No steps yet. Add one, and choose what it calls." />
+                           IsVisible="{Binding !HasItems}"
+                           Text="No items yet. Add one, and give it a body." />
 
-                <ItemsControl ItemsSource="{Binding Steps}" ItemTemplate="{StaticResource StepRow}" />
+                <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:BatchItemRowViewModel">
+                            <Border BorderBrush="{DynamicResource BorderEditor}" BorderThickness="0,0,0,1"
+                                    Padding="6,5">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
 
-                <Button Classes="secondary-btn"
-                        Content="+ Add step"
-                        Margin="6,4,0,0"
-                        HorizontalAlignment="Left"
-                        Command="{Binding AddStepCommand}" />
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextPrimary}" />
 
-                <!-- Cleanup -->
+                                    <!-- Whether there is a recorded answer decides whether judging by
+                                         snapshot means anything for this item, which was previously
+                                         only discoverable by running it. -->
+                                    <TextBlock Grid.Column="1" Text="{Binding SnapshotText}"
+                                               FontSize="11" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondary}" />
 
-                <Border Background="{DynamicResource BorderSubtle}" Height="1" Margin="0,14,0,8" />
+                                    <Button Grid.Column="2" Classes="secondary-btn"
+                                            Content="Open" FontSize="11" Padding="8,2"
+                                            ToolTip.Tip="Edit this item's body, assertions and captures"
+                                            Command="{Binding $parent[ItemsControl].((vm:BatchEditorViewModel)DataContext).OpenItemCommand}"
+                                            CommandParameter="{Binding}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
-                <TextBlock Text="CLEANUP" Classes="columnhead" Margin="6,0,0,0" />
-                <TextBlock Classes="hint" Margin="6,0,0,4"
-                           Text="Run after the steps whatever happened to them, and never counted towards the verdict. Where the delete goes when it is housekeeping rather than a test: stopping at the first failure guarantees a step in the middle would otherwise skip it, leaving a row behind on every red run." />
+                <StackPanel Orientation="Horizontal" Spacing="10" Margin="6,6,0,20">
+                    <Button Classes="secondary-btn"
+                            Content="+ Add item"
+                            Command="{Binding AddItemCommand}" />
 
-                <TextBlock Classes="hint" Margin="6,4"
-                           IsVisible="{Binding !HasTeardown}"
-                           Text="No cleanup. Fine for a batch that only reads." />
-
-                <ItemsControl ItemsSource="{Binding Teardown}" ItemTemplate="{StaticResource StepRow}" />
-
-                <Button Classes="secondary-btn"
-                        Content="+ Add cleanup step"
-                        Margin="6,4,0,20"
-                        HorizontalAlignment="Left"
-                        Command="{Binding AddTeardownCommand}" />
+                    <TextBlock Classes="hint" Text="{Binding ItemSummary}" VerticalAlignment="Center" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
 

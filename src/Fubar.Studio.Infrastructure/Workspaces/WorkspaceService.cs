@@ -19,9 +19,18 @@ public sealed class WorkspaceService : IWorkspaceService
     /// </remarks>
     private readonly IEndpointStore _endpoints;
 
+    /// <summary>Reads the batch directories under an endpoint, and the items in each. Here rather
+    /// than re-implemented, so the tree and the planner cannot disagree about what a batch holds or
+    /// what order its items are in.</summary>
+    private readonly IBatchStore _batches;
+
     /// <summary>Defaulted so the importers' tests and the Gallery can still <c>new</c> this up; the
-    /// app supplies the registered instance.</summary>
-    public WorkspaceService(IEndpointStore? endpoints = null) => _endpoints = endpoints ?? new FileEndpointStore();
+    /// app supplies the registered instances.</summary>
+    public WorkspaceService(IEndpointStore? endpoints = null, IBatchStore? batches = null)
+    {
+        _endpoints = endpoints ?? new FileEndpointStore();
+        _batches = batches ?? new FileBatchStore();
+    }
 
     private const string AppManifestFileName = Core.Workspaces.IWorkspaceStore.ManifestFileName;
     private const string AuthFileName = "auth.json";
@@ -216,69 +225,92 @@ public sealed class WorkspaceService : IWorkspaceService
     /// snapshot file in the tree as if it were a request, and a run over the folder would try to
     /// send it.</para>
     /// </remarks>
+    /// <summary>
+    /// The endpoints and folders nested inside an endpoint's own directory.
+    /// </summary>
+    /// <remarks>
+    /// <c>cases</c>, <c>batches</c> and <c>snapshots</c> are this layout's reserved names - they are
+    /// the endpoint's own parts, not things under it - so a child endpoint cannot be called any of
+    /// them. <c>DocumentName.IsReservedEndpointChild</c> is what says so at the point one is created,
+    /// rather than leaving it to be discovered as a directory that stopped appearing.
+    /// </remarks>
+    private IReadOnlyList<WorkspaceTreeNode> NestedUnder(string directoryPath) =>
+    [
+        .. Directory.EnumerateDirectories(directoryPath)
+            .Where(d => !IEndpointStore.IsReservedEndpointChild(Path.GetFileName(d)))
+            .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+            .Select(d => _endpoints.IsEndpoint(d)
+                ? ScanEndpoint(d)
+                : new WorkspaceTreeNode(Path.GetFileName(d), d, true, ScanDirectory(d))),
+    ];
+
+    /// <summary>
+    /// An endpoint: the call itself, its batches, and whatever is nested under it.
+    /// </summary>
+    /// <remarks>
+    /// A batch is a DIRECTORY and each item in it is a file - one way of calling this endpoint, with
+    /// its own body. Items are the endpoint's variants now; there is no separate <c>cases/</c>, which
+    /// was a second way to say the same thing.
+    /// </remarks>
     private WorkspaceTreeNode ScanEndpoint(string directoryPath)
     {
-        var casesPath = Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.CasesDirName);
-
         var endpointFile = Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.EndpointFileName);
         var edited = LastWrite(endpointFile);
+        var snapshotsRoot = Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.SnapshotsDirName);
 
-        var cases = Directory.Exists(casesPath)
-            ? Directory.EnumerateFiles(casesPath, $"*{RequestFileExtension}")
-                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-                .Select(f => new WorkspaceTreeNode(
-                    Path.GetFileNameWithoutExtension(f), f, false, [])
-                {
-                    Kind = WorkspaceNodeKind.Case,
+        var batches = _batches.ListBatches(directoryPath)
+            .Select(batch => new WorkspaceTreeNode(
+                batch.Name,
+                batch.DirectoryPath,
+                true,
+                [
+                    .. _batches.ListItems(batch.DirectoryPath).Select(item => new WorkspaceTreeNode(
+                        item.Name, item.FilePath, false, [])
+                    {
+                        Kind = WorkspaceNodeKind.Case,
 
-                    // Either file can make a snapshot stale: a case's parameters and the endpoint's
-                    // URL both decide what was sent.
-                    Snapshots = SnapshotStateOf(
-                        Path.Combine(
-                            directoryPath,
-                            Core.Workspaces.IEndpointStore.SnapshotsDirName,
-                            Path.GetFileNameWithoutExtension(f)),
-                        Later(edited, LastWrite(f))),
-                })
-                .ToList()
-            : [];
+                        // Either file can make a snapshot stale: an item's body and the endpoint's URL
+                        // both decide what was sent.
+                        Snapshots = SnapshotStateOf(
+                            Path.Combine(snapshotsRoot, item.Name),
+                            Later(edited, LastWrite(item.FilePath))),
+                    }),
+                ])
+            {
+                Kind = WorkspaceNodeKind.Batch,
+            })
+            .ToList();
 
-        // This endpoint's own batches - ways of running IT, as opposed to the workspace's
-        // cross-cutting occasions. Kept off Children on purpose; see WorkspaceTreeNode.Batches.
-        var batchesPath = Path.Combine(directoryPath, Core.Workspaces.IBatchStore.BatchesDirName);
-
-        var batches = Directory.Exists(batchesPath)
-            ? Directory.EnumerateFiles(batchesPath, $"*{RequestFileExtension}")
-                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-                .Select(f => new WorkspaceTreeNode(
-                    Path.GetFileNameWithoutExtension(f), f, false, [])
-                {
-                    Kind = WorkspaceNodeKind.Batch,
-                })
-                .ToList()
-            : [];
+        var items = batches.SelectMany(b => b.Children).ToList();
 
         return new WorkspaceTreeNode(
             Path.GetFileName(directoryPath),
             directoryPath,
             true,
-            cases,
+
+            // NOT its items: Children is what running THIS endpoint sends, and running an endpoint
+            // sends the call itself. Its items are sent by running one of its batches.
+            [],
             TryReadRequestSummary(endpointFile))
         {
             Kind = WorkspaceNodeKind.Endpoint,
             Batches = batches,
 
-            // An endpoint summarises its cases, worst-first: one stale case makes the endpoint stale,
+            // An endpoint is a directory, and a directory that happens to be an endpoint is still a
+            // place other endpoints can live - REST paths nest, so the folders named after them do
+            // too. Everything that is not one of the three reserved directories is scanned exactly as
+            // it would be anywhere else.
+            Nested = NestedUnder(directoryPath),
+
+            // An endpoint summarises its items, worst-first: one stale item makes the endpoint stale,
             // because that is the one a reader has to go and look at.
-            Snapshots = cases.Count == 0
-                ? SnapshotStateOf(
-                    Path.Combine(directoryPath, Core.Workspaces.IEndpointStore.SnapshotsDirName), edited)
-                : cases.Any(c => c.Snapshots == SnapshotState.Stale) ? SnapshotState.Stale
-                : cases.All(c => c.Snapshots == SnapshotState.None) ? SnapshotState.None
+            Snapshots = items.Count == 0
+                ? SnapshotStateOf(snapshotsRoot, edited)
+                : items.Any(c => c.Snapshots == SnapshotState.Stale) ? SnapshotState.Stale
+                : items.All(c => c.Snapshots == SnapshotState.None) ? SnapshotState.None
                 : SnapshotState.Recorded,
         };
     }
-
     /// <summary>
     /// Whether anything is recorded in <paramref name="snapshotDirectory"/>, and whether it predates
     /// the last edit to what was sent.

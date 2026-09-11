@@ -233,7 +233,13 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
                     plan,
                     _workspace,
                     _environment,
-                    started with { CaptureResponseBodies = oracle.Kind != OracleKind.None },
+                    // Always, in the WINDOW. It used to be "only when something is being compared",
+                    // which meant the commonest kind of run - judged by assertions - threw away every
+                    // answer as it arrived, and the row could say a request returned 200 with no way
+                    // to see what it returned. Bodies are capped at StepReport.MaxComparableBodyChars
+                    // and one over it is dropped rather than truncated, so the cost is bounded. The
+                    // CLI still decides for itself; it has nobody to show them to.
+                    started with { CaptureResponseBodies = true },
                     oracle,
                     _batch?.Overlay),
                 progress,
@@ -440,6 +446,42 @@ public sealed partial class CollectionRunViewModel : ViewModelBase
     }
 
     private bool CanShowDifferences(RunStepRowViewModel? row) => row?.CanShowDifferences == true;
+
+    /// <summary>
+    /// Opens what came back, on its own, in a modal over this window.
+    /// </summary>
+    /// <remarks>
+    /// Beside "Diff" rather than instead of it, because the two answer different questions. A diff is
+    /// "what is not as expected"; this is "what did it actually say", which is what you want when
+    /// nothing was being compared at all - a run judged by assertions has no other side, so the Diff
+    /// button is correctly absent and the response was previously unreachable from here.
+    /// <para>Shown against ITSELF, so the widget renders one document with nothing marked. A response
+    /// beside an empty pane would read as everything having been added.</para>
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanShowResponse))]
+    private async Task ShowResponseAsync(RunStepRowViewModel? row)
+    {
+        if (row?.Report is not { ResponseBody: { } response })
+        {
+            return;
+        }
+
+        try
+        {
+            await _diffPreview.ShowAsync(
+                response,
+                response,
+                $"{row.Name} · {EnvironmentName}",
+                $"{row.Name} · {EnvironmentName}",
+                $"{row.Name} — response");
+        }
+        catch (Exception ex)
+        {
+            Status = $"Could not open the response: {ex.Message}";
+        }
+    }
+
+    private bool CanShowResponse(RunStepRowViewModel? row) => row?.CanShowResponse == true;
 
     /// <summary>
     /// Writes one field of this response into its snapshot, or the whole response when

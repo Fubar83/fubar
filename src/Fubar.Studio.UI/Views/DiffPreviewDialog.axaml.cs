@@ -21,11 +21,10 @@ public partial class DiffPreviewDialog : Window
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        // Escape closes, as every modal preview should. F7/F8 are left to the KeyBindings, which route
-        // to the pane.
-        if (e.Key == Key.Escape)
+        // Escape leaves a text field first and closes second - see Fubar.Controls.WindowEscape. F7/F8
+        // are left to the KeyBindings, which route to the pane.
+        if (Fubar.Controls.WindowEscape.Handle(this, e))
         {
-            Close();
             e.Handled = true;
             return;
         }

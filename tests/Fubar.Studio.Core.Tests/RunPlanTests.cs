@@ -151,10 +151,12 @@ public class RunPlanTests
         Assert.True(RunPlan.From(Tree()).Filtered("nothing-is-called-this").IsEmpty);
     }
 
-    // ---- Endpoints and cases ---------------------------------------------------------------------
+    // ---- Endpoints and their batch items ---------------------------------------------------------
 
-    private static WorkspaceTreeNode Case(string name, string endpointDirectory) =>
-        new(name, $"{endpointDirectory}/cases/{name}.json", IsDirectory: false, [])
+    /// <summary>An item lives at <c>&lt;endpoint&gt;/batches/&lt;batch&gt;/&lt;item&gt;.json</c>, so its
+    /// endpoint is three levels up - the item, its batch, and the batches directory.</summary>
+    private static WorkspaceTreeNode Case(string name, string endpointDirectory, string batch = "smoke") =>
+        new(name, $"{endpointDirectory}/batches/{batch}/{name}.json", IsDirectory: false, [])
         {
             Kind = WorkspaceNodeKind.Case,
         };

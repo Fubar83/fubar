@@ -22,10 +22,6 @@ public sealed partial class LeftPaneViewModel : ViewModelBase
 
     public AuthProfilesSectionViewModel AuthProfilesSection { get; }
 
-    /// <summary>The occasions this workspace has a name for. Hidden entirely in a workspace that
-    /// cannot have them - see <see cref="BatchesSectionViewModel"/>.</summary>
-    public BatchesSectionViewModel BatchesSection { get; }
-
     /// <summary>
     /// Dark / Light / System.
     ///
@@ -63,14 +59,12 @@ public sealed partial class LeftPaneViewModel : ViewModelBase
         WorkspaceExplorerViewModel workspaceExplorer,
         EnvironmentsSectionViewModel environmentsSection,
         AuthProfilesSectionViewModel authProfilesSection,
-        BatchesSectionViewModel batchesSection,
         ThemeManagerViewModel theme,
         IAppSettingsService? settings = null)
     {
         WorkspaceExplorer = workspaceExplorer;
         EnvironmentsSection = environmentsSection;
         AuthProfilesSection = authProfilesSection;
-        BatchesSection = batchesSection;
         Theme = theme;
         _settings = settings;
 

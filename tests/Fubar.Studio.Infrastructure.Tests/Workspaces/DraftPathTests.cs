@@ -61,8 +61,8 @@ public class DraftPathTests : IDisposable
     {
         var path = _batches.ProposeBatchPath(Endpoint, "new-batch");
 
-        Assert.EndsWith("new-batch.json", path);
-        Assert.False(File.Exists(path));
+        Assert.EndsWith("new-batch", path);
+        Assert.False(Directory.Exists(path));
         Assert.Empty(_batches.ListBatches(Endpoint));
     }
 
