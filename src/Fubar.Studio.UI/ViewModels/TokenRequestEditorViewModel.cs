@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Fubar.Studio.Core.Auth;
 using Fubar.Studio.Core.Json;
 using Fubar.Studio.Core.Models;
+using Fubar.Studio.Core.Variables;
 using Fubar.Studio.UI.Controls;
 using Fubar.Studio.UI.Services;
 

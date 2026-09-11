@@ -1,34 +1,31 @@
-using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
-using Fubar.Studio.Core.Models;
+using Avalonia.Controls.Presenters;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Fubar.Studio.Core.Variables;
 
 namespace Fubar.Studio.UI.Controls;
 
 /// <summary>
-/// What <see cref="VariableTooltip"/> needs to resolve <c>{{key}}</c> tokens for whichever TextBox
-/// it's attached to.
-/// </summary>
-public sealed record VariableTooltipContext(IVariableResolver Resolver, Workspace Workspace, WorkspaceEnvironment? ActiveEnvironment, bool SecretsRevealed);
-
-/// <summary>
 /// Attached-property behavior implementing the Universal Variable Tooltip system
-/// (RequestEditorPane.md §4) on any <see cref="TextBox"/>: as its <c>Text</c> changes, tokenizes
-/// every <c>{{name}}</c> occurrence and sets a resolved-value/undefined summary as the box's
-/// hover tooltip, plus a <c>variable-undefined</c> or <c>variable-valid</c> style class (see
-/// Fubar.Controls' <c>Palette.axaml</c> <c>VariableValidBrush</c>/<c>VariableUndefinedBrush</c> tokens)
-/// so the box's border tints amber/blue. Attach via
-/// <c>controls:VariableTooltip.Context="{Binding SomeVariableTooltipContext}"</c> on a TextBox.
+/// (RequestEditorPane.md §4) on any <see cref="TextBox"/>: tokenizes every <c>{{name}}</c> in the
+/// text, sets a <c>variable-undefined</c> or <c>variable-valid</c> style class (see Fubar.Controls'
+/// <c>Palette.axaml</c> <c>VariableValidBrush</c>/<c>VariableUndefinedBrush</c> tokens) so the box's
+/// border tints amber/blue, and answers the hover with whatever the pointer is actually over. Attach
+/// via <c>controls:VariableTooltip.Context="{Binding SomeVariableTooltipContext}"</c> on a TextBox.
+///
+/// <para><b>What to SAY lives in <see cref="VariableHover"/>, in Core.</b> This class owns only the
+/// part that needs a control: hit-testing the pointer to a character index, and keeping the open
+/// popup up to date. The rule it feeds is testable without a pointer.</para>
 ///
 /// <para><b>Scope note:</b> this does not recolor individual <c>{{token}}</c> substrings inline
 /// within the box's own text run (the spec's per-token blue/amber pill styling) - that needs a
-/// custom-rendered text presenter, a materially larger control than fits this pass. Instead the
-/// whole box gets one accent border (amber if anything is undefined, blue if every token resolves,
-/// neutral if there are no tokens) plus a tooltip listing each token's resolution - same
-/// information, coarser presentation.</para>
+/// custom-rendered text presenter, a materially larger control than fits this pass. The whole box
+/// gets one accent border instead (amber if anything is undefined, blue if every token resolves,
+/// neutral if there are no tokens).</para>
 /// </summary>
-public static partial class VariableTooltip
+public static class VariableTooltip
 {
     public static readonly AttachedProperty<VariableTooltipContext?> ContextProperty =
         AvaloniaProperty.RegisterAttached<TextBox, VariableTooltipContext?>("Context", typeof(VariableTooltip));
@@ -37,13 +34,27 @@ public static partial class VariableTooltip
 
     public static VariableTooltipContext? GetContext(TextBox element) => element.GetValue(ContextProperty);
 
+    /// <summary>
+    /// The tooltip's content, kept per box and MUTATED rather than replaced.
+    /// </summary>
+    /// <remarks>
+    /// A tooltip that only caught up on the next hover would be the wrong behaviour here: the pointer
+    /// moves from one token to the next within a single box with the popup already open the whole way.
+    /// Handing <c>ToolTip.Tip</c> a live control and setting its Text means the open popup shows the
+    /// new answer, whatever a given Avalonia version does about a changed Tip value.
+    /// </remarks>
+    private static readonly AttachedProperty<TextBlock?> ContentProperty =
+        AvaloniaProperty.RegisterAttached<TextBox, TextBlock?>("Content", typeof(VariableTooltip));
+
     static VariableTooltip()
     {
         ContextProperty.Changed.AddClassHandler<TextBox>((box, _) =>
         {
             box.PropertyChanged -= OnTextBoxPropertyChanged;
             box.PropertyChanged += OnTextBoxPropertyChanged;
-            Refresh(box);
+            box.PointerMoved -= OnPointerMoved;
+            box.PointerMoved += OnPointerMoved;
+            Apply(box, index: null);
         });
     }
 
@@ -51,55 +62,77 @@ public static partial class VariableTooltip
     {
         if (sender is TextBox box && e.Property == TextBox.TextProperty)
         {
-            Refresh(box);
+            Apply(box, index: null);
         }
     }
 
-    private static void Refresh(TextBox box)
+    /// <summary>Re-answers as the pointer moves within the box, so the tooltip is about the token
+    /// under it rather than about the box.</summary>
+    private static void OnPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (sender is TextBox box)
+        {
+            Apply(box, IndexUnder(box, e));
+        }
+    }
+
+    private static void Apply(TextBox box, int? index)
     {
         var context = GetContext(box);
         var text = box.Text ?? "";
 
-        if (context is null || TokenRegex().Matches(text) is not { Count: > 0 } matches)
+        // AcceptsReturn rather than a line count: it is what the field was DECLARED as, so a one-line
+        // body box does not silently start behaving like a URL bar.
+        var tip = context is null ? null : VariableHover.Describe(context, text, index, box.AcceptsReturn);
+
+        if (tip is null)
         {
             ToolTip.SetTip(box, null);
+            box.SetValue(ContentProperty, null);
             SetClass(box, "variable-undefined", false);
             SetClass(box, "variable-valid", false);
             return;
         }
 
-        var lines = new List<string>();
-        var anyUndefined = false;
+        Show(box, tip);
 
-        foreach (Match match in matches)
-        {
-            var key = match.Groups[1].Value;
-            var resolution = context!.Resolver.Resolve(key, context.Workspace, context.ActiveEnvironment);
-
-            if (resolution.IsDefined)
-            {
-                var display = !context.SecretsRevealed && LooksSecret(key) ? "••••••" : resolution.Value;
-                lines.Add($"{{{{{key}}}}} = {display}  ({resolution.SourceName})");
-            }
-            else
-            {
-                anyUndefined = true;
-                lines.Add($"{{{{{key}}}}}: undefined - not found in \"{context.ActiveEnvironment?.Name ?? "active environment"}\"");
-            }
-        }
-
-        ToolTip.SetTip(box, string.Join("\n", lines));
-        SetClass(box, "variable-undefined", anyUndefined);
-        SetClass(box, "variable-valid", !anyUndefined);
+        var undefined = VariableHover.AnyUndefined(context!, text);
+        SetClass(box, "variable-undefined", undefined);
+        SetClass(box, "variable-valid", !undefined);
     }
 
-    // Best-effort mask for the tooltip preview only - IVariableResolver already knows the true
-    // IsSecret flag, but doesn't currently surface it in VariableResolution; matching by name is a
-    // reasonable stand-in until that's threaded through.
-    private static bool LooksSecret(string key) => key.Contains("secret", StringComparison.OrdinalIgnoreCase)
-        || key.Contains("token", StringComparison.OrdinalIgnoreCase)
-        || key.Contains("apikey", StringComparison.OrdinalIgnoreCase)
-        || key.Contains("password", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Which character of the box the pointer is over, or null when it is past the end of the text.
+    /// </summary>
+    /// <remarks>
+    /// Hit-tested against the TEXT PRESENTER's own layout rather than computed from the box's bounds:
+    /// the presenter is inset by the box's padding and moves under a long value as it scrolls, so
+    /// anything measured from the box would drift by exactly the amount that matters once a URL is
+    /// longer than its field.
+    /// </remarks>
+    private static int? IndexUnder(TextBox box, PointerEventArgs e)
+    {
+        if (box.GetVisualDescendants().OfType<TextPresenter>().FirstOrDefault() is not { TextLayout: { } layout } presenter)
+        {
+            return null;
+        }
+
+        var hit = layout.HitTestPoint(e.GetPosition(presenter));
+        return hit.IsInside ? hit.TextPosition : null;
+    }
+
+    private static void Show(TextBox box, string text)
+    {
+        if (box.GetValue(ContentProperty) is { } existing)
+        {
+            existing.Text = text;
+            return;
+        }
+
+        var content = new TextBlock { Text = text };
+        box.SetValue(ContentProperty, content);
+        ToolTip.SetTip(box, content);
+    }
 
     private static void SetClass(TextBox box, string className, bool value)
     {
@@ -115,7 +148,4 @@ public static partial class VariableTooltip
             box.Classes.Remove(className);
         }
     }
-
-    [GeneratedRegex(@"\{\{(\w+)\}\}")]
-    private static partial Regex TokenRegex();
 }
