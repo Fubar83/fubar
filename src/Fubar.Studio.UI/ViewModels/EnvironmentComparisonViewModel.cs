@@ -34,7 +34,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
     /// <see cref="_comparer"/>, so the row and the pane cannot disagree about what counts.</summary>
     private readonly IFileComparisonService _comparison;
     private readonly IResponseComparer _comparer;
-    private readonly RequestEditorServices _services;
+    private readonly IComparisonSettingsContext _settingsContext;
     private readonly Workspace _workspace;
     private readonly RunPlan _plan;
 
@@ -48,17 +48,19 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
         IEnvironmentPairRunService pairRun,
         IFileComparisonService comparison,
         IResponseComparer comparer,
-        RequestEditorServices services,
+        IComparisonSettingsContext settingsContext,
         RunPlan plan,
         Workspace workspace,
         IReadOnlyList<WorkspaceEnvironment> environments,
         string target,
-        Fubar.Controls.IConfirmationService? confirmation = null)
+        Fubar.Controls.IConfirmationService? confirmation = null,
+        string? preferredLeft = null,
+        string? preferredRight = null)
     {
         _pairRun = pairRun;
         _comparison = comparison;
         _comparer = comparer;
-        _services = services;
+        _settingsContext = settingsContext;
         _plan = plan;
         _workspace = workspace;
 
@@ -72,9 +74,16 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
 
         // Two different environments by default when there are two to pick: the window is for comparing
         // them, and making someone choose both before anything can happen is a form filled in to say
-        // what was already obvious.
-        LeftEnvironment = Environments.FirstOrDefault();
-        RightEnvironment = Environments.Skip(1).FirstOrDefault() ?? LeftEnvironment;
+        // what was already obvious. A batch that names its own pair wins over that default - it has
+        // already answered the question this window opens by asking.
+        LeftEnvironment = Named(preferredLeft) ?? Environments.FirstOrDefault();
+        RightEnvironment = Named(preferredRight)
+                           ?? Environments.FirstOrDefault(e => e != LeftEnvironment)
+                           ?? LeftEnvironment;
+
+        WorkspaceEnvironment? Named(string? name) => name is { Length: > 0 }
+            ? Environments.FirstOrDefault(e => string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase))
+            : null;
 
         foreach (var step in plan.Steps)
         {
@@ -118,7 +127,33 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
             newValue.IsSelected = true;
         }
 
-        _ = ShowAsync(newValue);
+        _showing = ShowAsync(newValue);
+    }
+
+    /// <summary>The load started by the current selection, kept so a caller can wait for it.</summary>
+    private Task _showing = Task.CompletedTask;
+
+    /// <summary>
+    /// Why the selected row could not be shown, or null. Rendered where the pane's "Nothing selected
+    /// yet" would be.
+    /// </summary>
+    /// <remarks>
+    /// Its OWN property rather than <see cref="Status"/>, which the run owns and overwrites with
+    /// "Finished." the moment the last pair lands - which is exactly when the first row is being
+    /// selected automatically, so the one message explaining an empty pane was written and then
+    /// cleared a few milliseconds later.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string? SelectionError { get; set; }
+
+    /// <summary>
+    /// Selects a row and completes when its two answers are in the pane - the same thing clicking it
+    /// does, awaitable, so a test asserts what landed instead of racing it.
+    /// </summary>
+    public Task SelectAsync(ComparisonRowViewModel? row)
+    {
+        SelectedRow = row;
+        return _showing;
     }
 
     [ObservableProperty]
@@ -178,14 +213,21 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
         CancelCommand.NotifyCanExecuteChanged();
 
         _verdicts.Clear();
-        var byPath = Rows.ToDictionary(r => r.Step.FilePath, StringComparer.OrdinalIgnoreCase);
+
+        // Keyed on the STEP, not on its file path. Several cases of one endpoint all live in the same
+        // endpoint.json, so keying on the path threw outright ("an item with the same key has already
+        // been added") the moment an endpoint had two cases - which is the shape this window exists
+        // for. Even surviving that, every one of those pairs would have landed on whichever row won
+        // the key. RunStep is a record, so value equality tells the cases apart by CaseFilePath.
+        _verdicts.Clear();
+        var byStep = Rows.ToDictionary(r => r.Step);
         var completed = 0;
 
         // Progress<T> posts back to the captured (UI) context, which is what makes it safe to touch the
         // rows and to start a comparison from here while the run itself is on a worker.
         var progress = new Progress<StepPairProgress>(update =>
         {
-            if (!byPath.TryGetValue(update.Step.FilePath, out var row))
+            if (!byStep.TryGetValue(update.Step, out var row))
             {
                 return;
             }
@@ -229,7 +271,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
             // stream never mentioned, and they have to end up saying "skipped" rather than "pending".
             foreach (var pair in report.Pairs)
             {
-                if (byPath.TryGetValue(pair.Step.FilePath, out var row) && row.Pair is null)
+                if (byStep.TryGetValue(pair.Step, out var row) && row.Pair is null)
                 {
                     row.ApplyPair(pair);
                 }
@@ -242,6 +284,13 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
             // before the wait, and the sweep after it for anything the stream never mentioned.
             await Task.Yield();
             await Task.WhenAll(_verdicts.ToArray());
+
+            // A run that ends with nothing selected shows a finished list beside "Nothing selected
+            // yet", which reads as the diffs having failed to load. The progress stream normally
+            // selects the first row to answer, but Progress<T> posts to the captured context - so on a
+            // fast run, or one whose posts are still queued, that can simply not have happened by the
+            // time the run is over. Selecting here is what makes it certain rather than likely.
+            SelectedRow ??= Rows.FirstOrDefault(r => r.Pair is not null);
 
             foreach (var row in Rows.Where(r => r.Pair is not null && r.Verdict == PairVerdict.Pending))
             {
@@ -335,13 +384,28 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
             return;
         }
 
-        await Diff.LoadAsync(
-            pair.Left.ResponseBody ?? "",
-            pair.Right.ResponseBody ?? "",
-            LeftEnvironment?.Name ?? "Left",
-            RightEnvironment?.Name ?? "Right",
-            row.Name,
-            await BuildSettingsContextAsync(row.Step.FilePath));
+        // Caught, because the only caller is a property-changed handler that discards the task. An
+        // exception from here - most likely resolving the settings hierarchy, which reads files -
+        // vanished completely: the row highlighted, the pane stayed on "Nothing selected yet", and
+        // clicking looked like it did nothing at all. Reported on the ROW as well as the status line,
+        // since that is where the reader is looking when it happens.
+        try
+        {
+            SelectionError = null;
+
+            await Diff.LoadAsync(
+                pair.Left.ResponseBody ?? "",
+                pair.Right.ResponseBody ?? "",
+                LeftEnvironment?.Name ?? "Left",
+                RightEnvironment?.Name ?? "Right",
+                row.Name,
+                await BuildSettingsContextAsync(row.Step.FilePath));
+        }
+        catch (Exception ex)
+        {
+            row.Note = ex.Message;
+            SelectionError = $"Could not open \"{row.Name}\": {ex.Message}";
+        }
     }
 
     /// <summary>
@@ -359,7 +423,7 @@ public sealed partial class EnvironmentComparisonViewModel : ViewModelBase
     /// same file, at the same level - two copies is how the two come to disagree about where it goes.
     /// </remarks>
     private Task<DiffSettingsContext> BuildSettingsContextAsync(string requestPath) =>
-        _services.ComparisonSettingsContext.BuildAsync(_workspace, requestPath, RejudgeAsync);
+        _settingsContext.BuildAsync(_workspace, requestPath, RejudgeAsync);
 
     /// <summary>Re-runs every completed row's comparison. Cheap next to re-sending the requests, and it
     /// is what makes a rule feel like it applied to the whole list rather than to the open row.</summary>

@@ -209,14 +209,23 @@
                             Background="{DynamicResource BgHeader}"
                             BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,0,1"
                             Padding="10,6">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="{Binding Title}"
+                        <!-- The title gets its own ROW rather than a star column beside the toolbar.
+                             It had one, and the toolbar is Auto: every button added to the row took
+                             its width out of the title, which at this pane's usual size left
+                             "Compare…" rendered as "Com" with no ellipsis to say so. A pane whose
+                             width is a splitter away from anything cannot spend the title's width on
+                             controls. -->
+                        <Grid RowDefinitions="Auto,Auto">
+                            <TextBlock Grid.Row="0" Text="{Binding Title}"
                                        FontWeight="SemiBold" VerticalAlignment="Center"
+                                       Margin="0,0,0,6"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="{Binding Title}"
                                        Foreground="{DynamicResource TextPrimary}" />
                             <!-- The rule-writing controls, the same ones the request editor's compare
                                  dialog carries. Without these the window can only report differences,
                                  which for two live environments is a list of timestamps. -->
-                            <fc:Toolbar Grid.Column="1">
+                            <fc:Toolbar Grid.Row="1">
                                 <Button Classes="toolbar-btn" Content="◀ Prev"
                                         ToolTip.Tip="Previous difference (F7 or Alt+Up)"
                                         Command="{Binding Pane.PreviousChangeCommand}"
@@ -467,6 +476,14 @@
                         <fc:EmptyState Title="Nothing selected yet"
                                        Description="Run the collection, then pick a request to see how the two environments answered it."
                                        IsVisible="{Binding Pane.LeftDocument, Converter={x:Static ObjectConverters.IsNull}}" />
+
+                        <!-- Over the empty state, because they mean opposite things: one says nothing
+                             has been asked for, the other that something was and could not be given.
+                             Bound past the Diff DataContext this border sets, since the failure belongs
+                             to the window rather than to the pane that never loaded. -->
+                        <fc:EmptyState Title="Could not open that request"
+                                       Description="{Binding $parent[Window].((vm:EnvironmentComparisonViewModel)DataContext).SelectionError}"
+                                       IsVisible="{Binding $parent[Window].((vm:EnvironmentComparisonViewModel)DataContext).SelectionError, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
                         <dv:DiffView DataContext="{Binding Pane}" IsVisible="{Binding IsSideBySideViewVisible}" />
                         <dv:JsonView DataContext="{Binding Pane}" IsVisible="{Binding IsJsonViewVisible}" />

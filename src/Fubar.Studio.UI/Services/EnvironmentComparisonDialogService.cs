@@ -14,11 +14,17 @@ namespace Fubar.Studio.UI.Services;
 /// <summary>Opens the environment-comparison window for a plan.</summary>
 public interface IEnvironmentComparisonDialogService
 {
+    /// <param name="preferredLeft">The environment to start on the left, by NAME, or null to let the
+    /// window pick. A batch already says which pair it is about, and asking again from a window opened
+    /// from that batch is a question the file has answered.</param>
+    /// <param name="preferredRight">The same for the right-hand side.</param>
     void Show(
         RunPlan plan,
         Workspace workspace,
         IReadOnlyList<WorkspaceEnvironment> environments,
-        string target);
+        string target,
+        string? preferredLeft = null,
+        string? preferredRight = null);
 }
 
 /// <summary>
@@ -54,7 +60,9 @@ public sealed class EnvironmentComparisonDialogService : IEnvironmentComparisonD
         RunPlan plan,
         Workspace workspace,
         IReadOnlyList<WorkspaceEnvironment> environments,
-        string target)
+        string target,
+        string? preferredLeft = null,
+        string? preferredRight = null)
     {
         // Resolved lazily rather than injected, so this does not depend on DI construction order.
         if (Avalonia.Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime lifetime)
@@ -70,7 +78,8 @@ public sealed class EnvironmentComparisonDialogService : IEnvironmentComparisonD
 
         var window = new EnvironmentComparisonWindow(
             new EnvironmentComparisonViewModel(
-                _pairRun, _comparison, _comparer, _services, plan, workspace, environments, target, _confirmation));
+                _pairRun, _comparison, _comparer, _services.ComparisonSettingsContext, plan, workspace, environments, target, _confirmation,
+                preferredLeft, preferredRight));
 
         window.Show(owner);
     }
