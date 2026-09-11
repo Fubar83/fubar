@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Fubar.Studio.Core.Import;
 using Fubar.Studio.Core.Models;
+using Fubar.Studio.Core.Running;
 using Fubar.Studio.Core.Settings;
 using Fubar.Studio.Core.Workspaces;
 using Fubar.Controls;
@@ -130,6 +131,7 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(UsesRequests));
         OnPropertyChanged(nameof(CanAddCase));
         OnPropertyChanged(nameof(CanAddBatch));
+        OnPropertyChanged(nameof(CanCreateWorkspaceBatch));
         OnPropertyChanged(nameof(CollectionsTitle));
         OnPropertyChanged(nameof(NewCollectionItemTooltip));
         OnPropertyChanged(nameof(IsRequestsFormatActive));
@@ -879,6 +881,61 @@ public partial class WorkspaceExplorerViewModel : ViewModelBase, IDisposable
         // Opened straight away, for the same reason the Left Pane's does: a row saying "0 steps" with
         // no way in but a text editor is what made batches a JSON-editing job.
         BatchOpened?.Invoke(path, new Batch { Name = Path.GetFileNameWithoutExtension(path) });
+    }
+
+    /// <summary>
+    /// Whether a batch of the workspace's own can be made right now - which is whenever one is open.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately NOT gated on the endpoints format, unlike <see cref="CanAddBatch"/>. An
+    /// endpoint-scoped batch needs an endpoint to live in; a workspace-level one does not, and its
+    /// steps name anything in the tree - <c>BatchEditorViewModel</c> builds its target list by
+    /// flattening the whole thing and <c>BatchPlanner</c> resolves a request node as readily as an
+    /// endpoint. Only a CASE needs endpoints, and a step may leave that empty. The feature worked in
+    /// both formats and was offered in one.
+    /// </remarks>
+    public bool CanCreateWorkspaceBatch => ActiveRoot is not null;
+
+    /// <summary>
+    /// Makes one of the workspace's own batches, pre-filled with whatever is selected.
+    /// </summary>
+    /// <remarks>
+    /// <para>Seeded rather than empty because of what it is FOR: several ways of calling the same
+    /// endpoint, run in order against one environment or two. Starting from the selection means the
+    /// common case - right-click the endpoint, get a batch of it - is one click, and the editor is
+    /// then where steps are added or removed rather than where the whole list is typed from memory.
+    /// </para>
+    /// <para>ONE step per selected node, not one per request underneath it. A step naming a folder or
+    /// an endpoint already expands to everything beneath it when it runs, so flattening here would
+    /// freeze today's contents into the file and quietly stop picking up a case added tomorrow.</para>
+    /// </remarks>
+    [RelayCommand]
+    private void NewWorkspaceBatch()
+    {
+        if (ActiveRoot is not { } root)
+        {
+            _statusLog.Log("Open a workspace before creating a batch.");
+            return;
+        }
+
+        // Proposed, not created: a new batch lives in its editor until the first Save, so making one
+        // and changing your mind leaves no new-batch.json behind.
+        var path = _batchStore.ProposeBatchPath(root.Workspace.RootPath, "new-batch");
+
+        var batch = new Batch { Name = Path.GetFileNameWithoutExtension(path) };
+
+        // The grammar lives in Core beside TreeLookup, which reads it the other way round - a selector
+        // written here has to be one the planner can resolve.
+        var selector = SelectedNode is { } node
+            ? BatchSelector.For(node.FullPath, node.Kind, Path.Combine(root.FullPath, "collections"))
+            : null;
+
+        if (selector is { Length: > 0 })
+        {
+            batch.Steps.Add(new BatchStep(selector));
+        }
+
+        BatchOpened?.Invoke(path, batch);
     }
 
     /// <summary>

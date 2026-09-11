@@ -283,6 +283,16 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        // A batch names its own steps in its own order, so expanding the NODE would compare nothing -
+        // the same reason the Run path sends it through the planner. This was the missing half of
+        // "run a batch against two environments": the menu item was on every node including a batch,
+        // and on a batch it opened a window listing nothing.
+        if (node.Kind == WorkspaceNodeKind.Batch)
+        {
+            _ = CompareBatchAcrossEnvironmentsAsync(node.DisplayName, EndpointPathOf(node, root), root);
+            return;
+        }
+
         var plan = RunPlan.From(node.ToTreeNode());
         if (plan.IsEmpty)
         {
@@ -291,6 +301,45 @@ public partial class MainViewModel : ViewModelBase
         }
 
         _comparisonDialog.Show(plan, root.Workspace, [.. EnvironmentManager.Environments], node.Name);
+    }
+
+    /// <summary>
+    /// Opens the comparison window on a batch's own plan, with the pair it names already chosen.
+    /// </summary>
+    /// <remarks>
+    /// A batch already says which environments it is about - <c>environments[0]</c> and an
+    /// <c>oracle.environment</c> - so making the user pick them again from a window opened FROM that
+    /// batch is asking a question the file already answered. They are still pickers: a batch written
+    /// for staging has to be comparable against a branch deployment without editing the file, which is
+    /// the same rule the Run window follows.
+    /// </remarks>
+    private async Task CompareBatchAcrossEnvironmentsAsync(
+        string name, string? ownerPath, WorkspaceRootViewModel root)
+    {
+        var qualified = ownerPath is { Length: > 0 } ? $"{ownerPath}@{name}" : $"@{name}";
+
+        try
+        {
+            var resolved = await _batchPlanner.ExpandAsync(root.Workspace, name, ownerPath);
+
+            if (resolved.Plan.IsEmpty)
+            {
+                StatusLog.Log($"Nothing to compare in \"{qualified}\" - it lists no steps.");
+                return;
+            }
+
+            _comparisonDialog.Show(
+                resolved.Plan,
+                root.Workspace,
+                [.. EnvironmentManager.Environments],
+                qualified,
+                resolved.Batch.Environments.FirstOrDefault(),
+                resolved.Batch.Oracle?.Environment);
+        }
+        catch (Exception ex)
+        {
+            StatusLog.LogError($"Could not compare \"{qualified}\": {ex.Message}");
+        }
     }
 
     [RelayCommand]
@@ -439,6 +488,12 @@ public partial class MainViewModel : ViewModelBase
         {
             yield return new PaletteEntry("New Batch", "Command", null,
                 () => { WorkspaceExplorer.NewBatchCommand.Execute(null); return Task.CompletedTask; });
+        }
+
+        if (WorkspaceExplorer.CanCreateWorkspaceBatch)
+        {
+            yield return new PaletteEntry("New Batch from here...", "Command", null,
+                () => { WorkspaceExplorer.NewWorkspaceBatchCommand.Execute(null); return Task.CompletedTask; });
         }
 
         if (WorkspaceExplorer.CanMove)

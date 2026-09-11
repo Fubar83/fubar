@@ -86,10 +86,21 @@ public class BatchesSectionTests
         Assert.Equal("/w/batches/new-batch.json", opened);
     }
 
-    /// <summary>A workspace that cannot have batches shows none rather than an empty group whose every
-    /// row could only fail.</summary>
+    /// <summary>
+    /// A requests-format workspace CAN have batches, and the group says so.
+    /// </summary>
+    /// <remarks>
+    /// This asserted the opposite for a long time, on the reading that a batch is an endpoints
+    /// feature. It is not: only a CASE needs endpoints, and a step may name none.
+    /// <c>TreeLookup.Matches</c> goes out of its way to resolve a request stored as
+    /// <c>&lt;name&gt;.json</c> with or without the extension, <c>BatchPlanner</c> feeds a request node
+    /// to <c>RunPlan.From</c> like any other, and <c>BatchEditorViewModel</c> builds its target list by
+    /// flattening the whole tree. The format gate hid a working feature from half the workspaces - and
+    /// would have hidden the batches themselves, so one created in a requests workspace was invisible
+    /// the moment it was saved.
+    /// </remarks>
     [Fact]
-    public async Task A_requests_format_workspace_has_no_batches()
+    public async Task A_requests_format_workspace_can_have_batches_too()
     {
         var store = new SlowBatchStore();
         var section = new BatchesSectionViewModel(store, new StatusLogViewModel());
@@ -100,6 +111,17 @@ public class BatchesSectionTests
             RootPath = "/w",
             Manifest = new AppManifest { Name = "w", Format = WorkspaceFormat.Requests },
         });
+
+        Assert.True(section.IsAvailable);
+    }
+
+    /// <summary>With nothing open there is nothing to list, and no group to show.</summary>
+    [Fact]
+    public async Task No_workspace_means_no_batches()
+    {
+        var section = new BatchesSectionViewModel(new SlowBatchStore(), new StatusLogViewModel());
+
+        await section.SetWorkspaceAsync(null);
 
         Assert.False(section.IsAvailable);
         Assert.Empty(section.Rows);

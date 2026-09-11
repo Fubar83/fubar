@@ -95,7 +95,13 @@ public sealed partial class BatchesSectionViewModel : ViewModelBase
     public async Task SetWorkspaceAsync(Workspace? workspace)
     {
         _workspace = workspace;
-        IsAvailable = workspace?.Manifest.Format == WorkspaceFormat.Endpoints;
+
+        // Both formats. Only a CASE needs endpoints, and a batch step may name none: the editor builds
+        // its target list by flattening the whole tree and BatchPlanner resolves a request node as
+        // readily as an endpoint. Gating the group on the format hid a feature that worked from half
+        // the workspaces - and hid the batches themselves, so one created in a requests workspace
+        // would have been invisible the moment it was saved.
+        IsAvailable = workspace is not null;
 
         await ReloadAsync();
     }

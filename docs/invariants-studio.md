@@ -737,3 +737,34 @@ call to somebody's identity provider was the one case nothing mentioned. `TokenR
 when `forceReacquire` is true, which only the retry-once-on-401 path passes, so it means the cached
 token was REFUSED rather than missing. Do not collapse the two, and do not gate the chip on
 `CachedToken` as well: marking the ordinary case would make it furniture rather than a signal.
+
+
+**A batch is NOT an endpoints-only feature, and a batch node is not expanded like a tree node**
+(Studio). Only a CASE needs endpoints; a step may name none. `TreeLookup.Matches` deliberately resolves
+a request stored as `<name>.json` with or without the extension, `BatchPlanner` hands a request node to
+`RunPlan.From` like any other, and `BatchEditorViewModel` builds its target list by flattening the whole
+collections tree - so batches work in both formats, and the `WorkspaceFormat.Endpoints` gates on
+`BatchesSectionViewModel.IsAvailable` and the tree's menu were hiding a working feature from half the
+workspaces. `CanAddBatch` stays endpoint-only because an endpoint-scoped batch needs an endpoint to live
+in; `CanCreateWorkspaceBatch` does not. The second half: anywhere a NODE is turned into a plan -
+`OnRunRequested`, `OnCompareEnvironmentsRequested` - a `WorkspaceNodeKind.Batch` must go through
+`IBatchPlanner` instead. `RunPlan.From` on a batch node yields NOTHING (its steps are names in a file,
+and `WorkspaceTreeNode.Batches` is deliberately not `Children`), so the window opens listing nothing and
+looks like a failure to load. `BatchSelector.For` in Core is the inverse grammar - what a step CALLS a
+node - and is paired with `TreeLookup.Find` in its tests for the obvious reason: a selector that is
+written and cannot be resolved seeds a batch that errors on every step.
+
+
+**A comparison row is keyed by its STEP, and a load started from a property setter must catch**
+(Studio). `EnvironmentComparisonViewModel` keyed `Rows` by `Step.FilePath`, and every case of an
+endpoint lives in the same `endpoint.json` - so `ToDictionary` threw before a request was sent for the
+exact shape the window exists for, an endpoint with two cases. `RunStep` is a record, so the step
+itself distinguishes them by `CaseFilePath`; nothing here may key on the file path again. Two further
+rules about selecting a row, both of which presented as "I cannot see the diffs". `ShowAsync` is
+invoked from `OnSelectedRowChanged`, which discards the task, so it CATCHES and reports into
+`SelectionError` - an exception there (resolving the rules reads files) otherwise vanished entirely and
+clicking looked inert. `SelectionError` is deliberately not `Status`, which the run owns and overwrites
+with "Finished." moments later. And the automatic selection of the first answered row happens on the
+`Progress<T>` stream, which posts to the captured context and can therefore not have run by the time
+the run returns - so `RunAsync` selects again after the sweep. A finished list beside an empty pane
+reads as a failure to load.

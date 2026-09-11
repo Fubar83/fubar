@@ -39,6 +39,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Make a batch from the tree, and compare one across two environments.** A batch is how you call one
+  endpoint several ways — different bodies, different parameters — in order. Two things stood between
+  that and anybody using it.
+
+  **New Batch from here…** is now in the tree's right-click menu and the command palette. It makes one
+  of the workspace's own batches, pre-filled with whatever is selected, and opens the editor. One step
+  per selected node rather than one per request underneath it: a step naming a folder or an endpoint
+  already expands to everything beneath it when it runs, so flattening would freeze today's contents
+  into the file and quietly stop picking up a case added tomorrow.
+
+  And **Compare across environments…** now works on a batch. The menu item was on every node including
+  a batch, and on a batch it opened a window listing nothing — a batch names its own steps in its own
+  order, so expanding the *node* compares nothing. It goes through the planner, like Run always has,
+  and the two pickers start on the pair the batch already names (`environments[0]` and
+  `oracle.environment`) instead of asking a question the file has answered.
+
 - **A send says when auth went and got a token by itself.** Sending a request can quietly make a
   second HTTP call to your identity provider, and nothing said so — the status log wrote an `Auth:`
   line only when the prestep *failed*, so the interesting success was the one case nothing mentioned.
@@ -78,6 +94,38 @@ All notable changes to this project are documented here. The format is based on
   the request editor's own compare dialog.
 
 ### Fixed
+
+- **Comparing an endpoint with more than one case no longer fails before it sends anything.** The
+  comparison window keyed its rows by file path, and every case of an endpoint lives in the same
+  `endpoint.json` — so building that lookup threw *"an item with the same key has already been added"*
+  the moment an endpoint had two cases, and the window reported "Could not run". Which is the shape it
+  exists for. Rows are keyed by the step now, so each case gets its own row and its own answers rather
+  than every pair landing on whichever one won the key.
+
+- **A request that cannot be opened says so, instead of doing nothing.** Clicking a row loads its two
+  answers, and that load is started from a property-changed handler that discarded the task — so any
+  failure in it (resolving the comparison rules reads files) vanished completely: the row highlighted,
+  the pane stayed on "Nothing selected yet", and clicking looked like it did nothing at all. The
+  failure is now caught and shown in the pane and on the row.
+
+- **A finished run always has something selected.** The first row to answer is selected automatically
+  so its diff is on screen while the rest are still being sent — but that happens on the progress
+  stream, and `Progress<T>` posts to the captured context, so on a fast run it could simply not have
+  happened by the time the run was over. The result was a completed list beside an empty pane, which
+  reads as the diffs having failed to load. Selecting is now also done once the run finishes.
+
+- **The comparison pane's title is no longer eaten by its own toolbar.** The title had a star column
+  beside an `Auto` toolbar, so every button added to that row took width out of the title — at this
+  pane's usual size "Compare…" rendered as "Com", with no ellipsis to say anything was missing. The
+  toolbar has its own row now, and the title trims properly.
+
+- **Batches are no longer hidden from half the workspaces.** The Batches group and every way of making
+  one were gated on the *endpoints* format, on the reading that a batch is an endpoints feature. It is
+  not: only a **case** needs endpoints, and a step may name none. `TreeLookup` goes out of its way to
+  resolve a request stored as `<name>.json` with or without the extension, the planner feeds a request
+  node to `RunPlan.From` like any other, and the batch editor builds its target list by flattening the
+  whole tree. So the feature worked in both formats and was offered in one — and a batch created in a
+  requests workspace would have been invisible the moment it was saved.
 
 - **The variable tooltip answers the pointer, not the box.** Hovering anywhere in a field containing
   `{{variables}}` listed every one of them, so a URL with five answered a question about one with a
