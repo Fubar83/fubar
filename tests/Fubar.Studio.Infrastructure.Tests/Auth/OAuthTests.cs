@@ -98,10 +98,17 @@ public class OAuthTests
         var provider = MakeProvider(session, new StubExecutorRegistry(executor));
         var auth = new AuthConfig { Type = AuthType.OAuth2, TokenUrl = "https://auth/token", ClientId = "c" };
 
-        await provider.PrepareAsync(auth, Workspace, null);
-        await provider.PrepareAsync(auth, Workspace, null);
+        var first = await provider.PrepareAsync(auth, Workspace, null);
+        var second = await provider.PrepareAsync(auth, Workspace, null);
 
         Assert.Equal(1, executor.Calls); // second call reused the cached, unexpired token
+
+        // What the response pane reads to decide whether this send is worth a word. The first
+        // genuinely called the identity provider; the second did not.
+        Assert.Equal(AuthAction.TokenAcquired, first.Outcome.Action);
+        Assert.True(first.Outcome.TalkedToTheProvider);
+        Assert.Equal(AuthAction.CachedToken, second.Outcome.Action);
+        Assert.False(second.Outcome.TalkedToTheProvider);
     }
 
     [Fact]
@@ -177,9 +184,13 @@ public class OAuthTests
         var auth = new AuthConfig { Type = AuthType.OAuth2, TokenUrl = "https://auth/token", ClientId = "c" };
 
         await provider.PrepareAsync(auth, Workspace, null);
-        await provider.PrepareAsync(auth, Workspace, null, forceReacquire: true);
+        var forced = await provider.PrepareAsync(auth, Workspace, null, forceReacquire: true);
 
         Assert.Equal(2, executor.Calls); // the forced re-acquire ignored the cached, unexpired token
+
+        // A forced re-acquire only ever comes from the retry-once-on-401 path, so it means the cached
+        // token was REFUSED rather than missing - which is the more interesting of the two to say.
+        Assert.Equal(AuthAction.TokenRefreshed, forced.Outcome.Action);
     }
 
     [Fact]

@@ -26,7 +26,7 @@
                 Background="{DynamicResource BgResponseHeader}"
                 BorderThickness="0,0,0,1"
                 BorderBrush="{DynamicResource BorderSubtle}">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*">
 
                 <fc:Badge Grid.Column="0"
                           IsVisible="{Binding HasResponse}"
@@ -60,8 +60,21 @@
                                Margin="0,0,16,0"
                                IsVisible="{Binding HasResponse}" />
 
+                <!-- Auth did something on its own. Shown only when it actually called the identity
+                     provider - reusing a cached token is the normal case, and marking that would make
+                     this furniture rather than a signal. It explains a send that took longer than the
+                     server did, it is the first thing to check behind a 401, and a refresh firing on
+                     every request is a misconfiguration that is otherwise invisible. -->
+                <fc:MetricChip Grid.Column="3"
+                               Icon="&#x1F511;"
+                               Text="{Binding AuthActivityText}"
+                               Margin="0,0,12,0"
+                               ToolTip.Tip="{Binding AuthActivityTooltip}"
+                               IsVisible="{Binding ShowAuthActivity}"
+                               Foreground="{DynamicResource StatusInfoFg}" />
+
                 <!-- Response-body schema validation badge (only when the request carries an imported schema). -->
-                <Border Grid.Column="3"
+                <Border Grid.Column="4"
                         IsVisible="{Binding ShowSchemaStatus}"
                         ToolTip.Tip="{Binding SchemaStatusTooltip}"
                         BorderBrush="{Binding SchemaStatusBrush}"
@@ -76,7 +89,7 @@
                     </StackPanel>
                 </Border>
 
-                <TextBlock Grid.Column="4"
+                <TextBlock Grid.Column="5"
                            Text="No response yet - send the request to see results here."
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondary}"

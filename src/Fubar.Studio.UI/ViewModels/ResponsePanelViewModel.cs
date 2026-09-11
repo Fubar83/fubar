@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Fubar.Studio.Core.Auth;
 using Fubar.Studio.Core.Json;
 using Fubar.Studio.Core.Testing;
 using Fubar.Studio.UI.Services;
@@ -101,6 +102,53 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
         < 1024 * 1024 => $"{SizeBytes / 1024.0:F1} KB",
         _ => $"{SizeBytes / (1024.0 * 1024.0):F2} MB",
     };
+
+    /// <summary>
+    /// What the auth prestep did on its way to this response, so a send that quietly called somebody's
+    /// identity provider says so.
+    /// </summary>
+    /// <remarks>
+    /// Sending a request can make a SECOND HTTP call nobody asked for. It explains a send that took
+    /// longer than the server did, it is the first thing to check when a 401 arrives, and a refresh
+    /// firing on every single request is a misconfiguration that is otherwise invisible. It was
+    /// already written to the status log - but only on FAILURE, so the interesting success was the
+    /// one case nothing mentioned.
+    /// </remarks>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowAuthActivity))]
+    [NotifyPropertyChangedFor(nameof(AuthActivityText))]
+    [NotifyPropertyChangedFor(nameof(AuthActivityTooltip))]
+    public partial AuthAction AuthAction { get; set; }
+
+    /// <summary>The message the prestep gave, shown as the chip's tooltip.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AuthActivityTooltip))]
+    public partial string AuthMessage { get; set; } = "";
+
+    /// <summary>
+    /// Only when auth actually went and talked to the provider. Reusing a cached token is the normal
+    /// case and marking it would make the chip furniture rather than a signal.
+    /// </summary>
+    public bool ShowAuthActivity => HasResponse && AuthAction is AuthAction.TokenAcquired or AuthAction.TokenRefreshed;
+
+    public string AuthActivityText => AuthAction switch
+    {
+        AuthAction.TokenRefreshed => "token refreshed",
+        AuthAction.TokenAcquired => "token acquired",
+        _ => "",
+    };
+
+    public string AuthActivityTooltip
+    {
+        get
+        {
+            var why = AuthAction == AuthAction.TokenRefreshed
+                ? "The cached token was refused, so it was re-acquired and the request sent again."
+                : "There was no valid token, so one was requested before this was sent.";
+
+            return string.IsNullOrEmpty(AuthMessage) ? why : $"{why}\n\n{AuthMessage}";
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ContentTypeHeader))]
@@ -276,7 +324,14 @@ public partial class ResponsePanelViewModel : ViewModelBase, IDisposable
         ? $"Compare this response against the pinned one ({pinned.Label})"
         : "Pin a response first, then send again and compare";
 
-    partial void OnHasResponseChanged(bool value) => RaiseBaselineState();
+    partial void OnHasResponseChanged(bool value)
+    {
+        RaiseBaselineState();
+
+        // The auth chip is gated on there being a response at all, so it has to hear about this too -
+        // the trap the comment on StatusCode above already describes.
+        OnPropertyChanged(nameof(ShowAuthActivity));
+    }
 
     private void RaiseBaselineState()
     {

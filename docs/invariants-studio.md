@@ -710,3 +710,30 @@ walking greedily as it used to: `posh` against "Copy as cURL (PowerShell)" took 
 scored the scattered result it had just chosen to make, and would now have drawn that choice on
 screen. Runs of adjacent matches are merged into one before they are drawn, because four bold
 `TextBlock`s in a row do not look like one bold word.
+
+
+**The variable tooltip is a pointer question, and its preview must never unmask a secret** (Studio).
+`VariableHover` in Core decides what a hover says; `VariableTooltip` in the UI owns only the part that
+needs a control - hit-testing the pointer to a character index against the TEXT PRESENTER's own layout
+(not the box's bounds, which drift by the padding and by however far a long value has scrolled). Three
+rules that look like details. The substituted preview is built from `VariableHover`'s own masking rule
+rather than from `IVariableResolver.Substitute`, which returns the REAL value of a secret - a tooltip
+is the most screenshotted surface in the app, and the test's fake resolver throws from `Substitute` to
+keep anyone from reaching for it again. An undefined token is left standing as `{{name}}`, so a preview
+never reads as a request that is ready to send. And the full-list answer is kept for a MULTI-LINE field
+and for "no pointer position yet", because substituted JSON in one tooltip is a wall of text at hover
+size and a guess at a position is worse than no position. The tip is handed a live `TextBlock` that is
+MUTATED rather than a new string each time: the pointer crosses several tokens with the popup already
+open, and a tip that only caught up on the next hover would be the wrong behaviour whatever a given
+Avalonia version does about a changed `Tip` value.
+
+
+**Auth acting on its own is reported as a FACT, not by reading the message** (Studio).
+`AuthOutcome.Action` distinguishes `CachedToken` from `TokenAcquired` and `TokenRefreshed`, and
+`TalkedToTheProvider` is what the response strip's 🔑 chip is gated on. The prose already said it
+("Using the cached token (still valid)" against "Token acquired into {{token}}") but only to a reader,
+and the status log wrote an `Auth:` line on FAILURE only - so a send that quietly made a second HTTP
+call to somebody's identity provider was the one case nothing mentioned. `TokenRefreshed` is set only
+when `forceReacquire` is true, which only the retry-once-on-401 path passes, so it means the cached
+token was REFUSED rather than missing. Do not collapse the two, and do not gate the chip on
+`CachedToken` as well: marking the ordinary case would make it furniture rather than a signal.

@@ -2,10 +2,45 @@ using Fubar.Studio.Core.Models;
 
 namespace Fubar.Studio.Core.Auth;
 
+/// <summary>
+/// What the auth prestep actually DID, as a fact rather than as prose.
+/// </summary>
+/// <remarks>
+/// The message already said it - "Using the cached token (still valid)" against "Token acquired into
+/// {{token}}" - but only to a reader, and only if they went looking in the status log. Sending a
+/// request can silently make a second HTTP call to somebody's identity provider, and that is worth
+/// showing: it explains a slow send, it is the thing to check when a 401 arrives, and a refresh
+/// firing on every request is a misconfiguration nobody would otherwise notice. A flag rather than
+/// string-matching the message, because the message is written for humans and will be reworded.
+/// </remarks>
+public enum AuthAction
+{
+    /// <summary>Nothing was acquired - a static scheme, or no auth at all.</summary>
+    None,
+
+    /// <summary>A token was already in the session and still valid, so nothing was sent.</summary>
+    CachedToken,
+
+    /// <summary>A token request was sent and a token came back.</summary>
+    TokenAcquired,
+
+    /// <summary>A token request was sent because the cached one was refused - the retry-once-on-401
+    /// path. Distinguished from <see cref="TokenAcquired"/> because it says something different: the
+    /// cache was wrong, not merely empty.</summary>
+    TokenRefreshed,
+}
+
 /// <summary>The result of ensuring/testing auth: whether it succeeded and a human-readable message
 /// (e.g. "Token acquired, expires 2026-08-17 12:00Z" or the token-endpoint error).</summary>
 public sealed record AuthOutcome(bool Ok, string Message)
 {
+    /// <summary>What the prestep did. See <see cref="AuthAction"/>.</summary>
+    public AuthAction Action { get; init; }
+
+    /// <summary>True when auth went and talked to the identity provider on its own - the case worth
+    /// showing, since nobody asked it to and it costs a round trip.</summary>
+    public bool TalkedToTheProvider => Action is AuthAction.TokenAcquired or AuthAction.TokenRefreshed;
+
     /// <summary>
     /// What the token endpoint actually replied, when one was called.
     ///

@@ -39,6 +39,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **A send says when auth went and got a token by itself.** Sending a request can quietly make a
+  second HTTP call to your identity provider, and nothing said so — the status log wrote an `Auth:`
+  line only when the prestep *failed*, so the interesting success was the one case nothing mentioned.
+  The response strip now carries a 🔑 chip reading **token acquired** or **token refreshed**, with a
+  tooltip saying why and what the prestep reported.
+
+  It appears only when auth actually called the provider; reusing a cached token is the ordinary case
+  and marking it would make the chip furniture rather than a signal. **token refreshed** specifically
+  means the retry-once-on-401 path fired — the cached token was *refused*, not merely absent. That
+  distinction is worth having: it explains a send that took longer than the server did, it is the
+  first thing to check behind a 401, and a refresh firing on every single request is a
+  misconfiguration that is otherwise invisible.
+
 - **Choosing how a list is matched now works in API Studio.** The change tree's right-click **Compare
   this list ▸ Ignore order / Match by `id` / By position** has always been drawn here — it is part of
   the same view Fubar Diff uses — and it did nothing. The view raises an event and the host owns the
@@ -65,6 +78,19 @@ All notable changes to this project are documented here. The format is based on
   the request editor's own compare dialog.
 
 ### Fixed
+
+- **The variable tooltip answers the pointer, not the box.** Hovering anywhere in a field containing
+  `{{variables}}` listed every one of them, so a URL with five answered a question about one with a
+  five-line block — and never answered the other question anybody asks of a URL bar. Hovering a token
+  now shows just that variable; hovering anywhere else in a **single-line** field shows the whole
+  value with every variable substituted, which is what "what will this actually send?" looks like. A
+  multi-line field (a body) keeps the list when the pointer is between tokens — substituted JSON in
+  one tooltip is a wall of text at hover size.
+
+  The substituted preview masks secrets exactly as the per-variable line does, and is built from the
+  same rule rather than from `IVariableResolver.Substitute`, which returns the real value. A tooltip
+  is the most screenshotted surface in the app. An undefined token is left standing as `{{name}}`, so
+  a preview never quietly reads as a request that is ready to send.
 
 - **The layout switch was shown exactly when it did nothing.** The side-by-side/unified control was
   bound `IsVisible="{Binding Pane.IsSemantic}"` — visible only for the JSON view, which has one layout

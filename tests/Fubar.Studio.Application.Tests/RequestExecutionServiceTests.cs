@@ -165,6 +165,28 @@ public class RequestExecutionServiceTests
         Assert.Equal(200, result.Result.StatusCode); // the retry succeeded
         Assert.Equal(2, executor.Calls);
         Assert.Equal(1, auth.ForceReacquireCount);
+
+        // The outcome the caller is handed is the RETRY's, so the pane can say a token was refreshed
+        // rather than reporting the stale attempt that preceded it.
+        Assert.Equal(AuthAction.TokenRefreshed, result.Auth!.Action);
+        Assert.True(result.Auth.TalkedToTheProvider);
+    }
+
+    /// <summary>An ordinary send that reused a cached token has nothing to announce - which is what
+    /// keeps the chip a signal rather than furniture on every request.</summary>
+    [Fact]
+    public async Task A_send_that_reused_its_token_reports_no_auth_activity()
+    {
+        var executor = new FakeExecutorRegistry(new ExecutionResult { StatusCode = 200 });
+        var sut = new RequestExecutionService(
+            new FakeAuthProvider(), executor, new FakeTestService(), new FakeHistoryService(),
+            PassThroughResolver.Instance, DefaultSettings.Instance);
+
+        var result = await sut.RunAsync(
+            new RequestRun(new RequestModel { Name = "r" }, Ws, null, new AuthConfig { Type = AuthType.OAuth2 }));
+
+        Assert.Equal(AuthAction.CachedToken, result.Auth!.Action);
+        Assert.False(result.Auth.TalkedToTheProvider);
     }
 
     [Fact]
@@ -293,7 +315,14 @@ public class RequestExecutionServiceTests
                 ForceReacquireCount++;
             }
 
-            return Task.FromResult(new AuthPreparation(Applied, new AuthOutcome(true, "")));
+            // The real provider tags a token request it actually sent, so the response pane can say a
+            // send went and talked to somebody's identity provider.
+            return Task.FromResult(new AuthPreparation(
+                Applied,
+                new AuthOutcome(true, "")
+                {
+                    Action = forceReacquire ? AuthAction.TokenRefreshed : AuthAction.CachedToken,
+                }));
         }
 
         public AppliedAuth Apply(AuthConfig auth, Workspace workspace, WorkspaceEnvironment? env) => Applied;

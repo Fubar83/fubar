@@ -466,6 +466,17 @@ public partial class RequestEditorViewModel : ViewModelBase, ISaveableEditor, ID
             _statusLog.Log($"Auth: {auth.Message}");
         }
 
+        // A send that quietly went and got a token said nothing at all before this: the log line was
+        // on the failure branch only, so the one interesting success - a second HTTP call nobody
+        // asked for - was the case nothing mentioned.
+        Response.AuthAction = outcome.Auth?.Action ?? AuthAction.None;
+        Response.AuthMessage = outcome.Auth?.Message ?? "";
+
+        if (outcome.Auth is { } acted && acted.TalkedToTheProvider)
+        {
+            _statusLog.Log($"Auth: {acted.Message}");
+        }
+
         ApplyResultToResponse(outcome.Result);
 
         if (outcome.Result.IsSuccess)

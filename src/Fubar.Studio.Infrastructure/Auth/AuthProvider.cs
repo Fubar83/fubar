@@ -133,7 +133,7 @@ public sealed class AuthProvider : IAuthProvider
         var cachedToken = _session.Get(scope, tokenVariable);
         if (!forceReacquire && !string.IsNullOrEmpty(cachedToken) && !IsExpired(_session.Get(scope, expiryVariable)))
         {
-            return new AuthOutcome(true, "Using the cached token (still valid).");
+            return new AuthOutcome(true, "Using the cached token (still valid).") { Action = AuthAction.CachedToken };
         }
 
         var tokenRequest = auth.TokenRequest!;
@@ -223,6 +223,7 @@ public sealed class AuthProvider : IAuthProvider
             return new AuthOutcome(true, $"Token request succeeded, but no capture wrote {{{{{tokenVariable}}}}}.")
             {
                 Response = new TokenResponse(result.StatusCode, result.Body),
+                Action = Acquisition(forceReacquire),
             };
         }
 
@@ -231,8 +232,20 @@ public sealed class AuthProvider : IAuthProvider
         return new AuthOutcome(true, $"Token acquired into {{{{{tokenVariable}}}}}{expiryText}.")
         {
             Response = new TokenResponse(result.StatusCode, result.Body),
+            Action = Acquisition(forceReacquire),
         };
     }
+
+    /// <summary>
+    /// Whether a token request that ran was a first acquisition or a refresh.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="forced"/> is only ever set by the retry-once-on-401 path, so it means "the
+    /// cached token was refused" rather than "there was not one" - which is the more interesting of
+    /// the two, and the one worth telling somebody about.
+    /// </remarks>
+    private static AuthAction Acquisition(bool forced) =>
+        forced ? AuthAction.TokenRefreshed : AuthAction.TokenAcquired;
 
     // Remove every capture target plus the access-token/expiry variables from the session scope.
     private void ClearCapturedVariables(AuthConfig auth, string scope, string tokenVariable, string expiryVariable)
