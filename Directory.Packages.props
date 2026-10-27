@@ -35,7 +35,7 @@
     <PackageVersion Include="DiffPlex" Version="1.9.0" />
   </ItemGroup>
   <ItemGroup Label="JSONPath">
-    <PackageVersion Include="JsonPath.Net" Version="3.0.2" />
+    <PackageVersion Include="JsonPath.Net" Version="3.0.3" />
   </ItemGroup>
   <ItemGroup Label="Structural C# comparison">
     <!-- The C# parser only - no workspaces, no MSBuild, no compilation. Fubar Diff reads two files
