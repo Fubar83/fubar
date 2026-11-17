@@ -42,7 +42,7 @@
          off a disk with no project around them, so a syntax tree is all there is to have and all that
          is wanted. Lives behind ICodeStructureParser in Fubar.Diff.Core and is referenced ONLY by
          Fubar.Diff.Infrastructure, the same rule DiffPlex is held to. MIT. -->
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
   </ItemGroup>
   <ItemGroup Label="OpenAPI import">
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
